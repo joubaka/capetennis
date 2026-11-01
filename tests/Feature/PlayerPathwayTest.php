@@ -65,6 +65,7 @@ class PlayerPathwayTest extends TestCase
     private function metrics(float $score = 60, array $stages = ['red' => 3, 'orange' => 0, 'standard' => 0]): array
     {
         return ['player_id' => 1, 'available' => true, 'score' => $score, 'events' => max($stages),
+            'stage_ratings' => array_fill_keys(['red', 'orange', 'standard'], ['score' => $score, 'comparable' => true, 'local' => false]),
             'stage_events' => $stages, 'unknown_stage_events' => 0, 'date' => '2026-11-01',
             'comparable' => true, 'stale' => false, 'reason' => null];
     }
@@ -112,7 +113,7 @@ class PlayerPathwayTest extends TestCase
         $unclassified['events'] = 3; $unclassified['unknown_stage_events'] = 3;
         $summary = $service->summary($player, ['pathway_metrics' => $unclassified]);
         $this->assertFalse($summary['ready']);
-        $this->assertStringContainsString('lack confirmed ball metadata', $summary['reason']);
+        $this->assertStringContainsString('conflicting ball labels', $summary['reason']);
         config(['pathway.targets.red' => ['ctr' => null, 'events' => 3]]);
         $summary = $service->summary($player, $history);
         $this->assertFalse($summary['ready']);
@@ -124,8 +125,12 @@ class PlayerPathwayTest extends TestCase
     {
         $service = app(PlayerPathwayService::class); $player = Player::findOrFail(1);
         $service->recordStage($player, $this->actor(), ['stage' => 'red']);
-        foreach ([['stale' => true], ['comparable' => false], ['score' => INF], ['score' => NAN], ['score' => 101], ['player_id' => 2], ['available' => false]] as $change) {
+        foreach ([['stale' => true], ['player_id' => 2], ['available' => false]] as $change) {
             $this->assertFalse($service->summary($player, ['pathway_metrics' => array_replace($this->metrics(99), $change)])['ready']);
+        }
+        foreach ([['comparable' => false], ['score' => INF], ['score' => NAN], ['score' => 101]] as $change) {
+            $metrics = $this->metrics(99); $metrics['stage_ratings']['red'] = array_replace($metrics['stage_ratings']['red'], $change);
+            $this->assertFalse($service->summary($player, ['pathway_metrics' => $metrics])['ready']);
         }
         $this->assertFalse($service->summary($player, ['reason' => 'Publication revoked', 'pathway_metrics' => $this->metrics(99)])['ready']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);

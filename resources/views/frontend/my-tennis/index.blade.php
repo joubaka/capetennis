@@ -121,6 +121,7 @@
       </div>
     </div>
   @else
+    @include('frontend.my-tennis.teamsheet-connection')
     <div class="my-tennis-player-summary">
       <span class="my-tennis-player-avatar" aria-hidden="true">{{ collect(preg_split('/\s+/u', trim($selectedPlayer->full_name), -1, PREG_SPLIT_NO_EMPTY))->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') }}</span>
       <div class="my-tennis-player-details">

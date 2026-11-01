@@ -45,7 +45,8 @@ class AllAgeRatingIntegrationTest extends TestCase
         $components = [];
         foreach ($ratings as $id => $rating) { $components[$rating['component']]['members'][] = (int) $id; }
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'all_age' => ['ratings' => $ratings, 'components' => $components], 'cohorts' => [], 'names' => [],
+            'reason' => null, 'all_age' => ['ratings' => $ratings, 'components' => $components],
+            'ball_ratings' => ['red' => ['ratings' => []], 'orange' => ['ratings' => []], 'standard' => ['ratings' => $ratings]], 'cohorts' => [], 'names' => [],
             'built_at' => '2026-10-29 10:00:00', 'snapshot_as_of' => '2026-10-29', 'snapshot_stale' => false,
         ]);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings)
@@ -91,7 +92,7 @@ class AllAgeRatingIntegrationTest extends TestCase
             ->assertSee('data-ctr-ranking-row', false)->assertSee('data-ctr-badge', false)->assertSee('No recent played-match connection')
             ->assertSee('Low confidence — historical connection')->assertSee('2025-05-19');
         $this->assertSame([80.0, 60.0, null], $response->viewData('players')->getCollection()->map(fn ($row) => $row['rating']['score'] ?? null)->all());
-        $this->get($url.'?age_group=u18')->assertOk()->assertSee('60.0/100')->assertDontSee('Younger Shared');
+        $this->get($url.'?age_group=u18')->assertOk()->assertSeeInOrder(['60.0', '/100'])->assertDontSee('Younger Shared');
         if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/all-age-ratings.html'), $response->getContent());
         }
@@ -146,6 +147,8 @@ class AllAgeRatingIntegrationTest extends TestCase
         $rating = $this->rating() + ['local_score' => 99, 'strength' => 42];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
             'reason' => null, 'all_age' => ['ratings' => [$player->id => $rating, $foreign->id => $rating]],
+            'ball_ratings' => ['red' => ['ratings' => []], 'orange' => ['ratings' => []],
+                'standard' => ['ratings' => [$player->id => $rating, $foreign->id => $rating]]],
             'built_at' => '2026-10-29 10:00:00', 'snapshot_as_of' => '2026-10-29', 'snapshot_stale' => false,
         ]);
         $this->actingAs($manager);

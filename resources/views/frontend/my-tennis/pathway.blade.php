@@ -24,8 +24,8 @@
   <div class="pathway-grid">
     <div>
       <h4 class="h6">{{ $pathway['stage_label'] }}@if($pathway['division']) · Wilson {{ $pathway['division'] }}@endif</h4>
-      <div class="pathway-score"><x-ctr-badge :stage="$pathway['stage']" :score="$pathwayLatest['score'] ?? null" :local="($pathwayLatest['connection_status'] ?? '') === 'disconnected'" /></div>
-      <p class="small text-muted mt-2 mb-0">@if($pathwayLatest) Latest saved CTR · {{ $pathwayLatest['date'] }} @else No saved CTR available. @endif Badge colour shows the recorded playing stage, not completion of that stage or earlier stages.</p>
+      <div class="pathway-score"><x-ctr-badge :stage="$pathway['stage']" :score="$pathway['score']" :local="$pathway['metrics']['stage_ratings'][$pathway['stage'] ?? '']['local'] ?? false" /></div>
+      <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif Badge colour shows the recorded playing stage, not completion of that stage or earlier stages.</p>
     </div>
     <div>
       <h4 class="h6">Automatic progress</h4>
@@ -33,7 +33,7 @@
         <li>CTR: <strong>{{ $pathway['score'] !== null ? number_format($pathway['score'], 1) : 'Unavailable' }}</strong>@if($pathway['target']) / {{ number_format($pathway['target']['ctr'], 0) }} target @endif<br><span class="small {{ $pathway['ratingMet'] ? 'pathway-met' : 'text-muted' }}">{{ $pathway['ratingMet'] ? 'CTR target met' : (!$pathway['target'] ? 'Target not configured for this step' : ($pathway['eligible'] ? 'CTR target not yet met' : 'A current comparable CTR is required')) }}</span></li>
         <li>Confirmed {{ $pathway['stage_label'] }} events: <strong>{{ $pathway['ownEvents'] ?? 'Unavailable' }}</strong>@if($pathway['target']) / {{ $pathway['target']['events'] }} minimum @endif<br><span class="small {{ $pathway['eventsMet'] ? 'pathway-met' : 'text-muted' }}">{{ $pathway['eventsMet'] ? 'Stage event target met' : 'Only played events with confirmed ball metadata count for this stage' }}</span></li>
       </ul>
-      <p class="small text-muted mb-2">{{ $pathway['events'] !== null ? $pathway['events'].' distinct published Cape Tennis events' : 'Event count unavailable' }} included in the latest rating’s {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day window. Other ball stages and unclassified events do not complete this stage.</p>
+      <p class="small text-muted mb-2">{{ $pathway['events'] !== null ? $pathway['events'].' distinct published Cape Tennis events' : 'Event count unavailable' }} included in the latest rating’s {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day window. Other ball stages do not complete this stage. Events not marked Red or Orange count as Green/Yellow.</p>
       <p class="small mb-0 {{ $pathway['ready'] ? 'pathway-met' : 'text-muted' }}" role="status">{{ $pathway['reason'] }}</p>
     </div>
     <div>
@@ -49,20 +49,23 @@
     <div class="pathway-stages" aria-label="Independent ball-stage progress">
       @foreach($pathway['stageProgress'] as $ball => $progress)
         <div class="pathway-stage" style="--stage-ink:{{ ['red' => '#ed2029', 'orange' => '#ed7100', 'standard' => '#095c60'][$ball] }}" data-pathway-ball="{{ $ball }}">
-          <strong>{{ $progress['label'] }}</strong><br><span class="small {{ $progress['met'] ? 'pathway-met' : 'text-muted' }}">{{ $progress['met'] ? 'Targets met' : 'Not completed' }}</span>
+          <strong>{{ $progress['label'] }}</strong>
+          <div class="my-2"><x-ctr-badge size="small" :stage="$ball" :score="$progress['score'] ?? null" :local="$progress['local'] ?? false" /></div>
+          @if($progress['reason'] ?? null)<p class="small text-muted">{{ $progress['reason'] }}</p>@endif
+          <span class="small {{ $progress['met'] ? 'pathway-met' : 'text-muted' }}">{{ $progress['met'] ? 'Targets met' : 'Not completed' }}</span>
           <p class="small text-muted mt-1 mb-0">{{ $progress['events'] ?? 'Unknown' }} confirmed events @if($progress['target']) · minimum {{ $progress['target']['events'] }} · CTR {{ number_format($progress['target']['ctr'], 0) }} @else · {{ $ball === 'standard' && !$pathway['division'] ? 'A/B division not recorded' : 'target not configured' }} @endif</p>
         </div>
       @endforeach
     </div>
   @endif
-  <p class="small text-muted mt-2 mb-0">Initial Cape Tennis benchmarks use opponent-adjusted CTR and at least three events in the relevant ball stage. This is a current evidence assessment, not a permanent award or automatic stage change. Starting at Orange does not complete Red.</p>
+  <p class="small text-muted mt-2 mb-0">Each ball level has an independent opponent-adjusted rating. Red results affect Red only; Orange affects Orange only; all other results affect Green/Yellow. Progress also requires at least three published Cape Tennis events in that stage. Starting at Orange does not complete Red.</p>
   @if(auth()->user()?->hasRole('super-user') && $pathway['available'])
     <details class="pathway-admin" data-pathway-admin><summary>Admin tools · record starting stage</summary>
       <p class="small text-muted mb-0">Stage and division are participation metadata only. Progress is calculated automatically from CTR and played-event evidence; it cannot be manually awarded here.</p>
       <form method="post" action="{{ route('my.tennis.pathway.stage', $ratingPlayer) }}" data-pathway-form>
         @csrf
         <div><label for="pathway-stage">Current playing stage</label><select id="pathway-stage" name="stage" class="form-select" data-pathway-stage><option value="">Not recorded</option>@foreach(\App\Services\Performance\PlayerPathwayService::STAGES as $value => $label)<option value="{{ $value }}" @selected($pathway['stage'] === $value)>{{ $label }}</option>@endforeach</select></div>
-        <div><label for="pathway-division">Wilson division · standard ball only</label><select id="pathway-division" name="wilson_division" class="form-select" data-pathway-division @disabled($pathway['stage'] !== 'standard')><option value="">Not recorded</option><option value="B" @selected($pathway['division'] === 'B')>B</option><option value="A" @selected($pathway['division'] === 'A')>A</option></select></div>
+        <div><label for="pathway-division">Wilson division · Green/Yellow ball only</label><select id="pathway-division" name="wilson_division" class="form-select" data-pathway-division @disabled($pathway['stage'] !== 'standard')><option value="">Not recorded</option><option value="B" @selected($pathway['division'] === 'B')>B</option><option value="A" @selected($pathway['division'] === 'A')>A</option></select></div>
         <button class="btn btn-outline-primary" type="submit">Save playing stage</button>
       </form>
       <p class="small mt-2 mb-0" role="status" aria-live="polite" data-pathway-status></p>

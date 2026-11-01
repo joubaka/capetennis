@@ -24,6 +24,7 @@ class AllAgeHistoricalApiTest extends TestCase
             'played' => 20, 'last_played' => '2026-10-01', 'component_inferred' => 0, 'bridge_count' => 0];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
             'reason' => null, 'built_at' => '2026-10-29 10:00:00', 'snapshot_stale' => false, 'all_age' => ['ratings' => [$player->id => $rating]],
+            'ball_ratings' => ['red' => ['ratings' => []], 'orange' => ['ratings' => []], 'standard' => ['ratings' => [$player->id => $rating]]],
         ]);
         $this->actingAs($user);
         $badge = app(PlayerRatingBadgeService::class)->forPlayer($player->id);

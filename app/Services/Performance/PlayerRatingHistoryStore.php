@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\File;
 /** Durable private derived data; atomic replacement retains the last good build on failure. */
 class PlayerRatingHistoryStore
 {
-    public const VERSION = 3;
+    public const VERSION = 4;
 
     public function path(): string { return storage_path('app/private/player-rating-history.json'); }
 
@@ -52,6 +52,10 @@ class PlayerRatingHistoryStore
             $offset = 11 - $index;
             $expected = $offset === 0 ? $today : $today->startOfMonth()->subMonths($offset)->endOfMonth();
             if (($month['date'] ?? null) !== $expected->toDateString() || !is_array($month['cohorts'] ?? null) || count($month['cohorts']) > 1000) return false;
+            foreach ($month['ball_status'] ?? [] as $stage => $status) {
+                if (!isset(BallRatingModel::LABELS[$stage]) || !is_array($status) || !is_int($status['excluded'] ?? null) || $status['excluded'] < 0 || $status['excluded'] > 50000
+                    || (($status['reason'] ?? null) !== null && (!is_string($status['reason']) || strlen($status['reason']) > 200))) return false;
+            }
             $count = 0;
             foreach ($month['cohorts'] as $cohort => $players) {
                 if (!is_array($players) || ($count += count($players)) > 50000) return false;
@@ -60,7 +64,7 @@ class PlayerRatingHistoryStore
                         || !preg_match('/^[a-f0-9]{64}$/', $rating['group'] ?? '')
                         || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) return false;
                     if (!$this->validEvidenceSummary($rating, $month['date'])) return false;
-                    if ($cohort === AllAgeRatingModel::COHORT && !$this->validSharedConnection($rating, $month['date'])) return false;
+                    if (($cohort === AllAgeRatingModel::COHORT || BallRatingModel::stage($cohort) !== null) && !$this->validSharedConnection($rating, $month['date'])) return false;
                 }
             }
         }
@@ -82,12 +86,18 @@ class PlayerRatingHistoryStore
             if ($row['kind'] === 'match' && (count($row['players']) !== 2 || !in_array($row['winner_side'] ?? null, [1, 2], true)
                 || !is_string($row['score'] ?? null) || strlen($row['score']) > 150)) return false;
             if (array_key_exists('ball_type', $row) && !in_array($row['ball_type'], [null, 'red', 'orange', 'green', 'yellow', 'standard'], true)) return false;
+            if (array_key_exists('rating_ball_type', $row) && !in_array($row['rating_ball_type'], [null, 'red', 'orange', 'standard'], true)) return false;
         }
         return true;
     }
 
     private function validEvidenceSummary(array $rating, string $date): bool
     {
+        if (array_key_exists('evidence_basis', $rating) && !in_array($rating['evidence_basis'], ['matches', 'matches_and_finishes', 'finish_only'], true)) return false;
+        foreach (['finish_events', 'inferred'] as $field) if (array_key_exists($field, $rating) && (!is_int($rating[$field]) || $rating[$field] < 0)) return false;
+        if (($rating['evidence_basis'] ?? null) === 'finish_only' && (($rating['finish_events'] ?? 0) < 1 || ($rating['inferred'] ?? 0) < 1
+            || ($rating['confidence_label'] ?? null) !== 'Low' || ($rating['connection_status'] ?? null) !== 'disconnected'
+            || ($rating['direct_opponents'] ?? 0) !== 0 || ($rating['played_events'] ?? 0) !== 0)) return false;
         // Optional so existing history remains readable until its next scheduled build.
         if (array_key_exists('confidence_label', $rating) && !in_array($rating['confidence_label'], ['Low', 'Medium', 'High'], true)) return false;
         foreach (['recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches'] as $field) {

@@ -99,7 +99,8 @@ class TeamSheetTennisImportService
             || !is_string($row['source_version'] ?? null) || !preg_match('/^[a-f0-9]{64}$/', $row['source_version'])
             || !in_array($row['competition']['type'] ?? null, ['tournament', 'league', 'ladder'], true)
             || !is_int($row['competition']['id'] ?? null) || $row['competition']['id'] < 1
-            || !in_array($row['date_precision'] ?? null, ['actual_date', 'actual_time', 'scheduled_date', 'recorded_time'], true)) $this->fail('Invalid native tennis result. Earlier results were retained.');
+            || !in_array($row['date_precision'] ?? null, ['actual_date', 'actual_time', 'scheduled_date', 'recorded_time'], true)
+            || (isset($row['ball_type']) && !in_array($row['ball_type'], ['red', 'orange', 'green', 'yellow', 'standard'], true))) $this->fail('Invalid native tennis result. Earlier results were retained.');
         $prefix = match ($row['competition']['type']) { 'tournament' => 'ts-tournament-rubber-', 'league' => 'ts-fixture-rubber-', 'ladder' => 'ts-challenge-' };
         if (!str_starts_with($row['source_match_id'], $prefix)) $this->fail('Result source and competition do not agree.');
         $unsigned = $row; unset($unsigned['source_version']);

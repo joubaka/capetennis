@@ -105,7 +105,7 @@ class PlayerRatingBadgeTest extends TestCase
             'canWithdraw' => false, 'sDate' => null, 'eDate' => null,
             'formatEntryLine' => null, 'formatWithdrawalLine' => null,
         ])->render();
-        $this->assertSame(2, substr_count($html, 'class="badge player-rating-badge'));
+        $this->assertSame(2, substr_count($html, 'data-ctr-badge'));
         $this->assertStringNotContainsString('move-category-btn', $html);
 
         $response = $this->getJson(route('backend.player-performance.badges').'?'.http_build_query([
@@ -181,13 +181,13 @@ class PlayerRatingBadgeTest extends TestCase
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->once()->andReturn($this->snapshot());
         $lineup = ['players' => [['name' => 'Rated player', 'rank' => 1, 'player_id' => 1], ['name' => 'Imported player', 'rank' => 2, 'player_id' => null]], 'region' => 'OB'];
         $html = view('frontend.fixture.lineup-side', ['lineup' => $lineup, 'ratingContext' => $draw])->render();
-        $this->assertSame(1, substr_count($html, 'class="badge player-rating-badge'));
+        $this->assertSame(1, substr_count($html, 'data-ctr-badge'));
         $this->assertStringContainsString('54.8', $html);
         $this->assertStringContainsString('Imported player', $html);
         $this->assertStringContainsString('Team roster rank', $html);
     }
 
-    public function test_finishing_order_only_has_no_shared_badge_and_context_is_withheld_after_unpublication(): void
+    public function test_finishing_order_only_has_local_ball_badge_and_context_is_withheld_after_unpublication(): void
     {
         $this->superAdmin();
         $draw = $this->draw();
@@ -209,7 +209,9 @@ class PlayerRatingBadgeTest extends TestCase
         $store->replace($payload, $asOf, $service->fingerprint(), $store->manifest($payload));
         $url = route('backend.player-performance.badges').'?players[]='.$playerId.'&draw_id='.$draw->id;
         $response = $this->getJson($url)->assertOk();
-        $response->assertJsonPath('ratings.p:'.$playerId, []);
+        $response->assertJsonPath('ratings.p:'.$playerId.'.0.evidence_basis', 'finish_only')
+            ->assertJsonPath('ratings.p:'.$playerId.'.0.comparable', false)
+            ->assertJsonPath('ratings.p:'.$playerId.'.0.played', 0);
         $ability = $service->forPlayer(Player::findOrFail($playerId));
         $this->assertNull($ability['headline']);
         $this->assertGreaterThan(50, $ability['cohorts']->first()['score']);
@@ -343,7 +345,8 @@ class PlayerRatingBadgeTest extends TestCase
         unset($rating);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->once()->andReturn($snapshot);
         $html = Blade::render('Name<x-player-rating :player-id="1" />');
-        $this->assertStringContainsString('72.3 | Low', $html);
+        $this->assertStringContainsString('72.3', $html);
+        $this->assertStringContainsString('Low confidence', $html);
         $this->assertStringNotContainsString('Very low', $html);
         $this->assertStringNotContainsString('C0', $html);
         $this->assertStringContainsString('not an accuracy percentage', $html);

@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\{Draw, Event, Fixture, OrderOfPlay, TeamFixture};
-use App\Services\Performance\{AllAgeMatchFormatResolver, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
+use App\Services\Performance\{AllAgeMatchFormatResolver, BallRatingModel, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +21,7 @@ class AllAgeRatingSourceContextTest extends TestCase
         $team = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1, 'fixture_type' => 1]);
         $payload = ['cohorts' => [], 'all_age' => ['ratings' => [], 'components' => [], 'players' => [], 'reference_component' => null], 'names' => [], 'reason' => null,
             'built_at' => '2026-10-01 00:01:00 SAST', 'source_events' => [$event->id], 'source_matches' => ['match:'.$fixture->id, 'team-match:'.$team->id]];
+        $payload['ball_ratings'] = (new BallRatingModel)->fit([], CarbonImmutable::parse('2026-10-01'));
         return compact('event', 'draw', 'fixture', 'team', 'payload');
     }
 

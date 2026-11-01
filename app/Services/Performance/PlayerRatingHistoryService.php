@@ -23,15 +23,17 @@ class PlayerRatingHistoryService
         }
         $series = [];
         $hasSharedProjection = false;
+        $hasBallProjection = false;
         foreach ($saved['months'] as $index => $snapshot) {
             $hasSharedProjection = $hasSharedProjection || array_key_exists(AllAgeRatingModel::COHORT, $snapshot['cohorts']);
             foreach ($snapshot['cohorts'] as $cohort => $data) {
-                if ($cohort !== AllAgeRatingModel::COHORT) continue;
+                if ($cohort !== AllAgeRatingModel::COHORT && BallRatingModel::stage($cohort) === null) continue;
+                $hasBallProjection = $hasBallProjection || BallRatingModel::stage($cohort) !== null;
                 $rating = $data[$player->id] ?? null;
                 if (!$rating || !is_numeric($rating['score']) || !is_finite((float) $rating['score'])) continue;
                 $series[$cohort][] = ['index' => $index, 'date' => $snapshot['date'], 'score' => $rating['score'],
                     'group' => $rating['group'], 'component' => $rating['component'], 'last_activity' => $rating['last_activity'] ?? $snapshot['date']]
-                    + array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches']))
+                    + array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches', 'evidence_basis', 'finish_events', 'inferred']))
                     + (isset($rating['connection_status']) ? ['connection_status' => $rating['connection_status'],
                         'historical_connection' => (bool) ($rating['historical_connection'] ?? false),
                         'connection_age_days' => $rating['connection_age_days'] ?? null,
@@ -39,17 +41,20 @@ class PlayerRatingHistoryService
             }
         }
         if ($hasSharedProjection) { $series[AllAgeRatingModel::COHORT] ??= []; }
-        $cohort = AllAgeRatingModel::COHORT;
+        $selected = $filters['cohort'] ?? null;
+        $cohort = in_array($selected, [AllAgeRatingModel::COHORT, ...array_values(BallRatingModel::COHORTS)], true)
+            ? $selected : ($hasBallProjection ? BallRatingModel::COHORTS['standard'] : AllAgeRatingModel::COHORT);
         $month = max(0, min(11, (int) ($filters['month'] ?? 11)));
         $scope = ($filters['scope'] ?? 'new') === 'all' ? 'all' : 'new';
         $points = $series[$cohort] ?? [];
         $point = collect($points)->firstWhere('index', $month);
         $previous = collect($points)->firstWhere('index', $month - 1);
         $evidence = $this->evidence($saved['evidence'], $player, $cohort, $month, $scope, (int) ($filters['page'] ?? 1), $point !== null);
-        $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, $pending);
+        $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $series[AllAgeRatingModel::COHORT] ?? [], $pending);
         return ['series' => $series, 'reason' => null, 'as_of' => $saved['as_of'], 'built_at' => $saved['built_at'],
             'stale' => $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString(),
-            'cohort' => $cohort, 'rating_scope' => $cohort === AllAgeRatingModel::COHORT ? 'all_age' : 'cohort', 'shared_available' => $hasSharedProjection, 'points' => $points, 'month' => $month, 'months' => $saved['months'], 'scope' => $scope,
+            'cohort' => $cohort, 'ball_stage' => BallRatingModel::stage($cohort), 'rating_scope' => BallRatingModel::stage($cohort) !== null ? 'ball' : 'all_age', 'shared_available' => $hasSharedProjection,
+            'ball_series' => array_intersect_key($series, array_flip(array_values(BallRatingModel::COHORTS))), 'points' => $points, 'month' => $month, 'months' => $saved['months'], 'scope' => $scope,
             'point' => $point, 'previous' => $previous, 'evidence' => $evidence,
             'pathway_metrics' => $pathwayMetrics,
             'scale' => ($filters['scale'] ?? '') === 'full' ? 'full' : 'focused',
@@ -72,7 +77,9 @@ class PlayerRatingHistoryService
     {
         $rows = []; $included = 0; $new = 0; $matches = 0; $wins = 0; $finishes = 0; $restricted = 0; $bit = 1 << $month; $previousBit = $month > 0 ? 1 << ($month - 1) : 0;
         foreach ($rated ? $registry : [] as $row) {
+            $ball = BallRatingModel::stage($cohort ?? '');
             if ($row['cohort'] !== $cohort || !($row['months'] & $bit)) continue;
+            if ($ball !== null && BallRatingModel::forMatch($row) !== $ball) continue;
             $side = array_search((int) $player->id, $row['players'], true);
             if ($side === false) continue;
             $included++;
@@ -119,18 +126,20 @@ class PlayerRatingHistoryService
             $compact = [];
             $projections = $snapshot['cohorts'];
             if (isset($snapshot['all_age'])) { $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age']; }
+            foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $projections[BallRatingModel::COHORTS[$stage]] = $graph;
             foreach ($projections as $cohort => $data) {
                 $compact[$cohort] = [];
                 $groups = [];
                 foreach ($data['components'] as $id => $component) {
-                    if (!$component['converged']) throw new \RuntimeException('Monthly history model did not converge.');
+                    if (!$component['converged']) throw new \RuntimeException('Monthly history model did not converge for '.$cohort.' at '.$date->toDateString().'.');
                     $members = $component['members']; sort($members);
                     $groups[$id] = hash('sha256', json_encode([$members, $data['baseline']['metadata']['event_id'] ?? null]));
                 }
                 foreach ($data['ratings'] as $id => $rating) {
-                    $compact[$cohort][$id] = ['score' => $rating['score'], 'component' => $rating['component'], 'group' => $groups[$rating['component']], 'last_activity' => $data['players'][$id]['last_played'] ?? $date->toDateString()];
-                    $compact[$cohort][$id] += array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches']));
-                    if ($cohort === AllAgeRatingModel::COHORT && isset($rating['connection_status'])) {
+                    $compact[$cohort][$id] = ['score' => $rating['score'], 'component' => $rating['component'], 'group' => $groups[$rating['component']],
+                        'last_activity' => max($data['players'][$id]['last_played'] ?? '', $data['players'][$id]['last_finish'] ?? '') ?: $date->toDateString()];
+                    $compact[$cohort][$id] += array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches', 'evidence_basis', 'finish_events', 'inferred']));
+                    if (($cohort === AllAgeRatingModel::COHORT || BallRatingModel::stage($cohort) !== null) && isset($rating['connection_status'])) {
                         $compact[$cohort][$id]['group'] = hash('sha256', json_encode([$groups[$rating['component']], $data['recent_backbone']['members'] ?? [], $rating['connection_status']], JSON_THROW_ON_ERROR));
                         $compact[$cohort][$id] += ['connection_status' => $rating['connection_status'],
                             'historical_connection' => (bool) ($rating['historical_connection'] ?? false),
@@ -139,7 +148,10 @@ class PlayerRatingHistoryService
                     }
                 }
             }
-            $months[] = ['date' => $date->toDateString(), 'cohorts' => $compact];
+            $ballStatus = [];
+            foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $ballStatus[$stage] = ['reason' => $graph['unrated_reason'] ?? null,
+                'excluded' => (int) ($graph['excluded']['Ball-level model did not converge'] ?? 0)];
+            $months[] = ['date' => $date->toDateString(), 'cohorts' => $compact, 'ball_status' => $ballStatus];
         }
         $sourceEvents = array_values(array_unique(array_merge($sourceEvents, array_column($evidence->all(), 'event_id'))));
         $context = ['source_events' => $sourceEvents, 'source_matches' => $sourceMatches];

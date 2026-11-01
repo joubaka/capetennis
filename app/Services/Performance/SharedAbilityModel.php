@@ -65,7 +65,10 @@ class SharedAbilityModel
                 }
             }
             $converged = false;
-            for ($iteration = 0; $iteration < 100; $iteration++) {
+            // Weak ordinal links can join large played components. Give that explicit
+            // projection a bounded longer solve without relaxing convergence accuracy.
+            $iterations = ($experiment['ordinal_solver'] ?? false) ? 2000 : 100;
+            for ($iteration = 0; $iteration < $iterations; $iteration++) {
                 $movement = 0.0;
                 foreach ($members as $id) {
                     $anchor = $ownAnchors[$id] ?? null;

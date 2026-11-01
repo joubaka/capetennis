@@ -14,8 +14,8 @@
             <tspan class="player-rating-badge" dx="4" style="font-size:10px;fill:#075985;font-weight:700"><title>{{ $rating['title'] }}</title>[{{ $rating['display_label'] }}]</tspan>
         @else
             <span class="player-rating-badge" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:.25rem;vertical-align:middle">
-                <x-ctr-badge size="inline" class="badge player-rating-badge ms-1" :score="$rating['score']" :title="$rating['title']" :local="($rating['rating_scope'] ?? null) !== 'all_age' || ($rating['comparable'] ?? true) === false" :stage="$rating['ball_type'] ?? null" />
-                <span class="small" style="font-size:.65rem;font-weight:500;white-space:normal">{{ $rating['confidence_label'] ?? $rating['confidence_band'] ?? 'Low' }} confidence {{ !empty($rating['historical_connection']) ? '· old link' : '' }}</span>
+                <x-ctr-badge size="inline" class="badge player-rating-badge ms-1" :score="$rating['score']" :title="$rating['title']" :overall="($rating['rating_scope'] ?? null) === 'all_age'" :local="!in_array($rating['rating_scope'] ?? null, ['all_age', 'ball'], true) || ($rating['comparable'] ?? true) === false" :stage="$rating['ball_type'] ?? null" />
+                <span class="small" style="font-size:.65rem;font-weight:500;white-space:normal">{{ $rating['confidence_label'] ?? $rating['confidence_band'] ?? 'Low' }} confidence {{ ($rating['evidence_basis'] ?? null) === 'finish_only' ? '· final placings only' : '' }} {{ !empty($rating['historical_connection']) ? '· old link' : '' }}</span>
             </span>
         @endif
     @endif

@@ -22,11 +22,12 @@ class PlayerRatingEvidenceBuilder
         $bit = 1 << $month;
         $projections = $snapshot['cohorts'];
         if (isset($snapshot['all_age'])) { $projections[AllAgeRatingModel::COHORT] = $snapshot['all_age']; }
+        foreach ($snapshot['ball_ratings'] ?? [] as $stage => $graph) $projections[BallRatingModel::COHORTS[$stage]] = $graph;
         foreach ($projections as $cohort => $data) {
             foreach ($data['history_evidence']['matches'] ?? [] as $edge) {
                 $id = $edge['source_id'];
                 $match = $this->matches[$id] ?? throw new \RuntimeException('Fit provenance has no validated source.');
-                $registryId = $cohort === AllAgeRatingModel::COHORT ? 'all_age|'.$id : $id;
+                $registryId = $cohort === AllAgeRatingModel::COHORT ? 'all_age|'.$id : (BallRatingModel::stage($cohort) !== null ? $cohort.'|'.$id : $id);
                 $this->registry[$registryId] ??= [
                     'source_id' => $id, 'kind' => 'match', 'cohort' => $cohort,
                     'event_id' => (int) $match['event_id'], 'event' => $match['event'], 'date' => $match['confidence_date'],
@@ -35,7 +36,8 @@ class PlayerRatingEvidenceBuilder
                     'names' => [$snapshot['names'][$match['player1_id']] ?? 'Player #'.$match['player1_id'], $snapshot['names'][$match['player2_id']] ?? 'Player #'.$match['player2_id']],
                     'winner_side' => (int) $match['winner_side'], 'score' => $match['score'], 'months' => 0, 'baseline_months' => 0,
                     // The fitted edge carries explicit resolved court/ball metadata; names and ages do not establish a stage.
-                    'ball_type' => in_array($edge['ball_type'] ?? null, ['red', 'orange', 'green', 'yellow', 'standard'], true) ? $edge['ball_type'] : null,
+                    'ball_type' => BallRatingModel::forMatch($edge + ['event_name' => $match['event'] ?? null]),
+                    'rating_ball_type' => BallRatingModel::forMatch($edge + ['event_name' => $match['event'] ?? null]),
                 ];
                 if ($this->registry[$registryId]['cohort'] !== $cohort) throw new \RuntimeException('Match appears in conflicting fit cohorts.');
                 $this->registry[$registryId]['months'] |= $bit;
@@ -48,14 +50,16 @@ class PlayerRatingEvidenceBuilder
                 if ($count < 2 || $count > 256 || count(array_unique($players)) !== $count || !is_finite($field['weight']) || $field['weight'] <= 0
                     || count(array_intersect($players, $members)) !== $count) continue;
                 $id = $field['source_id'];
-                $this->registry[$id] ??= [
+                $registryId = $cohort.'|'.$id;
+                $this->registry[$registryId] ??= [
                     'source_id' => $id, 'kind' => 'finish', 'cohort' => $cohort, 'event_id' => (int) $field['event_id'],
                     'event' => $field['event_name'], 'date' => $field['event_date'], 'date_basis' => 'event start; finishing-order evidence', 'completed_at' => $field['completed_at'],
                     'players' => array_map('intval', $field['players']),
                     'names' => array_map(fn ($id) => $snapshot['names'][$id] ?? 'Player #'.$id, $field['players']),
                     'months' => 0, 'baseline_months' => 0,
+                    'ball_type' => $field['rating_ball_type'] ?? null, 'rating_ball_type' => $field['rating_ball_type'] ?? null,
                 ];
-                $this->registry[$id]['months'] |= $bit;
+                $this->registry[$registryId]['months'] |= $bit;
             }
         }
         if (count($this->registry) > 50000) throw new \RuntimeException('History provenance exceeds its safe limit.');

@@ -9,11 +9,32 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 14;
+    public const VERSION = 15;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
     private const EVENT_FIELD_CAP = 256;
+
+    /** Independent ball-level name badges; never falls back to the combined overall estimate. */
+    public function ballBadgeSnapshot(string $stage = 'standard', ?\App\Models\CategoryEvent $field = null): array
+    {
+        $stage = BallRatingModel::bucket($stage);
+        $regional = !auth()->user()?->hasRole('super-user');
+        $allowed = $regional && $field ? app(RegionalRatingAccess::class)->playerIds($field) : [];
+        if ($regional && !$allowed) return [];
+        $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+        if ($snapshot['reason']) return [];
+        $ratings = $snapshot['ball_ratings'][$stage]['ratings'] ?? [];
+        if ($regional) $ratings = array_intersect_key($ratings, array_flip($allowed));
+        foreach ($ratings as &$rating) {
+            unset($rating['local_score'], $rating['strength']);
+            $rating['ball_type'] = $stage;
+            $rating['cohort'] = BallRatingModel::COHORTS[$stage];
+            $rating['rating_scope'] = 'ball';
+            $rating['snapshot_stale'] = $snapshot['snapshot_stale'] ?? false;
+        } unset($rating);
+        return $ratings;
+    }
 
     /** Single shared estimate per authorized player, including explicit disconnected states. */
     public function allAgeBadgeSnapshot(?\App\Models\CategoryEvent $field = null): array
@@ -110,7 +131,13 @@ class PlayerSharedAbilityService
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
         $allAge = $snapshot['all_age']['ratings'][$player->id] ?? null;
         if ($allAge !== null) { unset($allAge['local_score'], $allAge['strength']); }
-        return ['headline' => $allAge, 'all_age' => $allAge, 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
+        $ballRatings = [];
+        foreach (BallRatingModel::LABELS as $stage => $label) {
+            $rating = $snapshot['ball_ratings'][$stage]['ratings'][$player->id] ?? null;
+            if ($rating !== null) { unset($rating['local_score'], $rating['strength']); $rating['ball_type'] = $stage; }
+            $ballRatings[$stage] = $rating;
+        }
+        return ['headline' => $allAge, 'all_age' => $allAge, 'ball_ratings' => $ballRatings, 'cohorts' => $cohorts, 'reason' => $snapshot['reason'], 'built_at' => $snapshot['built_at'], 'snapshot_as_of' => $snapshot['snapshot_as_of'] ?? $asOf->toDateString(), 'snapshot_stale' => $snapshot['snapshot_stale'] ?? false];
     }
 
     /** Explicit background/preview calculation; never called by ordinary page reads. */
@@ -170,7 +197,7 @@ class PlayerSharedAbilityService
             }
             hash_update($hash, 'historical_recovery_sources'.json_encode(app(HistoricalIdentityRecoveryService::class)->context($recoveries), JSON_THROW_ON_ERROR));
         }
-        foreach (['events' => ['id', 'published', 'results_published', 'start_date', 'end_date', 'eventType'],
+        foreach (['events' => ['id', 'name', 'published', 'results_published', 'start_date', 'end_date', 'eventType'],
             'draws' => ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules', 'drawName', 'team_draw_selection'],
             'team_ties' => ['id', 'draw_id', 'home_team_id', 'away_team_id', 'published_at', 'status'],
             'teams' => ['id', 'name', 'year', 'region_id', 'category_event_id'],
@@ -185,7 +212,8 @@ class PlayerSharedAbilityService
             'categories' => ['id', 'name'],
             'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'require_full_sets'],
             'fixtures' => ['id', 'draw_id', 'registration1_id', 'registration2_id'],
-            'category_event_registrations' => ['id', 'category_event_id', 'registration_id']] as $table => $columns) {
+            'registrations' => ['id'],
+            'category_event_registrations' => ['id', 'category_event_id', 'registration_id', 'status', 'withdrawn_at', 'deleted_at']] as $table => $columns) {
             foreach (DB::table($table)->select($columns)->orderBy('id')->lazyById(500) as $row) {
                 hash_update($hash, $table.json_encode($row));
             }
@@ -276,6 +304,23 @@ class PlayerSharedAbilityService
                 $fields[$cohort][$fieldKey]['rows'][] = $row;
             }
             foreach ($fields as $cohort => $cohortFields) {
+                // Ball estimates use each canonical category independently. A/B ordering
+                // must never join fields played under different ball conditions.
+                foreach ($cohortFields as $fieldKey => $field) {
+                    $categoryId = (int) explode(':', $fieldKey)[1];
+                    $categoryEvent = \App\Models\CategoryEvent::with(['category', 'event'])->where('event_id', $event->id)->where('category_id', $categoryId)->first();
+                    // Final placings must cover every currently active entrant. Historic
+                    // ranked memberships remain valid, while unmatched withdrawn entries
+                    // and abandoned checkouts are not missing finishers.
+                    $rankedRegistrations = \App\Models\CategoryResult::query()->where('event_id', $event->id)->where('category_id', $categoryId)
+                        ->distinct()->limit(257)->pluck('registration_id')->all();
+                    if (!$categoryEvent || $categoryEvent->categoryEventRegistrations()->active()->whereNull('withdrawn_at')->whereNotIn('registration_id', $rankedRegistrations)->exists()) continue;
+                    $stage = $categoryEvent ? app(BallRatingContext::class)->stage($categoryEvent) : null;
+                    if ($stage !== null) $ballFields[] = ['players' => collect($field['rows'])->sortBy('position')->map(fn ($row) => (int) $row['players'][0]['id'])->values()->all(),
+                        'source_id' => 'ball-finish:'.$fieldKey, 'event_id' => $event->id, 'event_name' => $event->name,
+                        'event_date' => CarbonImmutable::parse($event->start_date)->toDateString(), 'completed_at' => CarbonImmutable::parse($event->end_date)->toDateString(),
+                        'rating_ball_type' => $stage];
+                }
                 $orderedFields = [];
                 foreach ($cohortFields as $field) {
                     $orderedFields[] = collect($field['rows'])->sortBy('position')->map(fn ($row) => $row['players'][0]['id'])->values()->all();
@@ -367,6 +412,8 @@ class PlayerSharedAbilityService
                 }
             } catch (\OverflowException) { return $this->withheld($builtAt); }
         }
+        foreach ($allAgeMatches as &$match) $match['rating_ball_type'] = BallRatingModel::forMatch($match);
+        unset($match);
         $playerIds = collect($graphs)->flatMap(fn ($graph) => array_keys($graph['players']))->merge(array_keys($allAgePlayers))->unique()->all();
         if (count($playerIds) > self::PLAYER_CAP) return $this->withheld($builtAt);
         foreach (array_chunk($playerIds, 500) as $chunk) {
@@ -388,7 +435,8 @@ class PlayerSharedAbilityService
                     'fields' => $ordinalFields[$cohort] ?? []];
             }
         }
-        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS), 'names' => $names, 'reason' => null, 'built_at' => $builtAt, 'teamsheet_held' => $externalHeld,
+        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS),
+            'ball_ratings' => (new BallRatingModel)->fit($allAgeMatches, $asOf, $ballFields ?? []), 'names' => $names, 'reason' => null, 'built_at' => $builtAt, 'teamsheet_held' => $externalHeld,
             'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->merge(array_keys($allAgeEvents))->unique()->values()->all(),
             'source_matches' => array_keys($seenSources)];
     }

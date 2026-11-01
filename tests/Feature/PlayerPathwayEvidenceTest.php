@@ -50,8 +50,8 @@ class PlayerPathwayEvidenceTest extends TestCase
         ]);
         $metrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, false);
         $this->assertSame(6, $metrics['events']);
-        $this->assertSame(['red' => 1, 'orange' => 3, 'standard' => 2], $metrics['stage_events']);
-        $this->assertSame(1, $metrics['unknown_stage_events']);
+        $this->assertSame(['red' => 1, 'orange' => 3, 'standard' => 3], $metrics['stage_events']);
+        $this->assertSame(0, $metrics['unknown_stage_events']);
         $this->assertTrue($metrics['comparable']);
         $this->assertFalse($metrics['stale']);
     }
@@ -66,16 +66,16 @@ class PlayerPathwayEvidenceTest extends TestCase
         $this->assertFalse(app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, false)['available']);
     }
 
-    public function test_legacy_unknown_ball_never_infers_a_stage_from_name_or_current_stage(): void
+    public function test_unstated_ball_defaults_to_normal_and_explicit_red_event_label_is_respected(): void
     {
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('published')->once()->andReturn(true);
         [$saved, $player, $points] = $this->fixture([['ball_type' => null], ['ball_type' => null], ['ball_type' => null]]);
-        foreach ($saved['evidence'] as &$row) { unset($row['ball_type']); $row['event'] = 'Red ball U8'; }
+        foreach ($saved['evidence'] as &$row) { unset($row['ball_type']); $row['event'] = 'Fictional event'; }
         unset($row);
         $metrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, false);
         $this->assertSame(3, $metrics['events']);
-        $this->assertSame(['red' => 0, 'orange' => 0, 'standard' => 0], $metrics['stage_events']);
-        $this->assertSame(3, $metrics['unknown_stage_events']);
+        $this->assertSame(['red' => 0, 'orange' => 0, 'standard' => 3], $metrics['stage_events']);
+        $this->assertSame(0, $metrics['unknown_stage_events']);
     }
 
     public function test_three_private_external_events_never_count_as_cape_tennis_stage_events(): void

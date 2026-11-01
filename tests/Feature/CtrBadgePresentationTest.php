@@ -43,7 +43,7 @@ class CtrBadgePresentationTest extends TestCase
                 $html = Blade::render('<x-ctr-badge :stage="$stage" :local="$local" :score="62.3" />', compact('stage', 'local'));
                 $this->assertStringContainsString('color:'.$ink.'!important', $html);
                 $this->assertStringContainsString('data-ctr-stage-known="true"', $html);
-                $this->assertStringContainsString(ucfirst($stage).' ball', $html);
+                $this->assertStringContainsString(in_array($stage, ['red', 'orange'], true) ? ucfirst($stage).' ball' : 'Green/Yellow ball', $html);
                 $this->assertStringContainsString('62.3/100', preg_replace('/\s+/', '', strip_tags($html)));
                 if ($local) {
                     $this->assertStringContainsString('within-group only', $html);

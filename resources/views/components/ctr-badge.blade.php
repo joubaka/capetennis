@@ -1,11 +1,11 @@
-@props(['score' => null, 'local' => false, 'title' => null, 'compact' => false, 'size' => 'standard', 'stage' => null])
+@props(['score' => null, 'local' => false, 'title' => null, 'compact' => false, 'size' => 'standard', 'stage' => null, 'overall' => false])
 @php
     $validScore = is_numeric($score) && is_finite((float) $score);
     $small = $size === 'small';
     $inline = $size === 'inline';
     // Stage is explicit playing-condition metadata, never inferred from age, score or category names.
     $ball = is_string($stage) ? strtolower(trim($stage)) : '';
-    $stageLabels = ['red' => 'Red ball', 'orange' => 'Orange ball', 'green' => 'Green ball', 'yellow' => 'Yellow ball', 'standard' => 'Standard ball'];
+    $stageLabels = ['red' => 'Red ball', 'orange' => 'Orange ball', 'green' => 'Green/Yellow ball', 'yellow' => 'Green/Yellow ball', 'standard' => 'Green/Yellow ball'];
     $stageKnown = isset($stageLabels[$ball]);
     $stampStage = in_array($ball, ['red', 'orange'], true) ? $ball : 'standard';
     [$ink, $paper, $ring] = match ($stampStage) {
@@ -13,7 +13,8 @@
         'orange' => ['#b94a00', '#fff1df', '#ed7100'],
         default => ['#095c60', '#edf8f7', '#095c60'],
     };
-    $stageLabel = $stageKnown ? $stageLabels[$ball] : 'Ball stage not recorded';
+    if ($overall) { [$ink, $paper, $ring] = ['#475569', '#f1f5f9', '#64748b']; $stageKnown = false; $stampStage = 'overall'; }
+    $stageLabel = $overall ? 'Overall CTR · all ball levels' : ($stageKnown ? $stageLabels[$ball] : 'Ball stage not recorded');
 @endphp
 <span {{ $attributes->class(['ctr-badge', 'ctr-badge--local' => $local])->merge(['style' => 'display:inline-flex;flex-direction:column;align-items:center;justify-content:center;position:relative;gap:'.($inline ? '0' : ($small ? '.08rem' : '.15rem')).';width:'.($inline ? '3rem' : ($small ? '4.5rem' : '7rem')).';height:'.($inline ? '3rem' : ($small ? '4.5rem' : '7rem')).';flex-shrink:0;box-sizing:border-box;padding:'.($inline ? '.4rem' : '.8rem').';text-align:center;vertical-align:middle;border:0;border-radius:50%;background:'.$paper.';color:'.$ink.'!important;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;', 'aria-label' => 'CTR '.($validScore ? number_format((float) $score, 1) : 'unavailable').($local && $validScore ? ' within-group only' : '').' · '.$stageLabel, 'title' => $title ?? ($local ? 'Provisional within-group score only; not comparable with other groups.' : 'Cape Tennis Rating: provisional singles ability, not official ranking points.')]) }} data-ctr-badge data-ctr-stage="{{ $stampStage }}" data-ctr-stage-known="{{ $stageKnown ? 'true' : 'false' }}">
     {{-- Decorative stamp rings stay separate from the live, accessible rating. --}}
@@ -30,5 +31,6 @@
     @if($local && $validScore && !$inline && !$small)<span style="color:#754b0c;font-size:.5rem;font-weight:600;line-height:1.1;white-space:nowrap">within-group only</span>@endif
 </span>
 @if($stageKnown)<span class="small" style="color:{{ $ink }};font-size:.65rem;white-space:normal">{{ $stageLabel }}</span>@endif
+@if($overall)<span class="small" style="color:{{ $ink }};font-size:.65rem;white-space:normal">Overall CTR · all ball levels</span>@endif
 @if($local && $validScore && ($inline || $small))<span class="small" style="color:#754b0c;font-size:.65rem;white-space:normal">within-group only</span>@endif
 @if(!$validScore && ($inline || $small))<span class="small" style="font-size:.65rem;white-space:normal">unavailable</span>@endif

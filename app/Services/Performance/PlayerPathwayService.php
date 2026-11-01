@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 /** Starting-stage metadata and read-only, evidence-based progression recommendations. */
 class PlayerPathwayService
 {
-    public const STAGES = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Standard ball'];
+    public const STAGES = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
 
     public function available(): bool
     {
@@ -26,10 +26,11 @@ class PlayerPathwayService
         $metrics = $history['pathway_metrics'] ?? [];
         if (($history['reason'] ?? null) !== null || ($metrics['player_id'] ?? null) !== (int) $player->id) $metrics = [];
         $metricAvailable = ($metrics['available'] ?? false) === true;
-        $score = $metrics['score'] ?? null;
+        $stageRating = $stage ? ($metrics['stage_ratings'][$stage] ?? []) : [];
+        $score = $stageRating['score'] ?? null;
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
         $events = $metricAvailable && is_int($metrics['events'] ?? null) && $metrics['events'] >= 0 ? $metrics['events'] : null;
-        $eligible = $metricAvailable && $score !== null && ($metrics['comparable'] ?? false) === true && ($metrics['stale'] ?? true) === false;
+        $eligible = $metricAvailable && $score !== null && ($stageRating['comparable'] ?? false) === true && ($metrics['stale'] ?? true) === false;
         $targetKey = $stage === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $stage;
         $target = $this->target($targetKey);
         $ownEvents = $stage && $metricAvailable && is_int($metrics['stage_events'][$stage] ?? null) ? $metrics['stage_events'][$stage] : null;
@@ -41,18 +42,18 @@ class PlayerPathwayService
             $targetKey === null => 'Record the appropriate Wilson A or B division to show its benchmark.',
             $target === null => 'Progression targets are not configured for this step.',
             !$metricAvailable => 'Verified current rating and event evidence is not available yet.',
-            !$eligible => $metrics['reason'] ?? 'Progress needs a current comparable CTR.',
-            $ownEvents === null || (($metrics['unknown_stage_events'] ?? 0) > 0 && $ownEvents < $target['events']) => 'Some included events lack confirmed ball metadata and cannot count towards a stage target.',
+            !$eligible => 'Progress needs a current comparable rating from this ball level only.',
+            $ownEvents === null || (($metrics['unknown_stage_events'] ?? 0) > 0 && $ownEvents < $target['events']) => 'Some included events have conflicting ball labels and cannot count towards a stage target.',
             !$ready => 'Both the CTR target and the minimum number of events in this ball stage must be met.',
             default => 'Targets met. Ready to consider an eligible next competition.',
         };
         [$competition, $options] = match ($stage) {
             'red' => ['Wilson Red', ['Wilson Orange', 'Wilson U10 B, where age and event rules permit']],
-            'orange' => ['Wilson Orange', ['A suitable Green or standard-ball competition']],
+            'orange' => ['Wilson Orange', ['A suitable Green/Yellow ball competition']],
             'standard' => match ($division) {
                 'B' => ['Wilson B', ['Wilson A']],
                 'A' => ['Wilson A', ['A suitable TSA tournament']],
-                default => ['A suitable Wilson standard-ball competition', ['Record the appropriate Wilson A or B division']],
+                default => ['A suitable Wilson Green/Yellow ball competition', ['Record the appropriate Wilson A or B division']],
             },
             default => ['A competition suitable for the player’s recorded eligibility', ['Record a starting playing stage']],
         };
@@ -60,9 +61,14 @@ class PlayerPathwayService
         foreach (self::STAGES as $ball => $label) {
             $ballTarget = $this->target($ball === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $ball);
             $count = $metricAvailable && is_int($metrics['stage_events'][$ball] ?? null) ? $metrics['stage_events'][$ball] : null;
-            $stageProgress[$ball] = ['label' => $label, 'events' => $count, 'target' => $ballTarget,
-                'met' => $stage !== null && $eligible && $ballTarget !== null && $count !== null
-                    && $count >= $ballTarget['events'] && $score >= $ballTarget['ctr']];
+            $ballRating = $metrics['stage_ratings'][$ball] ?? [];
+            $ballScore = $ballRating['score'] ?? null;
+            $ballScore = is_numeric($ballScore) && is_finite((float) $ballScore) && $ballScore >= 0 && $ballScore <= 100 ? (float) $ballScore : null;
+            $ballEligible = $metricAvailable && $ballScore !== null && ($ballRating['comparable'] ?? false) === true && ($metrics['stale'] ?? true) === false;
+            $stageProgress[$ball] = ['label' => $label, 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
+                'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count, 'target' => $ballTarget,
+                'met' => $stage !== null && $ballEligible && $ballTarget !== null && $count !== null
+                    && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr']];
         }
         return compact('available', 'stage', 'division', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'reason', 'stageProgress') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
@@ -103,7 +109,7 @@ class PlayerPathwayService
         if (in_array($stage, ['green', 'yellow'], true)) $stage = 'standard';
         $division = $data['wilson_division'] ?? null;
         if ($stage !== 'standard' && $division !== null) {
-            throw ValidationException::withMessages(['wilson_division' => 'A Wilson division applies only to the standard-ball stage.']);
+            throw ValidationException::withMessages(['wilson_division' => 'A Wilson division applies only to the Green/Yellow ball stage.']);
         }
 
         DB::transaction(function () use ($player, $actor, $stage, $division) {

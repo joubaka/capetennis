@@ -20,8 +20,8 @@ class AllAgeRatingModel
         return ['eligible' => true, 'assumed' => false, 'reason' => null];
     }
 
-    /** Canonical, already validated match rows; never accepts ordinal or main-trial anchors. */
-    public function fit(array $matches, CarbonImmutable $asOf, int $windowDays = self::WINDOW_DAYS): array
+    /** Canonical match rows. Only the independent ball projection supplies validated weak ordinal fields. */
+    public function fit(array $matches, CarbonImmutable $asOf, int $windowDays = self::WINDOW_DAYS, array $ordinalFields = []): array
     {
         if (!in_array($windowDays, [self::RECENT_WINDOW_DAYS, self::WINDOW_DAYS], true)) { throw new \InvalidArgumentException('Unsupported all-age evidence window.'); }
         $asOf = $asOf->startOfDay();
@@ -55,9 +55,35 @@ class AllAgeRatingModel
         }
         $edges = [];
         foreach ($byEvent as $eventEdges) { array_push($edges, ...(new TrialBaselinePolicy)->budget($eventEdges)); }
-        $fit = (new SharedAbilityModel)->fit($edges, self::COHORT, regularization: self::REGULARIZATION);
+        $playedEdges = $edges;
+        $fields = []; $seenFields = [];
+        foreach ($ordinalFields as $field) {
+            $ids = $field['players']; $date = $field['completed_at'];
+            $days = CarbonImmutable::parse($date)->diffInDays($asOf, false);
+            if (isset($seenFields[$field['source_id']]) || $days < 0 || $days > $windowDays || count($ids) < 2
+                || count($ids) > 256 || count(array_unique($ids)) !== count($ids)) continue;
+            $seenFields[$field['source_id']] = true;
+            // A fully connected played field already supplies its relative evidence.
+            $adjacency = [];
+            foreach ($byEvent[$field['event_id']] ?? [] as $edge) {
+                $adjacency[$edge['winner']][] = $edge['loser']; $adjacency[$edge['loser']][] = $edge['winner'];
+            }
+            $visited = []; $queue = [$ids[0]];
+            while ($queue) { $id = array_pop($queue); if (isset($visited[$id])) continue; $visited[$id] = true; array_push($queue, ...($adjacency[$id] ?? [])); }
+            if (count(array_intersect($ids, array_keys($visited))) === count($ids)) continue;
+            $field['weight'] = SharedAbilityModel::ORDINAL_WEIGHT * pow(0.5, $days / 180);
+            $fields[] = $field;
+            foreach ($ids as $rank => $id) {
+                $players[$id] ??= ['played' => 0, 'inferred' => 0, 'last_played' => $date, 'events' => [], 'age_groups' => [], 'standard_assumed_matches' => 0];
+                $players[$id]['last_finish'] = max($players[$id]['last_finish'] ?? '', $date);
+                $players[$id]['inferred']++;
+                if ($rank > 0) $edges[] = ['winner' => $ids[$rank - 1], 'loser' => $id, 'source_id' => $field['source_id'].':'.$rank,
+                    'kind' => 'finish_order', 'weight' => $field['weight'], 'topology_only' => true];
+            }
+        }
+        $fit = (new SharedAbilityModel)->fit($edges, self::COHORT, $fields, experiment: ['ordinal_solver' => $fields !== []], regularization: self::REGULARIZATION);
         $components = $fit['components'];
-        $connections = (new AllAgeConnectionPolicy)->analyze($edges, $asOf);
+        $connections = (new AllAgeConnectionPolicy)->analyze($playedEdges, $asOf);
         $backbone = $connections['recent_backbone'];
         $reference = $backbone ? $fit['ratings'][$backbone['members'][0]]['component'] : null;
         foreach ($components as &$component) {
@@ -73,7 +99,7 @@ class AllAgeRatingModel
         } unset($component);
         foreach ($fit['ratings'] as $id => &$rating) {
             $component = $components[$rating['component']];
-            $comparable = $reference === $rating['component'] && $component['converged'];
+            $comparable = $reference === $rating['component'] && $component['converged'] && isset($connections['connection_ages'][$id]);
             $connectionAge = $comparable ? ($connections['connection_ages'][$id] ?? null) : null;
             $historical = $connectionAge !== null && $connectionAge > self::RECENT_WINDOW_DAYS;
             $rating['local_score'] = $rating['score'];
@@ -83,15 +109,19 @@ class AllAgeRatingModel
                 'connection_reference_date' => $connectionAge === null ? null : $asOf->subDays($connectionAge)->toDateString(),
                 'connection_status' => !$comparable ? 'disconnected' : ($historical ? 'historical' : 'recent'),
                 'reason' => !$component['converged'] ? 'The shared model did not converge.' : ($comparable ? null : 'Provisional within-group estimate; uncalibrated against other comparison groups. More connecting results are needed.'),
-                'played' => $players[$id]['played'], 'last_played' => $players[$id]['last_played'], 'inferred' => 0,
+                'played' => $players[$id]['played'], 'last_played' => $players[$id]['last_played'], 'inferred' => $players[$id]['inferred'],
+                'finish_events' => $players[$id]['inferred'], 'evidence_basis' => $players[$id]['played'] === 0 ? 'finish_only' : ($players[$id]['inferred'] ? 'matches_and_finishes' : 'matches'),
                 'component_players' => count($component['members']), 'component_played' => $component['played'],
-                'component_inferred' => 0, 'bridge_count' => $component['bridge_count'], 'division_links' => 0,
+                'component_inferred' => $component['inferred'], 'bridge_count' => $component['bridge_count'], 'division_links' => 0,
                 'age_groups' => array_values($players[$id]['age_groups']), 'standard_assumed_matches' => $players[$id]['standard_assumed_matches'],
                 'component_age_groups' => $component['age_groups'],
                 'component_standard_assumed_matches' => $component['standard_assumed_matches'],
                 'baseline_status' => 'Recent shared played-match reference', 'baseline_source' => null,
                 'comparators' => [], 'anchors' => []];
             $rating += (new SharedAbilityConfidencePolicy)->evaluate($players[$id], $component, $asOf);
+            if ($players[$id]['played'] === 0) {
+                $rating['reason'] = 'Low-confidence estimate from published final placings only; no played matches. Compare only within this local group.';
+            }
             if ($historical || !$comparable) { $rating['confidence_index'] = min(self::HISTORICAL_CONFIDENCE_CAP, $rating['confidence_index']); }
             $rating['confidence'] = !$comparable ? 'Low — provisional within-group estimate, uncalibrated across groups' : ($historical ? 'Low — connection depends on older played results' : 'Provisional — evidence sufficiency is not calibrated accuracy');
             $rating = AbilityConfidenceDisplay::normalize($rating);
@@ -101,7 +131,7 @@ class AllAgeRatingModel
         ksort($players, SORT_NUMERIC);
         ksort($excluded);
         return ['ratings' => $fit['ratings'], 'components' => $components, 'players' => $players, 'reference_component' => $reference, 'recent_backbone' => $backbone,
-            'excluded' => $excluded, 'history_evidence' => ['matches' => $edges, 'fields' => []],
+            'excluded' => $excluded, 'history_evidence' => ['matches' => $playedEdges, 'fields' => $fields],
             'policy' => ['version' => self::VERSION, 'regularization' => self::REGULARIZATION, 'window_days' => $windowDays, 'recent_window_days' => self::RECENT_WINDOW_DAYS, 'as_of' => $asOf->toDateString(), 'scale' => '0–100; higher is stronger',
                 'format' => 'Verified completed singles across all ball and court categories; no category-based rating offsets.',
                 'status' => 'Provisional; historical links have low confidence and comparisons require the same connected reference group.']];

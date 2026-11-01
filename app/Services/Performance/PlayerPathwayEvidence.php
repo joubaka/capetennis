@@ -11,7 +11,7 @@ class PlayerPathwayEvidence
     public function fromHistory(array $saved, Player $player, array $points, bool $pending): array
     {
         $empty = ['player_id' => (int) $player->id, 'available' => false, 'score' => null, 'events' => null, 'stage_events' => null, 'unknown_stage_events' => null,
-            'date' => null, 'comparable' => false, 'stale' => true,
+            'date' => null, 'comparable' => false, 'stale' => true, 'stage_ratings' => [],
             'reason' => 'Verified current rating evidence is not available yet.'];
         $latest = $points ? end($points) : null;
         $manifest = $saved['publication_manifest'] ?? null;
@@ -63,8 +63,7 @@ class PlayerPathwayEvidence
                 || preg_match('/walkover|\bbye\b|\bw\s*\/?\s*o\b/i', $row['score'])
                 || !is_string($row['date'] ?? null) || $row['date'] < $cutoff || $row['date'] > $date) continue;
             $events[$event] = true;
-            $ball = $row['ball_type'] ?? null;
-            $stage = in_array($ball, ['green', 'yellow', 'standard'], true) ? 'standard' : $ball;
+            $stage = BallRatingModel::forMatch($row);
             if (is_string($stage) && array_key_exists($stage, $stageEvents)) $stageEvents[$stage][$event] = true;
             else $unknownStage[$event] = true;
         }
@@ -72,9 +71,22 @@ class PlayerPathwayEvidence
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
         $stale = $pending || ($saved['as_of'] ?? '') !== $today->toDateString() || $date !== ($saved['as_of'] ?? null);
         $comparable = ($latest['connection_status'] ?? null) === 'recent' && empty($latest['historical_connection']);
+        $stageRatings = [];
+        $latestMonth = $saved['months'][$latest['index']] ?? [];
+        foreach (BallRatingModel::COHORTS as $stage => $cohort) {
+            $rating = $latestMonth['cohorts'][$cohort][$player->id] ?? null;
+            $stageScore = $rating['score'] ?? null;
+            $valid = is_array($rating) && is_numeric($stageScore) && is_finite((float) $stageScore) && $stageScore >= 0 && $stageScore <= 100;
+            $stageRatings[$stage] = ['score' => $valid ? (float) $stageScore : null,
+                'comparable' => $valid && ($rating['connection_status'] ?? null) === 'recent' && empty($rating['historical_connection']),
+                'local' => $valid && ($rating['connection_status'] ?? null) === 'disconnected',
+                'confidence_label' => $rating['confidence_label'] ?? null, 'date' => $date, 'stale' => $stale,
+                'reason' => $latestMonth['ball_status'][$stage]['reason'] ?? null];
+        }
 
         return ['player_id' => (int) $player->id, 'available' => true, 'score' => $score, 'events' => count($events),
             'stage_events' => array_map('count', $stageEvents), 'unknown_stage_events' => count($unknownStage),
+            'stage_ratings' => $stageRatings,
             'date' => $date, 'comparable' => $comparable, 'stale' => $stale, 'reason' => $stale
                 ? 'Progress awaits a current saved rating update.'
                 : (!$comparable ? 'Progress needs a current shared comparison reference.' : ($score === null ? 'No valid CTR is available.' : null))];

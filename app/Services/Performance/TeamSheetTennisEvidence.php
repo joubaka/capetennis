@@ -85,7 +85,7 @@ class TeamSheetTennisEvidence
             $event = 'TeamSheet '.ucfirst($kind).' #'.$payload['competition']['id'];
             $basis = $row->reviewed_version === $row->source_version && $row->reviewed_played_on ? 'reviewed actual date' : 'actual match date';
             $matches[] = ['winner' => $winnerSide === 1 ? $a : $b, 'loser' => $winnerSide === 1 ? $b : $a, 'source_id' => $sourceId,
-                'event_id' => $eventId, 'event_name' => $event, 'category' => 'TeamSheet singles', 'cohort' => 'TeamSheet tennis',
+                'event_id' => $eventId, 'event_name' => $event, 'category' => 'TeamSheet singles', 'cohort' => 'TeamSheet tennis', 'ball_type' => $payload['ball_type'] ?? null,
                 'confidence_date' => $state['date'], 'confidence_date_basis' => $basis, 'outcome_target' => app(PlayedMatchMarginPolicy::class)->target($sets, $winnerSide),
                 'player1_id' => $a, 'player2_id' => $b, 'winner_side' => $winnerSide, 'source' => 'TeamSheet', 'event' => $event, 'date' => $state['date'], 'score' => $score];
         }

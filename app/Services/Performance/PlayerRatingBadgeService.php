@@ -30,6 +30,22 @@ class PlayerRatingBadgeService
             $allowed = $this->regionalPlayers[$scopeKey] ??= app(RegionalRatingAccess::class)->playerIds($context);
             if (!in_array($playerId, $allowed, true)) return null;
         }
+        if (array_key_exists('ball_ratings', app(PlayerAbilitySnapshotStore::class)->current())) {
+            $contextKey = 'ball-context:'.($context ? get_class($context).':'.$context->id : 'standard');
+            if (!array_key_exists($contextKey, $this->contexts)) $this->contexts[$contextKey] = app(BallRatingContext::class)->stage($context);
+            $stage = $this->contexts[$contextKey];
+            if ($stage === null) return null;
+            $key = 'ball:'.$stage.':'.($regional ? $scopeKey : 'all');
+            $ratings = $this->regionalSnapshots[$key] ??= app(PlayerSharedAbilityService::class)->ballBadgeSnapshot($stage, $regional ? $context : null);
+            $rating = $ratings[$playerId] ?? null;
+            if (!$rating || !is_numeric($rating['score'] ?? null)) return null;
+            $rating = AbilityConfidenceDisplay::normalize($rating);
+            return $rating + ['label' => number_format($rating['score'], 1),
+                'display_label' => number_format($rating['score'], 1).' | '.$rating['confidence_label'].(!empty($rating['historical_connection']) ? ' · old link' : ''),
+                'title' => BallRatingModel::LABELS[$stage].' singles rating: '.number_format($rating['score'], 1).'/100. Only results in this ball level contribute; compare across ages within this ball level and comparison group '.$rating['component'].'. Evidence confidence: '.$rating['confidence_label'].'. '.($rating['reason'] ?? '')
+                    .(!empty($rating['historical_connection']) ? ' Historical connection: '.($rating['connection_age_days'] ?? '?').' days old.' : '')];
+        }
+        if (array_key_exists('all_age', app(PlayerAbilitySnapshotStore::class)->current())) return null;
         $cohort = $context ? $this->contextCohort($context) : null;
         if ($context && $cohort === null) { return null; }
         $allAge = $this->allAge ??= array_key_exists('all_age', app(PlayerAbilitySnapshotStore::class)->current());

@@ -57,6 +57,16 @@ function harness({ enabled = true, svg = false, category = false } = {}) {
     failure() { failed = true; }, offline() { networkFailure = true; } };
 }
 
+test('finish-only ball estimates retain explicit low-confidence local source labels', async () => {
+  const h = harness();
+  h.update('v1', [{ score: 55.1, rating_scope: 'ball', ball_type: 'orange', comparable: false,
+    evidence_basis: 'finish_only', confidence_label: 'Low', title: 'Published final placings only' }]);
+  await h.flush();
+  assert.match(h.node.innerHTML, /within-group only/);
+  assert.match(h.node.innerHTML, /Low confidence · final placings only/);
+  assert.match(h.node.innerHTML, /data-stage="orange"/);
+});
+
 test('private rendered badges refresh after version changes and removed ratings clear old HTML', async () => {
   const h = harness();
   await h.flush();
@@ -117,6 +127,14 @@ test('unrated server markers receive new ratings and SVG stays SVG', async () =>
   assert.match(h.node.innerHTML, /<tspan class="player-rating-badge"/);
   assert.match(h.node.innerHTML, /\[52.0 \| Low\]/);
   assert.ok(h.calls.some(url => url.includes('category_id=3')));
+});
+
+test('a comparable independent ball rating keeps its level stamp without a false local warning', async () => {
+  const h = harness();
+  h.update('independent-red', [{ score: 64.2, ball_type: 'red', rating_scope: 'ball', comparable: true, title: 'Red-only results' }]);
+  await h.flush();
+  assert.match(h.node.innerHTML, /data-stage="red"/);
+  assert.doesNotMatch(h.node.innerHTML, /within-group only/);
 });
 
 test('unchanged versions reuse badges, hidden tabs pause polling and resume when visible', async () => {

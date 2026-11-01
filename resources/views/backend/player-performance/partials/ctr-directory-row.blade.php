@@ -7,7 +7,7 @@
         </div>
             @if($player['rating'])
                 @php($rating = $player['rating'])
-                <div class="ctr-score"><x-ctr-badge :compact="true" :score="$rating['within_group_score'] ?? $rating['score']" :local="isset($rating['within_group_score']) || $player['awaiting_calibration'] || ($rating['comparable'] ?? true) === false" /></div>
+                <div class="ctr-score"><x-ctr-badge :overall="true" :compact="true" :score="$rating['within_group_score'] ?? $rating['score']" :local="isset($rating['within_group_score']) || $player['awaiting_calibration'] || ($rating['comparable'] ?? true) === false" /></div>
                 <div class="ctr-evidence"><p><x-ctr-confidence-badge :rating="$rating" /></p>
                 @if(!empty($rating['historical_connection']))<p class="text-warning-emphasis">Historical connection</p>@endif
                 @if($player['awaiting_calibration'])<p>Awaiting calibration</p>@else<p>{{ $rating['cohort'] }}</p>@endif
@@ -16,7 +16,7 @@
                 @if($player['awaiting_calibration'])<p class="mb-1 text-warning-emphasis"><strong>Awaiting calibration · {{ $diagnosticOrder ? 'no overall ability rank' : 'no overall position' }}</strong></p>@endif
                 @if(!empty($rating['historical_connection']))<p class="small text-warning-emphasis mb-1"><strong>Low confidence — historical connection</strong> · link dated {{ $rating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
                 @if(($rating['comparable'] ?? true) === false)<p class="small text-warning-emphasis mb-1"><strong>Provisional within-group rating · low confidence.</strong> Not calibrated against other groups.</p>@endif
-                @if(count($player['ratings']) > 1)<details><summary class="py-2">All saved ratings</summary>@foreach($player['ratings'] as $other)<p class="small mb-1"><x-ctr-badge size="small" :score="$other['within_group_score'] ?? $other['score']" :local="isset($other['within_group_score']) || ($other['comparable'] ?? true) === false" /> · {{ $other['cohort'] }} · comparison group {{ $other['component'] }} · last played {{ $other['last_played'] }}</p>@endforeach</details>@endif
+                @if(count($player['ratings']) > 1)<details><summary class="py-2">All saved ratings</summary>@foreach($player['ratings'] as $other)<p class="small mb-1"><x-ctr-badge :overall="true" size="small" :score="$other['within_group_score'] ?? $other['score']" :local="isset($other['within_group_score']) || ($other['comparable'] ?? true) === false" /> · {{ $other['cohort'] }} · comparison group {{ $other['component'] }} · last played {{ $other['last_played'] }}</p>@endforeach</details>@endif
                 </div>
             @else<div class="ctr-score">{{ $snapshot['reason'] ? 'Rating unavailable' : 'Unrated' }}</div><div class="ctr-evidence">@if($player['rating_reason'] ?? null){{ $player['rating_reason'] }}@endif</div>@endif
         </li>

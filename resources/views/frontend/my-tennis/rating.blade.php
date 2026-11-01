@@ -19,7 +19,9 @@
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
   <div class="ctr-heading">
-    <div><h2 id="player-rating-heading" class="h4 mb-1">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small text-muted mb-0">12-month progress · provisional ability estimates</p></div>
+    <div><h2 id="player-rating-heading" class="h4 mb-1">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small text-muted mb-0">12-month progress · provisional ability estimates</p>
+      <a class="small" href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings and badges</a>
+    </div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
   @include('frontend.my-tennis.pathway', ['pathway' => $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded()])
@@ -44,14 +46,18 @@
       $comparable = $point && $previous && $point['group'] === $previous['group'];
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
-      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']];
+      $query = ['cohort' => $ratingHistory['cohort'], 'month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']];
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
     <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Showing the latest saved calculation until the next update is ready.@endif</p>
     @if(!$points)<p role="status" class="alert alert-info">No comparable shared rating is available for this player. Suitable recent singles results must connect the player to the reference group.</p>@endif
     @if(!empty($point['historical_connection']))<p role="status" class="alert alert-warning"><strong>Low confidence — historical connection.</strong> The selected estimate needs an older match link dated {{ $point['connection_reference_date'] ?? 'unknown' }} ({{ $point['connection_age_days'] ?? '?' }} days old), even if this player has recent results.</p>@endif
-    @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on this player's connected opponents. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
+    @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on {{ ($point['evidence_basis'] ?? null) === 'finish_only' ? 'published final placings only' : 'this player’s connected evidence group' }}. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters">
+      <div><label for="ctr-ball">Rating level</label><select class="form-select" name="cohort" id="ctr-ball">
+        @foreach(\App\Services\Performance\BallRatingModel::COHORTS as $ball => $cohort)<option value="{{ $cohort }}" @selected($ratingHistory['cohort'] === $cohort)>{{ \App\Services\Performance\BallRatingModel::LABELS[$ball] }}</option>@endforeach
+        <option value="{{ \App\Services\Performance\AllAgeRatingModel::COHORT }}" @selected($ratingHistory['cohort'] === \App\Services\Performance\AllAgeRatingModel::COHORT)>Overall CTR · all ball levels</option>
+      </select></div>
       <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
         @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }} · {{ $month['date'] }}</option>@endforeach
       </select></div>
@@ -60,9 +66,17 @@
       <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
     </form>
     <div class="ctr-stats">
-      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
+      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>
+        @if($latest)
+          <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" />
+          @if(($latest['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
+          <p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>
+          @if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif
+        @else<div class="ctr-stat-value">Unrated</div>@endif
+      </div>
       <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
-        <div>@if($point)<x-ctr-badge :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
+        <div>@if($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
+        @if(($point['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
         @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p><p class="small text-muted mt-1 mb-0">Results, opponents’ results and older matches losing weight can all move your rating.</p>
         @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable. The difference does not reliably show improvement or decline.</p>
         @else<p class="small text-muted mt-2 mb-0">No comparable previous-month estimate.</p>@endif

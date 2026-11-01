@@ -15,6 +15,9 @@ class PlayerAbilitySnapshotStore
     public function rules(): array
     {
         return ['model' => PlayerSharedAbilityService::VERSION, 'confidence' => SharedAbilityConfidencePolicy::VERSION,
+            'ball_ratings' => ['version' => BallRatingModel::VERSION, 'buckets' => array_keys(BallRatingModel::LABELS), 'unstated' => 'standard', 'independent' => true,
+                'finishes' => 'validated published completed singles fields covering all active nonwithdrawn memberships; weak ordinal evidence; played-covered fields excluded; no A/B cross-field links',
+                'ordinal_solver_iterations' => 2000],
             'all_age' => ['version' => AllAgeRatingModel::VERSION, 'regularization' => AllAgeRatingModel::REGULARIZATION, 'window_days' => AllAgeRatingModel::WINDOW_DAYS, 'recent_window_days' => AllAgeRatingModel::RECENT_WINDOW_DAYS,
                 'evidence' => 'played singles only; no age offsets, ordinal fields or cohort trial anchors',
                 'reference' => 'historical component containing the largest recent connected backbone; no reference without recent matches',
@@ -85,6 +88,7 @@ class PlayerAbilitySnapshotStore
             }
             if (array_key_exists('all_age', $payload)) {
                 $this->assertAllAgeGraph($payload['all_age'], $row->as_of);
+                $this->assertBallGraphs($payload['ball_ratings'] ?? null, $row->as_of);
             }
             if (isset($payload['badge_players']) && !is_array($payload['badge_players'])) { throw new \UnexpectedValueException('Invalid saved badges.'); }
         } catch (\Throwable) {
@@ -119,7 +123,7 @@ class PlayerAbilitySnapshotStore
             $manifest[$table] = $rows;
             return array_column($rows, 'id');
         };
-        $capture('events', ['id', 'published', 'results_published', 'eventType', 'start_date', 'end_date'], DB::table('events')->whereIn('id', $events));
+        $capture('events', ['id', 'name', 'published', 'results_published', 'eventType', 'start_date', 'end_date'], DB::table('events')->whereIn('id', $events));
         $draws = $capture('draws', ['id', 'published', 'event_id', 'category_event_id', 'team_scoring_rules', 'drawName', 'team_draw_selection'], DB::table('draws')->whereIn('event_id', $events)->where('published', true));
         $capture('team_ties', ['id', 'published_at', 'status', 'draw_id', 'home_team_id', 'away_team_id'], DB::table('team_ties')->whereIn('draw_id', $draws));
         $capture('eventtypes', ['id', 'name', 'code', 'type'], DB::table('eventtypes')->whereIn('id', array_merge([TrialBaselinePolicy::MAIN_TRIAL_EVENT_TYPE], array_column($manifest['events'], 'eventType'))));
@@ -139,12 +143,29 @@ class PlayerAbilitySnapshotStore
             $manifest['historical_recovery_sources'] = app(HistoricalIdentityRecoveryService::class)->context($manifest['historical_identity_recoveries']);
         }
         $capture('fixtures', ['id', 'draw_id', 'registration1_id', 'registration2_id'], DB::table('fixtures')->whereIn('id', $individual));
-        $capture('category_event_registrations', ['id', 'category_event_id', 'registration_id'], DB::table('category_event_registrations')->whereIn('category_event_id', $fields));
+        $capture('category_event_registrations', ['id', 'category_event_id', 'registration_id', 'status', 'withdrawn_at', 'deleted_at'], DB::table('category_event_registrations')->whereIn('category_event_id', $fields));
         $registrationIds = array_merge(array_column($manifest['category_event_registrations'], 'registration_id'), array_column($manifest['fixtures'], 'registration1_id'), array_column($manifest['fixtures'], 'registration2_id'));
         $manifest['player_registrations'] = DB::table('player_registrations')->whereIn('registration_id', array_unique($registrationIds))->limit(50001)->get(['registration_id', 'player_id'])->map(fn ($r) => (array) $r)->all();
         if (count($manifest['player_registrations']) > 50000) { throw new \OverflowException('Snapshot registrations exceed the context limit.'); }
         if (isset($payload['all_age'])) { $manifest['all_age_format_context'] = $this->formatContext($events, $draws, $individual); }
+        $manifest['finish_context'] = $this->finishContext($events);
         return $manifest;
+    }
+
+    private function finishContext(array $events): array
+    {
+        sort($events);
+        $read = function (string $table, string $column, array $ids): array {
+            $rows = DB::table($table)->whereIn($column, $ids)->orderBy('id')->limit(50001)->get($table === 'registrations' ? ['id'] : ['id', 'event_id', 'category_id', 'registration_id', 'position'])->map(fn ($row) => (array) $row)->all();
+            if (count($rows) > 50000) throw new \OverflowException('Finishing evidence exceeds its publication context limit.');
+            return $rows;
+        };
+        $results = $read('category_results', 'event_id', $events);
+        $ids = array_values(array_unique(array_column($results, 'registration_id')));
+        $draws = DB::table('draws')->whereIn('event_id', $events)->orderBy('id')->limit(50001)->get(['id', 'event_id', 'category_event_id'])->map(fn ($row) => (array) $row)->all();
+        if (count($draws) > 50000) throw new \OverflowException('Finishing draw context exceeds its safe limit.');
+        return ['event_ids' => $events, 'results' => $results, 'registrations' => $read('registrations', 'id', $ids),
+            'draws' => $draws, 'ball_context' => $this->formatContext($events, array_column($draws, 'id'), [])];
     }
 
     /** Recapture whole scoped groups, including empty groups, so newly declared ball types invalidate assumptions. */
@@ -167,6 +188,11 @@ class PlayerAbilitySnapshotStore
     {
         if (!empty($manifest['historical_identity_recoveries']) && !is_array($manifest['historical_recovery_sources'] ?? null)) { return false; }
         foreach ($manifest as $table => $captured) {
+            if ($table === 'finish_context') {
+                if (!is_array($captured) || !is_array($captured['event_ids'] ?? null)
+                    || $this->canonicalRecoveryContext($captured) !== $this->canonicalRecoveryContext($this->finishContext($captured['event_ids']))) return false;
+                continue;
+            }
             if ($table === 'teamsheet_context') {
                 if (!app(TeamSheetTennisEvidence::class)->published($captured)) return false;
                 continue;
@@ -245,7 +271,7 @@ class PlayerAbilitySnapshotStore
     }
 
     /** Validate the shared projection on both read and replacement; malformed data fails closed. */
-    public function assertAllAgeGraph(mixed $shared, ?string $asOf = null): void
+    public function assertAllAgeGraph(mixed $shared, ?string $asOf = null, bool $ballFinishes = false): void
     {
         if (!is_array($shared) || !is_array($shared['ratings'] ?? null) || !is_array($shared['components'] ?? null) || !is_array($shared['players'] ?? null)
             || !array_key_exists('reference_component', $shared)) { throw new \UnexpectedValueException('Invalid all-age snapshot.'); }
@@ -285,7 +311,7 @@ class PlayerAbilitySnapshotStore
         }
         foreach ($shared['ratings'] as $id => $rating) {
             $component = $members[$id] ?? null;
-            $comparable = $component === $reference;
+            $comparable = $component === $reference && (!$ballFinishes || ($rating['connection_age_days'] ?? null) !== null);
             if (!is_array($rating) || ($rating['rating_scope'] ?? null) !== 'all_age' || ($rating['cohort'] ?? null) !== AllAgeRatingModel::COHORT
                 || ($rating['component'] ?? null) !== $component || ($rating['comparison_group'] ?? null) !== $component
                 || ($rating['comparable'] ?? null) !== $comparable || ($rating['rating_status'] ?? null) !== ($comparable ? 'provisional' : 'provisional_local')
@@ -294,6 +320,10 @@ class PlayerAbilitySnapshotStore
                 || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) { throw new \UnexpectedValueException('Invalid all-age estimate.'); }
             $age = $rating['connection_age_days'] ?? null;
             $historical = $comparable && !isset($backboneMembers[$id]);
+            if ($ballFinishes && ($rating['played'] ?? 0) === 0 && (($rating['evidence_basis'] ?? null) !== 'finish_only'
+                || ($rating['finish_events'] ?? 0) < 1 || ($rating['confidence_index'] ?? 100) > 15 || $comparable)) {
+                throw new \UnexpectedValueException('Invalid finish-only ball estimate.');
+            }
             if (($rating['historical_connection'] ?? null) !== $historical
                 || ($rating['connection_status'] ?? null) !== (!$comparable ? 'disconnected' : ($historical ? 'historical' : 'recent'))
                 || ($comparable && (!is_int($age) || ($historical ? $age <= AllAgeRatingModel::RECENT_WINDOW_DAYS || $age > AllAgeRatingModel::WINDOW_DAYS : $age !== 0)))
@@ -312,7 +342,7 @@ class PlayerAbilitySnapshotStore
                 if (!$component['converged']) { throw new \RuntimeException('Incomplete model cannot replace the saved snapshot.'); }
             }
         }
-        if (array_key_exists('all_age', $payload)) { $this->assertAllAgeGraph($payload['all_age'], $asOf->toDateString()); }
+        if (array_key_exists('all_age', $payload)) { $this->assertAllAgeGraph($payload['all_age'], $asOf->toDateString()); $this->assertBallGraphs($payload['ball_ratings'] ?? null, $asOf->toDateString()); }
         if ($asOf->toDateString() > CarbonImmutable::today('Africa/Johannesburg')->toDateString()) { throw new \RuntimeException('Future snapshots cannot be persisted.'); }
         if ($payload['reason'] || !$this->published($manifest)) { throw new \RuntimeException('Snapshot sources are not ready for replacement.'); }
         DB::transaction(function () use ($payload, $asOf, $fingerprint, $manifest) {
@@ -331,5 +361,14 @@ class PlayerAbilitySnapshotStore
             ]);
         });
         $this->loaded = null;
+    }
+
+    private function assertBallGraphs(mixed $graphs, string $asOf): void
+    {
+        if (!is_array($graphs) || array_keys($graphs) !== array_keys(BallRatingModel::LABELS)) throw new \UnexpectedValueException('Invalid ball-level graphs.');
+        foreach ($graphs as $stage => $graph) {
+            $this->assertAllAgeGraph($graph, $asOf, ballFinishes: true);
+            if (($graph['policy']['ball_bucket'] ?? null) !== $stage || ($graph['policy']['classification_version'] ?? null) !== BallRatingModel::VERSION) throw new \UnexpectedValueException('Invalid ball-level policy.');
+        }
     }
 }

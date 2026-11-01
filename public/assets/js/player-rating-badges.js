@@ -37,7 +37,7 @@
     node.innerHTML = ratings.map(rating => {
       const score = Number(rating.score ?? rating.label);
       if (!Number.isFinite(score)) return '';
-      const local = rating.rating_scope !== 'all_age' || rating.comparable === false;
+      const local = !['all_age', 'ball'].includes(rating.rating_scope) || rating.comparable === false;
       // Explicit ball metadata only. Age, score and category names never establish a stage.
       const ball = typeof rating.ball_type === 'string' ? rating.ball_type.trim().toLowerCase() : '';
       const stage = ['red', 'orange', 'green', 'yellow', 'standard'].includes(ball) ? ball : 'unknown';
@@ -48,7 +48,7 @@
       const confidence = rating.confidence_label || rating.confidence_band || 'Low';
       return '<span class="player-rating-badge" style="display:inline-flex;align-items:center;flex-wrap:wrap;gap:.25rem;vertical-align:middle">'
         + stamp + '<span class="small" style="font-size:.65rem;font-weight:500;white-space:normal">'
-        + escape(confidence) + ' confidence' + (rating.historical_connection ? ' · old link' : '') + '</span></span>';
+        + escape(confidence) + ' confidence' + (rating.evidence_basis === 'finish_only' ? ' · final placings only' : '') + (rating.historical_connection ? ' · old link' : '') + '</span></span>';
     }).join('');
     node.dataset.ratingDone = '1';
   }

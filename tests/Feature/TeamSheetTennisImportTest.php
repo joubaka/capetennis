@@ -200,7 +200,11 @@ class TeamSheetTennisImportTest extends TestCase
         try {
             $ability = app(PlayerSharedAbilityService::class); $history = new PlayerRatingHistoryService($ability, $store);
             $saved = $history->calculate(CarbonImmutable::today()); $store->replace($saved, $ability->fingerprint());
-            $this->assertCount(2, $store->read()['evidence']);
+            $registry = collect($store->read()['evidence']);
+            $this->assertCount(4, $registry);
+            $this->assertCount(2, $registry->where('cohort', AllAgeRatingModel::COHORT));
+            $this->assertCount(2, $registry->where('cohort', \App\Services\Performance\BallRatingModel::COHORTS['standard']));
+            $this->assertCount(4, $registry->unique(fn ($row) => $row['cohort'].'|'.$row['source_id']));
             $this->actingAs(User::factory()->create());
             $result = $history->forPlayer($players[0], ['scope' => 'all']);
             $this->assertNotEmpty($result['points']); $this->assertSame([], $result['evidence']['rows']);
