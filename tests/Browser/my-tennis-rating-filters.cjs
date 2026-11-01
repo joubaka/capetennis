@@ -13,6 +13,7 @@ function partial(params = new URLSearchParams()) {
   const level = params.get('rating_level') || 'overall';
   const month = params.get('month') || '0';
   const ratingPage = params.get('rating_page') || '1';
+  const pageSize = params.get('rating_per_page') || '25';
   const pageParams = new URLSearchParams(params);
   pageParams.set('rating_page', ratingPage === '1' ? '2' : '1');
   return `<button class="active" data-rating-section="explore">Explore ratings</button>
@@ -21,9 +22,11 @@ function partial(params = new URLSearchParams()) {
       <div data-rating-age-filter ${level === 'overall' ? '' : 'hidden'}><label>Overall age group <select id="ctr-rating-age" name="rating_age"><option value="u9" selected>U9</option></select></label></div>
       <label>Gender <select id="ctr-rating-gender" name="rating_gender">${options([['', 'All genders'], ['girls', 'Girls'], ['boys', 'Boys']], gender)}</select></label>
       <label>Rating level <select id="ctr-rating-level" name="rating_level">${options([['overall', 'Overall CTR'], ['red', 'Red'], ['orange', 'Orange']], level)}</select></label>
+      <label>Players per page <select id="ctr-rating-per-page" name="rating_per_page">${options([['25', '25'], ['50', '50'], ['100', '100'], ['500', '500']], pageSize)}</select></label>
     </form>
     <form action="http://ct-rating.test/rating" data-rating-filters>
       <input type="hidden" name="rating_gender" value="${gender}"><input type="hidden" name="rating_level" value="${level}">
+      <input type="hidden" name="rating_per_page" value="${pageSize}">
       <label>Month <select id="rating-month" name="month">${options([['0', 'January'], ['3', 'April']], month)}</select></label>
     </form><p data-saved-result>Saved ${level} ratings; gender=${gender}; month=${month}</p>
     <h4 tabindex="-1" data-rating-list-focus>Rating positions</h4><p data-rating-page>Page ${ratingPage}</p>
@@ -97,10 +100,17 @@ function partial(params = new URLSearchParams()) {
       await page.locator('#my-tennis-rating-loading[open]').waitFor({state: 'hidden'});
       assert.equal(await page.evaluate(() => document.activeElement.hasAttribute('data-rating-list-focus')), true);
       assert.equal(requests.at(-1).searchParams.get('rating_gender'), 'boys');
+      await page.locator('#ctr-rating-per-page').selectOption('500');
+      await page.waitForFunction(() => document.querySelector('[data-rating-page]').textContent === 'Page 1');
+      await page.locator('#my-tennis-rating-loading[open]').waitFor({state: 'hidden'});
+      assert.equal(requests.at(-1).searchParams.get('rating_per_page'), '500');
+      assert.equal(requests.at(-1).searchParams.get('rating_page'), '1');
+      assert.equal(await page.locator('#ctr-rating-per-page').inputValue(), '500');
       await page.locator('#ctr-rating-gender').selectOption('girls');
       await page.waitForFunction(() => document.querySelector('[data-rating-page]').textContent === 'Page 1' && document.querySelector('[data-saved-result]').textContent.includes('gender=girls'));
       await page.locator('#my-tennis-rating-loading[open]').waitFor({state: 'hidden'});
       assert.equal(requests.at(-1).searchParams.get('rating_page'), '1');
+      assert.equal(requests.at(-1).searchParams.get('rating_per_page'), '500');
       assert.equal(navigations, 1, 'Filters update without navigating');
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
       assert.deepEqual(errors, []);

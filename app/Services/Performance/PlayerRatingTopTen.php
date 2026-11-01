@@ -10,6 +10,7 @@ use Carbon\CarbonImmutable;
 class PlayerRatingTopTen
 {
     public const PER_PAGE = 25;
+    public const PAGE_SIZES = [25, 50, 100, 500];
 
     public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}
 
@@ -21,10 +22,17 @@ class PlayerRatingTopTen
         $age = $filters['rating_age'] ?? $selectedAge;
         $gender = $filters['rating_gender'] ?? ($selected ? $this->genderKey($selected->gender) : '');
         $level = ($filters['rating_level'] ?? '') ?: 'overall';
+        $requestedSize = $filters['rating_per_page'] ?? self::PER_PAGE;
+        $perPage = (is_int($requestedSize) || is_string($requestedSize)) && in_array((string) $requestedSize, array_map('strval', self::PAGE_SIZES), true)
+            ? (int) $requestedSize : self::PER_PAGE;
         // Existing Green/Yellow filter links now select the shared Overall rating.
         if ($level === 'standard') $level = 'overall';
-        $result += ['filters' => ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level],
-            'age_options' => PlayerRatingProfileDirectory::birthYearLabels($today->year), 'summary' => [], 'selected_age' => $selectedAge];
+        $ageOptions = PlayerRatingProfileDirectory::birthYearLabels($today->year);
+        foreach (array_keys($ageOptions) as $key) {
+            if (preg_match('/^u\d+$/', $key)) $ageOptions[$key] = strtoupper($key).' and younger · born '.($today->year - (int) substr($key, 1)).' or later';
+        }
+        $result += ['filters' => ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level, 'rating_per_page' => $perPage],
+            'age_options' => $ageOptions, 'summary' => [], 'selected_age' => $selectedAge];
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
         foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $key => $label) {
@@ -79,26 +87,36 @@ class PlayerRatingTopTen
             }
             usort($players, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
             if ($selected && $key === 'overall') {
-                $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $p['age'] === $selectedAge)), 'overall' => $players];
+                $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge))), 'overall' => $players];
                 foreach ($populations as $scope => $population) {
                     $ranked = $this->positions($population);
                     $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
                 }
             }
-            if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $age === '' || $p['age'] === $age) && ($gender === '' || $p['gender'] === $gender)));
+            if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $this->matchesAgeScope($p['age'], $age)) && ($gender === '' || $p['gender'] === $gender)));
             $ranked = $this->positions($players);
             if ($selected) {
                 $total = count($ranked);
-                $pages = max(1, (int) ceil($total / self::PER_PAGE));
+                $pages = max(1, (int) ceil($total / $perPage));
                 $page = min($pages, max(1, (int) ($filters['rating_page'] ?? 1)));
-                $result['lists'][$key]['players'] = array_slice($ranked, ($page - 1) * self::PER_PAGE, self::PER_PAGE);
-                $result['lists'][$key]['pagination'] = ['page' => $page, 'pages' => $pages, 'total' => $total, 'per_page' => self::PER_PAGE];
+                $result['lists'][$key]['players'] = array_slice($ranked, ($page - 1) * $perPage, $perPage);
+                $result['lists'][$key]['pagination'] = ['page' => $page, 'pages' => $pages, 'total' => $total, 'per_page' => $perPage];
             } else {
                 $result['lists'][$key]['players'] = array_slice($ranked, 0, 10);
             }
         }
         if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
         return $result;
+    }
+
+    private function matchesAgeScope(string $playerAge, string $selectedAge): bool
+    {
+        if ($selectedAge === '') return true;
+        // Only bounded junior groups include younger ages. Missing DOB and adult
+        // buckets remain exact selections, as in the rating profile directory.
+        if (!preg_match('/^u\d+$/', $selectedAge)) return $playerAge === $selectedAge;
+        return preg_match('/^u\d+$/', $playerAge) === 1
+            && (int) substr($playerAge, 1) <= (int) substr($selectedAge, 1);
     }
 
     private function genderKey(mixed $raw): string

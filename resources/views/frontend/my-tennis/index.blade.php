@@ -477,7 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
         || (loading && changedControl && key !== changedControl.name);
       if (params.has(key) && preserve) params.set(key, value);
     });
-    if (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level'].includes(changedControl?.name)) params.set('rating_page', '1');
+    if (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level', 'rating_per_page'].includes(changedControl?.name)) params.set('rating_page', '1');
     url.search = params.toString();
     return url.toString();
   };

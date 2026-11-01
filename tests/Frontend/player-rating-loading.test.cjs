@@ -80,6 +80,21 @@ test('rating pagination uses AJAX and filter changes reset to the first page', a
   assert.equal(h.dialog.open, false);
 });
 
+test('500 player size changes reset page via AJAX and survive cross-form updates after failure', async () => {
+  const h = harness(); const initial = h.start(); h.respond(true); await initial;
+  h.paginate('https://ct.test/rating?rating_page=2&rating_per_page=25');
+  h.change({rating_page: '2', rating_per_page: '500', rating_level: 'overall'}, 'rating_per_page', ['rating_page']);
+  h.respond(true); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(new URL(h.urls[2]).searchParams.get('rating_page'), '1');
+  assert.equal(new URL(h.urls[2]).searchParams.get('rating_per_page'), '500');
+  h.respond(false); await new Promise(resolve => setImmediate(resolve));
+  h.change({rating_page: '2', rating_per_page: '25', month: '3'}, 'month', ['rating_page', 'rating_per_page']);
+  assert.equal(new URL(h.urls[3]).searchParams.get('rating_per_page'), '500');
+  assert.equal(new URL(h.urls[3]).searchParams.get('rating_page'), '1');
+  h.respond(true); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.dialog.open, false);
+});
+
 test('rapid changes keep latest choices across forms and never render stale results', async () => {
   const h = harness();
   const initial = h.start(); h.respond(true); await initial;

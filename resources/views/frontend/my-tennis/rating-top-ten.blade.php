@@ -1,7 +1,7 @@
 @if($ratingTopTen['visible'] ?? false)
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
   <h3 class="h5" id="player-top-ten-heading">Your rating positions</h3>
-  <p class="small text-muted">Rating positions among players in currently published series standings. These estimates are not official rankings. Age groups use age reached this calendar year. The summaries include all genders; Explore ratings starts with your selected player's gender.</p>
+  <p class="small text-muted">Rating positions among players in currently published series standings. These estimates are not official rankings. Overall CTR junior age groups include the selected group and younger, using age reached this calendar year. The summaries include all genders; Explore ratings starts with your selected player's gender.</p>
   <div class="ctr-top-lists mb-3">
     @foreach(['age' => 'Overall CTR · '.($ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group').' · all genders', 'overall' => 'Overall CTR · all ages and genders'] as $scope => $label)
       @php
@@ -19,9 +19,10 @@
     <div data-rating-age-filter @if($ratingTopTen['filters']['rating_level'] !== 'overall') hidden @endif><label for="ctr-rating-age">Overall age group</label><select id="ctr-rating-age" name="rating_age" class="form-select"><option value="">All ages</option>@foreach($ratingTopTen['age_options'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_age'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-gender">Gender</label><select id="ctr-rating-gender" name="rating_gender" class="form-select"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_gender'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-level">Rating level</label><select id="ctr-rating-level" name="rating_level" class="form-select">@foreach(['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_level'] === $value)>{{ $label }}</option>@endforeach</select></div>
+    <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? 25) === $size)>{{ $size }}</option>@endforeach</select></div>
     <noscript><button type="submit" class="btn btn-primary">Show ratings</button></noscript>
   </form>
-  <p class="small text-muted">Red, Orange and Overall are separate ratings. Green/Yellow uses Overall CTR. Age and gender filters change ranking positions, not rating scores.</p>
+  <p class="small text-muted">Red, Orange and Overall are separate ratings. Green/Yellow uses Overall CTR. Red and Orange include all ages. Overall CTR junior age groups include younger players. Age and gender filters change ranking positions, not rating scores.</p>
   @if($ratingTopTen['as_of'])<p class="small text-muted">Saved through {{ $ratingTopTen['as_of'] }}.@if($ratingTopTen['stale']) Latest saved estimates; an update is pending.@endif</p>@endif
   @if($ratingTopTen['reason'])<p role="status">{{ $ratingTopTen['reason'] }}</p>@endif
   <style>.ctr-top-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ctr-top-list{min-width:0;border:1px solid #dce7e2;border-radius:14px;padding:1rem;background:#fff}.ctr-top-list li{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:baseline;padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere}.ctr-top-list .ctr-top-score{font-variant-numeric:tabular-nums;color:#176b59}.ctr-top-list small{display:block;color:#62766e}@media(max-width:767.98px){.ctr-top-lists{grid-template-columns:1fr}}</style>
@@ -59,6 +60,6 @@
       </section>
     @endforeach
   </div>
-  <p class="small text-muted mt-2 mb-0">Browse all matching published-player ratings, 25 players per page. Equal displayed scores share a position and are ordered by name. Within-group-only and nonconverged estimates are excluded.</p>
+  <p class="small text-muted mt-2 mb-0">Browse all matching published-player ratings, {{ $ratingTopTen['filters']['rating_per_page'] ?? 25 }} players per page. Equal displayed scores share a position and are ordered by name. Within-group-only and nonconverged estimates are excluded.</p>
 </section>
 @endif

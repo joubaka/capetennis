@@ -52,7 +52,23 @@ class EventResultMutationAuthorizationTest extends TestCase
         $this->get(route('admin.events.results.individual', $this->event))
             ->assertOk()
             ->assertSee('Save & Publish Results')
+            ->assertSee('role="switch"', false)
+            ->assertSee('aria-checked="false"', false)
+            ->assertSee('Unsaved position changes will not be saved.')
             ->assertSee('aria-current="page"', false);
+    }
+
+    public function test_published_results_page_offers_publication_toggle_without_save_and_publish(): void
+    {
+        $this->event->update(['results_published' => true]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.events.results.individual', $this->event))
+            ->assertOk()
+            ->assertSee('id="results-publication-toggle-form"', false)
+            ->assertSee('aria-checked="true"', false)
+            ->assertDontSee('id="results-publication-form"', false)
+            ->assertSee('id="save-all"', false);
     }
 
     public function test_result_publish_is_post_only_and_event_scoped(): void

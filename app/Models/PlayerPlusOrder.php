@@ -13,10 +13,14 @@ class PlayerPlusOrder extends Model
         'price_cents' => 'integer', 'expires_at' => 'immutable_datetime',
         'payfast_handed_off_at' => 'immutable_datetime', 'activated_at' => 'immutable_datetime',
         'term_starts_at' => 'immutable_datetime', 'term_ends_at' => 'immutable_datetime',
+        'recurring_consented_at' => 'immutable_datetime',
     ];
 
     public function user() { return $this->belongsTo(User::class); }
     public function player() { return $this->belongsTo(Player::class); }
+    public function subscription() { return $this->hasOne(PlayerPlusSubscription::class, 'order_id'); }
+    public function subscriptionOrder() { return $this->belongsTo(self::class, 'subscription_order_id'); }
+    public function isMonthly(): bool { return $this->plan === 'monthly'; }
 
     public function mailLogs()
     {
@@ -31,7 +35,7 @@ class PlayerPlusOrder extends Model
     protected static function booted(): void
     {
         static::updating(function (self $order): void {
-            if ($order->isDirty('price_cents')) throw new \LogicException('A Player Plus checkout price is immutable.');
+            if ($order->isDirty(['price_cents', 'plan', 'subscription_order_id', 'recurring_consented_at'])) throw new \LogicException('Player Plus checkout price, plan and consent are immutable.');
         });
     }
 

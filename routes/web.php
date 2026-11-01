@@ -118,6 +118,7 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreeme
   Route::get('/orders/{order}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'show'])->name('orders.show');
   Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
   Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
+  Route::post('/orders/{order}/stop-renewal', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancelSubscription'])->middleware('throttle:5,1')->name('orders.stop-renewal');
 });
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/player-plus')->name('superadmin.player-plus.')->group(function () {
   Route::get('/', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'index'])->name('index');
@@ -722,6 +723,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {
     Route::post('settings/player-plus-price', [SettingsController::class, 'storePlusPrice'])->name('settings.player-plus-price');
+    Route::post('settings/player-plus-monthly', [SettingsController::class, 'storePlusMonthly'])->name('settings.player-plus-monthly');
     Route::get('superadmin/mail-history', [\App\Http\Controllers\Backend\SuperAdminController::class, 'mailHistory'])
       ->name('backend.superadmin.mail-history');
 

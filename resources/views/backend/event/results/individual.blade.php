@@ -72,15 +72,26 @@
           Save All
         </button>
 
-        <form id="results-publication-form" method="POST" action="{{ route('result.publish', $event->id) }}" class="d-inline"
-              @if($event->results_published) onsubmit="return confirm('Are you sure you want to unpublish the results?')" @endif>
+        <form id="results-publication-toggle-form" method="POST" action="{{ route('result.publish', $event->id) }}" class="d-inline"
+              onsubmit="return confirm('{{ $event->results_published ? 'Unpublish the final results?' : 'Publish the saved final results?' }} Unsaved position changes will not be saved.')">
           @csrf
-          <button id="publish-results" type="submit"
-                  class="btn btn-sm btn-{{ $event->results_published ? 'outline-danger' : 'primary' }}">
-            <i class="ti ti-{{ $event->results_published ? 'eye-off' : 'world-upload' }} me-1"></i>
-            {{ $event->results_published ? 'Unpublish Results' : 'Save & Publish Results' }}
+          <button id="toggle-results-publication" type="submit" role="switch"
+                  aria-checked="{{ $event->results_published ? 'true' : 'false' }}" aria-label="Results published"
+                  class="btn btn-sm btn-outline-{{ $event->results_published ? 'success' : 'secondary' }}">
+            <i class="ti ti-toggle-{{ $event->results_published ? 'right' : 'left' }} me-1" aria-hidden="true"></i>
+            {{ $event->results_published ? 'Published' : 'Unpublished' }}
           </button>
         </form>
+
+        @if(!$event->results_published)
+        <form id="results-publication-form" method="POST" action="{{ route('result.publish', $event->id) }}" class="d-inline">
+          @csrf
+          <button id="publish-results" type="submit" class="btn btn-sm btn-primary">
+            <i class="ti ti-world-upload me-1"></i>
+            Save &amp; Publish Results
+          </button>
+        </form>
+        @endif
       </div>
   </div>
 
@@ -91,7 +102,7 @@
   </div>
   <section class="alert alert-info no-print" aria-label="Review before publication">
     <strong>Review before publishing</strong>
-    <p class="mb-0">Check the finishing order and players removed from results in every category. Save positions to keep your changes; publishing makes the final results public.</p>
+    <p class="mb-0">Check the finishing order and players removed from results in every category. Save positions to keep your changes. The publication toggle uses saved results only; Save &amp; Publish saves your current positions before making the results public.</p>
     <span data-results-unsaved-count role="status" aria-live="polite"></span>
   </section>
   {{-- CATEGORIES --}}

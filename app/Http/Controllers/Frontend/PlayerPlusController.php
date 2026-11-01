@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 
 class PlayerPlusController extends Controller
 {
-    public const TERMS_VERSION = '2026-11-01';
+    public const TERMS_VERSION = '2026-11-01-monthly';
 
     public function terms()
     {
@@ -52,22 +52,27 @@ class PlayerPlusController extends Controller
             'player' => $player, 'membership' => $membership, 'canViewRating' => $canViewRating,
             'linked' => $linked, 'enabled' => $enabled, 'token' => (string) Str::uuid(),
             'readiness' => $readiness, 'termsVersion' => self::TERMS_VERSION, 'priceCents' => PlayerPlusService::priceCents(),
+            'monthlyEnabled' => PlayerPlusService::monthlyEnabled(), 'monthlyPriceCents' => PlayerPlusService::monthlyPriceCents(),
         ])->header('Cache-Control', 'private, no-store');
     }
 
     public function store(Request $request, Player $player, PlayerPlusService $service)
     {
         $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
+            'plan' => ['sometimes', \Illuminate\Validation\Rule::in(['annual', 'monthly'])],
+            'recurring_consent' => ['required_if:plan,monthly', 'accepted'],
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
             'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]],
             ['quoted_price_cents.min' => 'Please reload the player membership page to review a supported annual price.']);
         $order = DB::transaction(function () use ($service, $player, $request, $data) {
-            $order = $service->start($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents']);
+            $order = $service->start($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents'],
+                $data['plan'] ?? 'annual', ! empty($data['recurring_consent']));
             if (! \App\Models\AuditEvent::where('action', 'player-plus.purchase-details-accepted')->where('subject_type', PlayerPlusOrder::class)
                 ->where('subject_id', (string) $order->id)->exists()) {
                 $audit = app(AuditWriter::class)->record(['category' => 'business', 'action' => 'player-plus.purchase-details-accepted',
                     'actor' => $request->user(), 'subject' => $order,
-                    'metadata' => ['terms_version' => self::TERMS_VERSION, 'price_cents' => $order->price_cents]], true);
+                    'metadata' => ['terms_version' => self::TERMS_VERSION, 'price_cents' => $order->price_cents,
+                        'plan' => $order->plan ?? 'annual', 'recurring_consent' => (bool) $order->recurring_consented_at]], true);
                 if (! $audit) throw new \RuntimeException('Purchase details could not be recorded. Please try again.');
             }
             return $order;
@@ -79,8 +84,9 @@ class PlayerPlusController extends Controller
     {
         abort_unless((int) $order->user_id === (int) $request->user()->id, 403);
         $order->load('player');
+        $subscription = PlayerPlusService::monthlyReady() ? ($order->subscription_order_id ? $order->subscriptionOrder?->subscription : $order->subscription) : null;
         $form = null;
-        return response()->view('frontend.player-plus.order', compact('order', 'form'))->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.order', compact('order', 'form', 'subscription'))->header('Cache-Control', 'private, no-store');
     }
 
     public function pay(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)
@@ -94,5 +100,12 @@ class PlayerPlusController extends Controller
     {
         $service->cancel($order, $request->user());
         return redirect()->route('player-plus.orders.show', $order);
+    }
+
+    public function cancelSubscription(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)
+    {
+        abort_unless(PlayerPlusService::monthlyReady(), 404);
+        $service->cancelSubscription($order, $request->user());
+        return redirect()->route('player-plus.orders.show', $order)->with('success', 'PayFast confirmed automatic renewal is stopped. Your verified paid access is unchanged.');
     }
 }

@@ -16,6 +16,13 @@ class Payfast
    * ===================================================== */
   public $amount = null;
   public $item_name = null;
+  private array $subscriptionFields = [];
+
+  public function setMonthlySubscription(string $billingDate): void
+  {
+    $this->subscriptionFields = ['subscription_type' => 1, 'billing_date' => $billingDate,
+      'recurring_amount' => $this->amount, 'frequency' => 3, 'cycles' => 0];
+  }
 
   /* =====================================================
    * PAYFAST CUSTOM FIELDS
@@ -259,6 +266,7 @@ class Payfast
       'custom_str5' => $this->custom_str5,
     ];
 
+    $fields = array_merge($fields, $this->subscriptionFields);
     $signature = $this->generateFormSignature($fields);
 
     $html = '<form id="payfastForm" action="' . $this->url . '" method="post">';

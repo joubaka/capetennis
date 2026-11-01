@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class SettingsController extends Controller
 {
@@ -174,6 +175,23 @@ class SettingsController extends Controller
                 .number_format(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS / 100, 2).' with at most two decimal places.']);
         }
         SiteSetting::set(\App\Services\Performance\PlayerPlusService::PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
+    }
+
+    public function storePlusMonthly(Request $request)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        $data = $request->validate(['player_plus_monthly_price' => ['required', 'string', 'regex:/^(0|[1-9][0-9]{0,4})(?:\.[0-9]{1,2})?$/D'],
+            'player_plus_monthly_enabled' => ['required', 'boolean']]);
+        $cents = \App\Services\Performance\PlayerPlusService::parseAmount($data['player_plus_monthly_price']);
+        if ($cents === null || $cents < \App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS || $cents > \App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['player_plus_monthly_price' => 'Enter a monthly price from R5.00 to R99,999.99 with at most two decimal places.']);
+        }
+        abort_unless(\App\Services\Performance\PlayerPlusService::monthlyReady(), 422, 'Monthly subscriptions need the reviewed database migration before they can be enabled.');
+        DB::transaction(function () use ($cents, $data) {
+            SiteSetting::set(\App\Services\Performance\PlayerPlusService::MONTHLY_PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
+            SiteSetting::set(\App\Services\Performance\PlayerPlusService::MONTHLY_ENABLED_SETTING, $data['player_plus_monthly_enabled'] ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        });
+        return response()->json(['success' => true, 'message' => 'Monthly settings saved for new subscriptions. Existing subscription prices and paid terms are unchanged.']);
     }
 
     /**

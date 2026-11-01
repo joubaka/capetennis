@@ -45,14 +45,14 @@ class MyTennisController extends Controller
             'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
             'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
             'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,overall,standard',
-            'rating_page' => 'nullable|integer|min:1|max:200']);
+            'rating_page' => 'nullable|integer|min:1|max:200', 'rating_per_page' => 'nullable|integer|in:25,50,100,500']);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'ratingPathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
             'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
-                array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page'])))),
+                array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])))),
         ])->header('Cache-Control', 'private, no-store');
     }
 

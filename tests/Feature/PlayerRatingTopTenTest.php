@@ -60,7 +60,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame('u13', $result['filters']['rating_age']);
         $this->assertSame('boys', $result['filters']['rating_gender']);
         $this->assertSame(['overall'], array_keys($result['lists']));
-        $this->assertSame(12, $result['summary']['age']['player']['position']);
+        $this->assertSame(13, $result['summary']['age']['player']['position']);
         $this->assertSame(13, $result['summary']['overall']['player']['position']);
         $this->assertSame(range(2, 13), array_column($result['lists']['overall']['players'], 'id'));
         $filtered = $this->build($snapshot, selected: $selected, filters: ['rating_age' => 'u13', 'rating_gender' => 'girls', 'rating_level' => 'red']);
@@ -226,7 +226,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(2, $links->length);
         foreach ($links as $index => $link) {
             parse_str(parse_url($link->getAttribute('href'), PHP_URL_QUERY), $query);
-            $this->assertSame(['month' => '3', 'scope' => 'all', 'scale' => 'full', 'rating_age' => 'u9', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_page' => $index === 0 ? '1' : '3'], $query);
+            $this->assertSame(['month' => '3', 'scope' => 'all', 'scale' => 'full', 'rating_age' => 'u9', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_per_page' => '25', 'rating_page' => $index === 0 ? '1' : '3'], $query);
         }
 
         DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
@@ -236,6 +236,101 @@ class PlayerRatingTopTenTest extends TestCase
         $denied = $this->build($snapshot, allowed: false, selected: $selected, filters: ['rating_page' => 2]);
         $this->assertFalse($denied['visible']);
         $this->assertSame([], $denied['lists']);
+    }
+
+    public function test_overall_junior_scopes_include_younger_players_and_special_buckets_stay_exact(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        $birthdays = [1 => '2016-12-31', 2 => '2017-01-01', 3 => '2015-12-31', 4 => '2019-12-31',
+            5 => null, 6 => '2026-12-31', 7 => '2008-12-31', 8 => '2007-12-31', 9 => '2018-12-31',
+            10 => '2016-01-01', 11 => '2026-02-30'];
+        foreach ($birthdays as $id => $birthday) {
+            $this->player($id, sprintf('Player %02d', $id));
+            DB::table('players')->where('id', $id)->update(['dateOfBirth' => $birthday, 'gender' => '1']);
+        }
+        $snapshot = $this->snapshot(array_combine(range(1, 11), range(99, 89)));
+        $selected = \App\Models\Player::find(1);
+        $expected = ['u7' => [4], 'u10' => [1, 2, 4, 9, 10], 'u18' => [1, 2, 3, 4, 7, 9, 10],
+            'unknown' => [5, 6, 11], 'other' => [8], '' => range(1, 11)];
+        foreach ($expected as $scope => $ids) {
+            $result = $this->build($snapshot, selected: $selected, filters: ['rating_age' => $scope]);
+            $this->assertSame($ids, array_column($result['lists']['overall']['players'], 'id'), $scope);
+            $this->assertSame(count($ids), $result['lists']['overall']['pagination']['total']);
+            $this->assertSame(5, $result['summary']['age']['total']);
+        }
+        foreach (['red', 'orange'] as $level) {
+            $result = $this->build($snapshot, selected: $selected, filters: ['rating_age' => 'u10', 'rating_level' => $level]);
+            $this->assertSame(range(1, 11), array_column($result['lists'][$level]['players'], 'id'));
+        }
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $this->build($snapshot, selected: $selected),
+            'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertStringContainsString('U10 and younger · born 2016 or later', $html);
+        $this->assertStringContainsString('Red and Orange include all ages.', $html);
+    }
+
+    public function test_younger_scope_is_applied_before_pagination_and_tie_positions(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        $scores = [];
+        foreach (range(1, 52) as $id) {
+            $this->player($id, sprintf('Player %02d', $id));
+            DB::table('players')->where('id', $id)->update(['dateOfBirth' => $id <= 22 ? '2015-12-31' : ($id <= 37 ? '2017-01-01' : '2016-12-31'), 'gender' => '1']);
+            $scores[$id] = $id === 48 ? 53 : 100 - $id;
+        }
+        $selected = \App\Models\Player::find(52);
+        $snapshot = $this->snapshot($scores);
+        $first = $this->build($snapshot, selected: $selected);
+        $second = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $this->assertSame(range(23, 47), array_column($first['lists']['overall']['players'], 'id'));
+        $this->assertSame(['page' => 2, 'pages' => 2, 'total' => 30, 'per_page' => 25], $second['lists']['overall']['pagination']);
+        $this->assertSame(range(48, 52), array_column($second['lists']['overall']['players'], 'id'));
+        $this->assertSame([25, 27, 28, 29, 30], array_column($second['lists']['overall']['players'], 'position'));
+        $this->assertSame(30, $first['summary']['age']['total']);
+        $this->assertSame(30, $first['summary']['age']['player']['position']);
+    }
+
+    public function test_selected_list_can_show_500_and_keeps_later_page_ties_and_size_links(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        $scores = [];
+        foreach (range(1, 505) as $id) {
+            $this->player($id, sprintf('Player %03d', $id));
+            $scores[$id] = $id === 501 ? 50 : 100 - $id / 10;
+        }
+        $selected = \App\Models\Player::find(1);
+        $snapshot = $this->snapshot($scores);
+        $filters = ['rating_age' => '', 'rating_gender' => '', 'rating_per_page' => '500'];
+        $first = $this->build($snapshot, selected: $selected, filters: $filters);
+        $this->assertCount(500, $first['lists']['overall']['players']);
+        $this->assertSame(['page' => 1, 'pages' => 2, 'total' => 505, 'per_page' => 500], $first['lists']['overall']['pagination']);
+        $second = $this->build($snapshot, selected: $selected, filters: $filters + ['rating_page' => 2]);
+        $this->assertSame(range(501, 505), array_column($second['lists']['overall']['players'], 'id'));
+        $this->assertSame([500, 502, 503, 504, 505], array_column($second['lists']['overall']['players'], 'position'));
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $first, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertStringContainsString('name="rating_per_page"', $html);
+        $this->assertMatchesRegularExpression('/value="500"\\s+selected/', $html);
+        $this->assertStringContainsString('rating_per_page=500', $html);
+        $this->assertStringContainsString('500 players per page', $html);
+
+        foreach ([0, 501, 1000000, '500.5', []] as $invalid) {
+            $fallback = $this->build($snapshot, selected: $selected, filters: array_replace($filters, ['rating_per_page' => $invalid]));
+            $this->assertCount(25, $fallback['lists']['overall']['players']);
+            $this->assertSame(25, $fallback['filters']['rating_per_page']);
+        }
+    }
+
+    public function test_rating_endpoint_rejects_unapproved_page_size_before_reading_history(): void
+    {
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->once()->andReturnTrue();
+        $this->mock(\App\Services\Performance\PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
+        $request = \Illuminate\Http\Request::create('/my-tennis/players/1/rating', 'GET', ['rating_per_page' => 501]);
+        $request->setUserResolver(fn () => new User());
+        try {
+            app(\App\Http\Controllers\Frontend\MyTennisController::class)->rating($request, new \App\Models\Player());
+            $this->fail('Unapproved page size was accepted.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('rating_per_page', $exception->errors());
+        }
     }
 
     public function test_tied_displayed_scores_share_positions_and_lists_are_bounded_to_ten(): void
