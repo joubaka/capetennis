@@ -168,6 +168,37 @@ class PlayerPathwayTest extends TestCase
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Unlock CTR')->assertDontSee('67.9');
     }
 
+    public function test_only_super_users_can_toggle_the_non_plus_preview_without_loading_private_history(): void
+    {
+        $player = Player::findOrFail(1);
+        $page = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 25);
+        $dashboard = ['accountUser' => $this->actor(10), 'selectedPlayer' => $player, 'players' => collect([$player]), 'linkedPlayerIds' => [],
+            'linkedPlayerPage' => $page, 'profile' => ['message' => 'Profile up to date'], 'entries' => collect(),
+            'upcomingMatches' => collect(), 'upcomingMatchPage' => $page,
+            'history' => ['placements' => collect(), 'seriesRankings' => collect()]];
+        $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
+        $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->twice()
+            ->andReturn(['reason' => null, 'pathway_metrics' => $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 6])]);
+        $this->actingAs($this->actor(10));
+        $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
+            ->assertSee('data-non-plus-preview-control', false)->assertSee('aria-checked="true"', false)
+            ->assertSee('Non-Plus preview is on.')->assertSee('data-rating-preview', false)
+            ->assertSee('name="preview_non_plus" value="1"', false)
+            ->assertSee(route('my.tennis', ['player' => 1]).'#rating', false)
+            ->assertDontSee('data-rating-url=', false)->assertDontSee('67.9');
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()
+            ->assertSee('aria-checked="false"', false)->assertDontSee('data-rating-preview', false)
+            ->assertSee('data-rating-url=', false)->assertSee('67.9');
+        // Ordinary entitled viewers cannot enable the administrative preview by submitting its parameter.
+        SiteSetting::set(PlayerRatingAccess::SETTING, '1');
+        Gate::define('player-premium-rating', fn () => true);
+        $this->actingAs($this->actor(10, false));
+        $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
+            ->assertDontSee('data-non-plus-preview-control', false)->assertDontSee('data-rating-preview', false)
+            ->assertSee('data-rating-url=', false)->assertSee('67.9');
+    }
+
     public function test_starting_orange_or_skipping_to_standard_never_completes_earlier_stages(): void
     {
         $service = app(PlayerPathwayService::class); $player = Player::findOrFail(1); $actor = $this->actor();

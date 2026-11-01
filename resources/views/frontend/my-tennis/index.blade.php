@@ -90,6 +90,7 @@
     <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
     @if($players->isNotEmpty())
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
+        @if($previewNonPlus ?? false)<input type="hidden" name="preview_non_plus" value="1">@endif
         <label for="my-tennis-player" class="visually-hidden">Player</label>
         <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select" onchange="this.form.submit()">
           @foreach($players as $playerOption)
@@ -99,6 +100,15 @@
       </form>
     @endif
   </div>
+
+  @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
+    <div class="border rounded p-3 mb-3" data-non-plus-preview-control>
+      <a class="btn btn-outline-primary" role="switch" aria-label="Preview without Player Plus" aria-checked="{{ $previewNonPlus ? 'true' : 'false' }}" href="{{ route('my.tennis', ['player' => $ratingPlayer->id, 'preview_non_plus' => $previewNonPlus ? null : 1]) }}#rating">Preview without Player Plus · {{ $previewNonPlus ? 'On' : 'Off' }}</a>
+      @if($previewNonPlus)
+        <p class="small mb-0 mt-2" role="status">Non-Plus preview is on. You are seeing the ratings preview and activation link shown to users without Plus. The player's membership is unchanged.</p>
+      @endif
+    </div>
+  @endif
 
   <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
     @if($ratingPlayer ?? null)

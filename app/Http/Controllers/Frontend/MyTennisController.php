@@ -25,7 +25,9 @@ class MyTennisController extends Controller
         }
         $ratingPlayer = $data['ratingPreviewPlayer'] ?? $data['selectedPlayer'];
         $data['ratingPlayer'] = $ratingPlayer;
-        $data['canViewRating'] = $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
+        $data['canPreviewNonPlus'] = $request->user()->hasRole('super-user');
+        $data['previewNonPlus'] = $data['canPreviewNonPlus'] && $request->boolean('preview_non_plus');
+        $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
         $data['overviewBadge'] = null;
         if ($data['selectedPlayer'] && $data['canViewRating']) {
             $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($data['selectedPlayer']);
