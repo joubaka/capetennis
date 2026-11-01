@@ -155,7 +155,8 @@ class PaymentTransactionService
             }
         }
 
-        $transaction->transaction_type = $transaction->transaction_type ?: 'Registration';
+        $transaction->transaction_type = ($data['custom_str5'] ?? '') === 'PlayerPlus'
+            ? 'Player Plus' : ($transaction->transaction_type ?: 'Registration');
         $this->assignIfPresent($transaction, 'amount_gross', $data, 'amount_gross');
 
         $gross = (float) ($data['amount_gross'] ?? 0);

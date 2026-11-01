@@ -585,7 +585,8 @@ class EntryService
                     || (float) $order->wallet_reserved > 0
                     || filled($order->payfast_pf_payment_id)
                     || filled($order->wallet_transaction_id))
-                || ($orderIds->isNotEmpty() && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)->exists());
+                || ($orderIds->isNotEmpty() && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)
+                    ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', '!=', 'PlayerPlus'))->exists());
 
             $hasCompetitionHistory = DB::table('category_results')
                 ->where('registration_id', $entry->registration_id)->exists()

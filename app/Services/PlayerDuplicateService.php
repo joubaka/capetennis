@@ -1848,7 +1848,8 @@ class PlayerDuplicateService
         $hasPayfastTransaction = Schema::hasTable('transactions_pf')
             && Schema::hasColumn('transactions_pf', 'custom_int5')
             && $orderIds->isNotEmpty()
-            && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)->exists();
+            && DB::table('transactions_pf')->whereIn('custom_int5', $orderIds)
+                ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', '!=', 'PlayerPlus'))->exists();
         $hasPaidOrder = $orders->contains(fn ($order) => (bool) ($order->pay_status ?? false)
             || (bool) ($order->payfast_paid ?? false)
             || (bool) ($order->wallet_debited ?? false)

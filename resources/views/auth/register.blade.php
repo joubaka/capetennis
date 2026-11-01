@@ -40,6 +40,8 @@ $configData = Helper::appClasses();
         <!-- Register Card -->
       
 
+        <x-player-plus-benefits class="mb-4" />
+
         <form id="formAuthentication" class="mb-3" action="{{ route('register') }}" method="POST">
           @csrf
           <div class="mb-3">

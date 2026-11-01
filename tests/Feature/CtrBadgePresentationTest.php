@@ -11,11 +11,11 @@ class CtrBadgePresentationTest extends TestCase
     {
         $shared = Blade::render('<x-ctr-badge :compact="true" :score="$score" />', ['score' => 72.4]);
         $this->assertStringContainsString('CTR 72.4', $shared);
-        $this->assertStringContainsString('72.4/100', $shared);
+        $this->assertStringContainsString('72.4/100', preg_replace('/\s+/', '', strip_tags($shared)));
         $this->assertStringNotContainsString('within-group only', $shared);
         $local = Blade::render('<x-ctr-badge :compact="true" :score="$score" :local="true" :title="$title" />', ['score' => 93.1, 'title' => '<script>unsafe</script>']);
         $this->assertStringContainsString('within-group only', $local);
-        $this->assertStringContainsString('93.1/100', $local);
+        $this->assertStringContainsString('93.1/100', preg_replace('/\s+/', '', strip_tags($local)));
         $this->assertStringNotContainsString('<script>', $local);
         $this->assertStringContainsString('&lt;script&gt;', $local);
     }

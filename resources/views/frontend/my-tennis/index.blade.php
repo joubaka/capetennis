@@ -12,6 +12,7 @@
 
 @section('content')
 <div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y">
+  <p><a href="{{ route('player-plus.index') }}" class="btn btn-outline-primary">Player Plus · membership and benefits</a></p>
   <style>
     #my-tennis-page { min-width: 0; overflow-x: clip; }
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }

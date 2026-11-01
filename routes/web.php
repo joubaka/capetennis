@@ -108,6 +108,15 @@ $controller_path = 'App\Http\Controllers';
 // Main Page Route
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/ctr', \App\Http\Controllers\Frontend\CtrController::class)->name('ctr.index');
+
+Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreement', 'profile.updated'])->group(function () {
+  Route::get('/', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'index'])->name('index');
+  Route::get('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'player'])->name('player');
+  Route::post('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'store'])->middleware('throttle:10,1')->name('store');
+  Route::get('/orders/{order}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'show'])->name('orders.show');
+  Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
+  Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
+});
 Route::get('/account/statement', \App\Http\Controllers\AccountStatementController::class)
   ->middleware(['auth', 'throttle:30,1'])->name('account.statement');
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/account-statements')->name('superadmin.account-statements.')->group(function () {

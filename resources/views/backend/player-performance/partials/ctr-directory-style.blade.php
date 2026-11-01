@@ -46,4 +46,15 @@
         .ctr-directory .ctr-place { grid-column:1;grid-row:1; }
         .ctr-directory .ctr-hero-mark { font-size:.9rem;padding:.5rem; }
     }
+    @media(max-width:575.98px) {
+        .ctr-directory .ctr-ranking-row,
+        .ctr-directory .ctr-gender-column .ctr-ranking-row { grid-template-columns:1.7rem minmax(0,1fr);gap:.35rem .5rem; }
+        .ctr-directory .ctr-player,
+        .ctr-directory .ctr-gender-column .ctr-player { grid-column:2/-1;grid-row:1; }
+        .ctr-directory .ctr-score,
+        .ctr-directory .ctr-gender-column .ctr-score { grid-column:2;grid-row:2;max-width:none; }
+        .ctr-directory .ctr-evidence,
+        .ctr-directory .ctr-gender-column .ctr-evidence { grid-column:2/-1;grid-row:3; }
+        .ctr-directory .ctr-row-detail { grid-column:2/-1;grid-row:4; }
+    }
 </style>

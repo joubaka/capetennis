@@ -41,6 +41,19 @@ class AccountStatementService
             ->where('amount_gross', '>', 0)->whereBetween('created_at', [$start, $end]));
 
         foreach ($receipts->unique('pf_payment_id') as $receipt) {
+            if ($receipt->custom_str5 === 'PlayerPlus') {
+                $plus = \App\Models\PlayerPlusOrder::whereKey($receipt->custom_int5)->where('user_id', $user->id)->first();
+                if ($plus && (int) $plus->player_id === (int) $receipt->player_id
+                    && $plus->price_cents === $this->cents($receipt->amount_gross)) {
+                    $label = $plus->activated_at && $plus->payfast_pf_payment_id === $receipt->pf_payment_id
+                        ? 'Player Plus / PayFast' : 'Player Plus / reconciliation';
+                    $rows->push($this->row($receipt->created_at, $label, 'PF '.$receipt->pf_payment_id,
+                        'P'.$plus->id, [['player' => $receipt->player?->full_name ?? 'Player unavailable',
+                            'event' => 'Player Plus · 12 months', 'event_date' => null, 'fee' => $plus->price_cents]],
+                        $this->cents($receipt->amount_gross), 0));
+                }
+                continue;
+            }
             if ($receipt->custom_str5 === 'Order' && $receipt->transaction_type === 'Registration') {
                 if ($this->legacyMetadataMatches($receipt)) {
                     $rows->push($this->row($receipt->created_at, 'Historical PayFast', 'PF '.$receipt->pf_payment_id,

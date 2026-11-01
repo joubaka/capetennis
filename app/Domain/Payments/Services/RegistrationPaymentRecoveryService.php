@@ -32,7 +32,8 @@ class RegistrationPaymentRecoveryService
         if ((int) $order->pay_status !== 1 || ($order->status ?? null) !== 'completed' || ($order->payment_method ?? null) !== 'free') $reasons[] = 'not an erroneous completed free order';
         if (round((float) $order->total_fee, 2) !== 0.0 || round((float) $order->items->sum('item_price'), 2) !== 0.0) $reasons[] = 'order is not zero value';
         if ($order->payfast_paid || $order->wallet_debited || (float) $order->wallet_reserved > 0 || $order->payfast_pf_payment_id || $order->wallet_transaction_id) $reasons[] = 'order contains payment evidence';
-        if (Transaction::query()->where('custom_int5', $order->id)->exists()) $reasons[] = 'PayFast transaction exists';
+        if (Transaction::query()->where('custom_int5', $order->id)
+            ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', '!=', 'PlayerPlus'))->exists()) $reasons[] = 'PayFast transaction exists';
         if (WalletTransaction::query()->where('source_id', $order->id)->where('source_type', 'like', '%registration%')->exists()) $reasons[] = 'wallet transaction exists';
 
         $amount = 0.0;
@@ -219,7 +220,8 @@ class RegistrationPaymentRecoveryService
         abort_unless((int) $order->user_id === (int) $recovery->user_id && ($order->status ?? null) === 'pending', 409, 'Recovery order ownership or state mismatch.');
         abort_unless((int) $order->pay_status === 0 && ! $order->payfast_paid && $order->payment_method === 'payfast' && round((float) $order->payfast_amount_due, 2) === round((float) $recovery->amount_due, 2) && round((float) $order->total_fee, 2) === round((float) $recovery->amount_due, 2) && round((float) $order->items->sum('item_price'), 2) === round((float) $recovery->amount_due, 2), 409, 'Recovery order payment state mismatch.');
         abort_unless(! $order->wallet_debited && (float) $order->wallet_reserved === 0.0 && ! $order->payfast_pf_payment_id && ! $order->wallet_transaction_id, 409, 'Recovery order contains payment evidence.');
-        abort_unless(! Transaction::query()->where('custom_int5', $order->id)->exists(), 409, 'Recovery order has PayFast evidence.');
+        abort_unless(! Transaction::query()->where('custom_int5', $order->id)
+            ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', '!=', 'PlayerPlus'))->exists(), 409, 'Recovery order has PayFast evidence.');
         abort_unless(! WalletTransaction::query()->where('source_id', $order->id)->where('source_type', 'like', '%registration%')->exists(), 409, 'Recovery order has wallet evidence.');
         $originalState = $this->previewState($order, (float) $recovery->amount_due);
         $originalPrices = collect($recovery->before_state['items'])->keyBy('id');

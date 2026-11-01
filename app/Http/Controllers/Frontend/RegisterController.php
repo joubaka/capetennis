@@ -430,6 +430,16 @@ class RegisterController extends Controller
       return response('Ignored', 200);
     }
 
+    if (($data['custom_str5'] ?? null) === 'PlayerPlus') {
+      try {
+        app(\App\Services\Performance\PlayerPlusService::class)->receive($data);
+        return response('OK', 200);
+      } catch (\Illuminate\Validation\ValidationException|\RuntimeException $exception) {
+        Log::warning('Player Plus ITN rejected', ['order_id' => (int) ($data['custom_int5'] ?? 0)]);
+        return response('Payment verification failed', 400);
+      }
+    }
+
     if (($data['custom_str5'] ?? null) === 'CategoryAdjustment') {
       try {
         app(\App\Domain\Entries\Services\CategoryAdjustmentService::class)->receive($data);

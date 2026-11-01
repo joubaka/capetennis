@@ -42,6 +42,11 @@ class AuthServiceProvider extends ServiceProvider
     {
         $this->registerPolicies();
 
+        Gate::define('player-premium-rating', fn ($user, \App\Models\Player $player) =>
+            app(\App\Services\Performance\PlayerPlusEntitlement::class)->forPlayer($user, $player));
+        Gate::define('player-premium-rating-discovery', fn ($user) =>
+            app(\App\Services\Performance\PlayerPlusEntitlement::class)->discovery($user));
+
         // Implicitly grant "Super-Admin" role all permission checks using can()
         Gate::before(function ($user, $ability, $arguments) {
             // A disciplinary conflict must also bind a Super Admin's own case.
