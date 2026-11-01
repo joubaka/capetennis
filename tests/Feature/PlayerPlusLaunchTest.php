@@ -79,15 +79,60 @@ class PlayerPlusLaunchTest extends TestCase
         $url = route('settings.player-plus-price');
         $this->actingAs(User::factory()->create())->postJson($url, ['player_plus_annual_price' => '649.95'])->assertForbidden();
         $this->actingAs($this->admin());
-        foreach (['0', '0.99', '100000', '499.001', '-1', '1e3', '1,000', '0499', 'NaN'] as $value) {
+        foreach (['0', '0.99', '1.00', '4.99', '100000', '499.001', '-1', '1e3', '1,000', '0499', 'NaN'] as $value) {
             $this->postJson($url, ['player_plus_annual_price' => $value])->assertUnprocessable()->assertJsonValidationErrors('player_plus_annual_price');
         }
         $this->assertSame(49900, PlayerPlusService::priceCents());
-        foreach (['1.00' => 100, '99999.99' => 9999999, '649.95' => 64995] as $value => $cents) {
+        SiteSetting::set(PlayerPlusService::PRICE_SETTING, '499');
+        $this->assertSame(PlayerPlusService::PRICE_CENTS, PlayerPlusService::priceCents());
+        foreach (['5.00' => PlayerPlusService::MIN_PRICE_CENTS, '99999.99' => PlayerPlusService::MAX_PRICE_CENTS, '649.95' => 64995] as $value => $cents) {
             $this->postJson($url, ['player_plus_annual_price' => $value])->assertOk();
             $this->assertSame($cents, PlayerPlusService::priceCents());
         }
         $this->get(route('player-plus.index'))->assertOk()->assertSee('R649.95');
+    }
+
+    public function test_legacy_low_pending_checkout_cannot_start_handoff_and_is_not_repriced_or_closed(): void
+    {
+        $payer = User::factory()->create(); $player = Player::factory()->create();
+        $order = PlayerPlusOrder::create(['player_id' => $player->id, 'user_id' => $payer->id,
+            'request_token' => (string) Str::uuid(), 'price_cents' => 100, 'payfast_amount_due' => '1.00', 'expires_at' => now()->addMinutes(5)]);
+        $before = $order->fresh()->getAttributes();
+        $this->actingAs($payer)->post(route('player-plus.orders.pay', $order))->assertRedirect()->assertSessionHasErrors('membership');
+        $this->assertStringContainsString('R5.00 minimum', session('errors')->first('membership'));
+        $this->assertStringContainsString('Close it and start a new checkout', session('errors')->first('membership'));
+        $again = app(PlayerPlusService::class)->start($player, $payer, $order->request_token);
+        $this->assertSame($order->id, $again->id);
+        $this->assertSame(100, $again->price_cents);
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertDatabaseCount('player_plus_orders', 1);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('player_plus_memberships', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_verified_historical_low_handoff_still_settles_only_its_original_snapshot(): void
+    {
+        SiteSetting::set(PlayerPlusService::PRICE_SETTING, (string) PlayerPlusService::MIN_PRICE_CENTS);
+        $payer = User::factory()->create(); $player = Player::factory()->create(['userId' => $payer->id]);
+        $order = PlayerPlusOrder::create(['player_id' => $player->id, 'user_id' => $payer->id,
+            'request_token' => (string) Str::uuid(), 'price_cents' => 100, 'payfast_amount_due' => '1.00',
+            'payfast_handed_off_at' => now(), 'expires_at' => now()->addMinutes(5)]);
+        $order->refresh();
+        $handoff = $order->payfast_handed_off_at;
+        $expiry = $order->expires_at;
+        app(PlayerPlusService::class)->receive($this->itn($order, 'historical-low-verified-receipt'));
+        app(PlayerPlusService::class)->receive($this->itn($order, 'historical-low-verified-receipt'));
+        $order->refresh();
+        $this->assertSame(100, $order->price_cents);
+        $this->assertSame('completed', $order->status);
+        $this->assertEquals($handoff, $order->payfast_handed_off_at);
+        $this->assertEquals($expiry, $order->expires_at);
+        $this->assertTrue(app(PlayerRatingAccess::class)->allows($payer, $player));
+        $this->assertDatabaseHas('transactions_pf', ['pf_payment_id' => 'historical-low-verified-receipt', 'amount_gross' => '1.00']);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('player_plus_memberships', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_existing_order_keeps_its_price_after_setting_change_in_forms_receipts_and_membership(): void
@@ -143,6 +188,7 @@ class PlayerPlusLaunchTest extends TestCase
         $payer = User::factory()->create(); $player = Player::factory()->create();
         $url = route('player-plus.store', $player);
         $this->actingAs($payer)->post($url, ['request_token' => (string) Str::uuid(), 'confirm' => '1'])->assertSessionHasErrors(['terms_version', 'quoted_price_cents']);
+        $this->post($url, $this->purchaseData(PlayerPlusService::MIN_PRICE_CENTS - 1))->assertSessionHasErrors('quoted_price_cents');
         SiteSetting::set(PlayerPlusService::PRICE_SETTING, '59900');
         $this->post($url, $this->purchaseData())->assertSessionHasErrors('membership');
         $this->assertDatabaseCount('player_plus_orders', 0);
@@ -198,7 +244,10 @@ class PlayerPlusLaunchTest extends TestCase
         $this->history(['reason' => null, 'stale' => false, 'series' => []]);
         $this->get($url)->assertOk()->assertSee('No eligible rating evidence yet');
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
-        $this->actingAs(User::factory()->create())->get($url)->assertOk()->assertDontSee('data-plus-readiness', false);
+        $unlinked = $this->actingAs(User::factory()->create())->get($url)->assertOk()->assertViewHas('readiness', null);
+        $document = new \DOMDocument;
+        $document->loadHTML($unlinked->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $this->assertSame(0, (new \DOMXPath($document))->query('//*[@data-plus-readiness]')->length);
     }
 
     public function test_payer_order_history_is_paginated_and_private_from_linked_players(): void

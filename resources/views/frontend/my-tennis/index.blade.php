@@ -45,6 +45,9 @@
     #my-tennis-player + .select2-container .select2-selection__rendered { padding-left: .75rem; padding-right: 2rem; }
     #my-tennis-player + .select2-container .select2-selection__arrow { height: 42px; }
     #my-tennis-page .select2-dropdown { max-width: min(18rem, calc(100vw - 2rem)); }
+    #my-tennis-player-search + .select2-container { max-width:100%; }
+    #my-tennis-player-search + .select2-container .select2-selection { min-height:44px; display:flex; align-items:center; }
+    #link-player-panel .select2-results__option { overflow-wrap:anywhere; }
     #my-tennis-page .my-tennis-match-date { display: flex; align-items: center; gap: .75rem; color: #3e5750; font-size: .9rem; }
     #my-tennis-page .my-tennis-date-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 48px; height: 52px; flex: 0 0 48px; background: #e9efe7; border-radius: 10px; }
     #my-tennis-page .my-tennis-date-badge strong { font-size: 1.25rem; line-height: 1.2; }
@@ -324,11 +327,10 @@
         <div class="border rounded p-3 mb-3">
           <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Search for and link the player you manage. A player may be linked to more than one account.</span></div></div>
           <label for="my-tennis-player-search" class="form-label">Find the player profile</label>
-          <div class="input-group">
-            <input id="my-tennis-player-search" class="form-control" type="search" minlength="2" maxlength="100" placeholder="Search by name or email">
-            <button id="my-tennis-player-search-button" class="btn btn-outline-primary" type="button">Search</button>
-          </div>
-          <div id="my-tennis-player-results" class="list-group mt-3"></div>
+          <select id="my-tennis-player-search" class="form-select" aria-describedby="my-tennis-player-search-help my-tennis-player-search-status"><option></option></select>
+          <p id="my-tennis-player-search-help" class="form-text mt-2">Type at least two characters of the player's name, then choose their profile. Selecting a profile does not link it.</p>
+          <p id="my-tennis-player-search-status" class="small text-muted" role="status" aria-live="polite"></p>
+          <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Link selected player</button>
           <p class="form-text mb-0 mt-2">Linking does not remove the player from any other account.</p>
         </div>
       </div>
@@ -367,6 +369,7 @@
 @section('page-script')
 <script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
 <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
+<script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const button = document.getElementById('my-tennis-rating-tab');
@@ -407,7 +410,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch(lastUrl, { headers: { Accept: 'text/html' }, cache: 'no-store' });
       if (!response.ok || response.redirected) throw new Error('Unavailable');
+      const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
       panel.innerHTML = await response.text();
+      const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
+      if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
       loaded = true;
       refreshUI.sync();
     } catch (error) {
@@ -446,24 +452,26 @@ document.addEventListener('DOMContentLoaded', () => {
     window.setTimeout(() => document.querySelector('[data-bs-target="#link-player-panel"]')?.click(), 150);
   });
   const searchInput = document.getElementById('my-tennis-player-search');
-  const searchButton = document.getElementById('my-tennis-player-search-button');
-  const results = document.getElementById('my-tennis-player-results');
+  const linkButton = document.getElementById('my-tennis-player-link-button');
   const feedback = document.getElementById('my-tennis-link-feedback');
   const linkedPlayers = document.getElementById('my-tennis-linked-players');
   const bulkButton = document.getElementById('my-tennis-bulk-unlink');
   const loadMoreButton = document.getElementById('my-tennis-load-more');
-  if (!searchInput || !searchButton || !results || !feedback) return;
+  if (!searchInput || !linkButton || !feedback) return;
 
   const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-  const searchUrl = @json(route('player.search'));
-  const linkUrl = @json(route('backend.user.players.store', $accountUser));
-  const unlinkUrl = @json(route('backend.user.players.destroy', [$accountUser, '__PLAYER__']));
-  const bulkUnlinkUrl = @json(route('backend.user.players.bulk-destroy', $accountUser));
-  const playersUrl = @json(route('my.tennis.players'));
+  const searchUrl = @json(route('player.search', [], false));
+  const linkUrl = @json(route('backend.user.players.store', $accountUser, false));
+  const unlinkUrl = @json(route('backend.user.players.destroy', [$accountUser, '__PLAYER__'], false));
+  const bulkUnlinkUrl = @json(route('backend.user.players.bulk-destroy', $accountUser, false));
+  const playersUrl = @json(route('my.tennis.players', [], false));
   const linkedIds = new Set(@json(array_map('intval', $linkedPlayerIds)));
 
   const showFeedback = (message, type = 'info') => {
-    feedback.innerHTML = `<div class="alert alert-${type} py-2 mb-0">${message}</div>`;
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type} py-2 mb-0`;
+    alert.textContent = message;
+    feedback.replaceChildren(alert);
   };
 
   const selectedIds = () => [...document.querySelectorAll('.my-tennis-player-check:checked')].map(input => Number(input.value));
@@ -501,47 +509,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   };
 
-  const renderResults = players => {
-    results.replaceChildren();
-    if (!players.length) {
-      results.innerHTML = '<div class="text-muted small">No matching player profiles found.</div>';
-      return;
-    }
-    players.forEach(player => {
-      const row = document.createElement('div');
-      row.className = 'list-group-item d-flex justify-content-between align-items-center gap-2';
-      const label = document.createElement('span');
-      label.textContent = `${player.name || ''} ${player.surname || ''}`.trim();
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn-sm btn-primary';
-      button.textContent = linkedIds.has(Number(player.id)) ? 'Linked' : 'Link';
-      button.disabled = linkedIds.has(Number(player.id));
-      button.addEventListener('click', () => linkPlayer(player, button));
-      row.append(label, button);
-      results.append(row);
-    });
-  };
-
-  const search = async () => {
-    const query = searchInput.value.trim();
-    if (query.length < 2) return showFeedback('Enter at least two characters to search.', 'warning');
-    searchButton.disabled = true;
-    try {
-      const response = await fetch(`${searchUrl}?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error('Search failed');
-      renderResults(await response.json());
-    } catch (error) {
-      showFeedback('Player search is currently unavailable. Please try again.', 'danger');
-    } finally { searchButton.disabled = false; }
-  };
-
   const linkPlayer = async (player, button) => {
     button.disabled = true;
     try {
-      const response = await fetch(linkUrl, { method: 'POST', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ player_id: player.id }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Unable to link player');
+      await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id });
       showFeedback(`${player.name} ${player.surname || ''} is now linked to your account.`, 'success');
       window.location.reload();
     } catch (error) { button.disabled = false; showFeedback(error.message, 'danger'); }
@@ -588,8 +559,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (error) { showFeedback(error.message, 'danger'); loadMoreButton.disabled = false; }
   });
 
-  searchButton.addEventListener('click', search);
-  searchInput.addEventListener('keydown', event => { if (event.key === 'Enter') search(); });
+  new window.MyTennisPlayerSearch({ select: searchInput, button: linkButton,
+    status: document.getElementById('my-tennis-player-search-status'), url: searchUrl, linkedIds,
+    onLink: player => linkPlayer({ id: player.id, name: player.text }, linkButton) });
 })();
 </script>
 @endsection

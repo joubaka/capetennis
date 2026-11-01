@@ -168,8 +168,10 @@ class SettingsController extends Controller
     {
         abort_unless($request->user()->hasRole('super-user'), 403);
         $cents = \App\Services\Performance\PlayerPlusService::parseAmount($request->input('player_plus_annual_price'));
-        if ($cents === null || $cents < 100 || $cents > 9999999) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['player_plus_annual_price' => 'Enter an annual price from R1.00 to R99,999.99 with at most two decimal places.']);
+        if ($cents === null || $cents < \App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS || $cents > \App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['player_plus_annual_price' => 'Enter an annual price from R'
+                .\App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS).' to R'
+                .number_format(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS / 100, 2).' with at most two decimal places.']);
         }
         SiteSetting::set(\App\Services\Performance\PlayerPlusService::PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
     }

@@ -12,12 +12,15 @@ use Illuminate\Validation\ValidationException;
 class PlayerPlusService
 {
     public const PRICE_CENTS = 49900;
+    // PayFast cannot process less than ZAR 5.00: https://developers.payfast.co.za/
+    public const MIN_PRICE_CENTS = 500;
+    public const MAX_PRICE_CENTS = 9999999; // Application cap, not a claimed provider limit.
     public const PRICE_SETTING = 'player_plus_annual_price_cents';
 
     public static function priceCents(): int
     {
         $value = (string) SiteSetting::get(self::PRICE_SETTING, (string) self::PRICE_CENTS);
-        return ctype_digit($value) && (int) $value >= 100 && (int) $value <= 9999999 ? (int) $value : self::PRICE_CENTS;
+        return ctype_digit($value) && (int) $value >= self::MIN_PRICE_CENTS && (int) $value <= self::MAX_PRICE_CENTS ? (int) $value : self::PRICE_CENTS;
     }
 
     public static function amount(int $cents): string
@@ -88,6 +91,9 @@ class PlayerPlusService
             abort_unless((int) $order->user_id === (int) $payer->id, 403);
             if ($order->status !== 'pending' || !$order->expires_at->isFuture() || $order->payfast_handed_off_at) {
                 $this->reject('This checkout is no longer available for payment. Check its status before starting again.');
+            }
+            if ($order->price_cents < self::MIN_PRICE_CENTS) {
+                $this->reject('This checkout is below PayFast\'s R'.self::amount(self::MIN_PRICE_CENTS).' minimum. Close it and start a new checkout at the current annual price.');
             }
             if (PlayerPlusMembership::where('player_id', $order->player_id)->where('ends_at', '>', now())->exists()) {
                 $this->reject('This player already has an active Player Plus membership.');

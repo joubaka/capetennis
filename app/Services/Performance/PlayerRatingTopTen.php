@@ -18,12 +18,14 @@ class PlayerRatingTopTen
         $selectedAge = $selected ? $this->ageKey($selected->dateOfBirth, $today) : '';
         $age = $filters['rating_age'] ?? $selectedAge;
         $gender = $filters['rating_gender'] ?? '';
-        $level = ($filters['rating_level'] ?? '') ?: 'standard';
+        $level = ($filters['rating_level'] ?? '') ?: 'overall';
+        // Existing Green/Yellow filter links now select the shared Overall rating.
+        if ($level === 'standard') $level = 'overall';
         $result += ['filters' => ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level],
             'age_options' => PlayerRatingProfileDirectory::birthYearLabels($today->year), 'summary' => [], 'selected_age' => $selectedAge];
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
-        foreach (['red' => 'Red', 'orange' => 'Orange', 'standard' => 'Green/Yellow ball CTR', 'overall' => 'Overall CTR'] as $key => $label) {
+        foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $key => $label) {
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
         if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
@@ -76,14 +78,14 @@ class PlayerRatingTopTen
                 if (isset($public[$id])) $players[] = ['id' => $id, ...$public[$id], ...$rating];
             }
             usort($players, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
-            if ($selected && in_array($key, ['standard', 'overall'], true)) {
-                $populations = $key === 'standard' ? ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $p['age'] === $selectedAge))] : ['overall' => $players];
+            if ($selected && $key === 'overall') {
+                $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $p['age'] === $selectedAge)), 'overall' => $players];
                 foreach ($populations as $scope => $population) {
                     $ranked = $this->positions($population);
                     $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
                 }
             }
-            if ($selected) $players = array_values(array_filter($players, fn ($p) => ($level !== 'standard' || $age === '' || $p['age'] === $age) && ($gender === '' || $p['gender'] === $gender)));
+            if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $age === '' || $p['age'] === $age) && ($gender === '' || $p['gender'] === $gender)));
             $position = 0; $previous = null;
             foreach (array_slice($players, 0, 10) as $index => $player) {
                 if ($previous !== $player['score']) $position = $index + 1;

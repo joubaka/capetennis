@@ -21,6 +21,7 @@ class PlayerRatingHistoryStore
     {
         try {
             if (!File::exists($this->path()) || File::size($this->path()) > 20 * 1024 * 1024) return null;
+            if (! app(PlayerRatingReadBudget::class)->ensure()) return null;
             $saved = json_decode(File::get($this->path()), true, 512, JSON_THROW_ON_ERROR);
             if (!$this->valid($saved)) return null;
             return $saved;

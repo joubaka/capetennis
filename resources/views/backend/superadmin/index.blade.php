@@ -1268,7 +1268,7 @@
                       <small class="text-muted d-block">Off by default. Pausing sales keeps existing verified memberships accessible until expiry. Super Admin can always preview players.</small>
                       <label class="form-label mt-3" for="sa-plus-price">Annual price per player (R)</label>
                       <div class="d-flex flex-wrap gap-2">
-                        <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="1" max="99999.99" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>
+                        <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS) }}" max="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS) }}" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>
                         <button class="btn btn-outline-primary" type="button" id="sa-plus-price-save" style="min-height:44px">Save annual price</button>
                       </div>
                       <small class="text-muted d-block mt-2">Applies to new checkouts only. Existing checkout prices and purchased terms remain unchanged.</small>

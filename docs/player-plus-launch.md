@@ -1,6 +1,8 @@
 # Player Plus local implementation and launch checklist
 
-Player Plus is a twelve-month membership for one named player, shared with that player's currently linked accounts. The default annual price is R499.00. A super-user can change the price for new checkouts under Super Admin settings. Existing pending orders and verified purchases retain their server-saved `price_cents`; a price change never rewrites them. There is no automatic renewal. The minimum configurable annual price is R1.00 and the maximum is R99,999.99, with at most two decimal places.
+Player Plus is a twelve-month membership for one named player, shared with that player's currently linked accounts. The default annual price is R499.00. A super-user can change the price for new checkouts under Super Admin settings. Existing pending orders and verified purchases retain their server-saved `price_cents`; a price change never rewrites them. There is no automatic renewal. The minimum configurable annual price is R5.00, reflecting [PayFast's documented minimum transaction amount](https://developers.payfast.co.za/). The maximum is the application's R99,999.99 cap, with at most two decimal places; it is not a claim about the provider's maximum.
+
+An older, unhanded checkout below R5.00 cannot start a new PayFast handoff. Its amount, status, expiry and handoff evidence remain unchanged; the payer must explicitly close it and start a new checkout at the current displayed price. A verified callback for an already handed-off historical checkout still validates its immutable stored amount and original payment window. New price bounds are never applied retrospectively to verified receipts.
 
 ## Customer package
 
@@ -47,6 +49,8 @@ Super-users can open **Review Plus payment issues** from the Plus section of Sup
 The customer support address is `support@capetennis.co.za`. Support requests must include the `P` order reference. Wrong-player purchases, unavailable data and refund enquiries require payer verification and a reviewed decision; no automatic refund or transfer policy is invented here. Legal/commercial approval of launch copy and the remedy policy remains a launch-owner responsibility.
 
 ## Verification and launch gates
+
+Saved ability and twelve-month history readers establish a 512 MiB request/process-local memory floor before fetching or decoding their private payloads. Larger and unlimited budgets are preserved. This does not alter `php.ini`, environment configuration or the global server limit. If PHP cannot provide that budget, readers withhold the data before loading it; the history file's existing 20 MiB cap and all policy/publication validation remain in place. Page reads still do not calculate ratings, enqueue a refresh or change source data. Verify normal web-process reads against representative saved data, as a successful CLI builder alone does not establish reader availability.
 
 Local implementation does not authorise deployment, production migration execution, activating sales, contacting customers, or live payments. Keep the following evidence separate:
 

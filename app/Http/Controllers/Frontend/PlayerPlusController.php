@@ -59,7 +59,8 @@ class PlayerPlusController extends Controller
     {
         $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
-            'quoted_price_cents' => ['required', 'integer', 'min:100', 'max:9999999']]);
+            'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]],
+            ['quoted_price_cents.min' => 'Please reload the player membership page to review a supported annual price.']);
         $order = DB::transaction(function () use ($service, $player, $request, $data) {
             $order = $service->start($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents']);
             if (! \App\Models\AuditEvent::where('action', 'player-plus.purchase-details-accepted')->where('subject_type', PlayerPlusOrder::class)

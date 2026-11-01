@@ -57,6 +57,10 @@ class PlayerAbilitySnapshotStore
         $pending = ['cohorts' => [], 'names' => [], 'reason' => 'Ability update pending. A saved snapshot is not yet available.',
             'built_at' => 'Not yet updated', 'snapshot_as_of' => null, 'snapshot_stale' => true, 'snapshot_version' => null];
         if (!Schema::hasTable('player_ability_snapshots')) { return $this->loaded = $pending; }
+        if (! app(PlayerRatingReadBudget::class)->ensure()) {
+            $pending['reason'] = 'Player ratings are temporarily unavailable. Please try again later or contact Cape Tennis.';
+            return $this->loaded = $pending;
+        }
         $row = DB::table('player_ability_snapshots')->where('snapshot_key', 'current')->first();
         if (!$row) { return $this->loaded = $pending; }
         $pending['built_at'] = $row->built_at;

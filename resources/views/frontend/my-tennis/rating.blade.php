@@ -1,5 +1,9 @@
 <section class="card ctr-history" aria-labelledby="player-rating-heading"><div class="card-body">
   <style>
+    .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem; }
+    .ctr-history .ctr-section-tabs .nav-link { min-height:44px;white-space:normal; }
+    .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }
+    @media(max-width:767.98px) { .ctr-history .ctr-section-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
     .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
     .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1rem;min-width:0; }
@@ -27,11 +31,29 @@
     </div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
-  <a class="btn btn-outline-primary mt-3" href="{{ route('my.tennis.pathway', $ratingPlayer) }}" style="min-height:44px;white-space:normal" data-pathway-jump>What should I play next?</a>
-  @if($ratingTopTen['visible'] ?? false)<a class="btn btn-outline-primary mt-3" href="#player-top-ten-heading" style="min-height:44px;white-space:normal">Your rating positions and rating filters</a>@endif
-  @include('frontend.my-tennis.pathway', ['pathway' => $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded()])
-  @include('frontend.my-tennis.rating-top-ten')
-  <x-rating-explanation class="mt-3" />
+  @php
+    $summaryPoints = $ratingHistory['points'] ?? [];
+    $currentRating = $summaryPoints ? end($summaryPoints) : null;
+  @endphp
+  <div class="ctr-stat mt-3" aria-label="Current rating summary">
+    <h3>How strong is my singles game?</h3>
+    @if($currentRating)
+      <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$currentRating['score']" :local="($currentRating['connection_status'] ?? '') === 'disconnected'" />
+      <p class="small mt-2 mb-0">{{ $ratingHistory['current_group_label'] ?? 'Current rating' }} · {{ $currentRating['confidence_label'] ?? 'Not recorded' }} confidence · {{ $currentRating['date'] }}</p>
+      @if(($currentRating['connection_status'] ?? '') === 'disconnected')<p class="small mb-0">Provisional within-group estimate; not calibrated against other groups.</p>@endif
+      @if(!empty($currentRating['historical_connection']))<p class="small mb-0">Low confidence — historical connection.</p>@endif
+    @else<p class="mb-0">Not rated yet. Suitable eligible results are needed to estimate playing strength.</p>@endif
+    <p class="small text-muted mt-2 mb-0">Provisional ability estimate, not an official ranking.@if($ratingHistory['as_of'] ?? null) Updated through {{ $ratingHistory['as_of'] }}.@endif</p>
+  </div>
+  <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
+    @foreach(['progress' => 'My progress', 'compare' => 'Compare', 'next' => 'My next step', 'understand' => 'Understand my rating'] as $section => $label)
+      <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>
+    @endforeach
+  </div>
+  <div class="tab-content ctr-section-content">
+  <div class="tab-pane active show" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
+    <h3 class="h5">Am I improving?</h3>
+    <p class="small text-muted">Follow your rating over 12 months. Select a month to explore the change and the results behind it.</p>
   @if(auth()->user()?->hasRole('super-user'))
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
       <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>
@@ -162,9 +184,28 @@
         </nav>@endif
       @endif
     </section>
+
+  @endif
+  </div>
+  <div class="tab-pane" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
+    <h3 class="h5">Where do I stand?</h3>
+    @include('frontend.my-tennis.rating-top-ten')
+    @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
+  </div>
+  <div class="tab-pane" id="ctr-panel-next" role="tabpanel" aria-labelledby="ctr-tab-next" tabindex="0">
+    <h3 class="h5">What should I play next?</h3>
+    @php($nextPathway = $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded())
+    <p><strong>{{ $nextPathway['assessment_status'] }}</strong> · {{ $nextPathway['reason'] }}</p>
+    @include('frontend.my-tennis.pathway', ['pathway' => $nextPathway])
+  </div>
+  <div class="tab-pane" id="ctr-panel-understand" role="tabpanel" aria-labelledby="ctr-tab-understand" tabindex="0">
+    <h3 class="h5">What does my rating mean?</h3>
+    <p>CTR estimates singles playing strength from eligible results. Confidence describes the supporting evidence, not an accuracy percentage.</p>
+    <x-rating-explanation class="mt-3" />
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
       <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age singles rating uses played results across ages; compare players connected to the same shared reference group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
       <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. All ball colours and court formats are included without category-based rating offsets. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
     </div></details>
-  @endif
+  </div>
+  </div>
 </div></section>

@@ -44,7 +44,7 @@ class MyTennisController extends Controller
         $filters = $request->validate(['cohort' => 'nullable|string|max:255', 'month' => 'nullable|integer|min:0|max:11',
             'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
             'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
-            'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,standard']);
+            'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,overall,standard']);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
