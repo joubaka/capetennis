@@ -1,21 +1,31 @@
 @php($configData = Helper::appClasses())
 @extends('layouts.backend')
 @section('title', 'Cape Tennis all-age ratings')
+@section('page-style')
+@include('backend.player-performance.partials.ctr-directory-style')
+@endsection
 @section('content')
 <div class="operational-page">
 @include('backend.partials.operational-controls')
-<div class="card"><div class="card-body">
-    <h1 class="h3">Cape Tennis all-age ratings</h1>
+<div class="ctr-directory">
+    <header class="ctr-hero">
+        <div><h1>CTR Rankings</h1><p>Cape Tennis all-age singles ratings</p></div>
+        <span class="ctr-hero-mark" aria-hidden="true">CTR</span>
+    </header>
+    <div class="ctr-summary">
+        <span><strong>{{ number_format($players->total()) }}</strong> players · {{ $year }} season</span>
+        <span>{{ $snapshot['reason'] ? 'Awaiting rating calculation' : 'Last updated: '.$snapshot['built_at'] }}</span>
+    </div>
+    <div class="ctr-content">
     @if($refreshStatus['pending'] || $refreshStatus['failed'])
         <div class="alert alert-info py-2 mb-3" role="status" data-ratings-refresh-message>Updating ratings. This page will refresh automatically when the calculation is ready.</div>
         <button type="button" class="btn btn-outline-primary mb-3" data-ratings-refresh-retry hidden>Retry ratings update</button>
     @endif
-    <p>Choose an age group and gender to find players with a calculated rating group.</p>
+    <p class="small mb-2">Find players by age group, gender or name.</p>
     @if($diagnosticOrder && !$snapshot['reason'])<div class="alert alert-warning" role="status"><strong>Diagnostic score order — not a calibrated overall ability ranking.</strong> Local scores are not calibrated between comparison groups. These cross-group scores are uncalibrated. List numbers show numeric score order only; they do not establish who is stronger across groups. @if($ageOrder)Numbers restart within each current age group; age does not change rating scores.@endif</div>@endif
     @if($comparisonGroup)<p>Showing comparison group {{ $comparisonGroup }}. <a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.ratings') }}">Show all groups</a></p>@endif
     @if($withinGroup)<p class="alert alert-info" role="status"><strong>Within-group ratings only.</strong> These players have recorded connections to one another, but no established connection to the shared reference. Compare these estimates only within group {{ $comparisonGroup }}; a matching number in another group does not mean equal ability. Provisional badges and profile ratings carry the same low-confidence, within-group restriction.</p>@endif
-    <p class="small text-muted">{{ $year }} season: groups use the year players were born, from 1 January to 31 December, regardless of whether their birthday has passed. U10 includes younger players; U18 includes ages 14–18. These profile groups do not establish event eligibility.</p>
-    <form method="get" class="row g-2 mb-3">
+    <form method="get" class="row g-2 mb-3 ctr-filters">
         @if($comparisonGroup)<input type="hidden" name="comparison_group" value="{{ $comparisonGroup }}">@endif
         <div class="col-sm-6 col-lg-3"><label for="age-group" class="form-label">Age group / birth year</label><select name="age_group" id="age-group" class="form-select" style="min-height:44px"><option value="">All ages</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::birthYearLabels($year) as $key => $label)<option value="{{ $key }}" @selected($ageGroup === $key)>{{ $label }}</option>@endforeach</select></div>
         <div class="col-sm-6 col-lg-3"><label for="gender" class="form-label">Gender</label><select name="gender" id="gender" class="form-select" style="min-height:44px"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $key => $label)<option value="{{ $key }}" @selected($gender === $key)>{{ $label }}</option>@endforeach</select></div>
@@ -24,8 +34,9 @@
         @unless($comparisonGroup)<div class="col-12"><details><summary class="py-2">More options</summary><label for="rating-sort" class="form-label">List order</label><select name="sort" id="rating-sort" class="form-select" style="min-height:44px"><option value="shared" @selected($sort === 'shared')>Shared-scale order</option><option value="score" @selected($sort === 'score')>Ranked list — all scores</option><option value="age" @selected($sort === 'age')>Rank by age group</option></select></details></div>@endunless
     </form>
     @foreach($errors->all() as $error)<p class="text-danger">{{ $error }}</p>@endforeach
-    <p>{{ $players->total() }} players · @if($snapshot['reason'])players appear after a valid rating calculation.@elseif($diagnosticOrder)diagnostic score order, highest to lowest {{ $ageOrder ? 'within each current age group' : 'across all saved scores' }}. List numbers are not overall ability positions.@else{{ $withinGroup ? 'highest to lowest within-group singles rating' : ($combined ? 'highest to lowest shared-scale singles rating' : ($unified ? 'highest to lowest singles rating within the selected comparison group' : 'highest to lowest rating within each current age group and gender')) }}. @if($combined)Players awaiting calibration follow without an overall position.@endif @endif</p>
+    <p class="ctr-result-summary">{{ $players->total() }} players · @if($snapshot['reason'])players appear after a valid rating calculation.@elseif($diagnosticOrder)diagnostic score order, highest to lowest {{ $ageOrder ? 'within each current age group' : 'across all saved scores' }}. List numbers are not overall ability positions.@else{{ $withinGroup ? 'highest to lowest within-group singles rating' : ($combined ? 'highest to lowest shared-scale singles rating' : ($unified ? 'highest to lowest singles rating within the selected comparison group' : 'highest to lowest rating within each current age group and gender')) }}. @if($combined)Players awaiting calibration follow without an overall position.@endif @endif</p>
     <details class="small text-muted mb-3"><summary class="py-2">Rating details</summary>
+    <p>{{ $year }} season: groups use the year players were born, from 1 January to 31 December, regardless of whether their birthday has passed. U10 includes younger players; U18 includes ages 14–18. These profile groups do not establish event eligibility.</p>
     <x-rating-explanation />
     @if($sharedCoverage && !$snapshot['reason'])<p>Shared-scale coverage: {{ $sharedCoverage['connected'] }} of {{ $sharedCoverage['eligible'] }} players with eligible singles results within two years are connected to the reference group.</p>@endif
     @if($connectionPlan && !$snapshot['reason'] && $connectionPlan['component_count'] > 1)
@@ -47,26 +58,34 @@
     <p>A shared calculation is pending. Existing separate context scores are not comparable across ages or disconnected groups.</p>
     @endif
     </details>
-    @if($snapshot['reason'])<p class="alert alert-warning">Ratings are currently unavailable. Players will appear when a valid calculation is available.</p>@else<p class="small text-muted">Last updated: {{ $snapshot['built_at'] }}.</p>@endif
+    @if($snapshot['reason'])<p class="alert alert-warning">Ratings are currently unavailable. Players will appear when a valid calculation is available.</p>@endif
     @forelse($players->getCollection()->groupBy(fn ($player) => $ageOrder ? $player['age_key'] : ($combined ? 'all' : ($unified ? ($player['rating']['component'] ?? 'Unrated') : $player['age_key'].'|'.$player['gender_key']))) as $members)
     <section class="mb-4" aria-label="{{ $ageOrder ? $members->first()['age_group'] : ($combined || $unified ? 'All-age singles ratings' : $members->first()['age_group'].' '.$members->first()['gender']) }}">
     <h2 class="h5">{{ $ageOrder ? $members->first()['age_group'] : ($combined ? 'All players' : ($withinGroup ? 'Within-group singles ratings' : ($unified ? 'Comparison group '.($members->first()['rating']['component'] ?? 'Unrated') : $members->first()['age_group'].' · '.$members->first()['gender']))) }}</h2>
+    <div class="ctr-column-head" aria-hidden="true"><span>Position</span><span>Player</span><span>CTR</span><span>Evidence</span></div>
     <ul class="list-group mb-3">
     @foreach($members as $player)
-        <li class="list-group-item d-flex gap-2" style="min-width:0">
-        @if(!$snapshot['reason'] && $player['position'] !== null && (!$unified || $player['rating']))<strong class="text-muted" {{ $diagnosticOrder ? 'data-score-list-position' : 'data-rating-position' }}="{{ $player['position'] }}" @if($diagnosticOrder)aria-label="List number {{ $player['position'] }} in diagnostic score order{{ $ageOrder ? ' for '.$player['age_group'] : '' }}"@endif>{{ $player['position'] }}.</strong>@endif
-        <div style="min-width:0; overflow-wrap:anywhere">
-            <a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', $player['id']) }}"><strong>{{ $player['name'] }}</strong></a>
-            <p class="small text-muted mb-2">{{ $player['age_group'] }} · {{ $player['gender'] }}</p>
+        <li class="list-group-item ctr-ranking-row" data-ctr-ranking-row>
+        <div class="ctr-place">@if(!$snapshot['reason'] && $player['position'] !== null && (!$unified || $player['rating']))<strong {{ $diagnosticOrder ? 'data-score-list-position' : 'data-rating-position' }}="{{ $player['position'] }}" @if($diagnosticOrder)aria-label="List number {{ $player['position'] }} in diagnostic score order{{ $ageOrder ? ' for '.$player['age_group'] : '' }}"@endif>{{ $player['position'] }}.</strong>@else<span aria-label="No overall position">—</span>@endif</div>
+        <div class="ctr-player">
+            <a href="{{ route('backend.player-performance.show', $player['id']) }}">{{ $player['name'] }}</a>
+            <p>{{ $player['age_group'] }} · {{ $player['gender'] }}</p>
+        </div>
             @if($player['rating'])
                 @php($rating = $player['rating'])
+                <div class="ctr-score"><x-ctr-badge :compact="true" :score="$rating['within_group_score'] ?? $rating['score']" :local="isset($rating['within_group_score']) || $player['awaiting_calibration'] || ($rating['comparable'] ?? true) === false" /></div>
+                <div class="ctr-evidence"><p><strong>{{ $rating['confidence_label'] }} confidence</strong></p>
+                @if(!empty($rating['historical_connection']))<p class="text-warning-emphasis">Historical connection</p>@endif
+                @if($player['awaiting_calibration'])<p>Awaiting calibration</p>@else<p>{{ $rating['cohort'] }}</p>@endif
+                </div>
+                <div class="ctr-row-detail">
                 @if($player['awaiting_calibration'])<p class="mb-1 text-warning-emphasis"><strong>Awaiting calibration · {{ $diagnosticOrder ? 'no overall ability rank' : 'no overall position' }}</strong></p>@endif
-                <p class="mb-1"><strong>{{ number_format($rating['within_group_score'] ?? $rating['score'], 1) }}/100</strong> @if(isset($rating['within_group_score']) || $player['awaiting_calibration'])· within-group only @endif· {{ $rating['cohort'] }} @unless($combined || $diagnosticOrder)· comparison group {{ $rating['component'] }} @endunless· {{ $rating['confidence_label'] }} confidence</p>
                 @if(!empty($rating['historical_connection']))<p class="small text-warning-emphasis mb-1"><strong>Low confidence — historical connection</strong> · link dated {{ $rating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
                 @if(($rating['comparable'] ?? true) === false)<p class="small text-warning-emphasis mb-1"><strong>Provisional within-group rating · low confidence.</strong> Not calibrated against other groups.</p>@endif
                 @if(count($player['ratings']) > 1)<details><summary class="py-2">All saved ratings</summary>@foreach($player['ratings'] as $other)<p class="small mb-1">{{ number_format($other['score'], 1) }}/100 · {{ $other['cohort'] }} · comparison group {{ $other['component'] }} · last played {{ $other['last_played'] }}</p>@endforeach</details>@endif
-            @else<p class="mb-1">{{ $snapshot['reason'] ? 'Rating unavailable' : 'Unrated — no eligible saved estimate' }}</p>@if($player['rating_reason'] ?? null)<p class="small text-muted">{{ $player['rating_reason'] }}</p>@endif @endif
-        </div></li>
+                </div>
+            @else<div class="ctr-score">{{ $snapshot['reason'] ? 'Rating unavailable' : 'Unrated' }}</div><div class="ctr-evidence">@if($player['rating_reason'] ?? null){{ $player['rating_reason'] }}@endif</div>@endif
+        </li>
     @endforeach
     </ul></section>
     @empty<p>No matching player profiles.</p>@endforelse

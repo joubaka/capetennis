@@ -8,7 +8,7 @@
         @foreach($group['players'] as $player)
           <li class="py-2" style="overflow-wrap:anywhere" data-ctr-top-player="{{ $player['id'] }}">
             <a href="{{ route('frontend.ranking.player-detail', [$series, $player['id']]) }}">{{ $player['name'] }}</a>
-            <strong>{{ number_format($player['score'], 1) }}/100</strong> <span class="small text-muted">· {{ $player['confidence'] }} confidence</span>
+            <x-ctr-badge :compact="true" :score="$player['score']" /> <span class="small text-muted">· {{ $player['confidence'] }} confidence</span>
           </li>
         @endforeach
       </ol>

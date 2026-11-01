@@ -167,7 +167,7 @@
                       @if($row->player)
                         <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
                           {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
-                          @if(isset($ctr['ratings'][$row->player->id]))<span class="badge bg-label-info" data-ctr-rating>CTR {{ number_format($ctr['ratings'][$row->player->id]['score'], 1) }}</span>@endif
+                          @if(isset($ctr['ratings'][$row->player->id]))<x-ctr-badge :compact="true" :score="$ctr['ratings'][$row->player->id]['score']" data-ctr-rating />@endif
                           <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
                         @if($tieBreakDetail)

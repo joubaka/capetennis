@@ -59,7 +59,7 @@
       <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
     </form>
     <div class="ctr-stats">
-      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
+      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
       <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
         <div class="ctr-stat-value">{{ $point ? number_format($point['score'], 1).' / 100' : 'Unrated' }}</div>
         @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month</p>

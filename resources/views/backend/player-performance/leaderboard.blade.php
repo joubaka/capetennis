@@ -74,7 +74,7 @@
                                 @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', $member['player_id']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
                                 @if($event && $member['regions'])<span class="text-muted">({{ implode(', ', $member['regions']) }})</span>@endif
                             </div>
-                            <div class="rating-score">@if($displayRating)<strong>{{ number_format($displayRating['score'], 1) }}/100</strong><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
+                            <div class="rating-score">@if($displayRating)<x-ctr-badge :compact="true" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" /><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
                         </div>
                         @if($displayRating)
                             <p class="small text-muted mb-1">{{ $displayRating['played'] ?? 'Unknown' }} recorded played matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents · last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>

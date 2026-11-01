@@ -38,7 +38,8 @@ const html = fs.readFileSync(path.join(root, 'storage/framework/testing/ctr-top-
       const badge = page.locator('[data-ctr-rating]').first();
       await badge.scrollIntoViewIfNeeded();
       assert.equal(await badge.isVisible(), true);
-      assert.equal(await badge.innerText(), 'CTR 72.4');
+      assert.match((await badge.innerText()).replace(/\s+/g, ' '), /^CTR 72\.4\/100$/);
+      assert.equal(await badge.getAttribute('data-ctr-badge'), '');
       assert.deepEqual(await panel.evaluate(element => {
         const issues = [];
         if (element.scrollWidth > element.clientWidth + 1) issues.push('panel overflow');

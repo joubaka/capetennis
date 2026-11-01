@@ -35,7 +35,8 @@ const html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-
       await page.setViewportSize({ width, height: 960 });
       await page.setContent(html, { waitUntil: 'networkidle' });
       const panel = page.locator('.operational-page').last();
-      await assert.equal(await panel.locator('h1').innerText(), 'Cape Tennis all-age ratings');
+      await assert.equal(await panel.locator('h1').innerText(), 'CTR Rankings');
+      assert.equal(await panel.locator('h1').evaluate(el => getComputedStyle(el).color), 'rgb(255, 255, 255)');
       assert.equal(await panel.locator('.list-group-item').count(), 3);
       assert.equal(await panel.locator('section > h2').count(), 1);
       assert.equal(await panel.locator('section > h2').innerText(), 'All players');
@@ -43,7 +44,7 @@ const html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-
       assert.match(await panel.innerText(), /No recent played-match connection/);
       assert.match(await panel.innerText(), /Low confidence — historical connection/);
       assert.match(await panel.locator('#age-group').innerText(), /U11 · born 2015/);
-      assert.match(await panel.innerText(), /1 January to 31 December/);
+      assert.equal(await panel.locator('[data-ctr-badge]').count(), 2);
       assert.equal(await panel.locator('#rating-sort').isVisible(), false);
       const layout = await panel.evaluate(element => {
         const errors = [];
@@ -65,11 +66,23 @@ const html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-
       const explanation = panel.locator('details').filter({ has: page.locator('summary', { hasText: /^Rating details$/ }) });
       await explanation.locator(':scope > summary').click();
       assert.equal(await explanation.getAttribute('open'), '');
+      assert.match(await explanation.innerText(), /1 January to 31 December/);
       const connectionPanel = panel.locator('[data-rating-connections]');
       for (const connection of await connectionPanel.all()) {
         if (await connection.getAttribute('open') === null) await connection.locator(':scope > summary').click();
         assert.match(await connection.innerText(), /not scheduled matches or confirmed links/);
         assert.equal(await connection.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
+      await explanation.locator(':scope > summary').click();
+      await options.locator(':scope > summary').click();
+      const rows = panel.locator('[data-ctr-ranking-row]');
+      assert.equal(await rows.count(), 3);
+      for (const row of await rows.all()) {
+        assert.equal(await row.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `row ${width}px`);
+      }
+      if (width >= 768) {
+        const scoreEdges = await panel.locator('.ctr-score').evaluateAll(nodes => nodes.map(el => Math.round(el.getBoundingClientRect().left)));
+        assert.equal(new Set(scoreEdges).size, 1, `CTR column aligned ${width}px`);
       }
       await panel.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-${width}.png`) });
       console.log(`PASS ${width}px: shared/withheld rows, filters, explanation and containment`);

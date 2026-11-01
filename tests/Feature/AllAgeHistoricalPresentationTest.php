@@ -8,6 +8,26 @@ use Tests\TestCase;
 
 class AllAgeHistoricalPresentationTest extends TestCase
 {
+    public function test_latest_disconnected_badge_remains_local_when_an_older_connected_month_is_selected(): void
+    {
+        $saved = $this->savedHistory();
+        $latest = $saved['months'][0];
+        $latest['date'] = '2026-11-01';
+        $latest['cohorts'][AllAgeRatingModel::COHORT][1] = ['score' => 93.1, 'group' => 'local', 'component' => 'local', 'connection_status' => 'disconnected'];
+        $saved['months'][] = $latest;
+        $ability = $this->createStub(PlayerSharedAbilityService::class);
+        $ability->method('fingerprint')->willReturn('same');
+        $store = $this->createStub(PlayerRatingHistoryStore::class);
+        $store->method('read')->willReturn($saved);
+        $player = new Player;
+        $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
+        $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
+        $this->assertSame('historical', $history['point']['connection_status']);
+        $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => $history])->render();
+        $this->assertStringContainsString('93.1', $html);
+        $this->assertStringContainsString('Within-group only', $html);
+    }
+
     private function savedHistory(): array
     {
         return ['source_fingerprint' => 'same', 'as_of' => '2026-10-01', 'built_at' => '2026-10-01', 'evidence' => [],
