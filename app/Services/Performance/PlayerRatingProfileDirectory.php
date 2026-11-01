@@ -11,6 +11,19 @@ class PlayerRatingProfileDirectory
     public const AGE_GROUPS = ['u10' => 'U10 (10 and younger)', 'u11' => 'U11 (11)', 'u12' => 'U12 (12)', 'u13' => 'U13 (13)', 'u18' => 'U18 (14–18)', 'unknown' => 'Missing / invalid birth date', 'other' => 'Over 18'];
     public const GENDERS = ['boys' => 'Boys', 'girls' => 'Girls', 'unknown' => 'Missing / unrecognised gender'];
 
+    public static function birthYearLabels(int $year): array
+    {
+        return [
+            'u10' => 'U10 · born '.($year - 10).' or later',
+            'u11' => 'U11 · born '.($year - 11),
+            'u12' => 'U12 · born '.($year - 12),
+            'u13' => 'U13 · born '.($year - 13),
+            'u18' => 'U18 · born '.($year - 18).'–'.($year - 14),
+            'unknown' => self::AGE_GROUPS['unknown'],
+            'other' => 'Over 18 · born '.($year - 19).' or earlier',
+        ];
+    }
+
     public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'shared'): array
     {
         $today = CarbonImmutable::today('Africa/Johannesburg');
@@ -65,6 +78,20 @@ class PlayerRatingProfileDirectory
                 $ratings[$id] = [$projection];
             }
         }
+        // A profile belongs here only when its calculated group confirms membership.
+        // Invalidated snapshots and orphaned/stale badge rows fail closed.
+        foreach ($ratings as $id => &$savedRatings) {
+            $savedRatings = array_values(array_filter($savedRatings, function ($rating) use ($snapshot, $unified, $id) {
+                $graph = $unified ? $snapshot['all_age'] : ($snapshot['cohorts'][$rating['cohort'] ?? ''] ?? []);
+                $component = $graph['components'][$rating['component'] ?? ''] ?? [];
+                return in_array((int) $id, $component['members'] ?? [], true)
+                    && isset($graph['ratings'][$id])
+                    && ($graph['ratings'][$id]['component'] ?? null) === ($rating['component'] ?? null);
+            }));
+            if (!$savedRatings) { unset($ratings[$id]); }
+        }
+        unset($savedRatings);
+        $query->whereIn('id', array_keys($ratings));
         $headlines = [];
         foreach ($ratings as $id => &$saved) {
             // Match the no-context profile headline/name badge, not the highest historical score.

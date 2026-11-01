@@ -14,10 +14,8 @@ const scoreHtml = fs.readFileSync(path.join(root, 'storage/framework/testing/all
   .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
 const ageHtml = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings-age.html'), 'utf8')
   .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-let html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings.html'), 'utf8')
+const html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-ratings.html'), 'utf8')
   .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-const connections = path.join(root, 'storage/framework/testing/all-age-connections-fragment.html');
-if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.readFileSync(connections, 'utf8') + '<form method="get"');
 
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
@@ -44,6 +42,9 @@ if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.rea
       assert.equal(await panel.locator('[data-rating-position]').count(), 2);
       assert.match(await panel.innerText(), /No recent played-match connection/);
       assert.match(await panel.innerText(), /Low confidence — historical connection/);
+      assert.match(await panel.locator('#age-group').innerText(), /U11 · born 2015/);
+      assert.match(await panel.innerText(), /1 January to 31 December/);
+      assert.equal(await panel.locator('#rating-sort').isVisible(), false);
       const layout = await panel.evaluate(element => {
         const errors = [];
         if (element.scrollWidth > element.clientWidth + 1) errors.push('ratings panel overflow');
@@ -58,7 +59,10 @@ if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.rea
       await panel.locator('#age-group').selectOption('u18');
       assert.equal(await panel.locator('#age-group').inputValue(), 'u18');
       await panel.locator('#search').fill('Synthetic test');
-      const explanation = panel.locator('details').first();
+      const options = panel.locator('details').filter({ has: page.locator('summary', { hasText: /^More options$/ }) });
+      await options.locator(':scope > summary').click();
+      assert.equal(await panel.locator('#rating-sort').isVisible(), true);
+      const explanation = panel.locator('details').filter({ has: page.locator('summary', { hasText: /^Rating details$/ }) });
       await explanation.locator(':scope > summary').click();
       assert.equal(await explanation.getAttribute('open'), '');
       const connectionPanel = panel.locator('[data-rating-connections]');
@@ -71,14 +75,14 @@ if (fs.existsSync(connections)) html = html.replace('<form method="get"', fs.rea
       console.log(`PASS ${width}px: shared/withheld rows, filters, explanation and containment`);
       await page.setContent(unavailableHtml, { waitUntil: 'networkidle' });
       const unavailable = page.locator('.operational-page').last();
-      assert.equal(await unavailable.locator('section > h2').count(), 1);
-      assert.equal(await unavailable.locator('section > h2').innerText(), 'All players');
-      assert.ok(await unavailable.locator('.list-group-item').count() >= 2);
+      assert.equal(await unavailable.locator('section > h2').count(), 0);
+      assert.equal(await unavailable.locator('.list-group-item').count(), 0);
       assert.equal(await unavailable.locator('[data-rating-position]').count(), 0);
-      assert.match(await unavailable.innerText(), /Rating unavailable/);
+      assert.match(await unavailable.innerText(), /Ratings are currently unavailable/);
+      assert.match(await unavailable.innerText(), /No matching player profiles/);
       assert.equal(await unavailable.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `unavailable ${width}px`);
       await unavailable.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-unavailable-${width}.png`) });
-      console.log(`PASS ${width}px: unavailable snapshot stays one unranked list`);
+      console.log(`PASS ${width}px: unavailable snapshot excludes profiles without calculated groups`);
       await page.setContent(scoreHtml, { waitUntil: 'networkidle' });
       const scores = page.locator('.operational-page').last();
       assert.equal(await scores.locator('section > h2').count(), 1);

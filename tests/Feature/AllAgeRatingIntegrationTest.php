@@ -42,8 +42,10 @@ class AllAgeRatingIntegrationTest extends TestCase
 
     private function saved(array $ratings): void
     {
+        $components = [];
+        foreach ($ratings as $id => $rating) { $components[$rating['component']]['members'][] = (int) $id; }
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'all_age' => ['ratings' => $ratings], 'cohorts' => [], 'names' => [],
+            'reason' => null, 'all_age' => ['ratings' => $ratings, 'components' => $components], 'cohorts' => [], 'names' => [],
             'built_at' => '2026-10-29 10:00:00', 'snapshot_as_of' => '2026-10-29', 'snapshot_stale' => false,
         ]);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings)
@@ -85,7 +87,7 @@ class AllAgeRatingIntegrationTest extends TestCase
         $this->saved([$young->id => $this->rating(80), $older->id => $historical, $disconnected->id => $this->rating(null)]);
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url)->assertOk()->assertSeeInOrder(['Younger Shared', 'Older Shared', 'Disconnected Shared'])
-            ->assertSee('One provisional singles rating across ages')->assertSee('No recent played-match connection')
+            ->assertSee('Choose an age group and gender')->assertSee('No recent played-match connection')
             ->assertSee('Low confidence — historical connection')->assertSee('2025-05-19');
         $this->assertSame([80.0, 60.0, null], $response->viewData('players')->getCollection()->map(fn ($row) => $row['rating']['score'] ?? null)->all());
         $this->get($url.'?age_group=u18')->assertOk()->assertSee('60.0/100')->assertDontSee('Younger Shared');

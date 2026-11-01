@@ -115,6 +115,10 @@
       <div class="public-ranking-stat"><span class="public-ranking-stat__value">{{ $totalScores }}</span><span class="public-ranking-stat__label">Event scores shown</span></div>
     </div>
 
+    @if($ctr['visible'])
+      @include('frontend.ranking.ctr-top-ten')
+    @endif
+
     <div class="public-ranking-tools">
       <div class="public-ranking-division-picker">
         <label for="ranking-division-select">View division</label>
@@ -162,7 +166,8 @@
                     <td class="public-ranking-player">
                       @if($row->player)
                         <a href="{{ route('frontend.ranking.player-detail', [$series, $row->player]) }}" class="text-body text-decoration-none" title="Review {{ $row->player->full_name ?? ($row->player->name ?? 'player') }}'s event scores">
-                          {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}<x-player-rating :player-id="$row->player->id" :context="$category" />
+                          {{ $row->player->full_name ?? ($row->player->name ?? 'Unknown Player') }}
+                          @if(isset($ctr['ratings'][$row->player->id]))<span class="badge bg-label-info" data-ctr-rating>CTR {{ number_format($ctr['ratings'][$row->player->id]['score'], 1) }}</span>@endif
                           <span class="public-ranking-player__action">View scores <i class="ti ti-arrow-up-right" aria-hidden="true"></i></span>
                         </a>
                         @if($tieBreakDetail)

@@ -191,13 +191,16 @@ class RankingController extends Controller
 
       return $detail ? [$ranking->id => $detail] : [];
     });
-    return view('frontend.ranking.show_ranking', compact(
+    $ctr = app(\App\Services\Performance\SeriesCtrLeaderboard::class)->build(auth()->user(), $rankings->pluck('player'));
+    $response = response()->view('frontend.ranking.show_ranking', compact(
       'series',
       'rankings',
       'categories',
       'displayLegsByRanking',
-      'tieBreakDetailsByRanking'
+      'tieBreakDetailsByRanking',
+      'ctr'
     ));
+    return $ctr['visible'] ? $response->header('Cache-Control', 'no-store, private') : $response;
   }
 
   public function playerDetail(Series $series, Player $player)

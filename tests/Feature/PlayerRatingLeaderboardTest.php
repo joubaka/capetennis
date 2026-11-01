@@ -33,20 +33,26 @@ class PlayerRatingLeaderboardTest extends TestCase
     {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
         $this->admin();
-        $this->saved();
+        $ratings = [];
         foreach (['2016-01-01' => 'Youngest', '2017-12-31' => 'Younger', '2015-12-31' => 'Eleven', '2012-01-01' => 'Fourteen', '2008-12-31' => 'Eighteen', '2007-12-31' => 'Adult', '2027-01-01' => 'Future'] as $birth => $name) {
-            Player::factory()->create(['name' => $name, 'surname' => 'Boundary', 'dateOfBirth' => $birth, 'gender' => 1]);
+            $player = Player::factory()->create(['name' => $name, 'surname' => 'Boundary', 'dateOfBirth' => $birth, 'gender' => 1]);
+            $ratings[$player->id] = [$this->estimate(50)];
         }
-        Player::factory()->create(['name' => 'Unknown', 'surname' => 'Profile', 'dateOfBirth' => null, 'gender' => null]);
-        Player::factory()->create(['name' => 'Unrecognised', 'surname' => 'Profile', 'dateOfBirth' => '2014-01-01', 'gender' => 9]);
+        $unknown = Player::factory()->create(['name' => 'Unknown', 'surname' => 'Profile', 'dateOfBirth' => null, 'gender' => null]);
+        $unrecognised = Player::factory()->create(['name' => 'Unrecognised', 'surname' => 'Profile', 'dateOfBirth' => '2014-01-01', 'gender' => 9]);
+        $ratings[$unknown->id] = [$this->estimate(50)];
+        $ratings[$unrecognised->id] = [$this->estimate(50)];
+        $this->saved($ratings);
         $url = route('backend.player-performance.ratings');
         $this->get($url.'?age_group=u10')->assertOk()->assertSee('Youngest Boundary')->assertSee('Younger Boundary')->assertDontSee('Eleven Boundary')->assertDontSee('Future Boundary');
         $this->get($url.'?age_group=u18')->assertOk()->assertSee('Fourteen Boundary')->assertSee('Eighteen Boundary')->assertDontSee('Adult Boundary');
         $this->get($url.'?age_group=unknown')->assertOk()->assertSee('Future Boundary')->assertSee('Unknown Profile')->assertDontSee('Youngest Boundary');
         $this->get($url.'?gender=unknown')->assertOk()->assertSee('Unknown Profile')->assertSee('Unrecognised Profile')->assertDontSee('Youngest Boundary');
         foreach (range(1, 27) as $i) {
-            Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $i), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+            $player = Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $i), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+            $ratings[$player->id] = [$this->estimate(50)];
         }
+        $this->saved($ratings);
         $response = $this->get($url.'?age_group=u13&gender=boys&page=2')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('data-rating-position="26"', false);
         $this->assertSame(27, $response->viewData('players')->total());
     }
@@ -57,7 +63,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         Player::factory()->create(['name' => 'Visible', 'surname' => 'Profile']);
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => 'Unavailable', 'built_at' => 'Not yet updated', 'snapshot_stale' => true]);
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('badgeSnapshot');
-        $this->get(route('backend.player-performance.ratings'))->assertOk()->assertSee('Visible Profile')->assertSee('Ratings are currently unavailable')->assertSee('Rating unavailable')
+        $this->get(route('backend.player-performance.ratings'))->assertOk()->assertDontSee('Visible Profile')->assertSee('Ratings are currently unavailable')
             ->assertSee('This page will refresh automatically')->assertSee('Retry ratings update')->assertSee('CTLeaderboardRefresh')->assertSee('player-ratings-leaderboard-refresh.js')->assertDontSee('data-rating-position=', false);
     }
 
@@ -86,8 +92,8 @@ class PlayerRatingLeaderboardTest extends TestCase
         $response = $this->get(route('backend.player-performance.ratings'))->assertOk();
         $rows = $response->viewData('players')->getCollection();
         $boys = $rows->where('age_key', 'u12')->where('gender_key', 'boys')->values();
-        $this->assertSame(['Hundred Hundred', 'Eighty Eighty', 'Tie Alpha Tie Alpha', 'Tie Zulu Tie Zulu', 'Headline Headline', 'Nine Nine', 'Zero Zero', 'Unrated Unrated'], $boys->pluck('name')->all());
-        $this->assertSame(range(1, 8), $boys->pluck('position')->all());
+        $this->assertSame(['Hundred Hundred', 'Eighty Eighty', 'Tie Alpha Tie Alpha', 'Tie Zulu Tie Zulu', 'Headline Headline', 'Nine Nine', 'Zero Zero'], $boys->pluck('name')->all());
+        $this->assertSame(range(1, 7), $boys->pluck('position')->all());
         $this->assertSame(50.0, $boys->firstWhere('name', 'Headline Headline')['rating']['score']);
         $this->assertSame('u10 boys', $boys->firstWhere('name', 'Headline Headline')['rating']['cohort']);
         $this->assertSame(1, $rows->firstWhere('id', $girl->id)['position']);
@@ -132,8 +138,15 @@ class PlayerRatingLeaderboardTest extends TestCase
 
     private function saved(array $ratings = []): void
     {
+        $cohorts = [];
+        foreach ($ratings as $id => $saved) {
+            foreach ($saved as $rating) {
+                $cohorts[$rating['cohort']]['ratings'][$id] = $rating;
+                $cohorts[$rating['cohort']]['components'][$rating['component']]['members'][] = (int) $id;
+            }
+        }
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'cohorts' => ['u12 boys' => []], 'names' => [], 'reason' => null, 'built_at' => '2026-10-09 08:00:00', 'snapshot_as_of' => '2026-10-09', 'snapshot_stale' => false,
+            'cohorts' => $cohorts, 'names' => [], 'reason' => null, 'built_at' => '2026-10-09 08:00:00', 'snapshot_as_of' => '2026-10-09', 'snapshot_stale' => false,
         ]);
         $mock = $this->mock(PlayerSharedAbilityService::class)->makePartial();
         $mock->shouldReceive('badgeSnapshot')->andReturn($ratings);

@@ -14,6 +14,76 @@ class PlayerRatingGroupDirectoryTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_birth_year_filter_includes_january_and_december_birthdays_and_rolls_over_on_new_year(): void
+    {
+        Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $this->saved();
+        $january = Player::factory()->create(['dateOfBirth' => '2015-01-01']);
+        $december = Player::factory()->create(['dateOfBirth' => '2015-12-31']);
+        Player::factory()->create(['dateOfBirth' => '2014-12-31']);
+        Player::factory()->create(['dateOfBirth' => '2016-01-01']);
+        $ratings = [];
+        foreach (Player::all() as $player) {
+            $ratings[$player->id] = ['score' => 50.0, 'component' => 'birthdays', 'cohort' => AllAgeRatingModel::COHORT, 'last_played' => '2026-01-01', 'confidence_label' => 'Low'];
+        }
+        $this->calculated($ratings);
+        try {
+            CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-01-01', 'Africa/Johannesburg'));
+            $url = route('backend.player-performance.ratings');
+            $response = $this->get($url.'?age_group=u11')->assertOk()
+                ->assertSee('U11 · born 2015')->assertSee('from 1 January to 31 December');
+            $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
+
+            CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-12-31', 'Africa/Johannesburg'));
+            $response = $this->get($url.'?age_group=u11')->assertOk()->assertSee('U11 · born 2015');
+            $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
+
+            CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-01-01', 'Africa/Johannesburg'));
+            $response = $this->get($url.'?age_group=u12')->assertOk()->assertSee('U12 · born 2015');
+            $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    private function calculated(array &$ratings, ?string $reference = null): void
+    {
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturnUsing(function () use (&$ratings, $reference) {
+            $components = [];
+            foreach ($ratings as $id => $rating) { $components[$rating['component']]['members'][] = (int) $id; }
+            return ['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
+                'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => $reference]];
+        });
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
+    }
+
+    public function test_directory_excludes_orphaned_and_mismatched_groups_in_every_list_mode(): void
+    {
+        Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        [$players, $snapshot] = $this->saved();
+        $missing = Player::factory()->create(['name' => 'Excluded', 'surname' => 'NoGroup', 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+        $orphan = Player::factory()->create(['name' => 'Excluded', 'surname' => 'Orphan', 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+        $mismatch = Player::factory()->create(['name' => 'Excluded', 'surname' => 'Mismatch', 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
+        $template = $snapshot['all_age']['ratings'][$players[0]->id];
+        $component = $template['component'];
+        $snapshot['all_age']['ratings'][$orphan->id] = array_replace($template, ['component' => 'missing-component']);
+        $snapshot['all_age']['ratings'][$mismatch->id] = $template;
+        // The component exists, but does not confirm this player's membership.
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($snapshot['all_age']['ratings']);
+        $url = route('backend.player-performance.ratings');
+        foreach (['shared', 'score', 'age'] as $sort) {
+            $response = $this->get($url.'?sort='.$sort)->assertOk()->assertDontSee('Excluded');
+            $this->assertSame(5, $response->viewData('players')->total());
+            $this->get($url.'?sort='.$sort.'&search=Excluded')->assertOk()->assertDontSee('Excluded NoGroup')->assertDontSee('Excluded Orphan')->assertDontSee('Excluded Mismatch');
+        }
+        $response = $this->get($url.'?age_group=u13&gender=boys')->assertOk()->assertDontSee('Excluded');
+        $this->assertSame(3, $response->viewData('players')->total());
+        $this->assertDatabaseCount('players', 8);
+    }
+
     private function saved(): array
     {
         if (DB::getDriverName() === 'sqlite') {
@@ -82,18 +152,14 @@ class PlayerRatingGroupDirectoryTest extends TestCase
                 'comparable' => $comparable, 'cohort' => AllAgeRatingModel::COHORT, 'last_played' => '2026-10-01', 'confidence_label' => 'Low'];
         }
         $unrated = Player::factory()->create(['name' => 'Unrated', 'surname' => 'Aardvark', 'gender' => 1, 'dateOfBirth' => '2013-01-01']);
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
-            'all_age' => ['ratings' => $ratings, 'components' => [], 'reference_component' => 'reference'],
-        ]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
+        $this->calculated($ratings, 'reference');
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url.'?sort=score')->assertOk()->assertSee('Diagnostic score order')
             ->assertSee('not calibrated between comparison groups')->assertSee('within-group only')
             ->assertDontSee('data-rating-position=', false)->assertSee('data-score-list-position="1"', false)
             ->assertHeader('Cache-Control', 'no-store, private');
-        $this->assertSame([...$ids, $unrated->id], $response->viewData('players')->getCollection()->pluck('id')->all());
-        $this->assertSame([1, 2, 3, 4, null], $response->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame($ids, $response->viewData('players')->getCollection()->pluck('id')->all());
+        $this->assertSame([1, 2, 3, 4], $response->viewData('players')->getCollection()->pluck('position')->all());
         if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/all-age-ratings-score.html'), $response->getContent());
         }
@@ -108,7 +174,7 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $this->assertStringContainsString('age_group=u13', $firstPage->viewData('players')->url(2));
         $this->assertStringContainsString('gender=boys', $firstPage->viewData('players')->url(2));
         $secondPage = $this->get($url.'?sort=score&page=2')->assertOk();
-        $this->assertSame([26, 27, 28, null], $secondPage->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame([26, 27, 28], $secondPage->viewData('players')->getCollection()->pluck('position')->all());
         $this->getJson($url.'?sort=unknown')->assertUnprocessable();
         $this->assertDatabaseCount('user_players', 0);
     }
@@ -130,18 +196,14 @@ class PlayerRatingGroupDirectoryTest extends TestCase
                 'cohort' => AllAgeRatingModel::COHORT, 'last_played' => '2026-10-01', 'confidence_label' => 'Low'];
         }
         Player::factory()->create(['name' => 'Unrated', 'surname' => 'Aardvark', 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
-            'all_age' => ['ratings' => $ratings, 'components' => [], 'reference_component' => null],
-        ]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
+        $this->calculated($ratings);
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url.'?sort=age')->assertOk()->assertSee('Rank by age group')->assertSee('Numbers restart within each current age group')
             ->assertSee('not calibrated between comparison groups')->assertDontSee('data-rating-position=', false);
         $rows = $response->viewData('players')->getCollection();
-        $this->assertSame(['Young First', 'Young Second', 'Girl Higher', 'Older Lower', 'Unrated Aardvark', 'Unknown Age', 'Adult Age'], $rows->pluck('name')->all());
-        $this->assertSame([1, 2, 1, 2, null, 1, 1], $rows->pluck('position')->all());
-        $this->assertSame([20.0, 10.0, 99.0, 60.0, null, 90.0, 95.0], $rows->map(fn ($row) => $row['rating']['score'] ?? null)->all());
+        $this->assertSame(['Young First', 'Young Second', 'Girl Higher', 'Older Lower', 'Unknown Age', 'Adult Age'], $rows->pluck('name')->all());
+        $this->assertSame([1, 2, 1, 2, 1, 1], $rows->pluck('position')->all());
+        $this->assertSame([20.0, 10.0, 99.0, 60.0, 90.0, 95.0], $rows->map(fn ($row) => $row['rating']['score'] ?? null)->all());
         $this->assertSame(4, substr_count($response->getContent(), '<h2 class="h5">'));
         if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/all-age-ratings-age.html'), $response->getContent());
@@ -149,14 +211,14 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $search = $this->get($url.'?sort=age&search=Older')->assertOk();
         $this->assertSame([2], $search->viewData('players')->getCollection()->pluck('position')->all());
         $filtered = $this->get($url.'?sort=age&age_group=u13&gender=boys')->assertOk();
-        $this->assertSame(['Older Lower', 'Unrated Aardvark'], $filtered->viewData('players')->getCollection()->pluck('name')->all());
-        $this->assertSame([1, null], $filtered->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame(['Older Lower'], $filtered->viewData('players')->getCollection()->pluck('name')->all());
+        $this->assertSame([1], $filtered->viewData('players')->getCollection()->pluck('position')->all());
         foreach (range(1, 26) as $number) {
             $player = Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $number), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
             $ratings[$player->id] = array_replace(reset($ratings), ['score' => 50.0 - $number]);
         }
         $paged = $this->get($url.'?sort=age&age_group=u13&page=2')->assertOk();
-        $this->assertSame([26, 27, 28, null], $paged->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame([26, 27, 28], $paged->viewData('players')->getCollection()->pluck('position')->all());
         $this->assertStringContainsString('sort=age', $paged->viewData('players')->url(1));
         $this->assertStringContainsString('age_group=u13', $paged->viewData('players')->url(1));
         $this->assertDatabaseCount('user_players', 0);
@@ -201,21 +263,17 @@ class PlayerRatingGroupDirectoryTest extends TestCase
             if ($surname !== 'Implicit') { $ratings[$player->id]['comparable'] = false; }
         }
         Player::factory()->create(['name' => 'Unrated', 'surname' => 'FirstAlphabetically']);
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
-            'reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false, 'snapshot_as_of' => '2026-10-29',
-            'all_age' => ['ratings' => $ratings, 'components' => [], 'reference_component' => 'reference'],
-        ]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings);
+        $this->calculated($ratings, 'reference');
         $url = route('backend.player-performance.ratings');
         $first = $this->get($url)->assertOk()->assertSee('All players')->assertDontSee('Comparison group reference')
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->assertSame(range(1, 25), $first->viewData('players')->getCollection()->pluck('position')->all());
-        $this->assertSame(31, $first->viewData('players')->total());
+        $this->assertSame(30, $first->viewData('players')->total());
         $second = $this->get($url.'?page=2')->assertOk();
         $rows = $second->viewData('players')->getCollection();
-        $this->assertSame(['Shared Player26', 'Shared Player27', 'Local Alpha', 'Local Implicit', 'Local Zulu', 'Unrated FirstAlphabetically'], $rows->pluck('name')->all());
-        $this->assertSame([26, 27, null, null, null, null], $rows->pluck('position')->all());
-        $this->assertSame([false, false, true, true, true, false], $rows->pluck('awaiting_calibration')->all());
+        $this->assertSame(['Shared Player26', 'Shared Player27', 'Local Alpha', 'Local Implicit', 'Local Zulu'], $rows->pluck('name')->all());
+        $this->assertSame([26, 27, null, null, null], $rows->pluck('position')->all());
+        $this->assertSame([false, false, true, true, true], $rows->pluck('awaiting_calibration')->all());
         $this->assertSame(99.0, $rows->firstWhere('name', 'Local Zulu')['rating']['score']);
         $searched = $this->get($url.'?search=Player27')->assertOk();
         $this->assertSame([27], $searched->viewData('players')->getCollection()->pluck('position')->all());
@@ -245,7 +303,7 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $rating = ['score' => 90.0, 'component' => 'local', 'comparable' => false, 'cohort' => AllAgeRatingModel::COHORT,
             'last_played' => '2026-10-01', 'confidence_label' => 'Low'];
         $snapshot = ['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
-            'all_age' => ['reference_component' => null, 'components' => [], 'ratings' => [$player->id => $rating]]];
+            'all_age' => ['reference_component' => null, 'components' => ['local' => ['members' => [$player->id]]], 'ratings' => [$player->id => $rating]]];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
         $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn([$player->id => $rating]);
         $url = route('backend.player-performance.ratings');
@@ -254,7 +312,7 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $snapshot['reason'] = 'Source publication changed';
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('allAgeBadgeSnapshot');
-        $this->get($url)->assertOk()->assertSee('Rating unavailable')->assertDontSee('90.0/100')->assertDontSee('data-rating-position=', false);
+        $this->get($url)->assertOk()->assertSee('Ratings are currently unavailable')->assertDontSee('Local Only')->assertDontSee('90.0/100')->assertDontSee('data-rating-position=', false);
     }
 
     public function test_missing_or_invalidated_snapshot_without_all_age_keeps_one_alphabetical_unranked_directory(): void
@@ -276,19 +334,17 @@ class PlayerRatingGroupDirectoryTest extends TestCase
                 'snapshot_as_of' => null, 'snapshot_stale' => true,
             ]);
             $response = $this->get(route('backend.player-performance.ratings', ['sort' => 'score']))->assertOk()
-                ->assertSee('one alphabetical list while ratings are unavailable.')
-                ->assertSeeInOrder(['Older Alpha', 'Unknown Middle', 'Young Zulu'])
+                ->assertSee('players appear after a valid rating calculation.')
+                ->assertDontSee('Older Alpha')->assertDontSee('Unknown Middle')->assertDontSee('Young Zulu')
                 ->assertDontSee('data-rating-position=', false)->assertDontSee('/100')
                 ->assertDontSee('data-score-list-position=', false)->assertDontSee('Diagnostic score order')
                 ->assertDontSee('Awaiting calibration')->assertHeader('Cache-Control', 'no-store, private');
-            $this->assertSame([null, null, null], $response->viewData('players')->getCollection()->pluck('position')->all());
-            $this->assertSame(1, substr_count($response->getContent(), '<h2 class="h5">All players</h2>'));
-            $this->assertSame(1, substr_count($response->getContent(), '<ul class="list-group mb-3">'));
+            $this->assertSame(0, $response->viewData('players')->total());
             $unavailableAge = $this->get(route('backend.player-performance.ratings', ['sort' => 'age']))->assertOk()
-                ->assertSee('one alphabetical list while ratings are unavailable.')
-                ->assertSeeInOrder(['Older Alpha', 'Unknown Middle', 'Young Zulu'])
+                ->assertSee('players appear after a valid rating calculation.')
+                ->assertDontSee('Older Alpha')->assertDontSee('Unknown Middle')->assertDontSee('Young Zulu')
                 ->assertDontSee('data-rating-position=', false)->assertDontSee('data-score-list-position=', false)->assertDontSee('/100');
-            $this->assertSame(1, substr_count($unavailableAge->getContent(), '<h2 class="h5">All players</h2>'));
+            $this->assertSame(0, $unavailableAge->viewData('players')->total());
             if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
                 file_put_contents(storage_path('framework/testing/all-age-ratings-unavailable.html'), $response->getContent());
             }
