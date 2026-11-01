@@ -79,6 +79,16 @@ final class FlexibleMonradProgression
             [$upper, $lower] = $node['challenge_positions'];
             $ready = ($node['rolling_gate'] ?? false)
                 ? ! array_filter($node['prerequisites'] ?? [], fn ($dependency) => ! ($matches[$dependency]['resolved'] ?? false)) : $complete;
+            if ($graph['rolling_challenges'] ?? false) {
+                // Older saved rolling graphs gated every starting pair on all
+                // base matches. Only the pair's base ranks and earlier challenge
+                // stages determine readiness; unrelated placements cannot block it.
+                $base = array_map(fn ($position) => $this->source($graph['positions'][$position], $matches, $withdrawn), [$upper, $lower]);
+                $earlierChallenges = array_filter($node['prerequisites'] ?? [],
+                    fn ($dependency) => isset($graph['nodes'][$dependency]['challenge_positions']));
+                $ready = $base[0]['resolved'] && $base[1]['resolved']
+                    && ! array_filter($earlierChallenges, fn ($dependency) => ! ($matches[$dependency]['resolved'] ?? false));
+            }
             if ($node['rolling_challenge'] ?? false) {
                 $ranks = array_column($positions, 'player', 'position');
                 $players = [$ranks[$upper] ?? null, $ranks[$lower] ?? null];

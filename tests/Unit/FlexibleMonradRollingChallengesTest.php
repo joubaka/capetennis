@@ -108,6 +108,41 @@ class FlexibleMonradRollingChallengesTest extends TestCase
         $this->assertSame([2, 5], $pools['challenge_3']);
     }
 
+    public function test_saved_rolling_all_base_gates_resolve_each_pair_when_its_own_positions_are_known(): void
+    {
+        $graph = $this->graph();
+        $graph['nodes']['fifth'] = ['sources' => [['type' => 'player', 'id' => 5], ['type' => 'player', 'id' => 6]]];
+        $graph['positions'][5] = ['type' => 'winner', 'match' => 'fifth'];
+        $graph['positions'][6] = ['type' => 'loser', 'match' => 'fifth'];
+        $graph = FlexibleMonradCompiler::withRollingChallenges($graph);
+        // Reproduce a persisted graph generated before pair-specific gates.
+        foreach (FlexibleMonradCompiler::ROLLING_STAGES as $key) {
+            $graph['nodes'][$key]['prerequisites'][] = 'fifth';
+        }
+        ksort($graph['nodes']);
+        $fixtures = $this->fixtures($graph);
+        $originalGraph = $graph;
+        $originalFixtures = $fixtures;
+        $state = (new FlexibleMonradProgression)->resolve($graph, $fixtures, []);
+        $this->assertSame('ready', $state['matches']['challenge_2']['challenge_status']);
+        $this->assertSame([2, 3], $state['matches']['challenge_2']['players']);
+        $this->assertSame('pending', $state['matches']['challenge_4']['challenge_status']);
+        $this->assertSame([null, null], $state['matches']['challenge_4']['players']);
+        $this->assertSame('pending', $state['matches']['challenge_3']['challenge_status']);
+        $this->assertSame('pending', $state['matches']['challenge_2_repeat']['challenge_status']);
+        $this->assertSame($originalGraph, $graph);
+        $this->assertSame($originalFixtures, $fixtures);
+
+        $this->finish($graph, $fixtures, 'challenge_2', 1);
+        $fixtures['fifth'] = ['players' => [5, 6], 'winner' => 5, 'played' => true];
+        $this->finish($graph, $fixtures, 'challenge_4', 1);
+        $next = (new FlexibleMonradProgression)->resolve($graph, $fixtures, []);
+        $this->assertSame('completed', $next['matches']['challenge_2']['challenge_status']);
+        $this->assertSame(3, $next['matches']['challenge_2']['winner']);
+        $this->assertSame([2, 5], $next['matches']['challenge_3']['players']);
+        $this->assertSame($next, (new FlexibleMonradProgression)->resolve($graph, $fixtures, []));
+    }
+
     public function test_every_valid_stage_combination_resolves_omissions_as_no_ops_without_changing_other_positions(): void
     {
         $tested = 0;
