@@ -158,4 +158,15 @@ class SeriesCtrLeaderboardTest extends TestCase
             $this->assertSame([], $result['ratings']);
         }
     }
+
+    public function test_top_ten_orders_different_scores_numerically_highest_first(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-01', 'Africa/Johannesburg'));
+        $players = Player::factory()->count(3)->create(['dateOfBirth' => '2015-01-01', 'gender' => 1]);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()
+            ->andReturn($this->snapshot([$players[0]->id => 9.0, $players[1]->id => 10.0, $players[2]->id => 100.0]));
+        $result = app(SeriesCtrLeaderboard::class)->build($this->superUser(), $players);
+        $this->assertSame([100.0, 10.0, 9.0], array_column($result['groups']['u11|boys']['players'], 'score'));
+        $this->assertSame([$players[2]->id, $players[1]->id, $players[0]->id], array_column($result['groups']['u11|boys']['players'], 'id'));
+    }
 }
