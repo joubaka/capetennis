@@ -62,14 +62,26 @@
       <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>@if($latest)<x-ctr-badge :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" /><p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>@if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif @else<div class="ctr-stat-value">Unrated</div>@endif</div>
       <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
         <div class="ctr-stat-value">{{ $point ? number_format($point['score'], 1).' / 100' : 'Unrated' }}</div>
-        @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month</p>
-        @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable.</p>
+        @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p><p class="small text-muted mt-1 mb-0">Results, opponents’ results and older matches losing weight can all move your rating.</p>
+        @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable. The difference does not reliably show improvement or decline.</p>
         @else<p class="small text-muted mt-2 mb-0">No comparable previous-month estimate.</p>@endif
       </div>
       <div class="ctr-stat"><h3>Your singles results included by this month</h3><div class="ctr-stat-value">{{ $evidence['matches'] }} {{ \Illuminate\Support\Str::plural('match', $evidence['matches']) }}</div><p class="mt-2 mb-0">{{ $evidence['wins'] }} won · {{ $evidence['losses'] }} lost</p>
         @if($evidence['matches'] < 5)<p class="small text-muted mt-1 mb-0">Small sample; treat this estimate cautiously.@if($evidence['finishes']) Also includes finishing-order evidence.@endif</p>@endif
       </div>
     </div>
+    @if($point)
+      <div class="small mb-3" aria-label="Selected month evidence summary">
+        <p class="mb-1"><strong>Evidence confidence: {{ $point['confidence_label'] ?? ((!empty($point['historical_connection']) || ($point['connection_status'] ?? '') === 'disconnected') ? 'Low' : 'Not recorded') }}</strong> · as of {{ $point['date'] }}<br><span class="text-muted">Strength and freshness of the supporting results, not an accuracy percentage.</span></p>
+        @if(array_key_exists('last_direct_match', $point))
+          <p class="mb-1">Last included singles result: {{ $point['last_direct_match'] ? \Carbon\CarbonImmutable::parse($point['last_direct_match'])->format('j M Y') : 'None recorded' }}@if(isset($point['recent_played'])) · {{ $point['recent_played'] }} {{ \Illuminate\Support\Str::plural('match', $point['recent_played']) }} in the 90 days before this estimate @endif</p>
+          @if(isset($point['direct_opponents'], $point['played_events']))<p class="mb-1 text-muted">Included results cover {{ $point['direct_opponents'] }} distinct {{ \Illuminate\Support\Str::plural('opponent', $point['direct_opponents']) }} across {{ $point['played_events'] }} {{ \Illuminate\Support\Str::plural('event', $point['played_events']) }}.</p>@endif
+          @if(!empty($point['proxy_dated_matches']))<p class="mb-1 text-muted">Some result dates use the event date where a match date was unavailable.</p>@endif
+        @else
+          <p class="mb-1 text-muted">Detailed confidence and freshness were not recorded in this saved calculation. They will be included in the next nightly update.</p>
+        @endif
+      </div>
+    @endif
     <div class="ctr-heading mb-2"><h3 class="h5 mb-0">{{ ucfirst($ratingHistory['cohort']) }} progress</h3><span class="small text-muted">Axis {{ $axis['min'] }}–{{ $axis['max'] }} · {{ $axis['step'] }}-point steps · overall scale 0–100</span></div>
     <p class="small text-muted d-sm-none mb-2">Swipe the chart to see all months. Tap a point to explore its results.</p>
     <div class="ctr-chart-scroll" role="region" aria-label="Rating chart; scroll horizontally on small screens" tabindex="0">
@@ -88,6 +100,7 @@
       </svg>
     </div>
     <div class="ctr-legend mt-2"><span><i class="ctr-line-key" aria-hidden="true"></i>Same comparison group</span><span><i class="ctr-line-key ctr-line-key-dashed" aria-hidden="true"></i>Group or reference changed</span><span>Missing months remain gaps</span></div>
+    <p class="small text-muted mt-2 mb-0">Dashed lines show a changed comparison group or reference. An upward or downward jump across them does not reliably show improvement or decline.</p>
     <details class="mt-3"><summary>Monthly values and changes</summary><div class="table-responsive mt-2"><table class="table table-sm" style="white-space:nowrap"><thead><tr><th>Date</th><th>CTR / 100</th><th>Monthly change</th><th>Comparison</th></tr></thead><tbody>
       @foreach($points as $tablePoint)
         @php($before = $points[$loop->index - 1] ?? null)

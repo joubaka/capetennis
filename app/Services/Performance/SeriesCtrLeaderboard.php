@@ -26,6 +26,8 @@ class SeriesCtrLeaderboard
         if (!($component['converged'] ?? false)) return $result;
         $members = array_fill_keys($component['members'] ?? [], true);
         $labels = PlayerRatingProfileDirectory::birthYearLabels($today->year);
+        // Series standings retain their established U10-and-younger bucket.
+        $labels['u10'] = 'U10 · born '.($today->year - 10).' or later';
         foreach ($players->filter()->unique('id') as $player) {
             $rating = $graph['ratings'][$player->id] ?? null;
             if (!$rating || !isset($members[$player->id]) || ($rating['component'] ?? null) !== $reference

@@ -24,8 +24,18 @@
     .ctr-directory .ctr-row-detail p { margin:0 0 .25rem; }
     .ctr-directory section>h2 { margin:1.25rem 0 .75rem; }
     .ctr-directory summary { cursor:pointer;min-height:44px;align-content:center; }
+    .ctr-directory .ctr-gender-columns { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem; }
+    .ctr-directory .ctr-gender-column { min-width:0; }
+    .ctr-directory .ctr-gender-column[data-ctr-gender-column="unknown"] { grid-column:1/-1; }
+    .ctr-directory .ctr-gender-columns.ctr-single-column { grid-template-columns:minmax(0,1fr); }
+    .ctr-directory .ctr-gender-column .ctr-ranking-row { grid-template-columns:2rem minmax(0,1fr) auto;gap:.25rem .5rem;padding:.65rem .75rem; }
+    .ctr-directory .ctr-gender-column .ctr-place { grid-column:1;grid-row:1; }
+    .ctr-directory .ctr-gender-column .ctr-player { grid-column:2;grid-row:1; }
+    .ctr-directory .ctr-gender-column .ctr-score { grid-column:3;grid-row:1; }
+    .ctr-directory .ctr-gender-column .ctr-evidence { grid-column:2/-1; }
     .ctr-directory a:focus-visible,.ctr-directory summary:focus-visible { outline:2px solid #14796e;outline-offset:3px; }
     @media(max-width:767.98px) {
+        .ctr-directory .ctr-gender-columns { grid-template-columns:minmax(0,1fr); }
         .ctr-directory .ctr-hero,.ctr-directory .ctr-content { padding:1rem; }
         .ctr-directory .ctr-summary { padding:.75rem 1rem; }
         .ctr-directory .ctr-column-head { display:none; }

@@ -51,9 +51,17 @@ class PlayerRatingLeaderboardController extends Controller
                 'gender' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS))],
                 'search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1'],
                 'comparison_group' => ['nullable', 'string', 'max:64'],
-                'sort' => ['nullable', \Illuminate\Validation\Rule::in(['shared', 'score', 'age'])],
+                'sort' => ['nullable', \Illuminate\Validation\Rule::in(['grouped', 'shared', 'score', 'age'])],
+                'per_page' => ['nullable', 'integer', \Illuminate\Validation\Rule::in([10, 25, 50, 100, 500])],
             ]);
-            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'shared');
+            $columnPages = [];
+            foreach (array_keys(\App\Services\Performance\PlayerRatingProfileDirectory::AGE_GROUPS) as $ageKey) {
+                foreach (array_keys(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS) as $genderKey) {
+                    $columnPages[$ageKey.'_'.$genderKey.'_page'] = ['nullable', 'integer', 'min:1', 'max:100000'];
+                }
+            }
+            $request->validate($columnPages);
+            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'grouped', isset($settings['per_page']) ? (int) $settings['per_page'] : null);
             $data['refreshStatus'] = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
             return response()->view('backend.player-performance.profile-ratings', $data)->header('Cache-Control', 'no-store, private');
         }

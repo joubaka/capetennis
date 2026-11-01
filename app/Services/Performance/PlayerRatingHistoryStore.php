@@ -59,6 +59,7 @@ class PlayerRatingHistoryStore
                     if (!is_array($rating) || !array_key_exists('score', $rating) || !is_string($rating['component'] ?? null)
                         || !preg_match('/^[a-f0-9]{64}$/', $rating['group'] ?? '')
                         || ($rating['score'] !== null && (!is_numeric($rating['score']) || !is_finite((float) $rating['score']) || $rating['score'] < 0 || $rating['score'] > 100))) return false;
+                    if (!$this->validEvidenceSummary($rating, $month['date'])) return false;
                     if ($cohort === AllAgeRatingModel::COHORT && !$this->validSharedConnection($rating, $month['date'])) return false;
                 }
             }
@@ -78,6 +79,23 @@ class PlayerRatingHistoryStore
             foreach ($row['names'] as $name) if (!is_string($name) || mb_strlen($name) > 255) return false;
             if ($row['kind'] === 'match' && (count($row['players']) !== 2 || !in_array($row['winner_side'] ?? null, [1, 2], true)
                 || !is_string($row['score'] ?? null) || strlen($row['score']) > 150)) return false;
+        }
+        return true;
+    }
+
+    private function validEvidenceSummary(array $rating, string $date): bool
+    {
+        // Optional so existing history remains readable until its next scheduled build.
+        if (array_key_exists('confidence_label', $rating) && !in_array($rating['confidence_label'], ['Low', 'Medium', 'High'], true)) return false;
+        foreach (['recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches'] as $field) {
+            if (array_key_exists($field, $rating) && (!is_int($rating[$field]) || $rating[$field] < 0)) return false;
+        }
+        if (isset($rating['last_direct_match'])) {
+            $last = $rating['last_direct_match'];
+            if (!is_string($last) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $last) || $last > $date) return false;
+            try {
+                if (CarbonImmutable::createFromFormat('!Y-m-d', $last)->toDateString() !== $last) return false;
+            } catch (\Throwable) { return false; }
         }
         return true;
     }

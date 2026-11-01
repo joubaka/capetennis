@@ -84,6 +84,8 @@ const html = fs.readFileSync(path.join(root, 'storage/framework/testing/all-age-
         const scoreEdges = await panel.locator('.ctr-score').evaluateAll(nodes => nodes.map(el => Math.round(el.getBoundingClientRect().left)));
         assert.equal(new Set(scoreEdges).size, 1, `CTR column aligned ${width}px`);
       }
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-viewport-${width}.png`), fullPage: true });
       await panel.screenshot({ path: path.join(root, `storage/framework/testing/all-age-ratings-${width}.png`) });
       console.log(`PASS ${width}px: shared/withheld rows, filters, explanation and containment`);
       await page.setContent(unavailableHtml, { waitUntil: 'networkidle' });

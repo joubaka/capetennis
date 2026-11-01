@@ -86,7 +86,7 @@ class AllAgeRatingIntegrationTest extends TestCase
             'connection_age_days' => 500, 'connection_reference_date' => '2025-05-19', 'confidence_label' => 'Low', 'confidence_index' => 39]);
         $this->saved([$young->id => $this->rating(80), $older->id => $historical, $disconnected->id => $this->rating(null)]);
         $url = route('backend.player-performance.ratings');
-        $response = $this->get($url)->assertOk()->assertSeeInOrder(['Younger Shared', 'Older Shared', 'Disconnected Shared'])
+        $response = $this->get($url.'?sort=shared')->assertOk()->assertSeeInOrder(['Younger Shared', 'Older Shared', 'Disconnected Shared'])
             ->assertSee('CTR Rankings')->assertSee('Find players by age group, gender or name.')
             ->assertSee('data-ctr-ranking-row', false)->assertSee('data-ctr-badge', false)->assertSee('No recent played-match connection')
             ->assertSee('Low confidence — historical connection')->assertSee('2025-05-19');

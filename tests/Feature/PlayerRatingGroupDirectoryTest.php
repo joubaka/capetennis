@@ -201,10 +201,10 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $response = $this->get($url.'?sort=age')->assertOk()->assertSee('Rank by age group')->assertSee('Numbers restart within each current age group')
             ->assertSee('not calibrated between comparison groups')->assertDontSee('data-rating-position=', false);
         $rows = $response->viewData('players')->getCollection();
-        $this->assertSame(['Young First', 'Young Second', 'Girl Higher', 'Older Lower', 'Unknown Age', 'Adult Age'], $rows->pluck('name')->all());
-        $this->assertSame([1, 2, 1, 2, 1, 1], $rows->pluck('position')->all());
-        $this->assertSame([20.0, 10.0, 99.0, 60.0, 90.0, 95.0], $rows->map(fn ($row) => $row['rating']['score'] ?? null)->all());
-        $this->assertSame(4, substr_count($response->getContent(), '<h2 class="h5">'));
+        $this->assertSame(['Young Second', 'Young First', 'Girl Higher', 'Older Lower', 'Unknown Age', 'Adult Age'], $rows->pluck('name')->all());
+        $this->assertSame([1, 1, 1, 2, 1, 1], $rows->pluck('position')->all());
+        $this->assertSame([10.0, 20.0, 99.0, 60.0, 90.0, 95.0], $rows->map(fn ($row) => $row['rating']['score'] ?? null)->all());
+        $this->assertSame(5, substr_count($response->getContent(), '<h2 class="h5">'));
         if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/all-age-ratings-age.html'), $response->getContent());
         }
@@ -265,19 +265,19 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         Player::factory()->create(['name' => 'Unrated', 'surname' => 'FirstAlphabetically']);
         $this->calculated($ratings, 'reference');
         $url = route('backend.player-performance.ratings');
-        $first = $this->get($url)->assertOk()->assertSee('All players')->assertDontSee('Comparison group reference')
+        $first = $this->get($url.'?sort=shared')->assertOk()->assertSee('All players')->assertDontSee('Comparison group reference')
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->assertSame(range(1, 25), $first->viewData('players')->getCollection()->pluck('position')->all());
         $this->assertSame(30, $first->viewData('players')->total());
-        $second = $this->get($url.'?page=2')->assertOk();
+        $second = $this->get($url.'?sort=shared&page=2')->assertOk();
         $rows = $second->viewData('players')->getCollection();
         $this->assertSame(['Shared Player26', 'Shared Player27', 'Local Alpha', 'Local Implicit', 'Local Zulu'], $rows->pluck('name')->all());
         $this->assertSame([26, 27, null, null, null], $rows->pluck('position')->all());
         $this->assertSame([false, false, true, true, true], $rows->pluck('awaiting_calibration')->all());
         $this->assertSame(99.0, $rows->firstWhere('name', 'Local Zulu')['rating']['score']);
-        $searched = $this->get($url.'?search=Player27')->assertOk();
+        $searched = $this->get($url.'?sort=shared&search=Player27')->assertOk();
         $this->assertSame([27], $searched->viewData('players')->getCollection()->pluck('position')->all());
-        $this->get($url.'?search=Local')->assertOk()->assertSee('Awaiting calibration')->assertDontSee('data-rating-position=', false);
+        $this->get($url.'?sort=shared&search=Local')->assertOk()->assertSee('Awaiting calibration')->assertDontSee('data-rating-position=', false);
         $this->assertDatabaseCount('user_players', 0);
     }
 

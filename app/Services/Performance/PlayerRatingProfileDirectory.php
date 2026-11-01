@@ -8,13 +8,17 @@ use Illuminate\Support\Facades\DB;
 /** Current profile filters do not change the scope of saved rating evidence. */
 class PlayerRatingProfileDirectory
 {
-    public const AGE_GROUPS = ['u10' => 'U10 (10 and younger)', 'u11' => 'U11 (11)', 'u12' => 'U12 (12)', 'u13' => 'U13 (13)', 'u18' => 'U18 (14–18)', 'unknown' => 'Missing / invalid birth date', 'other' => 'Over 18'];
+    public const AGE_GROUPS = ['u7' => 'U7 (7 and younger)', 'u8' => 'U8 (8)', 'u9' => 'U9 (9)', 'u10' => 'U10 (10)', 'u11' => 'U11 (11)', 'u12' => 'U12 (12)', 'u13' => 'U13 (13)', 'u18' => 'U18 (14–18)', 'unknown' => 'Missing / invalid birth date', 'other' => 'Over 18'];
+    private const AGE_ORDER = ['u7' => 0, 'u8' => 1, 'u9' => 2, 'u10' => 3, 'u11' => 4, 'u12' => 5, 'u13' => 6, 'u18' => 7, 'unknown' => 8, 'other' => 9];
     public const GENDERS = ['boys' => 'Boys', 'girls' => 'Girls', 'unknown' => 'Missing / unrecognised gender'];
 
     public static function birthYearLabels(int $year): array
     {
         return [
-            'u10' => 'U10 · born '.($year - 10).' or later',
+            'u7' => 'U7 · born '.($year - 7).' or later',
+            'u8' => 'U8 · born '.($year - 8),
+            'u9' => 'U9 · born '.($year - 9),
+            'u10' => 'U10 · born '.($year - 10),
             'u11' => 'U11 · born '.($year - 11),
             'u12' => 'U12 · born '.($year - 12),
             'u13' => 'U13 · born '.($year - 13),
@@ -24,7 +28,7 @@ class PlayerRatingProfileDirectory
         ];
     }
 
-    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'shared'): array
+    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null): array
     {
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $year = $today->year;
@@ -37,7 +41,7 @@ class PlayerRatingProfileDirectory
             if ($ageGroup === 'other') {
                 $query->where('dateOfBirth', '<', ($year - 18).'-01-01');
             } else {
-                [$min, $max] = match ($ageGroup) { 'u10' => [0, 10], 'u11' => [11, 11], 'u12' => [12, 12], 'u13' => [13, 13], 'u18' => [14, 18] };
+                [$min, $max] = match ($ageGroup) { 'u7' => [0, 7], 'u8' => [8, 8], 'u9' => [9, 9], 'u10' => [10, 10], 'u11' => [11, 11], 'u12' => [12, 12], 'u13' => [13, 13], 'u18' => [14, 18] };
                 $query->whereBetween('dateOfBirth', [($year - $max).'-01-01', ($year - $min).'-12-31']);
             }
         }
@@ -52,6 +56,8 @@ class PlayerRatingProfileDirectory
         $unified = array_key_exists('all_age', $snapshot);
         // Explicit group pages always retain their within-group positions.
         $sort = $comparisonGroup === '' ? $sort : 'shared';
+        $groupedOrder = $sort === 'grouped';
+        $perPage = in_array($perPage, [10, 25, 50, 100, 500], true) ? $perPage : ($groupedOrder ? 10 : 25);
         $scoreOrder = $sort === 'score';
         $diagnosticOrder = in_array($sort, ['score', 'age'], true);
         $ageOrder = $sort === 'age' && !$snapshot['reason'];
@@ -101,7 +107,7 @@ class PlayerRatingProfileDirectory
         unset($saved);
         // Disconnected estimates have no common offset. Keep them visible, but
         // score mode is an explicitly labelled diagnostic list, not that scale.
-        $orderingHeadlines = $combined && !$diagnosticOrder
+        $orderingHeadlines = ($combined || $groupedOrder) && !$diagnosticOrder
             ? array_filter($headlines, fn ($rating) => ($rating['comparable'] ?? false) === true)
             : $headlines;
         $scoreSql = 'NULL'; $scoreBindings = [];
@@ -129,12 +135,17 @@ class PlayerRatingProfileDirectory
         }
         $componentSql = $headlines ? $componentSql.' ELSE NULL END' : 'NULL';
         $query->selectRaw('('.$componentSql.') AS rating_component', $componentBindings);
-        $query->selectRaw("CASE WHEN dateOfBirth IS NULL OR dateOfBirth < '1000-01-01' OR dateOfBirth > ? THEN 5 WHEN YEAR(dateOfBirth) >= ? THEN 0 WHEN YEAR(dateOfBirth) = ? THEN 1 WHEN YEAR(dateOfBirth) = ? THEN 2 WHEN YEAR(dateOfBirth) = ? THEN 3 WHEN YEAR(dateOfBirth) >= ? THEN 4 ELSE 6 END AS age_order",
-            [$today->toDateString(), $year - 10, $year - 11, $year - 12, $year - 13, $year - 18]);
+        $ageSql = "CASE WHEN dateOfBirth IS NULL OR dateOfBirth < '1000-01-01' OR dateOfBirth > ? THEN ".self::AGE_ORDER['unknown']." WHEN YEAR(dateOfBirth) >= ? THEN ".self::AGE_ORDER['u7'];
+        $ageBindings = [$today->toDateString(), $year - 7];
+        foreach (range(8, 13) as $age) {
+            $ageSql .= ' WHEN YEAR(dateOfBirth) = ? THEN '.self::AGE_ORDER['u'.$age];
+            $ageBindings[] = $year - $age;
+        }
+        $query->selectRaw($ageSql.' WHEN YEAR(dateOfBirth) >= ? THEN '.self::AGE_ORDER['u18'].' ELSE '.self::AGE_ORDER['other'].' END AS age_order', [...$ageBindings, $year - 18]);
         $query->selectRaw("CASE WHEN LOWER(TRIM(gender)) IN ('1','male','boy','boys','m') THEN 0 WHEN LOWER(TRIM(gender)) IN ('2','female','girl','girls','f') THEN 1 ELSE 2 END AS gender_order");
         // SQL ranks the complete filtered groups before name search and pagination.
         // Only the requested page of profiles is materialised in PHP.
-        $partition = $ageOrder ? 'PARTITION BY age_order, ordering_state ' : ($combined ? 'PARTITION BY ordering_state ' : ($unified ? 'PARTITION BY rating_component ' : 'PARTITION BY age_order, gender_order '));
+        $partition = $groupedOrder ? 'PARTITION BY age_order, gender_order, ordering_state ' : ($ageOrder ? 'PARTITION BY age_order, ordering_state ' : ($combined ? 'PARTITION BY ordering_state ' : ($unified ? 'PARTITION BY rating_component ' : 'PARTITION BY age_order, gender_order ')));
         $ranked = DB::query()->fromSub($query, 'profile_scores')->select('*')->selectRaw('ROW_NUMBER() OVER ('.$partition.'ORDER BY ordering_score IS NULL, ordering_score DESC, surname, name, id) AS position');
         $ordered = DB::query()->fromSub($ranked, 'ranked_profiles');
         foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $token) {
@@ -144,21 +155,45 @@ class PlayerRatingProfileDirectory
         elseif ($combined) { $ordered->orderBy('ordering_state'); }
         elseif (!$unified) { $ordered->orderBy('age_order')->orderBy('gender_order'); }
         else { $ordered->orderByRaw('rating_component IS NULL')->orderBy('rating_component'); }
-        $players = $ordered->orderBy('position')->paginate(25)->withQueryString();
-        $players->through(function ($player) use ($year, $today, $ratings, $headlines, $boys, $girls, $combined, $diagnosticOrder) {
+        $ordered->orderBy('position');
+        $mapPlayer = function ($player) use ($year, $today, $ratings, $headlines, $boys, $girls, $combined, $diagnosticOrder, $groupedOrder) {
             $raw = (string) $player->dateOfBirth;
             try { $birth = CarbonImmutable::createFromFormat('!Y-m-d', $raw); } catch (\Throwable) { $birth = null; }
             $age = $birth && $birth->format('Y-m-d') === $raw && $birth->year >= 1000 && $birth->lessThanOrEqualTo($today) ? $year - $birth->year : null;
-            $group = match (true) { $age === null => 'unknown', $age <= 10 => 'u10', $age <= 13 => 'u'.$age, $age <= 18 => 'u18', default => 'other' };
+            $group = match (true) { $age === null => 'unknown', $age <= 7 => 'u7', $age <= 13 => 'u'.$age, $age <= 18 => 'u18', default => 'other' };
             $normalGender = strtolower(trim((string) $player->gender));
             $genderKey = in_array($normalGender, $boys, true) ? 'boys' : (in_array($normalGender, $girls, true) ? 'girls' : 'unknown');
             $saved = $ratings[$player->id] ?? [];
-            return ['id' => $player->id, 'name' => trim($player->name.' '.$player->surname), 'age_group' => self::AGE_GROUPS[$group],
-                'age_key' => $group, 'gender_key' => $genderKey, 'position' => ($combined || $diagnosticOrder) && (int) $player->ordering_state !== 0 ? null : (int) $player->position,
-                'awaiting_calibration' => ($combined || $diagnosticOrder) && isset($headlines[$player->id]) && ($headlines[$player->id]['comparable'] ?? false) !== true,
+            return ['id' => $player->id, 'name' => trim($player->name.' '.$player->surname), 'birth_year' => $age === null ? null : $birth->year, 'age_group' => self::AGE_GROUPS[$group],
+                'age_key' => $group, 'gender_key' => $genderKey, 'position' => ($combined || $diagnosticOrder || $groupedOrder) && (int) $player->ordering_state !== 0 ? null : (int) $player->position,
+                'awaiting_calibration' => ($combined || $diagnosticOrder || $groupedOrder) && isset($headlines[$player->id]) && ($headlines[$player->id]['comparable'] ?? false) !== true,
                 'gender' => self::GENDERS[$genderKey], 'ratings' => $saved, 'rating' => $headlines[$player->id] ?? null,
                 'rating_reason' => $saved[0]['reason'] ?? null];
-        });
-        return compact('players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
+        };
+        $sections = [];
+        if ($groupedOrder) {
+            $visible = collect(); $total = 0;
+            foreach (self::AGE_ORDER as $key => $ageIndex) {
+                if ($ageGroup !== '' && $ageGroup !== $key) continue;
+                $columns = [];
+                foreach (array_keys(self::GENDERS) as $genderIndex => $genderKey) {
+                    if ($gender !== '' && $gender !== $genderKey) continue;
+                    $column = (clone $ordered)->where('age_order', $ageIndex)->where('gender_order', $genderIndex)
+                        ->paginate($perPage, ['*'], $key.'_'.$genderKey.'_page')->withQueryString();
+                    $column->through($mapPlayer);
+                    $total += $column->total();
+                    $visible = $visible->concat($column->items());
+                    if ($genderKey !== 'unknown' || $column->total() > 0 || $gender === 'unknown') $columns[$genderKey] = $column;
+                }
+                if (array_sum(array_map(fn ($column) => $column->total(), $columns)) > 0 || $ageGroup !== '') {
+                    $sections[$key] = ['label' => self::birthYearLabels($year)[$key], 'columns' => $columns];
+                }
+            }
+            $players = new \Illuminate\Pagination\LengthAwarePaginator($visible, $total, max(1, $visible->count()));
+        } else {
+            $players = $ordered->paginate($perPage)->withQueryString();
+            $players->through($mapPlayer);
+        }
+        return compact('perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
     }
 }

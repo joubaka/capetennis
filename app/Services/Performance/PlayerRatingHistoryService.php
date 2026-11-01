@@ -28,6 +28,7 @@ class PlayerRatingHistoryService
                 if (!$rating || !is_numeric($rating['score']) || !is_finite((float) $rating['score'])) continue;
                 $series[$cohort][] = ['index' => $index, 'date' => $snapshot['date'], 'score' => $rating['score'],
                     'group' => $rating['group'], 'component' => $rating['component'], 'last_activity' => $rating['last_activity'] ?? $snapshot['date']]
+                    + array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches']))
                     + (isset($rating['connection_status']) ? ['connection_status' => $rating['connection_status'],
                         'historical_connection' => (bool) ($rating['historical_connection'] ?? false),
                         'connection_age_days' => $rating['connection_age_days'] ?? null,
@@ -122,6 +123,7 @@ class PlayerRatingHistoryService
                 }
                 foreach ($data['ratings'] as $id => $rating) {
                     $compact[$cohort][$id] = ['score' => $rating['score'], 'component' => $rating['component'], 'group' => $groups[$rating['component']], 'last_activity' => $data['players'][$id]['last_played'] ?? $date->toDateString()];
+                    $compact[$cohort][$id] += array_intersect_key($rating, array_flip(['confidence_label', 'last_direct_match', 'recent_played', 'direct_opponents', 'played_events', 'proxy_dated_matches']));
                     if ($cohort === AllAgeRatingModel::COHORT && isset($rating['connection_status'])) {
                         $compact[$cohort][$id]['group'] = hash('sha256', json_encode([$groups[$rating['component']], $data['recent_backbone']['members'] ?? [], $rating['connection_status']], JSON_THROW_ON_ERROR));
                         $compact[$cohort][$id] += ['connection_status' => $rating['connection_status'],
