@@ -107,6 +107,7 @@ $controller_path = 'App\Http\Controllers';
 // Temp: OPcache clear
 // Main Page Route
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/ctr', \App\Http\Controllers\Frontend\CtrController::class)->name('ctr.index');
 Route::get('/account/statement', \App\Http\Controllers\AccountStatementController::class)
   ->middleware(['auth', 'throttle:30,1'])->name('account.statement');
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/account-statements')->name('superadmin.account-statements.')->group(function () {

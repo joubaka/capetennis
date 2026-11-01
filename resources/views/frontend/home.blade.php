@@ -102,6 +102,11 @@
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
   .ranking-link:hover .ranking-name { color: #14796e; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
+  .home-ctr { align-items: center; background: linear-gradient(120deg, #172e45, #0e5360); border-radius: .8rem; color: #fff; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; padding: 1.35rem; }
+  .home-layout .home-ctr h2 { color: #fff !important; }
+  .home-ctr p { color: #e2f2f1; margin: 0; }
+  .home-ctr-copy { flex: 1 1 16rem; min-width: 0; }
+  .home-layout .home-ctr .btn { align-items: center; display: inline-flex; justify-content: center; min-height: 44px !important; white-space: normal; }
 
   @media (max-width: 991.98px) {
     .home-controls { grid-template-columns: 1fr; }
@@ -139,6 +144,17 @@
 
 @section('content')
 <div class="home-layout row g-4 align-items-start">
+  @if(auth()->user()?->hasRole('super-user'))
+  <div class="col-12">
+    <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
+      <div class="home-ctr-copy">
+        <h2 class="h4 mb-1" id="home-ctr-title">Discover CTR Rankings</h2>
+        <p>Cape Tennis Rating · Follow playing strength. Explore age groups and Top 10 lists.</p>
+      </div>
+      <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Rankings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
+    </section>
+  </div>
+  @endif
   <main class="col-xl-8">
     @php($homeBrandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
     @php($homeBrandLogoUrl = filter_var($homeBrandLogo, FILTER_VALIDATE_URL) ? $homeBrandLogo : asset(ltrim($homeBrandLogo, '/')))
