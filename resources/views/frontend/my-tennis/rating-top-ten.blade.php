@@ -1,7 +1,7 @@
 @if($ratingTopTen['visible'] ?? false)
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
   <h3 class="h5" id="player-top-ten-heading">Your rating positions</h3>
-  <p class="small text-muted">Rating positions among players in currently published series standings. These estimates are not official rankings. Age groups use age reached this calendar year; the default includes all genders.</p>
+  <p class="small text-muted">Rating positions among players in currently published series standings. These estimates are not official rankings. Age groups use age reached this calendar year. The summaries include all genders; Explore ratings starts with your selected player's gender.</p>
   <div class="ctr-top-lists mb-3">
     @foreach(['age' => 'Overall CTR · '.($ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group').' · all genders', 'overall' => 'Overall CTR · all ages and genders'] as $scope => $label)
       @php($summary = $ratingTopTen['summary'][$scope] ?? null)

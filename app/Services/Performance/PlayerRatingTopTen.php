@@ -17,7 +17,7 @@ class PlayerRatingTopTen
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $selectedAge = $selected ? $this->ageKey($selected->dateOfBirth, $today) : '';
         $age = $filters['rating_age'] ?? $selectedAge;
-        $gender = $filters['rating_gender'] ?? '';
+        $gender = $filters['rating_gender'] ?? ($selected ? $this->genderKey($selected->gender) : '');
         $level = ($filters['rating_level'] ?? '') ?: 'overall';
         // Existing Green/Yellow filter links now select the shared Overall rating.
         if ($level === 'standard') $level = 'overall';
@@ -65,11 +65,9 @@ class PlayerRatingTopTen
             if ($rows->count() > 1000) return $this->limited($result);
             foreach ($rows as $row) {
                 if (!$row->player || !$row->series || $this->eligibility->publiclyRanked(collect([$row]), $row->series)->isEmpty()) continue;
-                $rawGender = strtolower(trim((string) $row->player->gender));
                 $public[(int) $row->player_id] = ['name' => trim($row->player->name.' '.$row->player->surname),
                     'age' => $this->ageKey($row->player->dateOfBirth, $today),
-                    'gender' => in_array($rawGender, ['1', 'male', 'boy', 'boys', 'm'], true) ? 'boys'
-                        : (in_array($rawGender, ['2', 'female', 'girl', 'girls', 'f'], true) ? 'girls' : 'unknown')];
+                    'gender' => $this->genderKey($row->player->gender)];
             }
         }
         foreach ($ratings as $key => $members) {
@@ -95,6 +93,13 @@ class PlayerRatingTopTen
         }
         if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
         return $result;
+    }
+
+    private function genderKey(mixed $raw): string
+    {
+        $gender = strtolower(trim((string) $raw));
+        return in_array($gender, ['1', 'male', 'boy', 'boys', 'm'], true) ? 'boys'
+            : (in_array($gender, ['2', 'female', 'girl', 'girls', 'f'], true) ? 'girls' : 'unknown');
     }
 
     private function positions(array $players): array

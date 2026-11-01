@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
     return;
   }
-  let loaded = false, loading = false, refreshPending = false, lastUrl = panel.dataset.ratingUrl;
+  let loaded = false, loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
   const refreshUI = new window.PlayerRatingHistoryRefreshUI(panel, () => {
     if (loading) { refreshPending = true; return; }
     return load(lastUrl);
@@ -394,10 +394,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return load(lastUrl);
   }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '' });
   const load = async (url = null) => {
-    if (loading || (loaded && !url)) return;
+    if (loading) {
+      if (url) { lastUrl = url; pendingUrl = url; }
+      return;
+    }
+    if (loaded && !url) return;
     lastUrl = url || lastUrl;
+    const requestUrl = lastUrl;
     loading = true;
-    panel.querySelectorAll('[data-rating-filters] select').forEach(select => { select.disabled = true; });
     panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
     panel.setAttribute('aria-busy', 'true');
     let status = panel.querySelector('[data-rating-load-status]');
@@ -408,35 +412,56 @@ document.addEventListener('DOMContentLoaded', () => {
     spinner.setAttribute('aria-hidden', 'true');
     status.append(spinner, 'Loading saved rating history…');
     try {
-      const response = await fetch(lastUrl, { headers: { Accept: 'text/html' }, cache: 'no-store' });
+      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' });
       if (!response.ok || response.redirected) throw new Error('Unavailable');
+      const html = await response.text();
+      if (pendingUrl) return;
       const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
-      panel.innerHTML = await response.text();
+      const focusId = panel.contains(document.activeElement) ? document.activeElement.id : null;
+      panel.innerHTML = html;
       const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
       if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
+      if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
       loaded = true;
       refreshUI.sync();
     } catch (error) {
+      if (pendingUrl) return;
       status.textContent = 'Rating history could not be loaded. ';
       const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-sm btn-outline-primary'; retry.dataset.ratingRetry = ''; retry.textContent = 'Try again'; status.append(retry);
     } finally {
-      loading = false; panel.removeAttribute('aria-busy'); panel.querySelectorAll('[data-rating-filters] select').forEach(select => { select.disabled = false; });
-      if (refreshPending) { refreshPending = false; load(lastUrl); }
+      loading = false;
+      panel.removeAttribute('aria-busy');
+      if (pendingUrl) { const nextUrl = pendingUrl; pendingUrl = null; refreshPending = false; load(nextUrl); }
+      else if (refreshPending) { refreshPending = false; load(lastUrl); }
     }
   };
   button.addEventListener('shown.bs.tab', () => load());
   panel.addEventListener('click', event => {
     const link = event.target.closest('[data-rating-link]');
-    if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey) { event.preventDefault(); load(link.getAttribute('href')); }
+    if (link && (event.button === undefined || event.button === 0) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); load(link.getAttribute('href')); }
     else if (event.target.closest('[data-rating-retry]')) load(lastUrl);
   });
+  const filterUrl = (form, changedControl = null) => {
+    const url = new URL(form.action);
+    const params = new URLSearchParams(new FormData(form));
+    // A second form may still contain hidden values from the previous response.
+    // Keep the latest requested choices while another filter update is pending.
+    const latest = new URL(lastUrl, form.action).searchParams;
+    latest.forEach((value, key) => {
+      const preserve = form.elements.namedItem(key)?.type === 'hidden'
+        || (loading && changedControl && key !== changedControl.name);
+      if (params.has(key) && preserve) params.set(key, value);
+    });
+    url.search = params.toString();
+    return url.toString();
+  };
   panel.addEventListener('change', event => {
     const form = event.target.closest('[data-rating-filters]');
-    if (form) { const url = new URL(form.action); url.search = new URLSearchParams(new FormData(form)).toString(); load(url.toString()); }
+    if (form) load(filterUrl(form, event.target));
   });
   panel.addEventListener('submit', event => {
     const form = event.target.closest('[data-rating-filters]');
-    if (form) { event.preventDefault(); const url = new URL(form.action); url.search = new URLSearchParams(new FormData(form)).toString(); load(url.toString()); }
+    if (form) { event.preventDefault(); load(filterUrl(form)); }
   });
   if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
 });

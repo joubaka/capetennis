@@ -58,6 +58,7 @@ class PlayerRatingTopTenTest extends TestCase
         $snapshot = $this->snapshot(array_combine(range(1, 13), range(99, 87)));
         $result = $this->build($snapshot, selected: $selected);
         $this->assertSame('u13', $result['filters']['rating_age']);
+        $this->assertSame('boys', $result['filters']['rating_gender']);
         $this->assertSame(['overall'], array_keys($result['lists']));
         $this->assertSame(12, $result['summary']['age']['player']['position']);
         $this->assertSame(13, $result['summary']['overall']['player']['position']);
@@ -129,13 +130,42 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(2, $result['summary']['overall']['player']['position']);
         $this->assertSame([1, 2], array_column($result['lists']['overall']['players'], 'id'));
 
-        $all = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'overall', 'rating_age' => '']);
+        $all = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'overall', 'rating_age' => '', 'rating_gender' => '']);
         $this->assertSame([3, 1, 2], array_column($all['lists']['overall']['players'], 'id'));
         $this->assertSame(62.3, $all['lists']['overall']['players'][1]['score']);
         $this->assertSame($result['summary'], $all['summary']);
         $legacy = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'standard']);
         $this->assertSame('overall', $legacy['filters']['rating_level']);
         $this->assertSame($result['lists'], $legacy['lists']);
+    }
+
+    public function test_gender_defaults_match_player_profile_and_explicit_filters_are_preserved(): void
+    {
+        foreach (['1' => 'boys', ' Male ' => 'boys', '2' => 'girls', 'F' => 'girls', '' => 'unknown'] as $raw => $expected) {
+            $selected = (new \App\Models\Player())->forceFill(['id' => 1, 'gender' => $raw]);
+            $result = $this->build([], selected: $selected);
+            $this->assertSame($expected, $result['filters']['rating_gender']);
+        }
+
+        $this->player(1);
+        $this->player(2);
+        DB::table('players')->update(['dateOfBirth' => '2017-01-01']);
+        DB::table('players')->where('id', 1)->update(['gender' => '2']);
+        DB::table('players')->where('id', 2)->update(['gender' => '1']);
+        $selected = \App\Models\Player::find(1);
+        $snapshot = $this->snapshot([1 => 60, 2 => 70]);
+        $default = $this->build($snapshot, selected: $selected);
+        $this->assertSame('girls', $default['filters']['rating_gender']);
+        $this->assertSame([1], array_column($default['lists']['overall']['players'], 'id'));
+        $all = $this->build($snapshot, selected: $selected, filters: ['rating_gender' => '']);
+        $this->assertSame('', $all['filters']['rating_gender']);
+        $this->assertSame([2, 1], array_column($all['lists']['overall']['players'], 'id'));
+        $boys = $this->build($snapshot, selected: $selected, filters: ['rating_gender' => 'boys']);
+        $this->assertSame([2], array_column($boys['lists']['overall']['players'], 'id'));
+        $this->assertSame($default['summary'], $all['summary']);
+
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $default, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertMatchesRegularExpression('/value="girls"\\s+selected/', $html);
     }
 
     public function test_tied_displayed_scores_share_positions_and_lists_are_bounded_to_ten(): void
