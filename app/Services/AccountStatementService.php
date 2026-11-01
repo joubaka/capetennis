@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /** Read-only payer statement. Tender amounts are never inferred from reservations or current fees. */

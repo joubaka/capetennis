@@ -6,6 +6,13 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_player_plus_monthly_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_01_180000_add_player_plus_monthly_subscriptions.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
     public function test_teamsheet_profile_link_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
