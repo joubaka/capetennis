@@ -22,7 +22,7 @@ class PlayerPlusReconciliation
         $prefix = json_encode([$order->id, $order->player_id, $order->user_id, $order->price_cents], JSON_THROW_ON_ERROR);
         hash_update($hash, substr($prefix, 0, -1).',[');
         $first = true;
-        foreach ($this->receipts($order)->lazyById(200, ['id', 'pf_payment_id', 'amount_gross']) as $receipt) {
+        foreach ($this->receipts($order)->select(['id', 'pf_payment_id', 'amount_gross'])->lazyById(200) as $receipt) {
             if (! $first) hash_update($hash, ',');
             hash_update($hash, json_encode($receipt->toArray(), JSON_THROW_ON_ERROR));
             $first = false;
