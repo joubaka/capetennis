@@ -29,7 +29,9 @@
     #my-tennis-page #my-tennis-tab-content { padding: 0; background: transparent; border: 0; box-shadow: none; }
     #my-tennis-page .my-tennis-player-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.5rem; background: #233d50; color: #fff; border-radius: 16px; margin-bottom: 1.75rem; }
     #my-tennis-page .my-tennis-player-avatar { display: grid; place-items: center; flex: 0 0 56px; height: 56px; border: 1px solid #72938b; border-radius: 16px; background: #3f605e; font-size: 1.2rem; font-weight: 600; }
-    #my-tennis-page .my-tennis-player-details { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-player-details { flex: 1 1 12rem; min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .my-tennis-overview-badge { min-width: 0; max-width: 100%; }
+    #my-tennis-page .my-tennis-overview-badge > a { flex-wrap: wrap; }
     #my-tennis-page .my-tennis-player-details h2 { color: #fff; font-size: 1.3rem; font-weight: 600; margin: .2rem 0 .4rem; }
     #my-tennis-page .my-tennis-player-label { color: #c2d2d5; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; }
     #my-tennis-page .my-tennis-player-status { color: #d2e3d7; font-size: .8rem; }
@@ -65,7 +67,9 @@
       #my-tennis-page .my-tennis-heading form { width: 100%; }
       #my-tennis-page .my-tennis-player-summary { padding: 1rem; gap: .75rem; }
       #my-tennis-page .my-tennis-player-avatar { flex-basis: 44px; height: 44px; border-radius: 12px; font-size: 1rem; }
+      #my-tennis-page .my-tennis-player-details { flex-basis: calc(100% - 44px - .75rem); }
       #my-tennis-page .my-tennis-player-details h2 { font-size: 1.1rem; }
+      #my-tennis-page .my-tennis-overview-badge { flex: 0 0 100%; }
       #my-tennis-page .my-tennis-upcoming-total { flex: 0 0 100%; flex-direction: row; align-items: baseline; gap: .5rem; padding: .75rem 0 0; border-left: 0; border-top: 1px solid #536c78; }
       #my-tennis-page .my-tennis-upcoming-total strong { font-size: 1.25rem; }
       #my-tennis-page .my-tennis-event-header { padding: .9rem; }
@@ -97,7 +101,7 @@
   </div>
 
   <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
-    @if($canViewRating ?? false)
+    @if($ratingPlayer ?? null)
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-rating-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-rating" type="button" role="tab" aria-controls="my-tennis-rating" aria-selected="false">Player rating</button></li>
     @endif
     <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
@@ -106,9 +110,13 @@
   </ul>
 
   <div class="tab-content" id="my-tennis-tab-content">
-  @if($canViewRating ?? false)
-  <div class="tab-pane fade" id="my-tennis-rating" role="tabpanel" aria-labelledby="my-tennis-rating-tab" data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}">
+  @if($ratingPlayer ?? null)
+  <div class="tab-pane fade" id="my-tennis-rating" role="tabpanel" aria-labelledby="my-tennis-rating-tab" @if($canViewRating ?? false) data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}" @endif>
+    @if($canViewRating ?? false)
     <div class="card" data-rating-placeholder><div class="card-body"><p role="status">Select Player rating to view the saved last 12 months.</p></div></div>
+    @else
+      @include('frontend.my-tennis.rating-preview')
+    @endif
   </div>
   @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
@@ -283,6 +291,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const button = document.getElementById('my-tennis-rating-tab');
   const panel = document.getElementById('my-tennis-rating');
   if (!button || !panel) return;
+  document.querySelector('[data-overview-rating-link]')?.addEventListener('click', event => {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    bootstrap.Tab.getOrCreateInstance(button).show();
+  });
+  if (!panel.dataset.ratingUrl) {
+    if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
+    return;
+  }
   let loaded = false, loading = false, refreshPending = false, lastUrl = panel.dataset.ratingUrl;
   const refreshUI = new window.PlayerRatingHistoryRefreshUI(panel, () => {
     if (loading) { refreshPending = true; return; }
@@ -321,11 +338,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
   button.addEventListener('shown.bs.tab', () => load());
-  document.querySelector('[data-overview-rating-link]')?.addEventListener('click', event => {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    bootstrap.Tab.getOrCreateInstance(button).show();
-  });
   panel.addEventListener('click', event => {
     const link = event.target.closest('[data-rating-link]');
     if (link && !event.ctrlKey && !event.metaKey && !event.shiftKey) { event.preventDefault(); load(link.getAttribute('href')); }

@@ -38,12 +38,14 @@
 
   <section class="card"><div class="card-body">
     <h2 class="h4">CTR and Player Plus</h2>
-    @if($canSeeCtr)
-      <p>Your CTR access is active. Choose a published series to see available CTR ratings and Top 10 lists.</p>
-    @else
-      <p>CTR ratings and Top 10 lists are part of the upcoming Player Plus experience. Membership access is not available yet.</p>
-      <p>Everyone can browse published series rankings. Individual CTR ratings remain private to authorized viewers.</p>
-    @endif
+    @if($isSuperUser)<p>Your CTR access is active. Choose a published series to see available CTR ratings and Top 10 lists.</p>@endif
+    <p>Player Plus helps players and families understand playing strength and follow progress. Open the Player rating tab in My Tennis for a preview, or choose a player to review membership and activation.</p>
+    <x-player-plus-benefits class="mb-3" />
+    <div class="ctr-intro-actions mb-3">
+      <a class="btn btn-primary" href="{{ route('player-plus.index') }}">Explore Player Plus</a>
+      <a class="btn btn-outline-primary" href="{{ route('my.tennis') }}#rating">Preview in My Tennis</a>
+    </div>
+    <p>Everyone can browse published series rankings. Private player rating history requires an active membership and a linked account.</p>
     <p class="small text-muted mb-0">CTR is provisional and separate from official ranking points or selection decisions. Only players connected to the shared rating scale can be compared in a Top 10.</p>
   </div></section>
 </main>

@@ -82,19 +82,61 @@ class PlayerPathwayService
                 && ($ballRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
             $ballAssessed = $stage !== null && $ballEligible && $ballTarget !== null && $count !== null;
             $met = $ballAssessed && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr'];
-            $stageProgress[$ball] = ['label' => $label, 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
+            $stageProgress[$ball] = ['label' => $label, 'ctr_label' => $this->ctrLabel($ball), 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
                 'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count, 'target' => $ballTarget,
                 'assessed' => $ballAssessed, 'status' => !$ballAssessed ? 'Not assessed' : ($met ? 'Targets met' : 'Targets not yet met'), 'met' => $met];
         }
         $badgeStage = $current_stage;
         $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
             'local' => $stageProgress[$badgeStage]['local'] ?? false];
+        $ctr_label = $this->ctrLabel($current_stage);
+        $next_steps = match (true) {
+            $stage === null => ['Ask Cape Tennis to record your starting stage so progress can be assessed. Your available rating and event counts remain visible.'],
+            $current_stage === null => ['Play eligible published Cape Tennis singles events at your ball level, then wait for the saved rating update. Ask Cape Tennis if played results are missing.'],
+            $current_stage === 'standard' && $division === null => ['Ask Cape Tennis to confirm your current Wilson A or B division; it is separate from your starting stage.'],
+            $target === null => ['Ask Cape Tennis to review the benchmark configuration for this level.'],
+            ($metrics['stale'] ?? true) => ['Wait for the next saved rating update before reviewing progress. Your displayed rating is the latest saved estimate.'],
+            !$eligible => ['Play more eligible singles at this ball level to build comparable rating evidence. Ask Cape Tennis or your coach to review a within-group or low-confidence estimate.'],
+            $ownEvents === null => ['Ask Cape Tennis to review the published played-event evidence for this ball level.'],
+            $ready => [match ($current_stage) {
+                'red' => 'Discuss Orange-ball play with your coach and check the next event’s age and entry rules.',
+                'orange' => 'Discuss Green/Yellow-ball play with your coach and check the next event’s age and entry rules.',
+                default => $division === 'B'
+                    ? 'Discuss Wilson A with your coach and check the event’s entry rules.'
+                    : 'Review your next competition options with your coach. TSA tournament entry depends on its own rules, not this benchmark.',
+            }, 'Both current benchmarks are met; this does not automatically promote you or complete earlier levels.'],
+            default => array_values(array_filter([
+                $score < $target['ctr'] ? 'Build your '.$ctr_label.' from '.number_format($score, 1).' to '.number_format($target['ctr'], 1).' ('.number_format($target['ctr'] - $score, 1).' points to the benchmark) through eligible singles at this ball level.' : null,
+                $ownEvents < $target['events'] ? 'Play '.($target['events'] - $ownEvents).' more published '.self::STAGES[$current_stage].' '.($target['events'] - $ownEvents === 1 ? 'event' : 'events').' to reach '.$target['events'].' at this level.' : null,
+            ])),
+        };
 
-        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge') + [
+        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
+            'benchmarks' => $this->benchmarks(),
         ];
+    }
+
+    private function ctrLabel(?string $stage): string
+    {
+        return match ($stage) {
+            'red' => 'Red-ball CTR',
+            'orange' => 'Orange-ball CTR',
+            'standard' => 'Green/Yellow-ball CTR',
+            default => 'Ball-level CTR',
+        };
+    }
+
+    private function benchmarks(): array
+    {
+        $benchmarks = [];
+        foreach (['red' => ['Red-ball CTR', 'Red ball'], 'orange' => ['Orange-ball CTR', 'Orange ball'],
+            'standard_b' => ['Green/Yellow-ball CTR · Wilson B', 'Green/Yellow ball'], 'standard_a' => ['Green/Yellow-ball CTR · Wilson A', 'Green/Yellow ball']] as $key => [$label, $ball]) {
+            $benchmarks[] = ['label' => $label, 'ball' => $ball, 'target' => $this->target($key)];
+        }
+        return $benchmarks;
     }
 
     private function validScore(mixed $score): ?float
@@ -123,6 +165,9 @@ class PlayerPathwayService
             'badge' => ['stage' => null, 'score' => null, 'local' => false],
             'eligible' => false, 'ratingMet' => false, 'eventsMet' => false, 'ready' => false, 'stageProgress' => [],
             'reason' => 'Assessment pending: a starting stage must be recorded. Available ratings and event counts are shown separately.',
+            'ctr_label' => 'Ball-level CTR',
+            'next_steps' => ['Ask Cape Tennis to record your starting stage so progress can be assessed. Your available rating and event counts remain visible.'],
+            'benchmarks' => (new self)->benchmarks(),
         ];
     }
 

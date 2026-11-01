@@ -33,7 +33,7 @@
     <div>
       <h4 class="h6">Current progress assessment</h4>
       <ul class="pathway-list">
-        <li>{{ $pathway['current_stage_label'] }} CTR: <strong>{{ $pathway['score'] !== null ? number_format($pathway['score'], 1) : 'Unavailable' }}</strong>@if($pathway['target']) / {{ number_format($pathway['target']['ctr'], 0) }} target @endif<br><span class="small {{ $pathway['ratingMet'] ? 'pathway-met' : 'text-muted' }}">{{ !$pathway['assessed'] ? 'Not assessed — see the requirements below' : ($pathway['ratingMet'] ? 'CTR target met' : 'CTR target not yet met') }}</span></li>
+        <li>{{ $pathway['ctr_label'] }}: <strong>{{ $pathway['score'] !== null ? number_format($pathway['score'], 1) : 'Unavailable' }}</strong>@if($pathway['target']) / {{ number_format($pathway['target']['ctr'], 0) }} target @endif<br><span class="small {{ $pathway['ratingMet'] ? 'pathway-met' : 'text-muted' }}">{{ !$pathway['assessed'] ? 'Not assessed — see the requirements below' : ($pathway['ratingMet'] ? 'CTR target met' : 'CTR target not yet met') }}</span></li>
         <li>Confirmed {{ $pathway['current_stage_label'] }} events: <strong>{{ $pathway['ownEvents'] ?? 'Unavailable' }}</strong> / {{ $pathway['target']['events'] ?? 3 }} minimum<br><span class="small {{ $pathway['eventsMet'] ? 'pathway-met' : 'text-muted' }}">{{ $pathway['eventsMet'] ? 'Event minimum met; this alone does not complete a stage' : 'Only played events in this ball level count towards the minimum' }}</span></li>
       </ul>
       <p class="small text-muted mb-2">{{ $pathway['events'] !== null ? $pathway['events'].' distinct published Cape Tennis events' : 'Event count unavailable' }} included in the latest rating’s {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day window. Other ball stages do not complete this stage. Events not marked Red or Orange count as Green/Yellow.</p>
@@ -41,6 +41,8 @@
       @if(!$pathway['stage'] || ($pathway['current_stage'] === 'standard' && !$pathway['division']))<p class="small text-muted mt-2 mb-0">@if(auth()->user()?->hasRole('super-user'))Use Admin tools below to record the starting stage and, where applicable, Wilson division.@else Contact Cape Tennis to record or correct the starting stage or Wilson division.@endif</p>@endif
     </div>
     <div>
+      <h4 class="h6">What to do next</h4>
+      <ul class="small ps-3 mb-3" data-pathway-next-steps>@foreach($pathway['next_steps'] as $step)<li class="mb-2">{{ $step }}</li>@endforeach</ul>
       <h4 class="h6">Competition pathway guidance</h4>
       <p class="mb-2"><strong>{{ $pathway['competition'] }}</strong></p>
       <p class="small mb-1"><strong>{{ $pathway['ready'] ? 'Next pathway options to consider:' : 'Possible pathway options; assessment pending or targets not yet met:' }}</strong></p>
@@ -57,12 +59,27 @@
           <div class="my-2"><x-ctr-badge size="small" :stage="$ball" :score="$progress['score'] ?? null" :local="$progress['local'] ?? false" /></div>
           @if($progress['reason'] ?? null)<p class="small text-muted">{{ $progress['reason'] }}</p>@endif
           <span class="small {{ $progress['met'] ? 'pathway-met' : 'text-muted' }}">{{ $progress['status'] }}</span>
-          <p class="small text-muted mt-1 mb-0">{{ $progress['events'] ?? 'Unknown' }} confirmed events @if($progress['target']) · minimum {{ $progress['target']['events'] }} · CTR {{ number_format($progress['target']['ctr'], 0) }} @else · {{ $ball === 'standard' && !$pathway['division'] ? 'A/B division not recorded' : 'target not configured' }} @endif</p>
+          <p class="small text-muted mt-1 mb-0">{{ $progress['events'] ?? 'Unknown' }} confirmed {{ $progress['label'] }} events @if($progress['target']) · minimum {{ $progress['target']['events'] }} · {{ $progress['ctr_label'] }} {{ number_format($progress['target']['ctr'], 0) }} @else · {{ $ball === 'standard' && !$pathway['division'] ? 'A/B division not recorded' : 'target not configured' }} @endif</p>
         </div>
       @endforeach
     </div>
   @endif
   <p class="small text-muted mt-2 mb-0">Each ball level has an independent opponent-adjusted rating. Red results affect Red only; Orange affects Orange only; all other results affect Green/Yellow. Progress also requires at least three published Cape Tennis events in that level. Targets describe the current {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day evidence window, not a permanent completion award. A higher rated level or recorded starting stage does not complete earlier stages.</p>
+  <details class="mt-3" data-pathway-explanation>
+    <summary>How the pathway works</summary>
+    <ol class="small ps-3 mt-2 mb-2">
+      <li>Play eligible singles at your ball level in published Cape Tennis events. Multiple matches in one event count as one event at that level.</li>
+      <li>Wait for the saved rating update. Each ball level has its own CTR; another level’s rating or event count cannot satisfy its benchmarks.</li>
+      <li>With a recorded starting stage and, for Green/Yellow, a confirmed current Wilson division, compare a current comparable CTR and played-event count against the same level’s benchmarks below.</li>
+      <li>When both benchmarks are met, review the next playing level with your coach and check the event’s own age, entry and nomination rules. Promotion is not automatic.</li>
+    </ol>
+    <ul class="small ps-3 mb-2">
+      @foreach($pathway['benchmarks'] as $benchmark)
+        <li>{{ $benchmark['label'] }}: @if($benchmark['target']) {{ number_format($benchmark['target']['ctr'], 0) }} and {{ $benchmark['target']['events'] }} published {{ $benchmark['ball'] }} events @else benchmark awaiting configuration @endif</li>
+      @endforeach
+    </ul>
+    <p class="small text-muted mb-0">These are Cape Tennis review benchmarks, not tournament entry restrictions. In particular, the Wilson A benchmark does not determine whether you may enter a TSA tournament. The highest rated badge shows your current ball level; the recorded starting stage and any stage-completion decision remain separate. Green/Yellow results do not complete Red or Orange.</p>
+  </details>
   @if(auth()->user()?->hasRole('super-user') && $pathway['available'])
     <details class="pathway-admin" data-pathway-admin><summary>Admin tools · starting stage and current division</summary>
       <p class="small text-muted mb-0">The starting stage and current Green/Yellow Wilson division are separate participation metadata. Recording a division does not change the starting stage or rated level. Progress is calculated automatically from CTR and played-event evidence; it cannot be manually awarded here.</p>
