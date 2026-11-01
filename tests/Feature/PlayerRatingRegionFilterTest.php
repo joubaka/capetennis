@@ -34,8 +34,8 @@ class PlayerRatingRegionFilterTest extends TestCase
         };
         $roster = function (Player $player, string $label, bool $imported = false, bool $linked = true) {
             $team = Team::factory()->create(['region_id' => TeamRegion::create(['region_name' => $label])->id]);
-            if ($imported) NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $player->name, 'surname' => $player->surname, 'rank' => 1, 'player_profile' => $linked ? $player->id : null]);
-            else TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1]);
+            if ($imported) NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => $player->name, 'surname' => $player->surname, 'rank' => 1, 'pay_status' => 0, 'player_profile' => $linked ? $player->id : null]);
+            else TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
         };
         $label = 'Selected Province Schools Regional Tennis Affiliation for Coastal and Inland Junior Players and Development Teams Season 2026';
         foreach (range(1, 12) as $number) {

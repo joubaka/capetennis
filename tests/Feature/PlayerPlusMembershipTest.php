@@ -193,6 +193,56 @@ class PlayerPlusMembershipTest extends TestCase
         $this->assertEquals($order->user_id, Transaction::sole()->custom_int4);
     }
 
+    public function test_payer_http_handoff_contains_fixed_signed_identity_and_does_not_activate_membership(): void
+    {
+        $this->travelTo(\Illuminate\Support\Carbon::parse('2026-11-01 12:00:00'));
+        $order = $this->order();
+        config(['services.payfast.sandbox' => true, 'services.payfast.sandbox_id' => 'plus-test-merchant',
+            'services.payfast.sandbox_key' => 'plus-test-key', 'services.payfast.passphrase_sandbox' => 'plus-test-passphrase']);
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
+        $response = $this->actingAs($order->user)->post(route('player-plus.orders.pay', $order), [
+            'amount' => '1.00', 'player_id' => $order->player_id + 1, 'user_id' => $order->user_id + 1,
+        ])->assertOk()->assertSee('form="payfastForm"', false)
+            ->assertSee('action="https://sandbox.payfast.co.za/eng/process"', false);
+
+        $document = new \DOMDocument;
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $fields = [];
+        foreach ($xpath->query('//form[@id="payfastForm"]/input[@type="hidden"]') as $input) {
+            $fields[$input->getAttribute('name')] = $input->getAttribute('value');
+        }
+        $this->assertSame('499.00', $fields['amount']);
+        $this->assertSame('PlayerPlus', $fields['custom_str5']);
+        $this->assertSame((string) $order->player_id, $fields['custom_int2']);
+        $this->assertSame((string) $order->user_id, $fields['custom_int4']);
+        $this->assertSame((string) $order->id, $fields['custom_int5']);
+        $this->assertSame(route('player-plus.orders.show', $order), $fields['return_url']);
+        $this->assertArrayNotHasKey('custom_int1', $fields);
+        $this->assertArrayNotHasKey('custom_int3', $fields);
+        $signature = $fields['signature'];
+        unset($fields['signature']);
+        $fields['passphrase'] = 'plus-test-passphrase';
+        ksort($fields);
+        $this->assertSame(md5(http_build_query($fields)), $signature);
+
+        $order->refresh();
+        $handoff = $order->payfast_handed_off_at;
+        $expiry = $order->expires_at;
+        $this->assertSame('2026-11-01 12:00:00', $handoff->format('Y-m-d H:i:s'));
+        $this->assertSame('2026-11-01 12:05:00', $expiry->format('Y-m-d H:i:s'));
+        $this->assertFalse($order->pay_status);
+        $this->assertNull($order->activated_at);
+        $this->assertDatabaseCount('player_plus_memberships', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->travel(1)->minutes();
+        $this->post(route('player-plus.orders.pay', $order))->assertRedirect()->assertSessionHasErrors('membership');
+        $order->refresh();
+        $this->assertEquals($handoff, $order->payfast_handed_off_at);
+        $this->assertEquals($expiry, $order->expires_at);
+        $this->assertFalse($order->pay_status);
+    }
+
     public function test_manual_renewal_after_expiry_is_a_new_twelve_month_term_and_exact_boundary_revokes_access(): void
     {
         $this->travelTo(\Illuminate\Support\Carbon::parse('2028-02-29 12:00:00'));
