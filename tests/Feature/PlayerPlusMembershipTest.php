@@ -83,8 +83,8 @@ class PlayerPlusMembershipTest extends TestCase
         $this->assertFalse($access->allows($parent, $player));
         $this->assertFalse($access->allowsDiscovery($parent));
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
-        $this->assertFalse($access->allows($secondParent, $player));
-        $this->assertFalse($access->allowsDiscovery($secondParent));
+        $this->assertTrue($access->allows($secondParent, $player));
+        $this->assertTrue($access->allowsDiscovery($secondParent));
     }
 
     public function test_provider_receipt_cannot_be_reused_by_another_order(): void

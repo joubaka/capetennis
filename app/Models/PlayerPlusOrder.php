@@ -17,4 +17,27 @@ class PlayerPlusOrder extends Model
 
     public function user() { return $this->belongsTo(User::class); }
     public function player() { return $this->belongsTo(Player::class); }
+
+    public function mailLogs()
+    {
+        return $this->morphMany(BulkEmailLog::class, 'related');
+    }
+
+    public function currentMembership()
+    {
+        return $this->hasOne(PlayerPlusMembership::class, 'order_id');
+    }
+
+    protected static function booted(): void
+    {
+        static::updating(function (self $order): void {
+            if ($order->isDirty('price_cents')) throw new \LogicException('A Player Plus checkout price is immutable.');
+        });
+    }
+
+    public function resolveRouteBinding($value, $field = null)
+    {
+        abort_unless(\App\Services\Performance\PlayerPlusService::ready(), 404);
+        return parent::resolveRouteBinding($value, $field);
+    }
 }

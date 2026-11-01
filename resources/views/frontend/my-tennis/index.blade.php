@@ -12,7 +12,6 @@
 
 @section('content')
 <div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y">
-  <p><a href="{{ route('player-plus.index') }}" class="btn btn-outline-primary">Player Plus · membership and benefits</a></p>
   <style>
     #my-tennis-page { min-width: 0; overflow-x: clip; }
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }
@@ -22,10 +21,11 @@
     #my-tennis-page .my-tennis-heading p { font-size: .9rem; }
     #my-tennis-page .my-tennis-heading form { width: min(100%, 18rem); }
     #my-tennis-page .my-tennis-reminder { border-color: #d4dfd9; color: #456356; background: #f2f6f2; }
-    #my-tennis-tabs { flex-wrap: wrap; gap: .35rem; background: #e9eeeb; padding: .35rem; border-radius: 12px; }
-    #my-tennis-tabs .nav-item { flex: 1 1 8rem; min-width: 0; }
-    #my-tennis-tabs .nav-link { white-space: normal; width: 100%; min-height: 44px; padding: .65rem .5rem; font-size: .85rem; color: #576861; border-radius: 8px; }
-    #my-tennis-tabs .nav-link.active { background: #233d50; color: #fff; box-shadow: 0 2px 5px rgba(32, 56, 75, .12); }
+    #my-tennis-tabs { flex-wrap: wrap; gap: .25rem; background: transparent; padding: 0; border-bottom: 1px solid #dce5e3; border-radius: 0; }
+    #my-tennis-tabs .nav-item { flex: 0 1 auto; min-width: 0; }
+    #my-tennis-tabs .nav-item:last-child { margin-left: auto; }
+    #my-tennis-tabs .nav-link { white-space: normal; width: 100%; min-height: 44px; padding: .75rem 1rem; font-size: .85rem; color: #536873; border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; }
+    #my-tennis-tabs .nav-link.active { background: #edf6f3; color: #14675c; border-bottom-color: #167b70; box-shadow: none; }
     #my-tennis-page #my-tennis-tab-content { padding: 0; background: transparent; border: 0; box-shadow: none; }
     #my-tennis-page .my-tennis-player-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.5rem; background: #233d50; color: #fff; border-radius: 16px; margin-bottom: 1.75rem; }
     #my-tennis-page .my-tennis-player-avatar { display: grid; place-items: center; flex: 0 0 56px; height: 56px; border: 1px solid #72938b; border-radius: 16px; background: #3f605e; font-size: 1.2rem; font-weight: 600; }
@@ -81,13 +81,43 @@
     .my-tennis-manage-card .player-chip { align-items: center; display: flex; gap: .75rem; justify-content: space-between; }
     .my-tennis-manage-card .player-chip + .player-chip { border-top: 1px solid rgba(75, 70, 92, .12); padding-top: .75rem; }
     .my-tennis-manage-card .player-chip + .player-chip { margin-top: .75rem; }
+    #my-tennis-page .my-tennis-heading { padding: 0; margin-bottom: 1rem !important; }
+    #my-tennis-page .my-tennis-heading h1 { font-size: 1rem; letter-spacing: 0; margin: 0 !important; }
+    #my-tennis-page .my-tennis-heading p { font-size: .8rem; }
+    #my-tennis-page .my-tennis-profile-header { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.25rem; margin-bottom: 1.25rem; background: #fff; border: 1px solid #e5ece9; border-radius: 16px; }
+    #my-tennis-page .my-tennis-profile-header h2 { color: #20384b; font-size: clamp(1.4rem, 3vw, 1.8rem); margin: 0 0 .25rem; }
+    #my-tennis-page .my-tennis-profile-header .my-tennis-player-avatar { background: #edf6f3; color: #14675c; border: 0; border-radius: 50%; }
+    #my-tennis-page .my-tennis-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+    #my-tennis-page .my-tennis-plus-link { color: #14675c; background: #edf6f3; border: 1px solid #cce2da; }
+    #my-tennis-page .my-tennis-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: 1rem; font-size: .8rem; }
+    #my-tennis-page .my-tennis-preview-toolbar summary { cursor: pointer; padding: .75rem 0; }
+    #my-tennis-page .my-tennis-player-summary { padding: 1rem 1.25rem; background: #fff; color: #20384b; border: 1px solid #e5ece9; margin-bottom: 1.25rem; }
+    #my-tennis-page .my-tennis-player-summary .text-white { color: #14675c !important; }
+    #my-tennis-page .my-tennis-player-summary h2 { color: #20384b; font-size: 1.1rem; margin: 0 0 .25rem; }
+    #my-tennis-page .my-tennis-upcoming-total { border-color: #dce5e3; }
+    #my-tennis-page .my-tennis-upcoming-total strong { color: #20384b; }
+    #my-tennis-page .my-tennis-upcoming-total span { color: #536873; }
+    #my-tennis-page .my-tennis-plus-invitation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem; margin-bottom: 1.25rem; background: #edf6f3; border-radius: 14px; }
+    #my-tennis-page .my-tennis-plus-invitation p { margin: .25rem 0 0; color: #536873; }
+    #my-tennis-page .player-chip > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+    #my-tennis-page .player-actions { flex-shrink: 0; position: relative; }
+    #my-tennis-page .player-actions summary { cursor: pointer; color: #536873; padding: .75rem; min-height: 44px; }
+    #my-tennis-page .player-actions[open] .my-tennis-unlink { position: absolute; z-index: 5; right: 0; top: 100%; background: #fff; border: 1px solid #e5ece9; box-shadow: 0 4px 16px #20384b12; white-space: nowrap; }
+    #my-tennis-page #my-tennis-bulk-unlink[hidden] { display: none !important; }
+    @media (max-width: 575.98px) {
+      #my-tennis-tabs .nav-item { flex: 1 1 45%; }
+      #my-tennis-tabs .nav-item:last-child { margin-left: 0; }
+      #my-tennis-tabs .nav-link { padding: .65rem .4rem; }
+      #my-tennis-page .my-tennis-header-actions { width: 100%; }
+      #my-tennis-page .my-tennis-header-actions .btn { flex: 1; }
+      #my-tennis-page .my-tennis-profile-header { padding: 1rem; }
+    }
   </style>
   <div class="my-tennis-heading d-flex flex-wrap justify-content-between align-items-center mb-3">
     <div>
       <h1 class="mb-1">My Tennis</h1>
       <p class="text-muted mb-0">Your players, entries and published match information.</p>
     </div>
-    <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
     @if($players->isNotEmpty())
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
         @if($previewNonPlus ?? false)<input type="hidden" name="preview_non_plus" value="1">@endif
@@ -101,20 +131,41 @@
     @endif
   </div>
 
+  @php
+    $headerPlayer = $selectedPlayer ?? ($ratingPlayer ?? null);
+  @endphp
+  @if($headerPlayer)
+    <header class="my-tennis-profile-header" data-player-profile-header>
+      <span class="my-tennis-player-avatar" aria-hidden="true">{{ collect(preg_split('/\s+/u', trim($headerPlayer->full_name), -1, PREG_SPLIT_NO_EMPTY))->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') }}</span>
+      <div class="my-tennis-player-details">
+        <h2>{{ $headerPlayer->full_name }}</h2>
+        @if($selectedPlayer)<p class="small text-muted mb-0">{{ $profile['message'] }}</p>@endif
+      </div>
+      <div class="my-tennis-header-actions">
+        @if($selectedPlayer)
+        <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
+        @endif
+        <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
+      </div>
+    </header>
+  @else
+    <p><a class="btn my-tennis-plus-link" href="{{ route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
+  @endif
+
   @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
-    <div class="border rounded p-3 mb-3" data-non-plus-preview-control>
-      <a class="btn btn-outline-primary" role="switch" aria-label="Preview without Player Plus" aria-checked="{{ $previewNonPlus ? 'true' : 'false' }}" href="{{ route('my.tennis', ['player' => $ratingPlayer->id, 'preview_non_plus' => $previewNonPlus ? null : 1]) }}#rating">Preview without Player Plus · {{ $previewNonPlus ? 'On' : 'Off' }}</a>
+    <div class="my-tennis-preview-toolbar" data-non-plus-preview-control>
+      <a class="btn btn-sm btn-outline-secondary" role="switch" aria-label="Preview without Player Plus" aria-checked="{{ $previewNonPlus ? 'true' : 'false' }}" href="{{ route('my.tennis', ['player' => $ratingPlayer->id, 'preview_non_plus' => $previewNonPlus ? null : 1]) }}#rating">Preview without Player Plus · {{ $previewNonPlus ? 'On' : 'Off' }}</a>
       @if($previewNonPlus)
-        <p class="small mb-0 mt-2" role="status">Non-Plus preview is on. You are seeing the ratings preview and activation link shown to users without Plus. The player's membership is unchanged.</p>
+        <details><summary>About this preview</summary><p class="mb-0" role="status">Non-Plus preview is on. You are seeing the ratings preview and activation link shown to users without Plus. The player's membership is unchanged.</p></details>
       @endif
     </div>
   @endif
 
   <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
+    <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
     @if($ratingPlayer ?? null)
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-rating-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-rating" type="button" role="tab" aria-controls="my-tennis-rating" aria-selected="false">Player rating</button></li>
     @endif
-    <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-manage-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-manage" type="button" role="tab" aria-controls="my-tennis-manage" aria-selected="false"><i class="ti ti-users me-1" aria-hidden="true"></i>Manage players</button></li>
   </ul>
@@ -142,15 +193,33 @@
   @else
     @include('frontend.my-tennis.teamsheet-connection')
     <div class="my-tennis-player-summary">
-      <span class="my-tennis-player-avatar" aria-hidden="true">{{ collect(preg_split('/\s+/u', trim($selectedPlayer->full_name), -1, PREG_SPLIT_NO_EMPTY))->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') }}</span>
-      <div class="my-tennis-player-details">
-        <span class="my-tennis-player-label">Player</span>
-        <h2>{{ $selectedPlayer->full_name }}</h2>
-        <span class="my-tennis-player-status">{{ $profile['message'] }}</span>
-      </div>
+      <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-1">Your tennis at a glance</h2><p class="small text-muted mb-0">Published matches and your player rating.</p></div>
       @include('frontend.my-tennis.overview-badge')
       <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Upcoming matches</span></div>
     </div>
+    @if(($canViewRating ?? false) && ($overviewPathway ?? null))
+      <aside class="card card-body mb-4" aria-labelledby="overview-development-heading" data-overview-development-comment>
+        <h2 id="overview-development-heading" class="h6">Your next development target</h2>
+        @if($overviewPathway['assessed'] && $overviewPathway['target'])
+          <p class="mb-2">
+            {{ $overviewPathway['ready'] ? 'Benchmark achieved:' : 'Aim for' }} <strong>{{ $overviewPathway['ctr_label'] }} {{ number_format($overviewPathway['target']['ctr'], 1) }}</strong>
+            @if($overviewPathway['benchmark_division'])
+              for the Wilson {{ $overviewPathway['benchmark_division'] }} benchmark,
+            @endif
+            with at least {{ $overviewPathway['target']['events'] }} published {{ $overviewPathway['current_stage_label'] }} events.
+          </p>
+        @endif
+        <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
+        <p class="small text-muted mb-2">These are development targets; each tournament has its own entry rules.</p>
+        <a class="align-self-start" href="{{ route('my.tennis.pathway', $selectedPlayer) }}">What should I play next? <span aria-hidden="true">→</span></a>
+      </aside>
+    @endif
+    @if(($ratingPlayer ?? null) && !($canViewRating ?? false))
+      <aside class="my-tennis-plus-invitation" aria-label="Explore Player Plus">
+        <div><strong>Understand their game. Follow their progress.</strong><p class="small">Explore their CTR, 12 months of progress and the results behind the number.</p><p class="small">R{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }} per player / year · No automatic renewal. Eligible results required.</p></div>
+        <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+      </aside>
+    @endif
     <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
       <h2 class="my-tennis-section-heading mb-0">Upcoming scheduled matches</h2>
     </div>
@@ -246,7 +315,7 @@
           <p class="text-muted mb-0">Link another player or manage the profiles connected to your account.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-          <button id="my-tennis-bulk-unlink" class="btn btn-outline-danger" type="button" disabled><i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink selected</button>
+          <button id="my-tennis-bulk-unlink" class="btn btn-outline-danger" type="button" hidden disabled><i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink selected</button>
           <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#link-player-panel" aria-expanded="false" aria-controls="link-player-panel"><i class="ti ti-user-plus me-1" aria-hidden="true"></i>Link a player</button>
         </div>
       </div>
@@ -275,9 +344,11 @@
                 <small class="text-muted">Legacy account link</small>
               @endif
             </div>
-            <button class="btn btn-sm btn-outline-danger my-tennis-unlink" type="button" data-player-id="{{ $playerOption->id }}" data-player-name="{{ $playerOption->full_name }}">
+            <details class="player-actions"><summary aria-label="Actions for {{ $playerOption->full_name }}">Actions</summary>
+            <button class="btn btn-sm text-danger my-tennis-unlink" type="button" data-player-id="{{ $playerOption->id }}" data-player-name="{{ $playerOption->full_name }}">
               <i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink
             </button>
+            </details>
           </div>
         @empty
           <p class="text-muted mb-0">No linked players yet. Search above to link a player profile.</p>
@@ -399,6 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const refreshBulkButton = () => {
     const count = selectedIds().length;
     bulkButton.disabled = count === 0;
+    bulkButton.hidden = count === 0;
     bulkButton.innerHTML = `<i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink selected${count ? ` (${count})` : ''}`;
   };
 
@@ -420,9 +492,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const source = document.createElement('small'); source.className = 'text-muted'; source.textContent = player.linked ? 'Linked to this account' : 'Legacy account link';
       details.append(checkbox, name, source);
       const unlink = document.createElement('button');
-      unlink.className = 'btn btn-sm btn-outline-danger my-tennis-unlink'; unlink.type = 'button'; unlink.dataset.playerId = player.id; unlink.dataset.playerName = player.name;
+      unlink.className = 'btn btn-sm text-danger my-tennis-unlink'; unlink.type = 'button'; unlink.dataset.playerId = player.id; unlink.dataset.playerName = player.name;
       unlink.innerHTML = '<i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink';
-      row.append(details, unlink); linkedPlayers.append(row);
+      const actions = document.createElement('details'); actions.className = 'player-actions';
+      const summary = document.createElement('summary'); summary.textContent = 'Actions'; summary.setAttribute('aria-label', `Actions for ${player.name}`);
+      actions.append(summary, unlink);
+      row.append(details, actions); linkedPlayers.append(row);
     });
   };
 

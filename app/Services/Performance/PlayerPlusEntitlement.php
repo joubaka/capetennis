@@ -4,7 +4,6 @@ namespace App\Services\Performance;
 
 use App\Models\{Player, PlayerPlusMembership, User};
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Schema;
 
 class PlayerPlusEntitlement
 {
@@ -17,14 +16,14 @@ class PlayerPlusEntitlement
 
     public function forPlayer(User $user, Player $player): bool
     {
-        return Schema::hasTable('player_plus_memberships')
+        return PlayerPlusService::ready()
             && $this->linkedPlayers($user)->whereKey($player->id)->exists()
             && $this->active()->where('player_id', $player->id)->exists();
     }
 
     public function discovery(User $user): bool
     {
-        return Schema::hasTable('player_plus_memberships')
+        return PlayerPlusService::ready()
             && $this->active()->whereIn('player_id', $this->linkedPlayers($user)->select('players.id'))->exists();
     }
 

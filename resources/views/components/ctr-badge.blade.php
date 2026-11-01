@@ -1,4 +1,4 @@
-@props(['score' => null, 'local' => false, 'title' => null, 'compact' => false, 'size' => 'standard', 'stage' => null, 'overall' => false])
+@props(['score' => null, 'local' => false, 'title' => null, 'compact' => false, 'size' => 'standard', 'stage' => null, 'overall' => false, 'label' => null])
 @php
     $validScore = is_numeric($score) && is_finite((float) $score);
     $small = $size === 'small';
@@ -14,7 +14,7 @@
         default => ['#095c60', '#edf8f7', '#095c60'],
     };
     if ($overall) { [$ink, $paper, $ring] = ['#475569', '#f1f5f9', '#64748b']; $stageKnown = false; $stampStage = 'overall'; }
-    $stageLabel = $overall ? 'Overall CTR · all ball levels' : ($stageKnown ? $stageLabels[$ball] : 'Ball stage not recorded');
+    $stageLabel = $overall ? 'Overall CTR · all ball levels' : ($stageKnown ? ($label ?? $stageLabels[$ball]) : 'Ball stage not recorded');
 @endphp
 <span {{ $attributes->class(['ctr-badge', 'ctr-badge--local' => $local])->merge(['style' => 'display:inline-flex;flex-direction:column;align-items:center;justify-content:center;position:relative;gap:'.($inline ? '0' : ($small ? '.08rem' : '.15rem')).';width:'.($inline ? '3rem' : ($small ? '4.5rem' : '7rem')).';height:'.($inline ? '3rem' : ($small ? '4.5rem' : '7rem')).';flex-shrink:0;box-sizing:border-box;padding:'.($inline ? '.4rem' : '.8rem').';text-align:center;vertical-align:middle;border:0;border-radius:50%;background:'.$paper.';color:'.$ink.'!important;font-weight:700;line-height:1.25;font-variant-numeric:tabular-nums;', 'aria-label' => 'CTR '.($validScore ? number_format((float) $score, 1) : 'unavailable').($local && $validScore ? ' within-group only' : '').' · '.$stageLabel, 'title' => $title ?? ($local ? 'Provisional within-group score only; not comparable with other groups.' : 'Cape Tennis Rating: provisional singles ability, not official ranking points.')]) }} data-ctr-badge data-ctr-stage="{{ $stampStage }}" data-ctr-stage-known="{{ $stageKnown ? 'true' : 'false' }}">
     {{-- Decorative stamp rings stay separate from the live, accessible rating. --}}

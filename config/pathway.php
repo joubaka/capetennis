@@ -6,7 +6,7 @@ return [
     'targets' => [
         'red' => ['ctr' => 50, 'events' => 3],
         'orange' => ['ctr' => 60, 'events' => 3],
-        'standard_b' => ['ctr' => 70, 'events' => 3],
-        'standard_a' => ['ctr' => 85, 'events' => 3],
     ],
+    'wilson_a_above' => 50,
+    'tsa_above' => 85,
 ];

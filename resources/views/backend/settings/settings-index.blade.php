@@ -56,6 +56,28 @@
   <form action="{{ route('settings.store') }}" method="POST">
     @csrf
 
+    <div class="row mb-4">
+      <div class="col-md-6">
+        <section class="card card-body" aria-labelledby="plus-settings-heading">
+          <h2 class="h5" id="plus-settings-heading">Player Plus</h2>
+          <input type="hidden" name="player_rating_membership_enabled" value="0">
+          <label class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="sa-plus-sales" name="player_rating_membership_enabled" value="1" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
+            <span class="form-check-label">Accept new purchases</span>
+          </label>
+          <p class="small text-muted">Pausing sales keeps existing verified memberships accessible until expiry.</p>
+          <label class="form-label" for="sa-plus-price">Annual price per player (R)</label>
+          <div class="d-flex flex-wrap gap-2">
+            <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="1" max="99999.99" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>
+            <button class="btn btn-outline-primary" type="button" id="sa-plus-price-save" style="min-height:44px">Save annual price</button>
+          </div>
+          <p class="small text-muted mt-2 mb-0">Applies to new checkouts only. Existing checkout prices and purchased terms remain unchanged.</p>
+          <p id="sa-plus-price-status" class="small mt-2" role="status"></p>
+          <a class="align-self-start d-inline-block py-2" href="{{ route('superadmin.player-plus.index') }}">Review Plus payment issues</a>
+        </section>
+      </div>
+    </div>
+
     {{-- ===== DEFAULT / GLOBAL SETTINGS ===== --}}
     <div class="card mb-4">
       <div class="card-header">
@@ -315,6 +337,30 @@
   var csrfToken = document.querySelector('meta[name="csrf-token"]') ?
     document.querySelector('meta[name="csrf-token"]').getAttribute('content') :
     document.querySelector('input[name="_token"]').value;
+
+  $('#sa-plus-price-save').on('click', function () {
+    var button = $(this);
+    var input = document.getElementById('sa-plus-price');
+    if (!input.reportValidity()) return;
+    button.prop('disabled', true);
+    $.ajax({url: '{{ route('settings.player-plus-price') }}', method: 'POST',
+      data: {_token: csrfToken, player_plus_annual_price: input.value},
+      success: function (response) { $('#sa-plus-price-status').text(response.message); },
+      error: function (xhr) { $('#sa-plus-price-status').text(xhr.responseJSON?.errors?.player_plus_annual_price?.[0] || 'The annual price could not be saved.'); },
+      complete: function () { button.prop('disabled', false); }
+    });
+  });
+
+  $('#sa-plus-sales').on('change', function () {
+    var input = $(this);
+    input.prop('disabled', true);
+    $.ajax({url: '{{ route('settings.store.single') }}', method: 'POST',
+      data: {_token: csrfToken, key: 'player_rating_membership_enabled', value: input.is(':checked') ? '1' : '0'},
+      success: function () { $('#sa-plus-price-status').text('Purchase availability saved. Existing paid access is unchanged.'); },
+      error: function () { input.prop('checked', !input.is(':checked')); $('#sa-plus-price-status').text('Purchase availability could not be saved.'); },
+      complete: function () { input.prop('disabled', false); }
+    });
+  });
 
   document.querySelectorAll('.save-content-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {

@@ -15,6 +15,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('assistant:prune --apply --limit=1000')->hourly()->withoutOverlapping();
         $schedule->command('player-ability:refresh')->dailyAt('00:00')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
         $schedule->command('player-rating-history:refresh')->dailyAt('03:00')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
+        $schedule->command('player-plus:notifications --apply')->dailyAt('08:30')->timezone('Africa/Johannesburg')->withoutOverlapping();
         $schedule->command('teamsheet:sync-tennis')->hourly()->withoutOverlapping(30)->runInBackground()
             ->when(fn () => app(\App\Services\Performance\TeamSheetTennisImportService::class)->origin() !== null
                 && app(\App\Services\Performance\TeamSheetTennisImportService::class)->ready());

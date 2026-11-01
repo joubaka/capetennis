@@ -40,6 +40,7 @@ class SettingsController extends Controller
             'admin_notification_email'         => 'nullable|email|max:255',
             'brand_logo_url'                   => 'nullable|string|max:2048',
             'withdrawal_deadline_days'         => 'nullable|integer|min:0|max:365',
+            'player_plus_annual_price' => ['sometimes', 'required', 'string', 'regex:/^(0|[1-9][0-9]{0,4})(?:\.[0-9]{1,2})?$/D'],
         ];
 
         foreach (array_keys(SiteSetting::PAYMENT_METHOD_LABELS) as $method) {
@@ -47,6 +48,7 @@ class SettingsController extends Controller
         }
 
         $request->validate($rules);
+        if ($request->has('player_plus_annual_price')) $this->savePlusPrice($request);
 
         // PayFast
         SiteSetting::set('payfast_fee_percentage', $request->input('payfast_fee_percentage'), SiteSetting::GROUP_PAYFAST);
@@ -152,6 +154,24 @@ class SettingsController extends Controller
         SiteSetting::set($key, $request->input('value'), $group);
 
         return response()->json(['success' => true, 'message' => 'Setting saved.']);
+    }
+
+    public function storePlusPrice(Request $request)
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        $request->validate(['player_plus_annual_price' => ['required', 'string', 'regex:/^(0|[1-9][0-9]{0,4})(?:\.[0-9]{1,2})?$/D']]);
+        $this->savePlusPrice($request);
+        return response()->json(['success' => true, 'message' => 'Annual price saved for new checkouts. Existing checkout prices are unchanged.']);
+    }
+
+    private function savePlusPrice(Request $request): void
+    {
+        abort_unless($request->user()->hasRole('super-user'), 403);
+        $cents = \App\Services\Performance\PlayerPlusService::parseAmount($request->input('player_plus_annual_price'));
+        if ($cents === null || $cents < 100 || $cents > 9999999) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['player_plus_annual_price' => 'Enter an annual price from R1.00 to R99,999.99 with at most two decimal places.']);
+        }
+        SiteSetting::set(\App\Services\Performance\PlayerPlusService::PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
     }
 
     /**

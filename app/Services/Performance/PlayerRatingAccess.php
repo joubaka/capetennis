@@ -2,7 +2,7 @@
 
 namespace App\Services\Performance;
 
-use App\Models\{Player, SiteSetting, User};
+use App\Models\{Player, User};
 use Illuminate\Support\Facades\Gate;
 
 class PlayerRatingAccess
@@ -16,8 +16,7 @@ class PlayerRatingAccess
         if ($user->hasRole('super-user')) return true;
 
         // Entitlements belong to players; sponsorship and legacy coaching payments grant no access.
-        return SiteSetting::get(self::SETTING, '0') === '1'
-            && Gate::has('player-premium-rating-discovery')
+        return Gate::has('player-premium-rating-discovery')
             && Gate::forUser($user)->allows('player-premium-rating-discovery');
     }
 
@@ -26,8 +25,7 @@ class PlayerRatingAccess
         if ($user->hasRole('super-user')) return true;
 
         // A current player link and an active per-player entitlement are both required.
-        return SiteSetting::get(self::SETTING, '0') === '1'
-            && ((int) $player->userId === (int) $user->id || $user->players()->whereKey($player->id)->exists())
+        return ((int) $player->userId === (int) $user->id || $user->players()->whereKey($player->id)->exists())
             && Gate::has('player-premium-rating')
             && Gate::forUser($user)->allows('player-premium-rating', $player);
     }

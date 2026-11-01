@@ -5,13 +5,41 @@ namespace App\Services\Performance;
 use App\Domain\Payments\Services\{PaymentOrchestrator, PaymentTransactionService};
 use App\Models\{Player, PlayerPlusMembership, PlayerPlusOrder, SiteSetting, User};
 use App\Services\Payfast;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\{DB, Schema};
 use Illuminate\Validation\ValidationException;
 
 /** Sponsorship is payment ownership only. This service never creates user_players links. */
 class PlayerPlusService
 {
     public const PRICE_CENTS = 49900;
+    public const PRICE_SETTING = 'player_plus_annual_price_cents';
+
+    public static function priceCents(): int
+    {
+        $value = (string) SiteSetting::get(self::PRICE_SETTING, (string) self::PRICE_CENTS);
+        return ctype_digit($value) && (int) $value >= 100 && (int) $value <= 9999999 ? (int) $value : self::PRICE_CENTS;
+    }
+
+    public static function amount(int $cents): string
+    {
+        return intdiv($cents, 100).'.'.str_pad((string) ($cents % 100), 2, '0', STR_PAD_LEFT);
+    }
+
+    public static function parseAmount(string $amount): ?int
+    {
+        if (! preg_match('/^(0|[1-9][0-9]{0,4})(?:\.([0-9]{1,2}))?$/D', $amount, $match)) return null;
+        return ((int) $match[1] * 100) + (int) str_pad($match[2] ?? '', 2, '0');
+    }
+
+    public static function ready(): bool
+    {
+        return Schema::hasTable('player_plus_orders') && Schema::hasTable('player_plus_memberships');
+    }
+
+    public static function salesEnabled(): bool
+    {
+        return self::ready() && SiteSetting::get(PlayerRatingAccess::SETTING, '0') === '1';
+    }
 
     public function __construct(private PaymentOrchestrator $payments, private PaymentTransactionService $receipts) {}
 
@@ -20,10 +48,10 @@ class PlayerPlusService
         throw ValidationException::withMessages(['membership' => $message]);
     }
 
-    public function start(Player $player, User $payer, string $token): PlayerPlusOrder
+    public function start(Player $player, User $payer, string $token, ?int $quotedPrice = null): PlayerPlusOrder
     {
-        abort_unless(SiteSetting::get(PlayerRatingAccess::SETTING, '0') === '1', 404);
-        return DB::transaction(function () use ($player, $payer, $token) {
+        abort_unless(self::salesEnabled(), 404);
+        return DB::transaction(function () use ($player, $payer, $token, $quotedPrice) {
             Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
             $existing = PlayerPlusOrder::where('request_token', $token)->lockForUpdate()->first();
             if ($existing) {
@@ -41,15 +69,19 @@ class PlayerPlusService
                 }
                 $this->close($attempt, 'expired');
             }
+            $price = self::priceCents();
+            if ($quotedPrice !== null && $quotedPrice !== $price) {
+                $this->reject('The yearly price has changed. Please review the player membership page before continuing.');
+            }
             $order = PlayerPlusOrder::create(['player_id' => $player->id, 'user_id' => $payer->id,
-                'request_token' => $token, 'price_cents' => self::PRICE_CENTS, 'expires_at' => now()->addMinutes(5)]);
-            return $this->payments->initiatePayment($order, 0, self::PRICE_CENTS / 100);
+                'request_token' => $token, 'price_cents' => $price, 'expires_at' => now()->addMinutes(5)]);
+            return $this->payments->initiatePayment($order, 0, $price / 100);
         }, 3);
     }
 
     public function handoff(PlayerPlusOrder $order, User $payer): PlayerPlusOrder
     {
-        abort_unless(SiteSetting::get(PlayerRatingAccess::SETTING, '0') === '1', 404);
+        abort_unless(self::salesEnabled(), 404);
         return DB::transaction(function () use ($order, $payer) {
             Player::whereKey($order->player_id)->lockForUpdate()->firstOrFail();
             $order = PlayerPlusOrder::lockForUpdate()->findOrFail($order->id);
@@ -74,7 +106,7 @@ class PlayerPlusService
         $payfast->custom_int4 = $order->user_id;
         $payfast->custom_int5 = $order->id;
         $payfast->custom_str5 = 'PlayerPlus';
-        $payfast->setAmount(self::PRICE_CENTS / 100);
+        $payfast->setAmount($order->price_cents / 100);
         $payfast->setItem('Player Plus - 12 months');
         $payfast->setReturnUrl(route('player-plus.orders.show', $order));
         $payfast->setCancelUrl(route('player-plus.orders.show', $order));
@@ -116,8 +148,7 @@ class PlayerPlusService
             }
             $providerId = (string) ($data['pf_payment_id'] ?? '');
             if ($providerId === '' || strlen($providerId) > 120 || ! $order->payfast_handed_off_at
-                || ! preg_match('/^499(?:\.0{1,2})?$/', (string) ($data['amount_gross'] ?? ''))
-                || $order->price_cents !== self::PRICE_CENTS) {
+                || self::parseAmount((string) ($data['amount_gross'] ?? '')) !== $order->price_cents) {
                 $this->reject('Payment amount or handoff mismatch.');
             }
             // Receipt replay protection is shared across all payment types, not just Plus.
@@ -126,6 +157,7 @@ class PlayerPlusService
                 if ($order->payfast_pf_payment_id !== $providerId) {
                     $this->payments->recordVerifiedPaymentForReconciliation($order, $providerId,
                         'Additional payment '.$providerId.' received for an already settled checkout. Original membership unchanged.');
+                    app(PlayerPlusNotifications::class)->record($order->fresh(), 'reconciliation');
                 }
                 return;
             }
@@ -137,6 +169,7 @@ class PlayerPlusService
             }
             if ($reason) {
                 $this->payments->recordVerifiedPaymentForReconciliation($order, $providerId, $reason);
+                app(PlayerPlusNotifications::class)->record($order->fresh(), 'reconciliation');
                 return;
             }
             $order = $this->payments->finalizePayment($order, ['payment_method' => 'payfast',
@@ -147,6 +180,7 @@ class PlayerPlusService
                 'order_id' => $order->id, 'starts_at' => $starts, 'ends_at' => $ends,
             ]);
             $order->update(['activated_at' => $starts, 'term_starts_at' => $starts, 'term_ends_at' => $ends]);
+            app(PlayerPlusNotifications::class)->record($order, 'activation');
         }, 3);
     }
 }

@@ -29,9 +29,11 @@ class MyTennisController extends Controller
         $data['previewNonPlus'] = $data['canPreviewNonPlus'] && $request->boolean('preview_non_plus');
         $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
         $data['overviewBadge'] = null;
+        $data['overviewPathway'] = null;
         if ($data['selectedPlayer'] && $data['canViewRating']) {
             $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($data['selectedPlayer']);
-            $data['overviewBadge'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history)['badge'];
+            $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
+            $data['overviewBadge'] = $data['overviewPathway']['badge'];
         }
         return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
     }
@@ -46,6 +48,16 @@ class MyTennisController extends Controller
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'ratingPathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function pathway(Request $request, \App\Models\Player $player)
+    {
+        abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
+        $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
+        return response()->view('frontend.my-tennis.pathway-page', [
+            'ratingPlayer' => $player,
+            'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');
     }
 

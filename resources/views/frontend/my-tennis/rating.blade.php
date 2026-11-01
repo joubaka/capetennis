@@ -27,6 +27,7 @@
     </div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
+  <a class="btn btn-outline-primary mt-3" href="{{ route('my.tennis.pathway', $ratingPlayer) }}" style="min-height:44px;white-space:normal" data-pathway-jump>What should I play next?</a>
   @include('frontend.my-tennis.pathway', ['pathway' => $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded()])
   <x-rating-explanation class="mt-3" />
   @if(auth()->user()?->hasRole('super-user'))

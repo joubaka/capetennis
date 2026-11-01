@@ -6,10 +6,15 @@ use App\Models\{Player, PlayerPathwayProfile, User};
 use Illuminate\Support\Facades\{DB, Schema, Validator};
 use Illuminate\Validation\Rule;
 
-/** Starting-stage metadata and read-only, evidence-based progression recommendations. */
+/** Automatic development assessment with optional historical participation metadata. */
 class PlayerPathwayService
 {
-    public const STAGES = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
+    public const STAGES = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Wilson B / Wilson A'];
+    public const EVENT_OPTIONS = [
+        'red' => ['Academy events', 'TSA Rainbow Kids events', 'School leagues'],
+        'orange' => ['U/9 B events', 'Academy events', 'TSA Rainbow Kids events', 'School leagues'],
+        'standard' => ['Wilson events', 'Academy events', 'Regional trial events', 'TSA Rainbow Kids events', 'School leagues'],
+    ];
 
     public function available(): bool
     {
@@ -41,18 +46,22 @@ class PlayerPathwayService
         $events = $metricAvailable && is_int($metrics['events'] ?? null) && $metrics['events'] >= 0 ? $metrics['events'] : null;
         $eligible = $metricAvailable && $score !== null && ($stageRating['comparable'] ?? false) === true
             && ($stageRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
-        $targetKey = $current_stage === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $current_stage;
-        $target = $this->target($targetKey);
         $ownEvents = $current_stage && $metricAvailable && is_int($metrics['stage_events'][$current_stage] ?? null) ? $metrics['stage_events'][$current_stage] : null;
-        $assessed = $stage !== null && $target !== null && $eligible && $ownEvents !== null;
+        $wilsonProgress = [];
+        $benchmark_division = null;
+        $wilsonCutoff = $this->validScore(config('pathway.wilson_a_above'));
+        $tsaCutoff = $this->validScore(config('pathway.tsa_above'));
+        $suggestedDivision = $current_stage === 'standard' && $eligible && $wilsonCutoff !== null ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
+        $suggestedCompetition = $suggestedDivision ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.$suggestedDivision) : null;
+        $targetKey = $current_stage === 'standard' ? null : $current_stage;
+        $target = $this->target($targetKey);
+        $assessed = $target !== null && $eligible && $ownEvents !== null;
         $ratingMet = $assessed && $score >= $target['ctr'];
         $eventsMet = $ownEvents !== null && $ownEvents >= ($target['events'] ?? 3);
-        $ready = $stage !== null && $ratingMet && $eventsMet;
+        $ready = $ratingMet && $eventsMet;
         $assessment_status = !$assessed ? 'Not assessed' : ($ready ? 'Targets met' : 'Targets not yet met');
         $reason = match (true) {
-            $stage === null => 'Assessment pending: a starting stage must be recorded. Available ratings and event counts are shown separately.',
             $current_stage === null => 'Assessment pending: no saved ball-level rating is available.',
-            $targetKey === null => 'Record the appropriate Wilson A or B division to show its benchmark.',
             $target === null => 'Progression targets are not configured for this step.',
             !$metricAvailable => 'Verified current rating and event evidence is not available yet.',
             ($metrics['stale'] ?? true) => 'Assessment pending: progress awaits a current saved rating update.',
@@ -62,25 +71,21 @@ class PlayerPathwayService
             default => 'Current targets met. Consider the next pathway options subject to each event’s entry rules.',
         };
         [$competition, $options] = match ($current_stage) {
-            'red' => ['Wilson Red', ['Wilson Orange', 'Wilson U10 B, where age and event rules permit']],
-            'orange' => ['Wilson Orange', ['Green/Yellow ball competitions']],
-            'standard' => match ($division) {
-                'B' => ['Wilson B', ['Wilson A']],
-                'A' => ['Wilson A', ['TSA tournaments, subject to their entry rules']],
-                default => ['Wilson Green/Yellow ball competitions', ['Confirm the Wilson A or B division before assessing the next benchmark']],
-            },
-            default => ['No rated ball level available yet', ['Confirm the starting stage and play an eligible published event']],
+            'red' => [implode(' · ', self::EVENT_OPTIONS['red']), ['Orange-ball events: U/9 B events, academy events, TSA Rainbow Kids events and school leagues, where age and event rules permit']],
+            'orange' => [implode(' · ', self::EVENT_OPTIONS['orange']), ['Wilson B / Wilson A competitions']],
+            'standard' => [implode(' · ', self::EVENT_OPTIONS['standard']), $suggestedCompetition ? [$suggestedCompetition.', subject to their entry rules'] : ['Ask your coach to review Wilson B / Wilson A options while current comparable evidence is pending']],
+            default => ['No rated ball level available yet', ['Play an eligible published event at your ball level']],
         };
         $stageProgress = [];
         foreach (self::STAGES as $ball => $label) {
-            $ballTarget = $this->target($ball === 'standard' ? ($division ? 'standard_'.strtolower($division) : null) : $ball);
+            $ballTarget = $this->target($ball === 'standard' ? null : $ball);
             $count = $metricAvailable && is_int($metrics['stage_events'][$ball] ?? null) ? $metrics['stage_events'][$ball] : null;
             $ballRating = $metrics['stage_ratings'][$ball] ?? [];
             $ballScore = $ballRating['score'] ?? null;
             $ballScore = $this->validScore($ballScore);
             $ballEligible = $metricAvailable && $ballScore !== null && ($ballRating['comparable'] ?? false) === true
                 && ($ballRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
-            $ballAssessed = $stage !== null && $ballEligible && $ballTarget !== null && $count !== null;
+            $ballAssessed = $ballEligible && $ballTarget !== null && $count !== null;
             $met = $ballAssessed && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr'];
             $stageProgress[$ball] = ['label' => $label, 'ctr_label' => $this->ctrLabel($ball), 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
                 'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count, 'target' => $ballTarget,
@@ -91,19 +96,15 @@ class PlayerPathwayService
             'local' => $stageProgress[$badgeStage]['local'] ?? false];
         $ctr_label = $this->ctrLabel($current_stage);
         $next_steps = match (true) {
-            $stage === null => ['Ask Cape Tennis to record your starting stage so progress can be assessed. Your available rating and event counts remain visible.'],
             $current_stage === null => ['Play eligible published Cape Tennis singles events at your ball level, then wait for the saved rating update. Ask Cape Tennis if played results are missing.'],
-            $current_stage === 'standard' && $division === null => ['Ask Cape Tennis to confirm your current Wilson A or B division; it is separate from your starting stage.'],
             $target === null => ['Ask Cape Tennis to review the benchmark configuration for this level.'],
             ($metrics['stale'] ?? true) => ['Wait for the next saved rating update before reviewing progress. Your displayed rating is the latest saved estimate.'],
             !$eligible => ['Play more eligible singles at this ball level to build comparable rating evidence. Ask Cape Tennis or your coach to review a within-group or low-confidence estimate.'],
             $ownEvents === null => ['Ask Cape Tennis to review the published played-event evidence for this ball level.'],
             $ready => [match ($current_stage) {
                 'red' => 'Discuss Orange-ball play with your coach and check the next event’s age and entry rules.',
-                'orange' => 'Discuss Green/Yellow-ball play with your coach and check the next event’s age and entry rules.',
-                default => $division === 'B'
-                    ? 'Discuss Wilson A with your coach and check the event’s entry rules.'
-                    : 'Review your next competition options with your coach. TSA tournament entry depends on its own rules, not this benchmark.',
+                'orange' => 'Discuss Wilson B / Wilson A play with your coach and check the next event’s age and entry rules.',
+                default => 'Review your next competition options with your coach. TSA tournament entry depends on its own rules, not this benchmark.',
             }, 'Both current benchmarks are met; this does not automatically promote you or complete earlier levels.'],
             default => array_values(array_filter([
                 $score < $target['ctr'] ? 'Build your '.$ctr_label.' from '.number_format($score, 1).' to '.number_format($target['ctr'], 1).' ('.number_format($target['ctr'] - $score, 1).' points to the benchmark) through eligible singles at this ball level.' : null,
@@ -111,7 +112,15 @@ class PlayerPathwayService
             ])),
         };
 
-        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps') + [
+        if ($current_stage === 'standard') {
+            $assessed = $suggestedDivision !== null;
+            $assessment_status = $assessed ? $suggestedCompetition.' suggested' : 'Not assessed';
+            $stageProgress['standard']['status'] = $assessment_status;
+            $stageProgress['standard']['assessed'] = $assessed;
+            $reason = $assessed ? 'The current comparable Wilson pathway CTR suggests a division; this does not grant entry.' : 'A current comparable Wilson pathway rating is needed before suggesting a division.';
+            $next_steps = [$assessed ? 'Discuss '.$suggestedCompetition.' events with your coach and check age, entry and nomination rules.' : 'Wait for current comparable Wilson pathway evidence, then review event options with your coach.'];
+        }
+        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
@@ -124,7 +133,7 @@ class PlayerPathwayService
         return match ($stage) {
             'red' => 'Red-ball CTR',
             'orange' => 'Orange-ball CTR',
-            'standard' => 'Green/Yellow-ball CTR',
+            'standard' => 'Wilson pathway CTR',
             default => 'Ball-level CTR',
         };
     }
@@ -132,8 +141,7 @@ class PlayerPathwayService
     private function benchmarks(): array
     {
         $benchmarks = [];
-        foreach (['red' => ['Red-ball CTR', 'Red ball'], 'orange' => ['Orange-ball CTR', 'Orange ball'],
-            'standard_b' => ['Green/Yellow-ball CTR · Wilson B', 'Green/Yellow ball'], 'standard_a' => ['Green/Yellow-ball CTR · Wilson A', 'Green/Yellow ball']] as $key => [$label, $ball]) {
+        foreach (['red' => ['Red-ball CTR', 'Red ball'], 'orange' => ['Orange-ball CTR', 'Orange ball']] as $key => [$label, $ball]) {
             $benchmarks[] = ['label' => $label, 'ball' => $ball, 'target' => $this->target($key)];
         }
         return $benchmarks;
@@ -160,13 +168,16 @@ class PlayerPathwayService
             'available' => false, 'stage' => null, 'division' => null, 'saved_division' => null,
             'current_stage' => null, 'current_stage_label' => 'Not rated yet', 'assessed' => false, 'assessment_status' => 'Not assessed',
             'competition' => 'No rated ball level available yet',
-            'options' => ['Confirm the starting stage and play an eligible published event'], 'stage_label' => 'Stage not recorded',
+            'options' => ['Play an eligible published event at your ball level'], 'stage_label' => 'Stage not recorded',
             'score' => null, 'events' => null, 'ownEvents' => null, 'target' => null, 'metrics' => [],
             'badge' => ['stage' => null, 'score' => null, 'local' => false],
             'eligible' => false, 'ratingMet' => false, 'eventsMet' => false, 'ready' => false, 'stageProgress' => [],
-            'reason' => 'Assessment pending: a starting stage must be recorded. Available ratings and event counts are shown separately.',
+            'reason' => 'Assessment pending: no saved ball-level rating is available.',
             'ctr_label' => 'Ball-level CTR',
-            'next_steps' => ['Ask Cape Tennis to record your starting stage so progress can be assessed. Your available rating and event counts remain visible.'],
+            'next_steps' => ['Play eligible published Cape Tennis singles events at your ball level, then wait for the saved rating update.'],
+            'wilsonProgress' => [], 'benchmark_division' => null,
+            'wilsonCutoff' => (new self)->validScore(config('pathway.wilson_a_above')), 'suggestedDivision' => null,
+            'tsaCutoff' => (new self)->validScore(config('pathway.tsa_above')), 'suggestedCompetition' => null,
             'benchmarks' => (new self)->benchmarks(),
         ];
     }

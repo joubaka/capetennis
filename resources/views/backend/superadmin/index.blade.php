@@ -1263,9 +1263,17 @@
                     <div class="border rounded p-3 h-100">
                       <label class="form-check form-switch">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch" name="player_rating_membership_enabled" value="1" data-setting-key="player_rating_membership_enabled" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
-                        <span class="form-check-label">Player rating · premium membership access</span>
+                        <span class="form-check-label">Player Plus · accept new purchases</span>
                       </label>
-                      <small class="text-muted">Off by default. Super Admin can always preview any player. Enabling also requires a verified premium entitlement; premium membership integration is pending, so this switch alone does not grant member access.</small>
+                      <small class="text-muted d-block">Off by default. Pausing sales keeps existing verified memberships accessible until expiry. Super Admin can always preview players.</small>
+                      <label class="form-label mt-3" for="sa-plus-price">Annual price per player (R)</label>
+                      <div class="d-flex flex-wrap gap-2">
+                        <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="1" max="99999.99" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>
+                        <button class="btn btn-outline-primary" type="button" id="sa-plus-price-save" style="min-height:44px">Save annual price</button>
+                      </div>
+                      <small class="text-muted d-block mt-2">Applies to new checkouts only. Existing checkout prices and purchased terms remain unchanged.</small>
+                      <p id="sa-plus-price-status" class="small mt-2" role="status"></p>
+                      <a class="d-inline-block py-2" href="{{ route('superadmin.player-plus.index') }}">Review Plus payment issues</a>
                     </div>
                   </div>
 
@@ -2025,6 +2033,19 @@ $(function () {
   var saToggleUrl = '{{ route('settings.store.single') }}';
   var saToggleToken = $('meta[name="csrf-token"]').attr('content')
                    || $('input[name="_token"]').first().val();
+
+  $('#sa-plus-price-save').on('click', function () {
+    var button = $(this);
+    var input = document.getElementById('sa-plus-price');
+    if (!input.reportValidity()) return;
+    button.prop('disabled', true);
+    $.ajax({url: '{{ route('settings.player-plus-price') }}', method: 'POST',
+      data: {_token: saToggleToken, player_plus_annual_price: input.value},
+      success: function (response) { $('#sa-plus-price-status').text(response.message); },
+      error: function (xhr) { $('#sa-plus-price-status').text(xhr.responseJSON?.errors?.player_plus_annual_price?.[0] || 'The annual price could not be saved.'); },
+      complete: function () { button.prop('disabled', false); }
+    });
+  });
 
   function saShowToast(message, isError) {
     var $toast = $('#sa-settings-toast');

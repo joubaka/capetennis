@@ -190,7 +190,7 @@ class PlayerRatingHistoryTest extends TestCase
         $this->assertFalse((new PlayerRatingAccess)->allows($user, $player));
         \App\Models\SiteSetting::set(PlayerRatingAccess::SETTING, '0');
         $player->userId = 7;
-        $this->assertFalse((new PlayerRatingAccess)->allows($user, $player));
+        $this->assertTrue((new PlayerRatingAccess)->allows($user, $player));
     }
 
     public function test_rating_endpoint_authorizes_before_calculating_any_history(): void

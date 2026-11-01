@@ -111,11 +111,18 @@ Route::get('/ctr', \App\Http\Controllers\Frontend\CtrController::class)->name('c
 
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreement', 'profile.updated'])->group(function () {
   Route::get('/', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'index'])->name('index');
+  Route::get('/purchase-details', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'terms'])->name('terms');
+  Route::get('/orders', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'orders'])->name('orders.index');
   Route::get('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'player'])->name('player');
   Route::post('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'store'])->middleware('throttle:10,1')->name('store');
   Route::get('/orders/{order}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'show'])->name('orders.show');
   Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
   Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
+});
+Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/player-plus')->name('superadmin.player-plus.')->group(function () {
+  Route::get('/', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'index'])->name('index');
+  Route::get('/{order}', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'show'])->name('show');
+  Route::post('/{order}/review', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'store'])->name('store');
 });
 Route::get('/account/statement', \App\Http\Controllers\AccountStatementController::class)
   ->middleware(['auth', 'throttle:30,1'])->name('account.statement');
@@ -714,6 +721,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Super Admin Dashboard
   // Platform Health Dashboard
   Route::middleware('role:super-user')->group(function () {
+    Route::post('settings/player-plus-price', [SettingsController::class, 'storePlusPrice'])->name('settings.player-plus-price');
     Route::get('superadmin/mail-history', [\App\Http\Controllers\Backend\SuperAdminController::class, 'mailHistory'])
       ->name('backend.superadmin.mail-history');
 
@@ -2293,6 +2301,7 @@ Route::middleware('auth')->group(function () {
   Route::post('/my-tennis/players/{player}/pathway/milestones', [\App\Http\Controllers\Frontend\PlayerPathwayController::class, 'milestones'])->middleware(['role:super-user', 'throttle:30,1'])->name('my.tennis.pathway.milestones');
   Route::get('/my-tennis/rating-history/refresh-status', [\App\Http\Controllers\Frontend\PlayerRatingHistoryRefreshController::class, 'status'])->middleware(['role:super-user', 'throttle:120,1,history-status:'])->name('my.tennis.rating.refresh-status');
   Route::get('/my-tennis/players/{player}/rating', [MyTennisController::class, 'rating'])->middleware('throttle:30,1')->name('my.tennis.rating');
+  Route::get('/my-tennis/players/{player}/pathway', [MyTennisController::class, 'pathway'])->middleware('throttle:30,1')->name('my.tennis.pathway');
   Route::get('/my-tennis/match-reminder', \App\Http\Controllers\Frontend\MatchReminderController::class)->name('my.tennis.match-reminder');
   Route::get('backend/ranking/{series}', [RankingController::class, 'show'])
     ->name('backend.ranking.show');
