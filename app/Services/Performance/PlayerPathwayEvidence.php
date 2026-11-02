@@ -70,6 +70,10 @@ class PlayerPathwayEvidence
         $score = $latest['score'] ?? null;
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
         $stale = $pending || ($saved['as_of'] ?? '') !== $today->toDateString() || $date !== ($saved['as_of'] ?? null);
+        // Yesterday's unchanged saved build remains useful across the nightly refresh boundary.
+        // A changed source, mismatched month or older build must still await recalculation.
+        $assessmentAvailable = !$pending && $date === ($saved['as_of'] ?? null)
+            && $date >= $today->subDay()->toDateString();
         $comparable = ($latest['connection_status'] ?? null) === 'recent' && empty($latest['historical_connection']);
         $stageRatings = [];
         $latestMonth = $saved['months'][$latest['index']] ?? [];
@@ -87,7 +91,7 @@ class PlayerPathwayEvidence
         return ['player_id' => (int) $player->id, 'available' => true, 'score' => $score, 'events' => count($events),
             'stage_events' => array_map('count', $stageEvents), 'unknown_stage_events' => count($unknownStage),
             'stage_ratings' => $stageRatings,
-            'date' => $date, 'comparable' => $comparable, 'stale' => $stale, 'reason' => $stale
+            'date' => $date, 'comparable' => $comparable, 'stale' => $stale, 'assessment_available' => $assessmentAvailable, 'reason' => $stale
                 ? 'Progress awaits a current saved rating update.'
                 : (!$comparable ? 'Progress needs a current shared comparison reference.' : ($score === null ? 'No valid CTR is available.' : null))];
     }

@@ -13,25 +13,7 @@
   let pending;
   let generation = 0;
   let loadingTimer;
-  const loadingDialog = document.createElement('dialog');
-  loadingDialog.className = 'finance-loading-dialog no-print';
-  loadingDialog.setAttribute('aria-labelledby', 'finance-loading-title');
-  loadingDialog.setAttribute('aria-describedby', 'finance-loading-help');
-  const loadingSpinner = document.createElement('span');
-  loadingSpinner.className = 'spinner-border finance-loading-spinner';
-  loadingSpinner.setAttribute('aria-hidden', 'true');
-  const loadingTitle = document.createElement('h2');
-  loadingTitle.id = 'finance-loading-title';
-  const loadingHelp = document.createElement('p');
-  loadingHelp.id = 'finance-loading-help';
-  loadingHelp.textContent = 'Please wait while we load this section. Your current work is kept.';
-  const loadingCancel = document.createElement('button');
-  loadingCancel.type = 'button';
-  loadingCancel.className = 'btn btn-outline-secondary';
-  loadingCancel.textContent = 'Cancel loading';
-  loadingCancel.autofocus = true;
-  loadingDialog.append(loadingSpinner, loadingTitle, loadingHelp, loadingCancel);
-  root.append(loadingDialog);
+  let loadingHandle;
   function cancelLoading(message = 'Loading cancelled. Your current section is still here.') {
     ++generation;
     pending?.abort();
@@ -40,15 +22,10 @@
     address(active, false);
     feedback.textContent = message;
   }
-  loadingCancel.addEventListener('click', () => cancelLoading());
-  loadingDialog.addEventListener('cancel', event => {
-    event.preventDefault();
-    cancelLoading();
-  });
-
   function clearLoading(focusTarget) {
     clearTimeout(loadingTimer);
-    if (loadingDialog.open) loadingDialog.close();
+    loadingHandle?.close();
+    loadingHandle = null;
     if (focusTarget?.isConnected) focusTarget.focus({preventScroll: true});
     root.querySelectorAll('[aria-busy="true"]').forEach(element => element.removeAttribute('aria-busy'));
     nav.querySelectorAll('[data-finance-loading-icon]').forEach(icon => icon.remove());
@@ -62,8 +39,7 @@
     tabSpinner.setAttribute('aria-hidden', 'true');
     tab.append(tabSpinner);
 
-    loadingTitle.textContent = 'Loading ' + name.toLowerCase() + '…';
-    loadingDialog.showModal();
+    loadingHandle = window.CapeLoading.show({title: 'Loading ' + name.toLowerCase() + '…', message: 'Please wait while we load this section. Your current work is kept.', onCancel: () => cancelLoading()});
     loadingTimer = setTimeout(() => cancelLoading('Loading timed out. Your current section is still here. Select the tab to try again.'), 45000);
   }
 

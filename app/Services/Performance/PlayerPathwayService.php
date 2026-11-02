@@ -37,9 +37,10 @@ class PlayerPathwayService
         $stageRating = $current_stage ? ($metrics['stage_ratings'][$current_stage] ?? []) : [];
         $score = $stageRating['score'] ?? null;
         $score = $this->validScore($score);
+        $assessmentAvailable = ($metrics['assessment_available'] ?? !(bool) ($metrics['stale'] ?? true)) === true;
         $events = $metricAvailable && is_int($metrics['events'] ?? null) && $metrics['events'] >= 0 ? $metrics['events'] : null;
         $eligible = $metricAvailable && $score !== null && ($stageRating['comparable'] ?? false) === true
-            && ($stageRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
+            && ($stageRating['local'] ?? false) !== true && $assessmentAvailable;
         $ownEvents = $current_stage && $metricAvailable && is_int($metrics['stage_events'][$current_stage] ?? null) ? $metrics['stage_events'][$current_stage] : null;
         $wilsonProgress = [];
         $benchmark_division = null;
@@ -58,7 +59,7 @@ class PlayerPathwayService
             $current_stage === null => 'Assessment pending: no saved ball-level rating is available.',
             $target === null => 'Progression targets are not configured for this step.',
             !$metricAvailable => 'Verified current rating and event evidence is not available yet.',
-            ($metrics['stale'] ?? true) => 'Assessment pending: progress awaits a current saved rating update.',
+            !$assessmentAvailable => 'Assessment pending: progress awaits a current saved rating update.',
             !$eligible => 'Assessment pending: progress needs a current comparable rating from this ball level only.',
             $ownEvents === null || (($metrics['unknown_stage_events'] ?? 0) > 0 && $ownEvents < $target['events']) => 'Some included events have conflicting ball labels and cannot count towards a stage target.',
             !$ready => 'Both the CTR target and the minimum number of events in this ball stage must be met.',
@@ -78,7 +79,7 @@ class PlayerPathwayService
             $ballScore = $ballRating['score'] ?? null;
             $ballScore = $this->validScore($ballScore);
             $ballEligible = $metricAvailable && $ballScore !== null && ($ballRating['comparable'] ?? false) === true
-                && ($ballRating['local'] ?? false) !== true && ($metrics['stale'] ?? true) === false;
+                && ($ballRating['local'] ?? false) !== true && $assessmentAvailable;
             $ballAssessed = $ballEligible && $ballTarget !== null && $count !== null;
             $met = $ballAssessed && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr'];
             $stageProgress[$ball] = ['label' => $label, 'ctr_label' => $this->ctrLabel($ball), 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
@@ -89,10 +90,11 @@ class PlayerPathwayService
         $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
             'local' => $stageProgress[$badgeStage]['local'] ?? false];
         $ctr_label = $this->ctrLabel($current_stage);
+        if ($assessed) $reason = 'Latest saved '.$ctr_label.': '.number_format($score, 1).'. '.$reason;
         $next_steps = match (true) {
             $current_stage === null => ['Play eligible published Cape Tennis singles events at your ball level, then wait for the saved rating update. Ask Cape Tennis if played results are missing.'],
             $target === null => ['Ask Cape Tennis to review the benchmark configuration for this level.'],
-            ($metrics['stale'] ?? true) => ['Wait for the next saved rating update before reviewing progress. Your displayed rating is the latest saved estimate.'],
+            !$assessmentAvailable => ['Wait for the next saved rating update before reviewing progress. Your displayed rating is the latest saved estimate.'],
             !$eligible => ['Play more eligible singles at this ball level to build comparable rating evidence. Ask Cape Tennis or your coach to review a within-group or low-confidence estimate.'],
             $ownEvents === null => ['Ask Cape Tennis to review the published played-event evidence for this ball level.'],
             $ready => [match ($current_stage) {
@@ -111,13 +113,15 @@ class PlayerPathwayService
             $assessment_status = $assessed ? $suggestedCompetition.' suggested' : 'Not assessed';
             $stageProgress['standard']['status'] = $assessment_status;
             $stageProgress['standard']['assessed'] = $assessed;
-            $reason = $assessed ? 'Your current comparable CTR points to a division to explore with your coach.' : 'Once a current comparable rating is available, we can suggest a division to explore.';
+            $reason = $assessed ? 'Your latest saved '.$ctr_label.' of '.number_format($score, 1).' points to a division to explore with your coach.'
+                : (!$assessmentAvailable ? 'The saved rating needs an update before a division can be suggested.' : 'This ball-level rating needs comparable evidence before a division can be suggested.');
             $next_steps = [$assessed ? 'Chat with your coach about which '.$suggestedCompetition.' events would suit you. They can help you check the age, entry and nomination requirements.' : 'When your current comparable rating is ready, chat with your coach about the event options.'];
         }
         return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
+            'assessment_available' => $assessmentAvailable,
             'benchmarks' => $this->benchmarks(),
         ];
     }

@@ -17,6 +17,27 @@
   @elseif($infoStage === 'tsa')
     <p>Thinking about TSA tournaments? Chat with your coach about which events would suit you, then check their age, entry and nomination requirements.</p>
     <p>@if($pathway['tsaCutoff'] !== null) A current comparable Green/Yellow CTR above {{ number_format($pathway['tsaCutoff'], 0) }} points to TSA tournaments as an option to explore. A CTR of exactly {{ number_format($pathway['tsaCutoff'], 0) }} still points to Wilson A. @else TSA recommendation awaiting configuration. @endif Your coach can help you choose a suitable event.</p>
+    <p>This CTR suggestion is a guide, not a TSA entry minimum. TSA-sanctioned open tournaments welcome different playing strengths and levels, subject to each event’s rules. Ranking points help shape the competitive pathway, seeding and invitations.</p>
+    <h6 class="small fw-bold">Junior tournament guide</h6>
+    <p class="small text-muted">Formats vary by event. Check the current TSA calendar and the event’s SportyHQ listing for formats, age groups, dates, sponsors, ranking points and entry requirements.</p>
+    <dl>
+      <dt>Rainbow Kidz</dt>
+      <dd>Under-10 introduction using red, orange and green balls on smaller courts. Usually 1–2 days, with no ranking points.</dd>
+      <dt>Seasonal tournaments</dt>
+      <dd>Summer, Autumn, Winter and Spring events, from U12 to Open. An option for a first TSA tournament.</dd>
+      <dt>Mini Series</dt>
+      <dd>Series 1–6, from U12 to Open, typically over 3 days. Platinum, Gold, Silver and Bronze groups are arranged by ranking; points depend on finishing position.</dd>
+      <dt>Grand Prix</dt>
+      <dd>U12 to Open, usually 4–5 days, mainly in a single Platinum draw.</dd>
+      <dt>Masters</dt>
+      <dd>Invitation events, with qualification through the Mini Series race rankings.</dd>
+      <dt>Super 8</dt>
+      <dd>Usually 5–6 days, aimed at experienced players, mainly in Platinum draws with higher ranking points.</dd>
+      <dt>Junior Nationals</dt>
+      <dd>The national junior championship, competing for a national junior title.</dd>
+    </dl>
+    <h6 class="small fw-bold">Planning your time</h6>
+    <p>Allow roughly 2–6 days, depending on the event and draw: around 2–3 days for a 16-player draw, 4–5 days for a 32-player draw, and 6 days for longer events with 32-, 64- or 128-player draws. Confirm the actual schedule before making travel plans.</p>
     <a href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">SA Tennis · TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
   @else
     <p>Wilson A and B use the same Green/Yellow rating and event history. Your current comparable CTR helps suggest a division, while your past events add context. There is no event-count target for choosing between them.</p>

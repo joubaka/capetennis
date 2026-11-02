@@ -29,7 +29,7 @@
       <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Wilson B / Wilson A' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
       <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
       <p class="small mt-2 mb-0">Your latest saved badge is used automatically as your current development level. No starting-stage confirmation is needed.</p>
-      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">Saved rating awaiting an update; progress is not assessed.</p>@endif
+      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
     </div>
   <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>
     @foreach(['red' => ['Red ball', '#ed2029', 0], 'orange' => ['Orange ball', '#ed7100', 1]] as $ball => [$label, $ink, $benchmarkIndex])

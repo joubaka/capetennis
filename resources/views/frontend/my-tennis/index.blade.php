@@ -396,12 +396,7 @@
   </div>
   </div>
 
-  <dialog id="my-tennis-rating-loading" aria-labelledby="my-tennis-rating-loading-title" aria-describedby="my-tennis-rating-loading-message" aria-busy="true" style="border:0;border-radius:1rem;padding:1.75rem;max-width:calc(100vw - 2rem);width:22rem;text-align:center">
-    <span class="spinner-border text-primary mb-3" aria-hidden="true"></span>
-    <h2 class="h5" id="my-tennis-rating-loading-title">Loading ratings</h2>
-    <p class="text-muted mb-0" id="my-tennis-rating-loading-message">Please wait while your ratings update.</p>
-  </dialog>
-  <style>#my-tennis-rating-loading::backdrop{background:rgba(32,56,75,.35)}#my-tennis-rating-loading:not([open]){display:none}</style>
+
 </div>
 @endsection
 
@@ -424,9 +419,8 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
   let loaded = false, loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
-  const loadingDialog = document.getElementById('my-tennis-rating-loading');
+  let loadingHandle = null;
   let focusId = null;
-  loadingDialog.addEventListener('cancel', event => event.preventDefault());
   const syncAgeFilter = () => {
     const level = panel.querySelector('[name="rating_level"]:not([type="hidden"])');
     const age = panel.querySelector('[data-rating-age-filter]');
@@ -449,9 +443,9 @@ document.addEventListener('DOMContentLoaded', () => {
     lastUrl = url || lastUrl;
     const requestUrl = lastUrl;
     loading = true;
-    if (!loadingDialog.open) {
+    if (!loadingHandle) {
       focusId = panel.contains(document.activeElement) ? document.activeElement.id : button.id;
-      loadingDialog.showModal();
+      loadingHandle = window.CapeLoading.show({title: 'Loading ratings', message: 'Please wait while we load your saved rating history.'});
     }
     panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
     panel.setAttribute('aria-busy', 'true');
@@ -487,7 +481,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pendingUrl) { const nextUrl = pendingUrl; pendingUrl = null; refreshPending = false; load(nextUrl); }
       else if (refreshPending) { refreshPending = false; load(lastUrl); }
       else {
-        loadingDialog.close();
+        loadingHandle?.close();
+        loadingHandle = null;
         const focusTarget = (focusId && document.getElementById(focusId)) || panel.querySelector('[data-rating-list-focus]') || button;
         focusTarget.focus({ preventScroll: true });
       }

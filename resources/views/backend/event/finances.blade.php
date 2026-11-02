@@ -60,13 +60,8 @@
     .finance-section-nav a:focus-visible { outline: 3px solid #14877b; outline-offset: 2px; }
     .finance-tab-panel[hidden] { display: none !important; }
     .finance-tab-panel[aria-busy="true"] { opacity: .6; }
-    .finance-loading-dialog { width: min(32rem, calc(100vw - 2rem)); max-height: calc(100dvh - 2rem); padding: clamp(1.5rem, 5vw, 3rem); border: 0; border-radius: 1.25rem; background: #fff; color: #183b37; text-align: center; box-shadow: 0 1.5rem 5rem #102c3d55; }
-    .finance-loading-dialog::backdrop { background: #102c3db3; backdrop-filter: blur(3px); }
-    .finance-loading-dialog > .spinner-border { display: block; width: 4.5rem; height: 4.5rem; border-width: .4rem; margin: 0 auto 1.5rem; color: #14877b; }
-    .finance-loading-dialog h2 { margin-bottom: .75rem; font-size: clamp(1.5rem, 4vw, 2rem); font-weight: 700; color: inherit; }
-    .finance-loading-dialog p { margin-bottom: 1.5rem; color: #526b67; }
-    .finance-loading-dialog .btn { min-height: 44px; }
     .finance-section-nav a[aria-busy="true"] { background: #f2f8f6; color: #105f57; }
+    .finance-loading-spinner { color: #004177; }
     @media (prefers-reduced-motion: reduce) {
       .finance-loading-spinner { animation: none !important; }
     }

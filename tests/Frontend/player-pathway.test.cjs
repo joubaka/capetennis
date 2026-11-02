@@ -133,3 +133,22 @@ test('stage detail failures and login redirects stay retryable without inserting
     assert.equal(card.content.dataset.loaded, 'true');
   } finally { global.fetch = oldFetch; }
 });
+
+test('More info immediately opens the shared modal and always closes it after timeout', async () => {
+  const oldFetch = global.fetch, oldLoader = global.CapeLoading, oldTimer = global.setTimeout, oldClear = global.clearTimeout;
+  let opened = 0, closed = 0, timeout, cleared = false;
+  global.CapeLoading = {show() {opened++; return {close() {closed++;}};}};
+  global.setTimeout = callback => {timeout = callback; return 123;};
+  global.clearTimeout = id => {assert.equal(id, 123); cleared = true;};
+  global.fetch = (url, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener('abort', () => reject(new Error('Aborted')));
+  });
+  try {
+    const h = harness(), card = infoCard();
+    const pending = h.ui.info(card.button);
+    assert.equal(opened, 1); assert.equal(closed, 0); assert.equal(card.button.disabled, true);
+    timeout(); await pending;
+    assert.equal(closed, 1); assert.equal(cleared, true); assert.equal(card.button.disabled, false);
+    assert.match(card.content.textContent, /try again/);
+  } finally {global.fetch = oldFetch; global.CapeLoading = oldLoader; global.setTimeout = oldTimer; global.clearTimeout = oldClear;}
+});

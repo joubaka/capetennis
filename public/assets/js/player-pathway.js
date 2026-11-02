@@ -32,9 +32,12 @@
       button.disabled = true;
       content.setAttribute('aria-busy', 'true');
       content.textContent = 'Loading stage details…';
+      const loading = root.CapeLoading?.show({ title: 'Loading pathway details', message: 'Please wait while we load this stage’s guidance.' });
+      const controller = new AbortController();
+      const timeout = root.setTimeout(() => controller.abort(), 30000);
       try {
         const response = await root.fetch(button.dataset.pathwayInfo, {
-          credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }
+          credentials: 'same-origin', cache: 'no-store', signal: controller.signal, headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }
         });
         if (!response.ok || response.redirected) throw new Error('Stage details are unavailable. Select More info to try again.');
         const html = await response.text();
@@ -44,8 +47,10 @@
       } catch (error) {
         content.textContent = 'Stage details are unavailable. Select More info to try again.';
       } finally {
+        root.clearTimeout(timeout);
         content.removeAttribute('aria-busy');
         button.disabled = false;
+        loading?.close();
       }
     }
 

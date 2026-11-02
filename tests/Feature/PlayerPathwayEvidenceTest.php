@@ -113,4 +113,17 @@ class PlayerPathwayEvidenceTest extends TestCase
             [1 => ['matches' => [$match]]], 11);
         $this->assertSame('orange', $builder->all()[0]['ball_type']);
     }
+
+    public function test_yesterdays_unchanged_build_can_be_assessed_but_changed_or_older_builds_cannot(): void
+    {
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('published')->andReturn(true);
+        [$saved, $player, $points] = $this->fixture([[]]);
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-02', 'Africa/Johannesburg'));
+        $metrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, false);
+        $this->assertTrue($metrics['stale']);
+        $this->assertTrue($metrics['assessment_available']);
+        $this->assertFalse(app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, true)['assessment_available']);
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-11-03', 'Africa/Johannesburg'));
+        $this->assertFalse(app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $points, false)['assessment_available']);
+    }
 }

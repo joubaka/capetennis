@@ -206,6 +206,31 @@ class PlayerPathwayTest extends TestCase
         $this->assertDatabaseCount('player_pathway_achievements', 0);
     }
 
+    public function test_dated_saved_assessment_uses_only_the_current_ball_levels_score(): void
+    {
+        $metrics = $this->metrics(99, ['red' => 3, 'orange' => 3, 'standard' => 1]);
+        $metrics['stage_ratings']['standard']['score'] = 67.3;
+        $metrics['stale'] = true;
+        $metrics['assessment_available'] = true;
+        $summary = app(PlayerPathwayService::class)->summary(Player::findOrFail(1), ['pathway_metrics' => $metrics]);
+        $this->assertSame('standard', $summary['current_stage']);
+        $this->assertSame(67.3, $summary['score']);
+        $this->assertSame('Wilson A', $summary['suggestedCompetition']);
+        $this->assertStringContainsString('Wilson pathway CTR of 67.3', $summary['reason']);
+        $history = ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
+        $this->actingAs($this->actor());
+        $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Wilson A suggested')
+            ->assertSee('Assessment uses the latest saved rating')->assertDontSee('progress is not assessed');
+        foreach (['unavailable', 'local', 'not_comparable'] as $state) {
+            $changed = $metrics;
+            if ($state === 'unavailable') $changed['assessment_available'] = false;
+            if ($state === 'local') $changed['stage_ratings']['standard']['local'] = true;
+            if ($state === 'not_comparable') $changed['stage_ratings']['standard']['comparable'] = false;
+            $this->assertNull(app(PlayerPathwayService::class)->summary(Player::findOrFail(1), ['pathway_metrics' => $changed])['suggestedCompetition'], $state);
+        }
+    }
+
     public function test_highest_rated_badge_preserves_starting_metadata_and_withheld_history(): void
     {
         $service = app(PlayerPathwayService::class);
@@ -270,7 +295,9 @@ class PlayerPathwayTest extends TestCase
         $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
         $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
         $allowed = true;
-        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->andReturnUsing(function () use (&$allowed) { return $allowed; });
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allows')->andReturnUsing(function () use (&$allowed) { return $allowed; });
+        $access->shouldReceive('allowsMarketing')->andReturn(true);
         $history = $this->mock(PlayerRatingHistoryService::class);
         $metrics = $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 1]);
         $history->shouldReceive('forPlayer')->times(3)->andReturnUsing(function () use (&$metrics) {

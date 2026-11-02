@@ -142,6 +142,7 @@
   <!-- / Layout Content -->
 
   <!-- Vuexy scripts -->
+  @include('layouts.sections.loading')
   @include('layouts/sections/scripts')
 
   @include('layouts.sections.pwa-install')

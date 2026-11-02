@@ -77,6 +77,13 @@
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
       <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>
       <span class="small text-muted" role="status" data-history-refresh-status>Recalculates saved rating history for all players in the background.</span>
+      <span class="small text-muted w-100" data-history-last-updated>
+        @if($ratingHistory['built_at'] ?? null)
+          Latest saved update for this player: <time datetime="{{ $ratingHistory['built_at'] }}">{{ \Carbon\CarbonImmutable::parse($ratingHistory['built_at'])->setTimezone('Africa/Johannesburg')->format('j M Y, H:i') }} SAST</time>
+        @else
+          No saved update for this player yet.
+        @endif
+      </span>
     </div>
   @endif
   @if($ratingHistory['reason'])

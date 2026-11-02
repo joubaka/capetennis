@@ -32,7 +32,7 @@ function harness() {
   const document = {createElement: element, addEventListener(name, callback) {ready = callback;},
     activeElement: focused,
     getElementById(id) {return id === 'my-tennis-rating-loading' ? dialog : id === focused.id ? focused : id.endsWith('-tab') ? {id, addEventListener(name, callback) {shown = callback;}} : panel;}, querySelector() {return null;}};
-  const context = {document, window: {location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {sync() {}}},
+  const context = {document, window: {CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {sync() {}}},
     URL, URLSearchParams, AbortController,
     setTimeout(callback, delay) {assert.equal(delay, 30000); timer = callback; return 1;}, clearTimeout() {timer = null;},
     FormData: class {constructor(form) {this.values = Object.entries(form.values);} [Symbol.iterator]() {return this.values[Symbol.iterator]();}},

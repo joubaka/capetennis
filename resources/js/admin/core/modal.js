@@ -78,6 +78,7 @@
    * @returns {{ close: function }}
    */
   function loading(title, text) {
+    if (root.CapeLoading) return root.CapeLoading.show({ title: title || 'Please wait…', message: text || '' });
     if (hasSwal()) {
       Swal.fire({
         title:            title || 'Please wait…',
