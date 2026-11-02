@@ -9,7 +9,7 @@ use Carbon\CarbonImmutable;
 /** Discovery projection: public series identities and comparable saved ratings only. */
 class PlayerRatingTopTen
 {
-    public const PER_PAGE = 25;
+    public const PER_PAGE = 500;
     public const PAGE_SIZES = [25, 50, 100, 500];
 
     public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}

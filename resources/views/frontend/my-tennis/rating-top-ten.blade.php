@@ -19,7 +19,7 @@
     <div data-rating-age-filter @if($ratingTopTen['filters']['rating_level'] !== 'overall') hidden @endif><label for="ctr-rating-age">Overall age group</label><select id="ctr-rating-age" name="rating_age" class="form-select"><option value="">All ages</option>@foreach($ratingTopTen['age_options'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_age'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-gender">Gender</label><select id="ctr-rating-gender" name="rating_gender" class="form-select"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_gender'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-level">Rating level</label><select id="ctr-rating-level" name="rating_level" class="form-select">@foreach(['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_level'] === $value)>{{ $label }}</option>@endforeach</select></div>
-    <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? 25) === $size)>{{ $size }}</option>@endforeach</select></div>
+    <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE) === $size)>{{ $size }}</option>@endforeach</select></div>
     <noscript><button type="submit" class="btn btn-primary">Show ratings</button></noscript>
   </form>
   <p class="small text-muted">Red, Orange and Overall are separate ratings. Green/Yellow uses Overall CTR. Red and Orange include all ages. Overall CTR junior age groups include younger players. Age and gender filters change ranking positions, not rating scores.</p>
@@ -60,6 +60,6 @@
       </section>
     @endforeach
   </div>
-  <p class="small text-muted mt-2 mb-0">Browse all matching published-player ratings, {{ $ratingTopTen['filters']['rating_per_page'] ?? 25 }} players per page. Equal displayed scores share a position and are ordered by name. Within-group-only and nonconverged estimates are excluded.</p>
+  <p class="small text-muted mt-2 mb-0">Browse all matching published-player ratings, {{ $ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE }} players per page. Equal displayed scores share a position and are ordered by name. Within-group-only and nonconverged estimates are excluded.</p>
 </section>
 @endif

@@ -204,14 +204,14 @@ class PlayerRatingTopTenTest extends TestCase
         DB::table('players')->update(['dateOfBirth' => '2017-01-01', 'gender' => '1']);
         $selected = \App\Models\Player::find(52);
         $snapshot = $this->snapshot($scores);
-        $first = $this->build($snapshot, selected: $selected);
+        $first = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25]);
         $this->assertSame(range(1, 25), array_column($first['lists']['overall']['players'], 'id'));
         $this->assertSame(['page' => 1, 'pages' => 3, 'total' => 52, 'per_page' => 25], $first['lists']['overall']['pagination']);
-        $second = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $second = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 2]);
         $this->assertSame(range(26, 50), array_column($second['lists']['overall']['players'], 'id'));
         $this->assertSame(25, $second['lists']['overall']['players'][0]['position']);
         $this->assertSame(27, $second['lists']['overall']['players'][1]['position']);
-        $last = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 999]);
+        $last = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 999]);
         $this->assertSame([51, 52], array_column($last['lists']['overall']['players'], 'id'));
         $this->assertSame(52, $last['lists']['overall']['players'][1]['position']);
         $this->assertSame($first['summary'], $last['summary']);
@@ -230,10 +230,10 @@ class PlayerRatingTopTenTest extends TestCase
         }
 
         DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
-        $revoked = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $revoked = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 2]);
         $this->assertSame([], $revoked['lists']['overall']['players']);
         $this->assertSame(0, $revoked['lists']['overall']['pagination']['total']);
-        $denied = $this->build($snapshot, allowed: false, selected: $selected, filters: ['rating_page' => 2]);
+        $denied = $this->build($snapshot, allowed: false, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 2]);
         $this->assertFalse($denied['visible']);
         $this->assertSame([], $denied['lists']);
     }
@@ -279,8 +279,8 @@ class PlayerRatingTopTenTest extends TestCase
         }
         $selected = \App\Models\Player::find(52);
         $snapshot = $this->snapshot($scores);
-        $first = $this->build($snapshot, selected: $selected);
-        $second = $this->build($snapshot, selected: $selected, filters: ['rating_page' => 2]);
+        $first = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25]);
+        $second = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 2]);
         $this->assertSame(range(23, 47), array_column($first['lists']['overall']['players'], 'id'));
         $this->assertSame(['page' => 2, 'pages' => 2, 'total' => 30, 'per_page' => 25], $second['lists']['overall']['pagination']);
         $this->assertSame(range(48, 52), array_column($second['lists']['overall']['players'], 'id'));
@@ -289,7 +289,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(30, $first['summary']['age']['player']['position']);
     }
 
-    public function test_selected_list_can_show_500_and_keeps_later_page_ties_and_size_links(): void
+    public function test_selected_list_defaults_to_500_and_keeps_later_page_ties_and_size_links(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
         $scores = [];
@@ -299,7 +299,7 @@ class PlayerRatingTopTenTest extends TestCase
         }
         $selected = \App\Models\Player::find(1);
         $snapshot = $this->snapshot($scores);
-        $filters = ['rating_age' => '', 'rating_gender' => '', 'rating_per_page' => '500'];
+        $filters = ['rating_age' => '', 'rating_gender' => ''];
         $first = $this->build($snapshot, selected: $selected, filters: $filters);
         $this->assertCount(500, $first['lists']['overall']['players']);
         $this->assertSame(['page' => 1, 'pages' => 2, 'total' => 505, 'per_page' => 500], $first['lists']['overall']['pagination']);
@@ -314,8 +314,8 @@ class PlayerRatingTopTenTest extends TestCase
 
         foreach ([0, 501, 1000000, '500.5', []] as $invalid) {
             $fallback = $this->build($snapshot, selected: $selected, filters: array_replace($filters, ['rating_per_page' => $invalid]));
-            $this->assertCount(25, $fallback['lists']['overall']['players']);
-            $this->assertSame(25, $fallback['filters']['rating_per_page']);
+            $this->assertCount(500, $fallback['lists']['overall']['players']);
+            $this->assertSame(500, $fallback['filters']['rating_per_page']);
         }
     }
 
