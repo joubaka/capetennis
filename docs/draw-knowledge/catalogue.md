@@ -288,6 +288,16 @@ Name corrections refresh the display name in eligible upcoming participant snaps
 
 **Regression:** `tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php` and `TeamDrawAdaptationTest.php` passed locally on 2 November 2026: 28 tests, 155 assertions, isolated SQLite. This does not establish deployment or live event configuration.
 
+## DK-27 — Choose opening regional encounters and player counts during team draw creation
+
+**Rule and solution:** In category-selected team draws, preview the ties in Match setup, then choose an opening round by its actual regional encounters. Rotate complete rounds, preserving all pairings, byes and home/away assignments. Save the chosen opening round and source-team order so deferred guided generation matches the preview. Bulk draws retain independent opening choices.
+
+An optional players-per-team count uses the first 1–12 roster positions per source team, without changing team roster settings. Singles create that many rubbers; doubles create half as many and reverse singles require an even count. Mixed doubles use the count separately for boys and girls (six means six boys plus six girls), retaining the existing alternating source positions. Explicit counts use roster positions instead of the event default format; combining a count with an explicitly selected tie format is rejected. Later roster refreshes retain the explicit rubber count. Blank counts preserve automatic behaviour.
+
+**Sources:** `app/Services/TeamDrawSelectionService.php`, `TeamDrawGenerationService.php`, `TeamDrawReadinessService.php`, `TeamDrawAdaptationService.php`, `public/js/team-draw-mode.js`, and the head-office team-event view.
+
+**Regression:** `tests/Feature/TeamDraw/TeamDrawSelectionWorkflowTest.php`, `TeamDrawReadinessWorkflowTest.php`, `TeamDrawAdaptationTest.php`, and `tests/Unit/Services/TeamDrawGenerationServiceTest.php` passed locally together: 65 tests, 483 assertions, isolated MySQL database with transactional rollback. `TeamOpeningRoundScheduleTest.php` passed 2 tests, 185 assertions for even/odd fields. The three `tests/Frontend/team-draw-*.test.cjs` files passed 33 tests, including input/change, repeat preview, independent batch choices and count payloads. These checks do not establish browser acceptance, deployment or live event changes.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

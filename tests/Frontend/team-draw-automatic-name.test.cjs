@@ -44,7 +44,7 @@ function dialog(initialMode = 'team', guided = false, ajax = false, regional = f
     addEventListener(event, handler) { formHandlers[event] = handler; },
     reset() { state.mode = ''; state.type = null; state.choices = {}; state.manual = []; }
   };
-  const document = { querySelector() { return null; }, getElementById(id) { if(regional && id==='team-participant-scope')return scope;if(regional && id==='regional-age-group')return age;return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
+  const document = { querySelectorAll() { return []; }, querySelector() { return null; }, getElementById(id) { if(regional && id==='team-participant-scope')return scope;if(regional && id==='regional-age-group')return age;return { createDrawForm: form, drawName: name, bulkTeamDraws: bulk, manualTeamCategories: manual, manualIndividualCategories: individualManual, previewTeamDrawButton: previewButton }[id] || {}; } };
   function $(selector) {
     const chain = {
       on(event, target, handler) { handlers.push({ event, selector: typeof target === 'string' ? target : selector, handler: handler || target }); return chain; },

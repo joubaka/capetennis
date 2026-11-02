@@ -709,6 +709,11 @@
             </div>
           </div>
 
+          <div class="mb-3" id="playersPerTeamGroup" hidden>
+            <label for="players_per_team" class="form-label fw-bold">Players per team</label>
+            <input type="number" id="players_per_team" name="players_per_team" class="form-control" min="1" max="12" step="1" placeholder="Automatic from rosters or tie format" aria-describedby="playersPerTeamHelp">
+            <div class="form-text" id="playersPerTeamHelp">Enter a number to use roster positions. Leave blank to use existing rosters or the event format. Doubles and reverse singles need an even number. For mixed doubles, enter the number of boys and girls per region (e.g. 6 means 6 boys and 6 girls).</div>
+          </div>
           {{-- Existing event formats are selectable without changing rollout settings. --}}
           @if(($availableFormats ?? collect())->isNotEmpty())
           <div class="mb-3 d-none" id="formatSelectGroup">
@@ -745,7 +750,7 @@
 
         <div class="modal-footer">
           <button type="button" class="btn btn-label-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="button" id="previewTeamDrawButton" class="btn btn-outline-primary d-none">Preview team ties</button>
+          <button type="button" id="previewTeamDrawButton" class="btn btn-outline-primary d-none">Preview &amp; choose opening pairings</button>
           <button type="button" class="btn btn-outline-secondary" data-create-guide-back hidden>Back</button>
           <button type="button" class="btn btn-primary" data-create-guide-continue>Continue</button>
           <button type="submit" class="btn btn-primary" data-create-guide-submit hidden>Save draw &amp; continue</button>

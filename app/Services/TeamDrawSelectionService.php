@@ -33,6 +33,13 @@ class TeamDrawSelectionService
         $type = DrawType::where('type', 'team')->findOrFail($item['draw_type_id']);
         $code = $this->code($type);
         if (!$code) throw new \InvalidArgumentException('Choose singles, reverse singles, doubles or mixed doubles.');
+        $playerCount = $item['players_per_team'] ?? null;
+        if ($playerCount !== null) {
+            if (filter_var($playerCount, FILTER_VALIDATE_INT) === false || $playerCount < 1 || $playerCount > 12) throw new \InvalidArgumentException('Choose between 1 and 12 players per team.');
+            $playerCount = (int) $playerCount;
+            if (!empty($item['format_id'])) throw new \InvalidArgumentException('Choose either players per team using roster positions or a tie format.');
+            if (in_array($code, [RubberType::DOUBLES, RubberType::REVERSE_SINGLES], true) && $playerCount % 2) throw new \InvalidArgumentException('Doubles and reverse singles require an even number of players per team.');
+        }
         $ids = array_values(array_unique(array_map('intval', $item['category_ids']))); sort($ids);
         $categories = CategoryEvent::with('category')->where('event_id', $event->id)->whereIn('id', $ids)->get();
         if ($categories->count() !== count($ids)) throw new \InvalidArgumentException('Every category must belong to this event.');
@@ -64,13 +71,14 @@ class TeamDrawSelectionService
             $teams = $complete;
         }
         $format = !empty($item['format_id']) ? TeamEventFormat::forEvent($event->id)->with('rubbers')->findOrFail($item['format_id'])
-            : ($useDefaultFormat ? TeamEventFormat::where('event_id', $event->id)->where('is_default', true)->with('rubbers')->first() : null);
+            : ($useDefaultFormat && $playerCount === null ? TeamEventFormat::where('event_id', $event->id)->where('is_default', true)->with('rubbers')->first() : null);
         if ($format) {
             $snapshot = $format->toArray();
             $snapshot['rubbers'] = $format->rubbers->where('rubber_code', $code)->values()->map->toArray()->all();
             if (!$snapshot['rubbers']) throw new \InvalidArgumentException('The selected format has no '.str_replace('_', ' ', $code).' rubbers. Choose another format or use roster positions.');
         } else {
             $maxRank = max(1, (int) $teams->flatMap(fn ($t) => $t->team_players->concat($t->team_players_no_profile))->max('rank'));
+            if ($playerCount !== null) $maxRank = $playerCount * ($code === RubberType::MIXED_DOUBLES ? 2 : 1);
             $rubbers = [];
             for ($rank = 1; $rank <= $maxRank; $rank += in_array($code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true) ? 2 : 1) {
                 $home = in_array($code, [RubberType::DOUBLES, RubberType::MIXED_DOUBLES], true) ? [$rank, $rank + 1] : [$rank];
@@ -83,7 +91,11 @@ class TeamDrawSelectionService
         }
         $effective = new TeamEventFormat($snapshot);
         $effective->setRelation('rubbers', collect($snapshot['rubbers'])->map(fn ($r) => new TeamEventFormatRubber($r)));
-        $preview = $this->readiness->preview($teams, $effective);
+        $openingRound = (int) ($item['opening_round'] ?? 1);
+        $preview = $this->readiness->preview($teams, $effective, $openingRound);
+        $selection['opening_round'] = $openingRound;
+        $selection['team_order'] = $teams->pluck('id')->all();
+        if ($playerCount !== null) $selection['players_per_team'] = $playerCount;
         $preview['warnings'] = array_values(array_unique(array_merge($preview['warnings'], $errors)));
         $preview['ready'] = !$preview['warnings'];
         $preview['can_create'] = !$errors && $teams->count() >= 2;

@@ -14,7 +14,7 @@ class TeamDrawReadinessService
         private TeamTieValidationService $validator,
     ) {}
 
-    public function preview(Collection $teams, ?TeamEventFormat $format): array
+    public function preview(Collection $teams, ?TeamEventFormat $format, int $openingRound = 1): array
     {
         $warnings = [];
         if ($teams instanceof \Illuminate\Database\Eloquent\Collection) {
@@ -41,6 +41,14 @@ class TeamDrawReadinessService
         $rounds = [];
         $tieCount = $rubberCount = $missingSlots = $byeCount = 0;
         $schedule = $teams->count() >= 2 ? $this->generator->buildRoundRobinSchedule($teams) : [];
+        $openingChoices = [];
+        foreach ($schedule as $number => $matches) {
+            $playingIds = collect($matches)->flatten()->pluck('id')->all();
+            $labels = array_map(fn ($pair) => $pair[0]->name.' vs '.$pair[1]->name, $matches);
+            foreach ($teams->whereNotIn('id', $playingIds) as $team) $labels[] = $team->name.' — bye';
+            $openingChoices[] = ['value' => $number, 'label' => implode('; ', $labels)];
+        }
+        if ($teams->count() >= 2) $schedule = $this->generator->buildRoundRobinSchedule($teams, $openingRound);
         foreach ($schedule as $roundNumber => $matches) {
             $ties = [];
             $playing = [];
@@ -124,6 +132,7 @@ class TeamDrawReadinessService
             $warnings[] = "{$missingSlots} player slots cannot be assigned from the current rosters.";
         }
         return [
+            'opening_round' => $openingRound, 'opening_round_choices' => $openingChoices,
             'format_id' => $format?->id, 'format_name' => $format?->name,
             'team_count' => $teams->count(), 'round_count' => count($rounds),
             'tie_count' => $tieCount, 'rubber_count' => $rubberCount,

@@ -62,7 +62,9 @@ class TeamDrawGenerationService
             throw new \InvalidArgumentException('At least 2 teams are required to generate ties.');
         }
 
-        $schedule = $this->buildRoundRobinSchedule($teams);
+        $order = $draw->team_draw_selection['team_order'] ?? [];
+        if ($order) $teams = $teams->sortBy(fn ($team) => array_search($team->id, $order, true))->values();
+        $schedule = $this->buildRoundRobinSchedule($teams, (int) ($draw->team_draw_selection['opening_round'] ?? 1));
 
         return DB::transaction(function () use ($draw, $schedule, $format, $allowOverride, $captureSnapshot) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -134,7 +136,7 @@ class TeamDrawGenerationService
      * @param  Collection<int, Team> $teams
      * @return array<int, array<int, array{0: Team, 1: Team}>>
      */
-    public function buildRoundRobinSchedule(Collection $teams): array
+    public function buildRoundRobinSchedule(Collection $teams, int $openingRound = 1): array
     {
         $list      = $teams->values()->all();
         $teamCount = count($list);
@@ -184,6 +186,15 @@ class TeamDrawGenerationService
             array_unshift($ring, array_pop($ring));
         }
 
+        if ($openingRound < 1 || $openingRound > count($schedule)) {
+            throw new \InvalidArgumentException('Choose an available opening round for these teams.');
+        }
+        if ($openingRound !== 1) {
+            $ordered = array_values($schedule);
+            $schedule = array_combine(range(1, count($ordered)), array_merge(
+                array_slice($ordered, $openingRound - 1), array_slice($ordered, 0, $openingRound - 1)
+            ));
+        }
         return $schedule;
     }
 }

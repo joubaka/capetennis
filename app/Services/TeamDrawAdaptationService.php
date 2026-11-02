@@ -206,6 +206,7 @@ class TeamDrawAdaptationService
     {
         $snapshot = $draw->team_format_snapshot;
         $code = $draw->team_draw_selection['rubber_code'] ?? null;
+        if (isset($draw->team_draw_selection['players_per_team'])) return;
         if ($draw->team_event_format_id || !$code || !str_starts_with($snapshot['name'] ?? '', 'Roster positions')) return;
         $resolver = app(TeamDrawSideResolver::class);
         $sides = $teams->map(fn ($team) => $resolver->side($draw, $team));

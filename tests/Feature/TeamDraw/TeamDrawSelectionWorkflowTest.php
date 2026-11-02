@@ -63,6 +63,83 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         return $this->actingAs($this->admin)->postJson(route($preview ? 'headoffice.previewTeamDraw' : 'headoffice.createSingleDraw.team', $this->event), ['batch_key' => $key, 'draws' => $items]);
     }
 
+    public function test_opening_round_matches_preview_and_guided_generation_and_retains_every_pair_once(): void
+    {
+        foreach (['North', 'South'] as $name) {
+            $team = Team::factory()->create(['category_event_id' => $this->categories['Boys'], 'name' => $name]);
+            for ($rank = 1; $rank <= 2; $rank++) NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => $rank, 'name' => $name, 'surname' => 'Player '.$rank, 'pay_status' => 0]);
+        }
+        $item = $this->item('Singles', [$this->categories['Boys']]);
+        $default = $this->request([$item], true)->assertOk()->json('readiness');
+        $this->assertCount(3, $default['opening_round_choices']);
+        foreach ([1, 2, 3] as $opening) {
+            $chosen = $item + ['opening_round' => $opening];
+            $preview = $this->request([$chosen], true)->assertOk()->json('readiness');
+            $this->assertSame($default['rounds'][$opening - 1]['ties'], $preview['rounds'][0]['ties']);
+            $payload = ['draws' => [$chosen], 'batch_key' => 'opening-'.$opening, 'guided_setup' => 1];
+            $url = route('headoffice.createSingleDraw.team', $this->event);
+            $created = $this->postJson($url, $payload)->assertOk();
+            $draw = Draw::findOrFail($created->json('draw.id'));
+            $this->assertSame($opening, $draw->team_draw_selection['opening_round']);
+            $this->assertSame(0, $draw->teamTies()->count());
+            $this->postJson($url, $payload)->assertOk()->assertJsonPath('draw.id', $draw->id);
+            $this->postJson(route('draw.guide.generate-team', [$this->event, $draw]), ['confirm_generation' => 1])->assertOk();
+            $actual = $draw->teamTies()->orderBy('round_nr')->orderBy('tie_nr')->get();
+            $this->assertCount(6, $actual);
+            $this->assertCount(6, $actual->map(function ($tie) { $ids = [$tie->home_team_id, $tie->away_team_id]; sort($ids); return implode('-', $ids); })->unique());
+            foreach ($preview['rounds'] as $round) {
+                $pairs = $actual->where('round_nr', $round['round_nr'])->values();
+                foreach ($round['ties'] as $index => $tie) {
+                    $this->assertSame($tie['home_team']['id'], $pairs[$index]->home_team_id);
+                    $this->assertSame($tie['away_team']['id'], $pairs[$index]->away_team_id);
+                }
+            }
+            $this->postJson($url, ['draws' => [$item + ['opening_round' => $opening % 3 + 1]], 'batch_key' => 'opening-'.$opening, 'guided_setup' => 1])->assertUnprocessable();
+        }
+    }
+
+    public function test_unavailable_or_non_integer_opening_round_cannot_create_records(): void
+    {
+        $item = $this->item('Singles', [$this->categories['Boys']]);
+        foreach ([0, -1, 2, 999, 'one', 1.5] as $opening) {
+            $this->request([$item + ['opening_round' => $opening]])->assertUnprocessable();
+        }
+        $this->assertDatabaseCount('draws', 0);
+        $this->assertDatabaseCount('team_ties', 0);
+    }
+
+    public function test_explicit_players_per_team_controls_rubbers_and_survives_roster_refresh(): void
+    {
+        $items = [
+            $this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => 1],
+            $this->item('Doubles', [$this->categories['Boys']]) + ['players_per_team' => 2],
+            $this->item('Singles Reverse', [$this->categories['Boys']]) + ['players_per_team' => 2],
+            $this->item() + ['players_per_team' => 2],
+        ];
+        $preview = $this->request($items, true)->assertOk()->json('draws');
+        $this->assertSame([1, 1, 2, 2], array_column(array_column($preview, 'readiness'), 'rubber_count'));
+        $this->request($items)->assertOk();
+        foreach (Draw::orderBy('id')->get() as $index => $draw) {
+            $this->assertSame($items[$index]['players_per_team'], $draw->team_draw_selection['players_per_team']);
+            $this->assertCount([1, 1, 2, 2][$index], $draw->team_format_snapshot['rubbers']);
+        }
+        $singles = Draw::orderBy('id')->first();
+        foreach ($this->teams as $region) NoProfileTeamPlayer::create(['team_id' => $region['Boys']->id, 'rank' => 3, 'name' => 'Extra', 'surname' => 'Player', 'pay_status' => 0]);
+        app(\App\Services\TeamDrawAdaptationService::class)->adaptDraw($singles);
+        $this->assertCount(1, $singles->fresh()->team_format_snapshot['rubbers']);
+    }
+
+    public function test_players_per_team_rejects_invalid_counts_and_conflicting_formats(): void
+    {
+        foreach ([0, 13, -1, 'many', 1.5] as $count) $this->request([$this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => $count]])->assertUnprocessable();
+        foreach (['Doubles', 'Singles Reverse'] as $type) $this->request([$this->item($type, [$this->categories['Boys']]) + ['players_per_team' => 3]])->assertUnprocessable();
+        $format = TeamEventFormat::create(['event_id' => $this->event->id, 'name' => 'Existing', 'min_roster_size' => 1, 'max_roster_size' => 12, 'allow_player_reuse' => false, 'is_default' => true]);
+        $this->request([$this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => 2, 'format_id' => $format->id]])->assertUnprocessable();
+        $preview = $this->request([$this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => 2]], true)->assertOk();
+        $preview->assertJsonPath('readiness.rubber_count', 2);
+        $this->assertDatabaseCount('draws', 0);
+    }
+
     public function test_guided_creation_saves_selection_without_generation_then_explicitly_generates_once(): void
     {
         $payload = ['draws' => [$this->item('Singles', [$this->categories['Boys']])], 'batch_key' => 'guided-test', 'guided_setup' => 1];
