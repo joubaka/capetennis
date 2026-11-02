@@ -82,7 +82,7 @@ class PlayerPlusNotifications
         } else {
             if (! $order->user || ! $order->player || ! $order->activated_at || ! $order->term_ends_at
                 || $order->status !== 'completed' || ! $order->pay_status || ! $order->payfast_paid) return null;
-            if ($kind === 'renewal' && ($order->isMonthly() || ! PlayerPlusService::salesEnabled() || $order->term_ends_at->lte(now())
+            if ($kind === 'renewal' && ($order->isRecurring() || ! PlayerPlusService::salesEnabled() || $order->term_ends_at->lte(now())
                 || $order->term_ends_at->gt(now()->addDays(14))
                 || ! PlayerPlusMembership::where('player_id', $order->player_id)->where('order_id', $order->id)
                     ->where('starts_at', '<=', now())->where('ends_at', $order->term_ends_at)->exists())) return null;
@@ -92,7 +92,7 @@ class PlayerPlusNotifications
             $end = e($order->term_ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i')).' SAST';
             $subject = $kind === 'activation' ? 'Player Plus payment confirmed · P'.$order->id : 'Player Plus expires soon · P'.$order->id;
             $body = '<p>'.e($order->player->full_name).' · Player Plus order P'.e($order->id).'</p>'
-                .($kind === 'activation' ? '<p>Your '.($order->isMonthly() ? 'monthly subscription' : 'once-off').' R'.e(PlayerPlusService::amount($order->price_cents)).' payment was verified for the purchased membership term ending '.$end.'. Check the order for its current status.</p>'
+                .($kind === 'activation' ? '<p>Your '.($order->isRecurring() ? ($order->isMonthly() ? 'monthly subscription' : 'annual subscription') : 'once-off').' R'.e(PlayerPlusService::amount($order->price_cents)).' payment was verified for the purchased membership term ending '.$end.'. Check the order for its current status.</p>'
                     : '<p>The membership you purchased ends on '.$end.'. There is no automatic renewal or charge. You can renew manually after expiry at the price shown then.</p>')
                 .'<p><a href="'.e(route('player-plus.orders.show', $order)).'">View your order and membership details</a></p>'
                 .'<p>Private benefits belong to the named player and their currently linked accounts. Sponsorship does not link a player or grant private access.</p>'

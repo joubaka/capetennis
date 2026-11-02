@@ -14,25 +14,66 @@
 @endsection
 
 @section('content')
-<div class="operational-page">
+<div class="operational-page site-settings-page">
 @include('backend.partials.operational-controls')
-<div class="container-xl">
+<style>
+  .site-settings-page { --settings-scroll-offset:160px; }
+  .site-settings-page .settings-shell { max-width:1200px; margin-inline:auto; padding-top:.25rem; }
+  .site-settings-page .settings-header { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:1rem; margin-bottom:1.5rem; }
+  .site-settings-page .settings-header h1 { font-size:clamp(1.65rem,3vw,2rem); letter-spacing:-.035em; margin:0 0 .5rem; }
+  .site-settings-page .settings-header p { max-width:68ch; line-height:1.6; margin:0; color:var(--ct-muted,#66788a); }
+  .site-settings-page .settings-header .settings-dashboard-link { display:inline-flex; align-items:center; gap:.4rem; min-height:44px; }
+  .site-settings-page .settings-nav { display:flex; flex-wrap:wrap; gap:.5rem; padding:1rem; margin-bottom:1.5rem; border:1px solid var(--ct-border,#e4eaf0); border-radius:12px; background:#fff; }
+  .site-settings-page .settings-nav a { display:inline-flex; align-items:center; gap:.45rem; min-height:44px; padding:.6rem .85rem; border-radius:7px; color:var(--ct-ink,#172e45); background:var(--ct-soft,#f2f5f8); font-size:.875rem; }
+  .site-settings-page .settings-nav a:hover { background:#eaf4f2; color:#14796e; }
+  .site-settings-page :is(#settings-plus,#settings-fees,#settings-methods,#settings-agreements,#settings-content) { scroll-margin-top:var(--settings-scroll-offset); }
+  .site-settings-page .settings-card { border:1px solid var(--ct-border,#e4eaf0); box-shadow:none; border-radius:14px; overflow:hidden; }
+  .site-settings-page .settings-plus-header { display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap; padding:1.5rem; border-bottom:1px solid var(--ct-border,#e4eaf0); }
+  .site-settings-page .settings-plus-header p { max-width:62ch; margin-bottom:0; line-height:1.6; }
+  .site-settings-page .settings-plus-header .form-switch { padding-left:2.75rem; margin-bottom:.25rem; }
+  .site-settings-page .settings-plan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.5rem; padding:1.5rem; }
+  .site-settings-page .settings-plan-panel { width:100%; min-width:0; border:1px solid var(--ct-border,#e4eaf0); background:#fbfcfd; border-radius:12px; padding:1.25rem; }
+  .site-settings-page .settings-plan-panel h3 { font-size:1.05rem; margin-bottom:.75rem; }
+  .site-settings-page .settings-plan-panel p { line-height:1.65; }
+  .site-settings-page .settings-plan-panel [data-plus-monthly-settings] { margin-top:0!important; padding-top:0!important; border-top:0!important; }
+  .site-settings-page .settings-price-actions { display:flex; flex-wrap:wrap; align-items:flex-start; gap:.65rem; }
+  .site-settings-page .settings-plan-panel :is(#sa-plus-price,#sa-plus-monthly-price) { max-width:11rem!important; min-width:0; flex:1 1 9rem; }
+  .site-settings-page .settings-plus-footer { padding:0 1.5rem 1.25rem; }
+  .site-settings-page .settings-plus-footer a { display:inline-flex; align-items:center; gap:.4rem; min-height:44px; }
+  .site-settings-page .card-header :is(small,p) { display:block; max-width:85ch; margin-top:.5rem; line-height:1.6; }
+  .site-settings-page .card-body .form-label { line-height:1.45; }
+  .site-settings-page .settings-methods-table { min-width:540px; }
+  .site-settings-page .settings-methods-table .method-pct-input { min-width:5rem; }
+  .site-settings-page .settings-formula code { display:block; margin-top:.65rem; white-space:normal; overflow-wrap:anywhere; line-height:1.8; }
+  .site-settings-page .settings-save-bar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; padding:1.25rem 1.5rem; border:1px solid var(--ct-border,#e4eaf0); border-radius:12px; background:#fff; margin:0 0 1.5rem; }
+  .site-settings-page .settings-save-bar p { margin:0; color:var(--ct-muted,#66788a); font-size:.875rem; line-height:1.6; }
+  @media(max-width:1199.98px) { .site-settings-page { --settings-scroll-offset:100px; } }
+  @media(max-width:767.98px) {
+    .site-settings-page .settings-plan-grid { grid-template-columns:1fr; padding:1rem; gap:1rem; }
+    .site-settings-page .settings-plus-header { padding:1.25rem; gap:1rem; }
+    .site-settings-page .settings-plus-footer { padding:0 1.25rem 1rem; }
+    .site-settings-page .settings-plan-panel { padding:1rem; }
+    .site-settings-page .settings-save-bar { padding:1rem; }
+  }
+  @media(max-width:575.98px) {
+    .site-settings-page .settings-nav { padding:.75rem; gap:.4rem; }
+    .site-settings-page .settings-nav a { flex:1 1 auto; justify-content:center; }
+    .site-settings-page .settings-plan-panel :is(#sa-plus-price,#sa-plus-monthly-price) { max-width:none!important; flex-basis:100%; }
+    .site-settings-page .settings-plan-panel :is(#sa-plus-price-save,#sa-plus-monthly-save), .site-settings-page .settings-save-bar .btn { width:100%; }
+  }
+</style>
+<div class="container-xl settings-shell">
 
-  <div class="alert alert-info d-flex align-items-center mb-4" role="alert">
-    <i class="ti ti-info-circle me-2 fs-5"></i>
+  <header class="settings-header">
     <div>
-      These settings are also available in the
-      <a href="{{ route('backend.superadmin.index') }}#settings"
+      <p class="ct-eyebrow">Super Admin</p>
+      <h1>Site settings</h1>
+      <p>Manage Player Plus plans, payment fees and the requirements shown to players.</p>
+    </div>
+    <a href="{{ route('backend.superadmin.index') }}#settings"
          onclick="event.preventDefault(); window.location.href='{{ route('backend.superadmin.index') }}'; sessionStorage.setItem('openSettingsTab','1');"
-         class="alert-link">Super Admin Dashboard → Settings tab</a>.
-    </div>
-  </div>
-
-  <div class="card mb-4">
-    <div class="card-body">
-      <h4 class="mb-0">Site Settings</h4>
-    </div>
-  </div>
+         class="settings-dashboard-link"><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Super Admin dashboard</a>
+  </header>
 
   @if(session('success'))
     <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -52,32 +93,49 @@
     </div>
   @endif
 
-<nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Settings sections"><a class="btn btn-outline-secondary" href="#settings-fees">Fees</a><a class="btn btn-outline-secondary" href="#settings-agreements">Agreement requirements</a><a class="btn btn-outline-secondary" href="#settings-content">Published content</a></nav>
+  <nav class="settings-nav" aria-label="Settings sections">
+    <a href="#settings-plus"><i class="ti ti-star" aria-hidden="true"></i> Player Plus</a>
+    <a href="#settings-fees">Default fees</a>
+    <a href="#settings-methods">Payment methods</a>
+    <a href="#settings-agreements">Player requirements</a>
+    <a href="#settings-content">Published content</a>
+  </nav>
   <form action="{{ route('settings.store') }}" method="POST">
     @csrf
 
-    <div class="row mb-4">
-      <div class="col-md-6">
-        <section class="card card-body" aria-labelledby="plus-settings-heading">
-          <h2 class="h5" id="plus-settings-heading">Player Plus</h2>
+    <section class="card settings-card mb-4" id="settings-plus" aria-labelledby="plus-settings-heading">
+      <div class="settings-plus-header">
+        <div>
+          <h2 class="h4 mb-2" id="plus-settings-heading">Player Plus</h2>
+          <p class="small text-muted">New plans renew automatically until cancelled. Existing paid terms and agreed subscription prices stay unchanged.</p>
+        </div>
+        <div>
           <input type="hidden" name="player_rating_membership_enabled" value="0">
           <label class="form-check form-switch">
             <input class="form-check-input" type="checkbox" role="switch" id="sa-plus-sales" name="player_rating_membership_enabled" value="1" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
             <span class="form-check-label">Accept new purchases</span>
           </label>
-          <p class="small text-muted">Pausing sales keeps existing verified memberships accessible until expiry.</p>
+          <p class="small text-muted mb-0">Saves immediately. Pausing sales keeps paid access until expiry.</p>
+        </div>
+      </div>
+      <div class="settings-plan-grid">
+        <div class="col-md-6 settings-plan-panel">
+          <h3>Annual plan</h3>
+          <p class="small text-muted">New annual purchases renew automatically at the agreed price until cancelled. Existing once-off annual orders keep their original conditions.</p>
           <label class="form-label" for="sa-plus-price">Annual price per player (R)</label>
-          <div class="d-flex flex-wrap gap-2">
+          <div class="settings-price-actions">
             <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS) }}" max="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS) }}" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>
             <button class="btn btn-outline-primary" type="button" id="sa-plus-price-save" style="min-height:44px">Save annual price</button>
           </div>
           <p class="small text-muted mt-2 mb-0">Applies to new checkouts only. Existing checkout prices and purchased terms remain unchanged.</p>
           <p id="sa-plus-price-status" class="small mt-2" role="status"></p>
-          @include('backend.settings.partials.player-plus-monthly')
-          <a class="align-self-start d-inline-block py-2" href="{{ route('superadmin.player-plus.index') }}">Review Plus payment issues</a>
-        </section>
+        </div>
+        <div class="col-md-6 settings-plan-panel">
+          @include('backend.settings.partials.player-plus-monthly', ['showAnnualContext' => false])
+        </div>
       </div>
-    </div>
+      <div class="settings-plus-footer"><a href="{{ route('superadmin.player-plus.index') }}"><i class="ti ti-receipt" aria-hidden="true"></i> Review Plus payment issues</a></div>
+    </section>
 
     {{-- ===== DEFAULT / GLOBAL SETTINGS ===== --}}
     <div class="card mb-4">
@@ -130,13 +188,14 @@
     {{-- ===== PER PAYMENT METHOD ===== --}}
     <div class="card mb-4">
       <div class="card-header">
-        <h5 class="mb-0"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h5>
+        <h5 id="settings-methods" class="mb-0"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h5>
         <small class="text-muted">
           Set the percentage charged to the event director for each payment type. The flat fee and VAT above apply to all methods.
         </small>
       </div>
-      <div class="card-body p-0 table-responsive">
-        <table class="table table-striped mb-0">
+      <p class="small text-muted px-4 pt-3 mb-2 d-md-none">Scroll across to view all payment-method columns.</p>
+      <div class="card-body p-0 table-responsive" tabindex="0" role="region" aria-labelledby="settings-methods">
+        <table class="table table-striped mb-0 settings-methods-table">
           <thead class="table-light">
             <tr>
               <th style="width:200px;">Payment Method</th>
@@ -173,7 +232,7 @@
     </div>
 
     {{-- ===== FORMULA PREVIEW ===== --}}
-    <div class="card mb-4">
+    <div class="card mb-4 settings-formula">
       <div class="card-body">
         <strong>Fee Formula:</strong>
         <code>((amount × percentage%) + R<span id="previewFlat">{{ $payfastSettings['payfast_fee_flat']->value ?? '2.00' }}</span>) × (1 + <span id="previewVat">{{ $payfastSettings['payfast_vat_rate']->value ?? '14' }}</span>%)</code>
@@ -272,7 +331,8 @@
       </div>
     </div>
 
-    <div class="mb-4">
+    <div class="settings-save-bar">
+      <div><strong>Save page settings</strong><p>Saves annual pricing, fees, player requirements and published content. Use the separate button above for monthly settings.</p></div>
       <button type="submit" class="btn btn-primary">
         <i class="ti ti-device-floppy me-1"></i> Save Settings
       </button>

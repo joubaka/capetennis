@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 
 class PlayerPlusController extends Controller
 {
-    public const TERMS_VERSION = '2026-11-01-monthly';
+    public const TERMS_VERSION = '2026-11-01-recurring';
 
     public function terms()
     {
@@ -59,14 +59,14 @@ class PlayerPlusController extends Controller
     public function store(Request $request, Player $player, PlayerPlusService $service)
     {
         $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
-            'plan' => ['sometimes', \Illuminate\Validation\Rule::in(['annual', 'monthly'])],
-            'recurring_consent' => ['exclude_unless:plan,monthly', 'required', 'accepted'],
+            'plan' => ['required', \Illuminate\Validation\Rule::in(['annual_recurring', 'monthly'])],
+            'recurring_consent' => ['required', 'accepted'],
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
             'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]],
             ['quoted_price_cents.min' => 'Please reload the player membership page to review a supported annual price.']);
         $order = DB::transaction(function () use ($service, $player, $request, $data) {
             $order = $service->start($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents'],
-                $data['plan'] ?? 'annual', ! empty($data['recurring_consent']));
+                $data['plan'], ! empty($data['recurring_consent']));
             if (! \App\Models\AuditEvent::where('action', 'player-plus.purchase-details-accepted')->where('subject_type', PlayerPlusOrder::class)
                 ->where('subject_id', (string) $order->id)->exists()) {
                 $audit = app(AuditWriter::class)->record(['category' => 'business', 'action' => 'player-plus.purchase-details-accepted',

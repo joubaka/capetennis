@@ -1,11 +1,11 @@
-@props(['priceCents' => null, 'plan' => 'annual'])
+@props(['priceCents' => null, 'plan' => 'offer'])
 @php($priceCents = $priceCents ?? \App\Services\Performance\PlayerPlusService::priceCents())
 <aside {{ $attributes->class(['rounded p-3']) }} style="background:#fff;border:1px solid #e5ece9;color:#20384b" aria-label="Player Plus membership benefits" data-player-plus-benefits>
   <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
     <strong>Optional Player Plus</strong>
     <span style="color:#14675c;font-size:1.25rem;font-weight:600">R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} <small style="font-size:.8rem;font-weight:400">per player / {{ $plan === 'monthly' ? 'month' : 'year' }}</small></span>
   </div>
-  <p class="small mt-2 mb-2">{{ $plan === 'monthly' ? 'Monthly access for one named player, automatically renewed through PayFast until the payer cancels.' : '12 months for one named player. Annual purchases renew manually; no automatic renewal.' }} Shared with the player and their linked parents or guardians.</p>
+  <p class="small mt-2 mb-2">@if($plan === 'monthly')Monthly access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual_recurring')Annual access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual')12 months for one named player. This existing once-off purchase has no automatic renewal.@else Choose monthly or annual automatic renewal for one named player when available.@endif Shared with the player and their linked parents or guardians.</p>
   <p class="fw-semibold mb-2">Understand their playing strength. Follow their progress.</p>
   <p class="small text-muted mb-3">Eligible results are needed for a rating; purchasing Plus does not guarantee one.</p>
     <ul class="small ps-3 mb-2">

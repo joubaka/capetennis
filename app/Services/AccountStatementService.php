@@ -46,7 +46,7 @@ class AccountStatementService
                 $plus = \App\Models\PlayerPlusOrder::whereKey($receipt->custom_int5)->where('user_id', $user->id)
                     ->where('pay_status', true)->where('payfast_paid', true)
                     ->whereIn('status', ['completed', 'reconciliation_required'])->whereNotNull('payfast_handed_off_at')->first();
-                if ($plus?->isMonthly() && \App\Services\Performance\PlayerPlusService::monthlyReady()) {
+                if ($plus?->isRecurring() && \App\Services\Performance\PlayerPlusService::monthlyReady()) {
                     $charge = DB::table('player_plus_subscription_charges as c')->join('player_plus_subscriptions as s', 's.id', '=', 'c.subscription_id')
                         ->where('s.order_id', $plus->id)->where('c.provider_payment_id', $receipt->pf_payment_id)->select('c.order_id')->first();
                     $plus = $charge ? \App\Models\PlayerPlusOrder::whereKey($charge->order_id)->where('user_id', $user->id)
@@ -59,7 +59,7 @@ class AccountStatementService
                         ? 'Player Plus / PayFast' : 'Player Plus / reconciliation';
                     $rows->push($this->row($receipt->created_at, $label, 'PF '.$receipt->pf_payment_id,
                         'P'.$plus->id, [['player' => $receipt->player?->full_name ?? 'Player unavailable',
-                            'event' => $plus->isMonthly() ? 'Player Plus · monthly' : 'Player Plus · 12 months', 'event_date' => null, 'fee' => $plus->price_cents]],
+                            'event' => $plus->isRecurring() ? 'Player Plus · '.($plus->isMonthly() ? 'monthly' : 'annual subscription') : 'Player Plus · 12 months', 'event_date' => null, 'fee' => $plus->price_cents]],
                         $this->cents($receipt->amount_gross), 0));
                 }
                 continue;

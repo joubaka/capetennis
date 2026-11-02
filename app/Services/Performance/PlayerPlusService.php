@@ -35,6 +35,20 @@ class PlayerPlusService
         return self::monthlyReady() && SiteSetting::get(self::MONTHLY_ENABLED_SETTING, '0') === '1';
     }
 
+    public static function monthlyProviderReady(): bool
+    {
+        $sandbox = (bool) config('services.payfast.sandbox');
+        return filled(config('services.payfast.'.($sandbox ? 'sandbox_id' : 'merchant_id')))
+            && filled(config('services.payfast.'.($sandbox ? 'sandbox_key' : 'merchant_key')))
+            && filled(config('services.payfast.'.($sandbox ? 'passphrase_sandbox' : 'passphrase_live')) ?: config('services.payfast.passphrase'));
+    }
+
+    private function hasUncancelledSubscription(int $playerId, ?int $exceptOrderId = null): bool
+    {
+        return self::monthlyReady() && PlayerPlusSubscription::whereHas('order', fn ($q) => $q->where('player_id', $playerId))
+            ->when($exceptOrderId, fn ($q) => $q->where('order_id', '!=', $exceptOrderId))->whereNull('cancelled_at')->exists();
+    }
+
     public static function priceCents(): int
     {
         $value = (string) SiteSetting::get(self::PRICE_SETTING, (string) self::PRICE_CENTS);
@@ -72,8 +86,9 @@ class PlayerPlusService
     public function start(Player $player, User $payer, string $token, ?int $quotedPrice = null, string $plan = 'annual', bool $recurringConsent = false): PlayerPlusOrder
     {
         abort_unless(self::salesEnabled(), 404);
-        if (! in_array($plan, ['annual', 'monthly'], true)) $this->reject('Choose a supported membership plan.');
+        if (! in_array($plan, ['annual', 'monthly', 'annual_recurring'], true)) $this->reject('Choose a supported membership plan.');
         if ($plan === 'monthly' && (! self::monthlyEnabled() || ! $recurringConsent)) $this->reject('Monthly purchases need recurring-payment consent and must be available.');
+        if ($plan === 'annual_recurring' && (! self::monthlyReady() || ! $recurringConsent)) $this->reject('Annual subscriptions need recurring-payment consent and must be available.');
         return DB::transaction(function () use ($player, $payer, $token, $quotedPrice, $plan, $recurringConsent) {
             Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
             $existing = PlayerPlusOrder::where('request_token', $token)->lockForUpdate()->first();
@@ -84,7 +99,7 @@ class PlayerPlusService
             }
             if (self::monthlyReady() && PlayerPlusSubscription::whereHas('order', fn ($q) => $q->where('player_id', $player->id))
                 ->whereNull('cancelled_at')->exists()) {
-                $this->reject('This player has a monthly subscription. Its payer must stop automatic renewal before starting another purchase.');
+                $this->reject('This player has an automatic-renewal subscription. Its payer must stop automatic renewal before starting another purchase.');
             }
             if (PlayerPlusMembership::where('player_id', $player->id)->where('ends_at', '>', now())->exists()) {
                 $this->reject('This player already has Player Plus. Renew manually after the current membership expires.');
@@ -115,7 +130,12 @@ class PlayerPlusService
             Player::whereKey($order->player_id)->lockForUpdate()->firstOrFail();
             $order = PlayerPlusOrder::lockForUpdate()->findOrFail($order->id);
             abort_unless((int) $order->user_id === (int) $payer->id, 403);
-            if ($order->isMonthly() && (! self::monthlyEnabled() || ! $order->recurring_consented_at)) $this->reject('Monthly purchases are unavailable.');
+            if ($order->isRecurring() && (! self::monthlyReady() || ! $order->recurring_consented_at)) $this->reject('Subscription purchases are unavailable.');
+            if ($order->isMonthly() && ! self::monthlyEnabled()) $this->reject('Monthly purchases are unavailable.');
+            if ($order->isRecurring() && ! self::monthlyProviderReady()) $this->reject('Recurring payments are not configured yet. Please contact Cape Tennis support.');
+            if ($this->hasUncancelledSubscription((int) $order->player_id, (int) $order->id)) {
+                $this->reject('This player has another subscription awaiting cancellation. Its payer must stop automatic renewal first.');
+            }
             if ($order->status !== 'pending' || !$order->expires_at->isFuture() || $order->payfast_handed_off_at) {
                 $this->reject('This checkout is no longer available for payment. Check its status before starting again.');
             }
@@ -140,9 +160,10 @@ class PlayerPlusService
         $payfast->custom_int5 = $order->id;
         $payfast->custom_str5 = 'PlayerPlus';
         $payfast->setAmount($order->price_cents / 100);
-        $payfast->setItem($order->isMonthly() ? 'Player Plus - monthly subscription' : 'Player Plus - 12 months');
-        if ($order->isMonthly()) {
-            $payfast->setMonthlySubscription($order->payfast_handed_off_at->timezone('Africa/Johannesburg')->addMonthNoOverflow()->toDateString());
+        $payfast->setItem($order->isRecurring() ? 'Player Plus - '.($order->isMonthly() ? 'monthly' : 'annual').' subscription' : 'Player Plus - 12 months');
+        if ($order->isRecurring()) {
+            $date = $order->payfast_handed_off_at->timezone('Africa/Johannesburg');
+            $payfast->setSubscription(($order->isMonthly() ? $date->addMonthNoOverflow() : $date->addYearNoOverflow())->toDateString(), $order->isMonthly() ? 3 : 6);
         }
         $payfast->setReturnUrl(route('player-plus.orders.show', $order));
         $payfast->setCancelUrl(route('player-plus.orders.show', $order));
@@ -187,7 +208,7 @@ class PlayerPlusService
                 || self::parseAmount((string) ($data['amount_gross'] ?? '')) !== $order->price_cents) {
                 $this->reject('Payment amount or handoff mismatch.');
             }
-            if ($order->isMonthly()) {
+            if ($order->isRecurring()) {
                 $this->receiveMonthly($order, $data, $providerId);
                 return;
             }
@@ -206,6 +227,8 @@ class PlayerPlusService
                 $reason = 'Payment arrived after checkout cancellation or expiry.';
             } elseif (PlayerPlusMembership::where('player_id', $order->player_id)->where('ends_at', '>', now())->exists()) {
                 $reason = 'The player already has active membership.';
+            } elseif ($this->hasUncancelledSubscription((int) $order->player_id)) {
+                $reason = 'The player has an outstanding subscription mandate; review before activating this annual purchase.';
             }
             if ($reason) {
                 $this->payments->recordVerifiedPaymentForReconciliation($order, $providerId, $reason);
@@ -227,7 +250,7 @@ class PlayerPlusService
     /** Called inside the root order/player lock, only after the shared verified ITN gates. */
     private function receiveMonthly(PlayerPlusOrder $root, array $data, string $providerId): void
     {
-        if (! self::monthlyReady() || $root->subscription_order_id || ! $root->recurring_consented_at) $this->reject('Monthly payment consent does not match.');
+        if (! self::monthlyReady() || $root->subscription_order_id || ! $root->recurring_consented_at) $this->reject('Subscription payment consent does not match.');
         $token = (string) ($data['token'] ?? '');
         if (! preg_match('/^[A-Za-z0-9_-]{1,120}$/D', $token)) $this->reject('The verified subscription token is missing or invalid.');
         $tokenHash = hash('sha256', $token);
@@ -235,9 +258,10 @@ class PlayerPlusService
         if ($subscription && ! hash_equals($subscription->provider_token_hash, $tokenHash)) $this->reject('Subscription identity mismatch.');
         if (! $subscription) {
             if ($root->payfast_paid || PlayerPlusSubscription::where('provider_token_hash', $tokenHash)->exists()) $this->reject('Subscription token is already assigned.');
-            $anchor = $root->payfast_handed_off_at->timezone('Africa/Johannesburg')->startOfDay();
+            $date = $root->payfast_handed_off_at->timezone('Africa/Johannesburg')->startOfDay();
+            $anchor = $root->isMonthly() ? $date->addMonthNoOverflow() : $date->addYearNoOverflow();
             $subscription = PlayerPlusSubscription::create(['order_id' => $root->id, 'provider_token' => $token,
-                'provider_token_hash' => $tokenHash, 'billing_anchor_at' => $anchor, 'next_billing_at' => $anchor->addMonthNoOverflow()]);
+                'provider_token_hash' => $tokenHash, 'billing_anchor_at' => $anchor, 'next_billing_at' => $anchor]);
         }
         $charge = DB::table('player_plus_subscription_charges')->where('provider_payment_id', $providerId)->first();
         if ($charge && (int) $charge->subscription_id !== (int) $subscription->id) $this->reject('Provider receipt belongs to another subscription.');
@@ -252,9 +276,13 @@ class PlayerPlusService
             if (PlayerPlusMembership::where('player_id', $root->player_id)->where('ends_at', '>', now())->exists()) {
                 $reason ??= 'The player already has active membership.';
             }
+            if ($this->hasUncancelledSubscription((int) $root->player_id, (int) $root->id)) {
+                $reason ??= 'The player has another outstanding subscription mandate.';
+            }
             if ($reason) {
                 $this->payments->recordVerifiedPaymentForReconciliation($root, $providerId, $reason);
                 $subscription->update(['status' => 'cancel_pending', 'cancellation_requested_at' => now()]);
+                $this->queueRequestedCancellation($subscription);
                 $this->recordMonthlyCharge($subscription, $root, $providerId, null);
                 app(PlayerPlusNotifications::class)->record($root->fresh(), 'reconciliation');
                 return;
@@ -268,21 +296,25 @@ class PlayerPlusService
 
         $cycle = $subscription->paid_cycles + 1;
         $starts = $subscription->next_billing_at;
-        $ends = $subscription->billing_anchor_at->addMonthsNoOverflow($cycle);
+        $ends = $root->isMonthly() ? $subscription->billing_anchor_at->addMonthsNoOverflow($cycle - 1)
+            : $subscription->billing_anchor_at->addYearsNoOverflow($cycle - 1);
         $membership = PlayerPlusMembership::where('player_id', $root->player_id)->first();
         $currentOrder = $membership ? PlayerPlusOrder::find($membership->order_id) : null;
         $reason = null;
         if ($subscription->status !== 'active' || $subscription->cancellation_requested_at) {
             $reason = 'Payment received after automatic-renewal cancellation was requested.';
         } elseif (now()->lt($starts) || now()->gte($ends)) {
-            $reason = 'Payment is outside the next expected monthly billing period; possible additional or delayed charge.';
-            if (now()->gte($ends)) $subscription->update(['status' => 'cancel_pending', 'cancellation_requested_at' => now()]);
+            $reason = 'Payment is outside the next expected subscription billing period; possible additional or delayed charge.';
+            if (now()->gte($ends)) {
+                $subscription->update(['status' => 'cancel_pending', 'cancellation_requested_at' => now()]);
+                $this->queueRequestedCancellation($subscription);
+            }
         } elseif (! $currentOrder || ((int) $currentOrder->id !== (int) $root->id && (int) $currentOrder->subscription_order_id !== (int) $root->id)) {
             $reason = 'The current membership no longer belongs to this subscription.';
         }
         $renewal = PlayerPlusOrder::create(['player_id' => $root->player_id, 'user_id' => $root->user_id,
             'request_token' => (string) \Illuminate\Support\Str::uuid(), 'price_cents' => $root->price_cents,
-            'plan' => 'monthly', 'subscription_order_id' => $root->id, 'recurring_consented_at' => $root->recurring_consented_at,
+            'plan' => $root->plan, 'subscription_order_id' => $root->id, 'recurring_consented_at' => $root->recurring_consented_at,
             'payfast_handed_off_at' => $root->payfast_handed_off_at, 'expires_at' => now()]);
         $renewal = $this->payments->initiatePayment($renewal, 0, $root->price_cents / 100);
         if ($reason) {
@@ -342,11 +374,34 @@ class PlayerPlusService
         }, 3);
     }
 
-    private function auditSubscription(PlayerPlusOrder $root, User $payer, string $action): void
+    private function auditSubscription(PlayerPlusOrder $root, ?User $payer, string $action): void
     {
         $audit = app(\App\Support\Audit\AuditWriter::class)->record(['category' => 'business',
-            'action' => 'player-plus.subscription-'.$action, 'actor' => $payer, 'subject' => $root,
-            'metadata' => ['plan' => 'monthly']], true);
+            'action' => 'player-plus.subscription-'.$action,
+            'actor' => $payer ?? (object) ['name' => null, 'userName' => null, 'email' => null],
+            'actor_type' => $payer ? 'user' : 'system', 'source' => $payer ? 'web' : 'system', 'subject' => $root,
+            'metadata' => ['plan' => $root->plan]], true);
         if (! $audit) throw new \RuntimeException('The subscription change could not be recorded. Please try again.');
+    }
+
+    private function queueRequestedCancellation(PlayerPlusSubscription $subscription): void
+    {
+        $this->auditSubscription($subscription->order, null, 'automatic-cancellation-requested');
+        \App\Jobs\StopPlayerPlusSubscription::dispatch($subscription->id)->afterCommit();
+    }
+
+    public function stopRequestedSubscription(int $subscriptionId): void
+    {
+        $subscription = PlayerPlusSubscription::findOrFail($subscriptionId);
+        if ($subscription->cancelled_at || $subscription->status !== 'cancel_pending' || ! $subscription->cancellation_requested_at) return;
+        if (! app(PlayerPlusSubscriptionGateway::class)->cancel($subscription->provider_token)) {
+            throw new \RuntimeException('PayFast has not confirmed requested subscription cancellation. Operator reconciliation is required.');
+        }
+        DB::transaction(function () use ($subscription) {
+            $locked = PlayerPlusSubscription::lockForUpdate()->findOrFail($subscription->id);
+            if ($locked->cancelled_at) return;
+            $locked->update(['status' => 'cancelled', 'cancelled_at' => now()]);
+            $this->auditSubscription($locked->order, null, 'automatically-cancelled');
+        }, 3);
     }
 }

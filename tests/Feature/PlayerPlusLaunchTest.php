@@ -64,7 +64,8 @@ class PlayerPlusLaunchTest extends TestCase
 
     private function purchaseData(int $price = 49900): array
     {
-        return ['request_token' => (string) Str::uuid(), 'confirm' => '1', 'terms_version' => PlayerPlusController::TERMS_VERSION, 'quoted_price_cents' => $price];
+        return ['request_token' => (string) Str::uuid(), 'confirm' => '1', 'terms_version' => PlayerPlusController::TERMS_VERSION,
+            'quoted_price_cents' => $price, 'plan' => 'annual_recurring', 'recurring_consent' => '1'];
     }
 
     private function export(string $name, $response): void

@@ -1,28 +1,55 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Player Plus checkout')
 @section('content')
-<div class="container-xxl container-p-y" style="max-width:900px">
-  @php($subscription = $subscription ?? null)
-  <h1>Player Plus checkout</h1>
-  <h2 class="h4">{{ $order->player?->full_name ?? 'Player profile unavailable' }} · R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} {{ $order->isMonthly() ? 'per month · automatic renewal' : 'for 12 months' }}</h2>
-  <p>Profile #{{ $order->player_id }} @if($order->player?->dateOfBirth) · Born {{ substr($order->player->dateOfBirth, 0, 4) }} @endif</p>
-  <p>Order P{{ $order->id }} · {{ str_replace('_', ' ', ucfirst($order->status)) }}</p>
-  <x-player-plus-benefits :price-cents="$order->price_cents" :plan="$order->isMonthly() ? 'monthly' : 'annual'" />
+@php
+  $subscription = $subscription ?? null;
+  $checkoutOpen = $order->status === 'pending' && $order->expires_at->isFuture();
+  $stateTone = $order->reconciliation_reason || $order->status === 'reconciliation_required' ? 'review' : ($order->activated_at ? 'verified' : ($checkoutOpen ? 'pending' : 'closed'));
+  $stateLabel = $stateTone === 'review' ? 'Payment needs review' : ($stateTone === 'verified' ? 'Payment verified' : ($checkoutOpen ? ($form ? 'Continue to PayFast' : ($order->payfast_handed_off_at ? 'Awaiting confirmation' : 'Checkout open')) : 'Checkout closed'));
+@endphp
+<div class="container-xxl container-p-y pp-checkout" data-plus-checkout data-order-state="{{ $stateTone }}">
+  <style>
+    .pp-checkout{max-width:1180px;color:#243e50}.pp-checkout *{box-sizing:border-box}.pp-checkout .pp-checkout-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}.pp-checkout .pp-checkout-nav a{display:inline-flex;align-items:center;min-height:44px;font-size:.875rem;color:#176b59}.pp-checkout .pp-checkout-nav span{font-size:.8rem;color:#607681}
+    .pp-checkout .pp-checkout-hero{position:relative;overflow:hidden;border-radius:22px;background:linear-gradient(120deg,#153b4b,#104c55);padding:2.25rem;margin-bottom:1.5rem;color:#fff}.pp-checkout .pp-checkout-hero:after{content:'';position:absolute;right:-70px;top:-150px;width:340px;height:340px;border:1px solid #ffffff17;border-radius:50%;pointer-events:none}.pp-checkout .pp-checkout-eyebrow{font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:#a9e0cf;font-weight:700;margin:0 0 .8rem}.pp-checkout .pp-checkout-hero h1{color:#fff;font-size:clamp(1.7rem,3.7vw,2.4rem);letter-spacing:-.035em;line-height:1.2;margin:0 0 .9rem;max-width:850px;overflow-wrap:anywhere}.pp-checkout .pp-checkout-hero>p:last-of-type{color:#d2e3e8;line-height:1.65;max-width:65ch;margin-bottom:1.25rem}.pp-checkout .pp-checkout-meta{position:relative;z-index:1;display:flex;align-items:center;flex-wrap:wrap;gap:.65rem 1rem;font-size:.8rem;color:#c9dfe3}.pp-checkout .pp-order-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;border:1px solid #ffffff38;border-radius:7px;background:#ffffff0b;color:#fff}.pp-checkout .pp-order-chip strong{font-weight:600}
+    .pp-checkout .pp-checkout-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(320px,1fr);gap:1.5rem;align-items:start}.pp-checkout .pp-checkout-benefit-column{grid-column:1;grid-row:1;min-width:0}.pp-checkout .pp-checkout-summary{grid-column:2;grid-row:1;min-width:0;position:sticky;top:100px}.pp-checkout .pp-payment-card{border:1px solid #dce7e5;border-top:4px solid #277e6d;border-radius:16px;background:#fff;box-shadow:0 8px 28px #153b4b09;padding:1.5rem}.pp-checkout[data-order-state=review] .pp-payment-card{border-top-color:#b5832e}.pp-checkout[data-order-state=closed] .pp-payment-card{border-top-color:#87979e}.pp-checkout .pp-payment-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;margin-bottom:1.1rem}.pp-checkout .pp-payment-heading h2{font-size:1.05rem;margin:0;color:#173b4b}.pp-checkout .pp-payment-heading>span{font-size:.72rem;line-height:1.4;padding:.35rem .55rem;border-radius:6px;background:#eef5f2;color:#206b59;max-width:9rem;text-align:center}.pp-checkout .pp-checkout-price{display:flex;align-items:baseline;flex-wrap:wrap;gap:.2rem .55rem;margin-bottom:.4rem}.pp-checkout .pp-checkout-price strong{font-size:2.4rem;letter-spacing:-.045em;line-height:1.2;color:#173b4b}.pp-checkout .pp-checkout-price>span{font-size:.875rem;color:#607681}.pp-checkout .pp-plan-disclosure{font-size:.8rem;line-height:1.65;color:#526c78;margin-bottom:1.25rem;padding-bottom:1.25rem;border-bottom:1px solid #e2ebe7}.pp-checkout .pp-payment-card p{font-size:.875rem;line-height:1.7;overflow-wrap:anywhere}.pp-checkout .pp-payment-card .alert{padding:1rem;border-radius:10px;border:0;line-height:1.65}.pp-checkout .pp-payment-card .btn{min-height:48px;display:flex;align-items:center;justify-content:center;width:100%;white-space:normal;line-height:1.5;gap:.5rem}.pp-checkout .pp-payment-card .btn-primary{background:#176b59;border-color:#176b59;box-shadow:0 4px 10px #176b5914}.pp-checkout .pp-payment-card .btn-primary:hover{background:#10523f;border-color:#10523f}.pp-checkout .pp-payment-card .btn-outline-primary{color:#176b59;border-color:#a8c8bc}.pp-checkout .pp-payment-card .btn-outline-secondary{border-color:#d6e0df;color:#607681}.pp-checkout .pp-payment-trust{display:flex;align-items:flex-start;gap:.45rem;font-size:.75rem;line-height:1.6;color:#607681;margin-top:1rem}.pp-checkout .pp-payment-trust .ti{font-size:1rem;margin-top:.1rem;flex-shrink:0}
+    .pp-checkout .pp-checkout-benefits{border-radius:16px!important;padding:1.5rem!important;box-shadow:none}.pp-checkout .pp-checkout-benefits>div:first-child{display:none!important}.pp-checkout .pp-checkout-benefits>p:first-of-type{font-size:.875rem;color:#526c78;line-height:1.7;margin-top:0!important}.pp-checkout .pp-checkout-benefits>p.fw-semibold{font-size:1.2rem;line-height:1.45;color:#173b4b;margin-top:1.25rem}.pp-checkout .pp-checkout-benefits>ul{list-style:none;padding:0!important;margin:1.2rem 0!important;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}.pp-checkout .pp-checkout-benefits>ul>li{position:relative;padding:3.7rem 1rem 1rem;background:#f3f8f6;border:1px solid #e2ede7;border-radius:11px;line-height:1.7;color:#385763;min-width:0}.pp-checkout .pp-checkout-benefits>ul>li:before{content:'↗';position:absolute;top:1rem;left:1rem;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:8px;background:#dfefe7;color:#176b55;font-size:1.15rem;font-weight:700}.pp-checkout .pp-checkout-benefits>ul>li:nth-child(2):before{content:'≡'}.pp-checkout .pp-checkout-benefits>ul>li:nth-child(3):before{content:'★'}.pp-checkout .pp-checkout-benefits>ul>li:nth-child(4):before{content:'→'}.pp-checkout .pp-checkout-benefits details{border-top:1px solid #e2ebe7;padding-top:.5rem;margin-top:1.2rem}.pp-checkout .pp-checkout-benefits summary{font-weight:600;color:#254e5a}.pp-checkout .pp-checkout-benefits details p{line-height:1.7}.pp-checkout a:not(.btn){color:#176b59}.pp-checkout .pp-renewal-panel{padding-top:1.25rem;border-top:1px solid #e2ebe7;margin-top:1.25rem}.pp-checkout .pp-renewal-panel h2{font-size:1rem;color:#173b4b;margin-bottom:.75rem}.pp-checkout .pp-renewal-panel .btn-outline-danger{font-size:.825rem;min-height:44px}.pp-checkout .pp-checkout-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem 1.5rem;border-top:1px solid #dce7e5;padding-top:1rem;margin-top:1.75rem;font-size:.85rem}.pp-checkout .pp-checkout-footer a{display:inline-flex;align-items:center;min-height:44px}.pp-checkout :is(a,button,summary):focus-visible{outline:3px solid #409b86;outline-offset:3px}
+    .pp-checkout .pp-payment-card .btn{min-height:48px!important}
+    @media(max-width:991.98px){.pp-checkout .pp-checkout-grid{grid-template-columns:minmax(0,1fr)}.pp-checkout .pp-checkout-summary{grid-column:1;grid-row:1;position:static}.pp-checkout .pp-checkout-benefit-column{grid-column:1;grid-row:2}.pp-checkout .pp-checkout-hero{padding:1.75rem}.pp-checkout .pp-checkout-price strong{font-size:2.1rem}}
+    @media(max-width:575.98px){.pp-checkout .pp-checkout-hero{border-radius:16px;padding:1.4rem}.pp-checkout .pp-payment-card,.pp-checkout .pp-checkout-benefits{padding:1.2rem!important}.pp-checkout .pp-checkout-grid{gap:1rem}.pp-checkout .pp-checkout-benefits>ul{grid-template-columns:1fr}.pp-checkout .pp-checkout-benefits>ul>li{padding:1rem 1rem 1rem 3.7rem}.pp-checkout .pp-payment-heading{flex-wrap:wrap}.pp-checkout .pp-checkout-footer{align-items:flex-start;flex-direction:column;gap:.2rem}}
+  </style>
+  <nav class="pp-checkout-nav" aria-label="Checkout navigation"><a href="{{ route('player-plus.orders.index') }}">← Your orders</a><span>Player Plus checkout</span></nav>
+  <header class="pp-checkout-hero">
+    <p class="pp-checkout-eyebrow">Cape Tennis · Optional Player Plus</p>
+    <h1>Player Plus for {{ $order->player?->full_name ?? 'Player profile unavailable' }}</h1>
+    <p>Understand their playing strength. Follow their progress and explore the results behind their tennis.</p>
+    <div class="pp-checkout-meta">
+      <span class="pp-order-chip"><i class="ti ti-receipt" aria-hidden="true"></i> Order <strong>P{{ $order->id }}</strong></span>
+      <span>Profile #{{ $order->player_id }} @if($order->player?->dateOfBirth) · Born {{ substr($order->player->dateOfBirth, 0, 4) }} @endif</span>
+      <span>{{ str_replace('_', ' ', ucfirst($order->status)) }}</span>
+    </div>
+  </header>
   @if(session('success'))<p class="alert alert-success">{{ session('success') }}</p>@endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
+  <div class="pp-checkout-grid">
+    <div class="pp-checkout-summary">
+    <section class="pp-payment-card" aria-labelledby="pp-payment-heading">
+      <div class="pp-payment-heading"><h2 id="pp-payment-heading">{{ $checkoutOpen ? 'Payment summary' : 'Order summary' }}</h2><span>{{ $stateLabel }}</span></div>
+      <div class="pp-checkout-price"><strong>R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }}</strong><span>{{ $order->isRecurring() ? ($order->isMonthly() ? '/ month' : '/ year') : 'for 12 months' }}</span></div>
+      <p class="pp-plan-disclosure">@if($order->isRecurring())@if($subscription?->cancelled_at)Automatic renewal stopped. Saved {{ $order->isMonthly() ? 'monthly' : 'annual' }} subscription price.@else {{ $order->isMonthly() ? 'Monthly' : 'Annual' }} automatic renewal at your agreed price until cancelled.@endif @else Once-off annual purchase. No automatic renewal. @endif For one named player.</p>
+      <p class="small text-muted">Eligible results are needed for a rating; purchasing Plus does not guarantee one.</p>
   @if($order->activated_at)
-    <p class="alert alert-{{ $order->term_ends_at->isFuture() ? 'success' : 'secondary' }}">Payment verified. Purchased membership term: {{ $order->term_starts_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} to {{ $order->term_ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} SAST. @if($order->isMonthly())Monthly payments and purchased terms are recorded separately in My Plus orders.@else {{ $order->term_ends_at->isFuture() ? 'No automatic renewal.' : 'This purchased term has expired. No automatic renewal payment was taken.' }}@endif</p>
+    <p class="alert alert-{{ $order->term_ends_at->isFuture() ? 'success' : 'secondary' }}">Payment verified. Purchased membership term: {{ $order->term_starts_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} to {{ $order->term_ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} SAST. @if($order->isRecurring())Subscription payments and purchased terms are recorded separately in My Plus orders.@else {{ $order->term_ends_at->isFuture() ? 'No automatic renewal.' : 'This purchased term has expired. No automatic renewal payment was taken.' }}@endif</p>
     @if($order->reconciliation_reason)<p class="alert alert-warning">An additional payment needs Cape Tennis reconciliation. The original membership term is unchanged. Keep order P{{ $order->id }} as your reference.</p>@endif
   @elseif($order->status === 'reconciliation_required')
     <p class="alert alert-warning">Your payment was received and needs Cape Tennis reconciliation. Membership was not activated. Keep order P{{ $order->id }} as your reference.</p>
   @elseif($order->status === 'pending' && $order->expires_at->isFuture())
     @if($form)
-      <p>Continue to PayFast to {{ $order->isMonthly() ? 'authorise a monthly subscription at' : 'make a once-off' }} R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }}{{ $order->isMonthly() ? ' per month until cancelled' : '' }}. Membership starts only after verified payment confirmation.</p>
+      <p>Continue to PayFast to {{ $order->isRecurring() ? 'authorise a subscription at' : 'make a once-off' }} R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }}{{ $order->isRecurring() ? ($order->isMonthly() ? ' per month until cancelled' : ' per year until cancelled') : '' }}. Membership starts only after verified payment confirmation.</p>
       {!! $form !!}
-      <button type="submit" form="payfastForm" class="btn btn-primary" style="min-height:44px">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }}</button>
+      <button type="submit" form="payfastForm" class="btn btn-primary" style="min-height:44px">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} <i class="ti ti-arrow-right" aria-hidden="true"></i></button>
     @elseif(!$order->payfast_handed_off_at)
       @if(\App\Services\Performance\PlayerPlusService::salesEnabled())
-        <form method="post" action="{{ route('player-plus.orders.pay', $order) }}">@csrf<button class="btn btn-primary" style="min-height:44px">Pay R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} with PayFast</button></form>
+        <form method="post" action="{{ route('player-plus.orders.pay', $order) }}">@csrf<button class="btn btn-primary" style="min-height:44px">Pay R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} with PayFast <i class="ti ti-arrow-right" aria-hidden="true"></i></button></form>
       @else<p class="alert alert-info">Purchases are paused. This order cannot begin payment.</p>@endif
     @else
       <p class="alert alert-info">Awaiting verified PayFast confirmation. Returning to this page does not activate membership.</p>
@@ -32,21 +59,31 @@
   @if($order->status === 'pending' && (!$order->payfast_handed_off_at || !$order->expires_at->isFuture()))
     <form class="mt-3" method="post" action="{{ route('player-plus.orders.cancel', $order) }}">@csrf<button class="btn btn-outline-secondary">Close checkout</button></form>
   @endif
+  @if($checkoutOpen)<div class="pp-payment-trust"><i class="ti ti-lock" aria-hidden="true"></i><span>Payment is handled by PayFast. Cape Tennis activates access only after verified payment.</span></div>@endif
   @if($subscription)
-    <section class="border rounded p-3 mt-3" aria-label="Automatic renewal" data-plus-subscription>
-      <h2 class="h5">Monthly automatic renewal</h2>
+    <section class="pp-renewal-panel" aria-label="Automatic renewal" data-plus-subscription>
+      <h2 class="h5">{{ $order->isMonthly() ? 'Monthly' : 'Annual' }} automatic renewal</h2>
       @if($subscription->cancelled_at)
         <p>Automatic renewal stopped. PayFast confirmed cancellation on {{ $subscription->cancelled_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} SAST. Verified paid access remains until its paid expiry.</p>
       @else
         @if($subscription->cancellation_requested_at)<p class="alert alert-warning">Cancellation needs PayFast confirmation. Automatic charges may continue until it is confirmed. Retry below or contact support.</p>
-        @else<p>R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} per month. Next scheduled renewal: {{ $subscription->next_billing_at->timezone('Africa/Johannesburg')->format('j M Y') }}. Access extends only after verified payment.</p>@endif
-        <form method="post" action="{{ route('player-plus.orders.stop-renewal', $order) }}" onsubmit="return confirm('Stop future monthly renewals? Your verified paid access remains until its paid expiry.');">
+        @else<p>R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} per {{ $order->isMonthly() ? 'month' : 'year' }}. Next scheduled renewal: {{ $subscription->next_billing_at->timezone('Africa/Johannesburg')->format('j M Y') }}. Access extends only after verified payment.</p>@endif
+        <form method="post" action="{{ route('player-plus.orders.stop-renewal', $order) }}" onsubmit="return confirm('Stop future automatic renewals? Your verified paid access remains until its paid expiry.');">
           @csrf<button class="btn btn-outline-danger" style="min-height:44px">{{ $subscription->cancellation_requested_at ? 'Retry stopping automatic renewal' : 'Stop automatic renewal' }}</button>
         </form>
       @endif
     </section>
   @endif
-  @if($order->player)<p class="mt-3"><a href="{{ route('player-plus.player', $order->player) }}">Player membership and benefits</a></p>@endif
-  <p><a href="{{ route('player-plus.orders.index') }}">My Plus orders</a> · <a href="mailto:support@capetennis.co.za?subject=Player%20Plus%20order%20P{{ $order->id }}">Contact payment support</a></p>
+      </section>
+    </div>
+    <div class="pp-checkout-benefit-column">
+      <x-player-plus-benefits :price-cents="$order->price_cents" :plan="$order->plan ?? 'annual'" class="pp-checkout-benefits" />
+    </div>
+  </div>
+  <footer class="pp-checkout-footer">
+    @if($order->player)<a href="{{ route('player-plus.player', $order->player) }}">Player membership and benefits</a>@endif
+    <a href="{{ route('player-plus.orders.index') }}">My Plus orders</a>
+    <a href="mailto:support@capetennis.co.za?subject=Player%20Plus%20order%20P{{ $order->id }}">Contact payment support · P{{ $order->id }}</a>
+  </footer>
 </div>
 @endsection

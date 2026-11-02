@@ -20,8 +20,14 @@ class Payfast
 
   public function setMonthlySubscription(string $billingDate): void
   {
+    $this->setSubscription($billingDate, 3);
+  }
+
+  public function setSubscription(string $billingDate, int $frequency): void
+  {
+    if (! in_array($frequency, [3, 6], true)) throw new \InvalidArgumentException('Unsupported subscription frequency.');
     $this->subscriptionFields = ['subscription_type' => 1, 'billing_date' => $billingDate,
-      'recurring_amount' => $this->amount, 'frequency' => 3, 'cycles' => 0];
+      'recurring_amount' => $this->amount, 'frequency' => $frequency, 'cycles' => 0];
   }
 
   /* =====================================================

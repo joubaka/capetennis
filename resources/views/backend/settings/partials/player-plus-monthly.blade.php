@@ -1,4 +1,5 @@
 <div class="mt-3 pt-3 border-top" data-plus-monthly-settings>
+  @if($showAnnualContext ?? true)<p class="small text-muted">New annual purchases renew automatically at the agreed annual price until cancelled. Existing once-off annual purchases keep their original conditions.</p>@endif
   <h3 class="h6">Monthly automatic renewal</h3>
   <label class="form-check form-switch">
     <input class="form-check-input" type="checkbox" role="switch" id="sa-plus-monthly-enabled" @checked(\App\Services\Performance\PlayerPlusService::monthlyEnabled())>

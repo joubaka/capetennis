@@ -21,6 +21,7 @@ class PlayerPlusOrder extends Model
     public function subscription() { return $this->hasOne(PlayerPlusSubscription::class, 'order_id'); }
     public function subscriptionOrder() { return $this->belongsTo(self::class, 'subscription_order_id'); }
     public function isMonthly(): bool { return $this->plan === 'monthly'; }
+    public function isRecurring(): bool { return in_array($this->plan, ['monthly', 'annual_recurring'], true); }
 
     public function mailLogs()
     {

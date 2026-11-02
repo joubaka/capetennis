@@ -14,7 +14,7 @@ class PlayerPlusReconciliation
     {
         return Transaction::where('custom_str5', 'PlayerPlus')->where('custom_int5', $order->subscription_order_id ?: $order->id)
             ->when($order->subscription_order_id, fn ($q) => $q->where('pf_payment_id', $order->payfast_pf_payment_id))
-            ->when($order->isMonthly() && ! $order->subscription_order_id && PlayerPlusService::monthlyReady(), fn ($q) => $q
+            ->when($order->isRecurring() && ! $order->subscription_order_id && PlayerPlusService::monthlyReady(), fn ($q) => $q
                 ->whereNotIn('pf_payment_id', DB::table('player_plus_subscription_charges')->where('order_id', '!=', $order->id)->select('provider_payment_id')))
             ->where('custom_int2', $order->player_id)->where('custom_int4', $order->user_id)->orderBy('id');
     }
