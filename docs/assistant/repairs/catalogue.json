@@ -39,6 +39,46 @@
         "tests/Feature/EventExpenseReimbursementTest.php",
         "tests/Feature/ConvenorPayoutProjectionTest.php"
       ]
+    },
+    {
+      "id": "RK-003",
+      "title": "Category-copy request fails on natural wording and spoken leg numbers",
+      "scope": "The event assistant's reviewed category-copy capability and background improvement notes; no live event mutation from this guide.",
+      "symptoms": "The assistant asks for a special command format when a user says copy the source event categories to the destination, uses spoken leg numbers, or joins sponsor names with and.",
+      "cause": "The earlier parser required categories from SOURCE to DESTINATION and split destination names at every and, including sponsor names.",
+      "fix": "Support both explicit word orders, normalize spoken leg numbers and sponsor punctuation/order, and resolve the whole destination before splitting a real destination list. Keep bounded unique accessible matches and source year/place for inferred shorthand; show candidate names/IDs when ambiguous rather than guessing. Continue through the existing category preview and confirmed apply services. For a genuinely unsupported or unresolved instruction, use the actor-opted-in improvement handoff to save a deduplicated note for background review; a note does not execute the task or train a model.",
+      "verification": "On 2026-11-02 the independently run isolated assistant suite passed 128 tests and 986 assertions, including natural wording, ambiguity/year boundaries, preview/confirmation safety, automatic-note isolation and existing assistant flows. This is local test evidence, not live activation evidence.",
+      "limits": "Exact event IDs/full names remain available. Typos are not silently guessed. Copying categories still needs the reviewed confirmation and preserves fee, authorization, stale-state and duplicate checks. Automatic forwarding is off by default and requires a separate exact actor allowlist; credential detection is heuristic and earlier conversation/draft fields are excluded. Background changes require tests and reviewed deployment before the live application learns the capability.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Assistant/AssistantCategoryCopy.php",
+        "app/Services/Assistant/AssistantImprovementHandoff.php",
+        "docs/assistant/capability-improvement.md"
+      ],
+      "tests": [
+        "tests/Feature/Assistant/AssistantCategoryCopyTest.php",
+        "tests/Feature/Assistant/AssistantImprovementHandoffTest.php"
+      ]
+    },
+    {
+      "id": "RK-004",
+      "title": "Upcoming team fixtures retain old roster names or playing order",
+      "scope": "Source-aware team fixtures; authorised roster maintenance during open registration, without rewriting played history.",
+      "symptoms": "A corrected roster name remains stale in fixtures, or generated matches unnecessarily force an order-confirmation step during open registration.",
+      "cause": "Upcoming fixture snapshots retained their creation names, and roster-order confirmation did not distinguish an open registration period from a closed event.",
+      "fix": "Use canonical roster claim, imported-name correction, profile update and playing-order workflows. TeamParticipantHistoryService refreshes verified upcoming snapshot display names under the event lock while preserving source identity and link attestations. Open non-Trials team events save playing order through RosterOrderProtectionService without an extra confirmation; the same rollback checks still protect bookings, publication, results, started matches and unrelated teams. See DK-26 for boundaries.",
+      "verification": "On 2026-11-02 the isolated automatic-update and draw-adaptation suites passed 28 tests with 155 assertions. Coverage includes post-draw registration eligibility/claim, name corrections, order saves, stale revisions/order, idempotency, player conflicts, event isolation and started/result protection. No live event was changed.",
+      "limits": "Locked, placement-draft and source-less legacy fixtures require organiser review. Structural additions still need scheduling and publication. Closed registration retains order confirmation. This guide grants no production or publication authority and executes no repair.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/TeamParticipantHistoryService.php",
+        "app/Services/TeamSelection/RosterOrderProtectionService.php",
+        "docs/draw-knowledge/catalogue.md"
+      ],
+      "tests": [
+        "tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php",
+        "tests/Feature/TeamDraw/TeamDrawAdaptationTest.php"
+      ]
     }
   ]
 }

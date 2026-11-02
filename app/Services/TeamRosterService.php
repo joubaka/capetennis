@@ -25,7 +25,7 @@ class TeamRosterService
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
             $this->authorize($event, $region?->fresh(), $team, $actor);
             $fullManager = $actor->hasRole('super-user') || \Illuminate\Support\Facades\Gate::forUser($actor)->allows('team.players.manage', $team);
-            if ($action !== 'add' || !$fullManager) $this->assertBeforeCompetition($event, $team);
+            if (($action !== 'move' || !$this->canUpdateOrderAutomatically($event)) && ($action !== 'add' || !$fullManager)) $this->assertBeforeCompetition($event, $team);
             $selection = app(TeamSelectionInvitationService::class);
             $payments = app(TeamPaymentService::class);
             if ($team->noProfile && $team->category) $selection->assertRosterEditable($team);
@@ -154,7 +154,7 @@ class TeamRosterService
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
             $this->authorize($event, $region, $team, $actor);
             abort_unless($team->noProfile, 403);
-            $this->assertBeforeCompetition($event, $team);
+            if (!$this->canUpdateOrderAutomatically($event)) $this->assertBeforeCompetition($event, $team);
             if ($team->category) app(TeamSelectionInvitationService::class)->assertRosterEditable($team);
             $slots = NoProfileTeamPlayer::where('team_id', $team->id)->lockForUpdate()->get();
             $slot = $slots->firstWhere('id', $data['slot_id']);
@@ -339,9 +339,26 @@ class TeamRosterService
     public function reorder(Event $event, ?EventRegion $region, Team $team, User $actor, array $orderedIds): void
     {
         DB::transaction(function () use ($event, $region, $team, $actor, $orderedIds): void {
+            $event = app(TeamDrawAdaptationService::class)->lockEvent($event->id);
+            if ($this->canUpdateOrderAutomatically($event)) {
+                app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->execute(
+                    $event->id, $actor->id, ['team_id' => $team->id],
+                    function () use ($event, $region, $team, $actor, $orderedIds): void {
+                        $this->reorderPositions($event, $region, $team, $actor, $orderedIds);
+                        app(TeamDrawAdaptationService::class)->adaptEvent($event);
+                    }, false, null);
+                return;
+            }
+            $this->reorderPositions($event, $region, $team, $actor, $orderedIds);
+        });
+    }
+
+    private function reorderPositions(Event $event, ?EventRegion $region, Team $team, User $actor, array $orderedIds): void
+    {
+        DB::transaction(function () use ($event, $region, $team, $actor, $orderedIds): void {
             app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $this->authorize($event, $region, $team, $actor);
-            $this->assertBeforeCompetition($event, $team);
+            if (!$this->canUpdateOrderAutomatically($event)) $this->assertBeforeCompetition($event, $team);
             $slots = $team->noProfile ? $team->team_players_no_profile()->orderBy('rank')->lockForUpdate()->get()
                 : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->orderBy('rank')->lockForUpdate()->get()->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->rank <= $team->num_team_members)->values();
             $ids = $slots->pluck('id')->map('intval')->all();
@@ -396,6 +413,12 @@ class TeamRosterService
         return \App\Models\TeamSubstitution::where('event_id', $event->id)->exists()
             || \App\Models\TeamTie::where(fn ($query) => $query->where('home_team_id', $team->id)->orWhere('away_team_id', $team->id))->exists()
             || \App\Models\TeamFixturePlayer::whereHas('fixture.draw', fn ($query) => $query->where('event_id', $event->id))->exists();
+    }
+
+    public function canUpdateOrderAutomatically(Event $event): bool
+    {
+        return app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->updatesAutomatically($event)
+            && !\App\Models\TeamSubstitution::where('event_id', $event->id)->exists();
     }
 
     private function fail(string $message): never

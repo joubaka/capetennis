@@ -38,6 +38,7 @@
     $slots = $team->workspaceSlots;
     $occupiedSlots = $slots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile);
     $rosterLocked = app(\App\Services\TeamRosterService::class)->isLocked($event, $team);
+    $automaticPlayingOrder = $rosterLocked && !$rankingManaged && app(\App\Services\TeamRosterService::class)->canUpdateOrderAutomatically($event);
     $rosterCanEdit = $rosterOnly || auth()->user()->can('team.players.manage', $team);
   @endphp
   <details class="roster-team" data-roster-team="{{ $team->id }}" data-category="{{ $team->category_event_id }}" data-publication="{{ $team->published ? 'published' : 'draft' }}" data-team-name="{{ $team->name }}" @if($loop->first) open
@@ -57,7 +58,7 @@
 
     </summary>
     <div class="roster-team-body">
-      @if($rosterLocked)<p class="text-muted">This competition has fixture history. Ask the event administrator to change this player list.</p>
+      @if($rosterLocked)<p class="text-muted">{{ $automaticPlayingOrder ? 'Playing-order changes update upcoming fixtures automatically. Started matches and results keep their original players.' : 'This competition has fixture history. Ask the event administrator to change this player list.' }}</p>
 @endif
 
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
@@ -128,6 +129,10 @@
               <td data-label="Actions"><div class="roster-row-actions">
               @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
+              @if($rosterCanEdit && $automaticPlayingOrder && ($player || $np))
+                @include('backend.adminPage.admin_show._roster-order-buttons', ['compactRoster' => true, 'identity' => $team->noProfile ? $np : $slot])
+                @include('backend.adminPage.admin_show._roster-name-form', ['identity' => $team->noProfile ? $np : $slot])
+              @endif
               @if(!$rosterLocked && !$rankingManaged && $slot->selected_team_reserve && $slot->rank > 0 && $slot->rank <= $team->num_team_members && auth()->user()->can('team.players.manage', $team))
                 <form method="POST" action="{{ route('backend.team.addPlayers') }}" data-team-roster-change>
                   @csrf<input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}"><input type="hidden" name="confirm_main_slot_id" value="{{ $team->noProfile ? $np?->id ?? $slot->noProfile?->id : $slot->id }}"><input type="hidden" name="expected_rank" value="{{ $slot->rank }}">

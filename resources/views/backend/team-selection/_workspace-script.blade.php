@@ -1,6 +1,7 @@
 <script>
 (function (initialize) { if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize); else initialize(); })(function () {
   const embeddedWorkspace = @json($embeddedTeamsWorkspace ?? false);
+  const automaticRosterOrder = @json(app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->updatesAutomatically($event));
   if (embeddedWorkspace && window.teamSelectionWorkspaceInitialized) return;
   if (embeddedWorkspace) window.teamSelectionWorkspaceInitialized = true;
   document.querySelectorAll('[id^="final-team-reminders-"]').forEach(function (modal) {
@@ -431,12 +432,15 @@
           headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
           body: JSON.stringify(body),
         });
-        const previewResponse = await send({ ...proposal, preview: true });
-        if (!previewResponse.ok) throw await AppFeedback.responseError(previewResponse, 'The move could not be checked.');
-        const review = await previewResponse.json();
-        if (!await reviewRosterMove(review, ordered)) { restore(); return; }
+        let review = null;
+        if (!automaticRosterOrder) {
+          const previewResponse = await send({ ...proposal, preview: true });
+          if (!previewResponse.ok) throw await AppFeedback.responseError(previewResponse, 'The move could not be checked.');
+          review = await previewResponse.json();
+          if (!await reviewRosterMove(review, ordered)) { restore(); return; }
+        }
         confirmationAttempted = true;
-        const response = await send({ ...proposal, fingerprint: review.fingerprint });
+        const response = await send(review ? { ...proposal, fingerprint: review.fingerprint } : proposal);
         if (!response.ok) { if (response.status >= 400 && response.status < 500) confirmationAttempted = false; throw await AppFeedback.responseError(response, 'The player order could not be saved.'); }
         const data = await response.json();
         const order = data.order;
@@ -460,7 +464,7 @@
           content.querySelectorAll(`[data-rank-slot-id="${item.id}"]`).forEach(option => { option.textContent = `${option.dataset.rankPlayerName} · Rank ${item.rank}`; });
         });
         if (players) playerRows.reverse().forEach(row => players.prepend(row));
-        AppFeedback.success(`${data.message} Confirmed: ${review.affected_matches.length} upcoming match(s) updated; match times and courts retained.`);
+        AppFeedback.success(review ? `${data.message} Confirmed: ${review.affected_matches.length} upcoming match(s) updated; match times and courts retained.` : `${data.message} Upcoming fixtures now follow the playing order. Started matches, times and courts were retained.`);
       } catch (error) {
         if (confirmationAttempted) {
           AppFeedback.warning('The move response could not be verified. Reloading to check the saved playing order.');

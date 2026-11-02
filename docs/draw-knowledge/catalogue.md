@@ -278,6 +278,16 @@ Paths below are relative to the repository root. Test references are executable 
 
 **History:** Untitled matrix-removal chat (`01a167ec-1348-76f1-9e6b-5a7ae3afa533`). Tests were deliberately skipped for that historical push; this is not fresh test evidence.
 
+## DK-26 — Prepare team draws while registration remains open
+
+**Rule and solution:** Creating team draws does not close registration; the organiser switch and closing date remain authoritative. New roster claims reconcile upcoming source-aware fixtures through `TeamDrawAdaptationService`. During open registration for non-Trials team events, authorised playing-order saves run automatically through `RosterOrderProtectionService`, including the ordinary team roster controls. They retain the same rollback checks for results, started participants, bookings, publication and unrelated teams. Closed registration keeps the existing preview/confirmation workflow.
+
+Name corrections refresh the display name in eligible upcoming participant snapshots under the event lock, retaining source identity and profile-link attestations. Imported names remain canonical until a roster claim resolves the fixture to a profile. The latest corrected snapshot then stays frozen when play starts or results exist; stale scoring revisions are rejected. Locked draws, placement drafts and fixtures without verifiable source teams are not silently repaired. New ties and structural changes retain their separate scheduling/review/publication requirements.
+
+**Sources:** `app/Services/TeamParticipantHistoryService.php`, `TeamDrawAdaptationService.php`, `TeamRosterService.php`, `TeamSelection/RosterOrderProtectionService.php`, `TeamSelection/ImportedTeamRosterService.php`, and `app/Models/Player.php`.
+
+**Regression:** `tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php` and `TeamDrawAdaptationTest.php` passed locally on 2 November 2026: 28 tests, 155 assertions, isolated SQLite. This does not establish deployment or live event configuration.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

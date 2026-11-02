@@ -26,6 +26,7 @@ class TeamDrawAdaptationService
             foreach (Draw::where('event_id', $eventId)->orderBy('id')->lockForUpdate()->get() as $draw) {
                 if ($draw->isTeamDraw()) $reports[$draw->id] = $this->adaptDraw($draw);
             }
+            app(TeamParticipantHistoryService::class)->refreshEventNames($eventId);
             return $reports;
         });
     }

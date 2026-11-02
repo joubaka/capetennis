@@ -12,6 +12,11 @@ class RosterOrderProtectionService
 {
     public static bool $previewing = false;
 
+    public function updatesAutomatically(\App\Models\Event $event): bool
+    {
+        return $event->isTeam() && !$event->isInterprovincialTrials() && $event->registrationIsOpen();
+    }
+
     public function execute(int $eventId, int $actorId, array $proposal, callable $mutation, bool $preview, ?string $fingerprint): array
     {
         DB::beginTransaction();
@@ -22,10 +27,11 @@ class RosterOrderProtectionService
             $adaptation = app(TeamDrawAdaptationService::class);
             app()->instance(TeamDrawAdaptationService::class, $adaptation);
             $adaptation->lastEventReports = [];
-            $adaptation->lockEvent($eventId);
+            $event = $adaptation->lockEvent($eventId);
+            $automatic = !$preview && !$fingerprint && $this->updatesAutomatically($event);
             $before = $this->snapshot($eventId);
             $token = hash_hmac('sha256', json_encode([$eventId, $actorId, $proposal, $before], JSON_THROW_ON_ERROR), (string) config('app.key'));
-            if (!$preview && (!$fingerprint || !hash_equals($token, $fingerprint))) {
+            if (!$preview && !$automatic && (!$fingerprint || !hash_equals($token, $fingerprint))) {
                 throw ValidationException::withMessages(['order' => 'Review the move again: the roster or schedule changed, or confirmation is missing.']);
             }
             $mutation();

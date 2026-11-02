@@ -57,6 +57,12 @@ class Player extends Model
 
   protected static function booted(): void
   {
+    static::updated(function (Player $player) {
+      if ($player->wasChanged(['name', 'surname'])) {
+        app(\App\Services\TeamParticipantHistoryService::class)->refreshPlayerNames((int) $player->id);
+      }
+    });
+
     static::saving(function (Player $player) {
       self::$hasIdentityHashColumns ??= Schema::hasColumn('players', 'identity_name_hash');
       if (!self::$hasIdentityHashColumns) {

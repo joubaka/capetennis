@@ -198,7 +198,9 @@ final class ImportedTeamRosterService
         User $actor,
     ): NoProfileTeamPlayer {
         return DB::transaction(function () use ($event, $slot, $name, $surname, $actor): NoProfileTeamPlayer {
+            app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
+            abort_unless((int) $locked->team?->category?->event_id === (int) $event->id, 404);
             $before = ['name' => $locked->name, 'surname' => $locked->surname];
             $after = ['name' => trim($name), 'surname' => trim($surname)];
 
@@ -214,6 +216,7 @@ final class ImportedTeamRosterService
                     'after' => $after,
                 ])->log('regional manager corrected imported roster name');
 
+            app(\App\Services\TeamParticipantHistoryService::class)->refreshEventNames((int) $event->id, importedId: (int) $locked->id);
             return $locked->fresh('profile');
         });
     }
