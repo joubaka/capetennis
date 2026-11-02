@@ -35,6 +35,19 @@ class PlayerRatingProfileDirectory
         if (!in_array($ageScope, ['group', 'younger'], true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['age_scope' => 'Choose a supported age selection.']);
         }
+        $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+        // Existing comparison-group links name the overall graph.
+        if ($ballType === 'auto') $ballType = $comparisonGroup === '' && array_key_exists('ball_ratings', $snapshot) ? 'standard' : 'overall';
+        if (!in_array($ballType, ['overall', ...array_keys(BallRatingModel::LABELS)], true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['ball_type' => 'Choose a supported ball level.']);
+        }
+        $allAgesBall = in_array($ballType, ['red', 'orange'], true);
+        if ($allAgesBall) {
+            // Ball level is the age-independent umbrella, including old filtered links.
+            $ageGroup = '';
+            $ageScope = 'group';
+            if (in_array($sort, ['grouped', 'age'], true)) $sort = 'shared';
+        }
         $includeYounger = $ageScope === 'younger' && in_array($ageGroup, ['u7', 'u8', 'u9', 'u10', 'u11', 'u12', 'u13', 'u18'], true);
         $ageScope = $includeYounger ? 'younger' : 'group';
         $ageScopeLabel = $includeYounger ? strtoupper($ageGroup).' and younger · born '.($year - (int) substr($ageGroup, 1)).' or later' : null;
@@ -58,13 +71,6 @@ class PlayerRatingProfileDirectory
             $query->where(fn ($q) => $q->whereNull('gender')->orWhereNotIn(DB::raw('LOWER(TRIM(gender))'), [...$boys, ...$girls]));
         } elseif ($gender !== '') {
             $query->whereIn(DB::raw('LOWER(TRIM(gender))'), $gender === 'boys' ? $boys : $girls);
-        }
-        $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
-        // Existing comparison-group links name the overall graph. New directory
-        // visits use a single ball graph, including its valid finish-only players.
-        if ($ballType === 'auto') $ballType = $comparisonGroup === '' && array_key_exists('ball_ratings', $snapshot) ? 'standard' : 'overall';
-        if (!in_array($ballType, ['overall', ...array_keys(BallRatingModel::LABELS)], true)) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['ball_type' => 'Choose a supported ball level.']);
         }
         $ballLevel = $ballType !== 'overall';
         $ratingLabel = $ballLevel ? BallRatingModel::LABELS[$ballType].' CTR' : 'Overall CTR';
@@ -236,6 +242,6 @@ class PlayerRatingProfileDirectory
             foreach ($section['columns'] as $column) $column->through($withRegions);
         }
         unset($section);
-        return compact('ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
+        return compact('allAgesBall', 'ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
     }
 }

@@ -39,10 +39,14 @@
 
               <div class="d-flex align-items-center flex-grow-1" style="min-width: 0">
                 <i class="ti ti-file-description text-primary fs-5 me-2"></i>
+                @if($file->isAvailable())
                 <a href="{{ route('events.documents.show', [$event, $file]) }}" @if($documentNewWindow ?? true) target="_blank" rel="noopener" @endif
                    class="fw-semibold text-dark text-decoration-none text-break">
                   {{ $file->name }}
                 </a>
+                @else
+                <span class="fw-semibold text-break">{{ $file->name }} <span class="d-block small text-muted">Document unavailable</span></span>
+                @endif
               </div>
 
               <div class="d-flex align-items-center">

@@ -107,6 +107,9 @@ class PlayerPerformancePilotService
             }
             if ($rows->isEmpty() || ($target && !$rows->contains(fn ($row) => $row->registration?->players->contains('id', $target->id)))) {
                 if ($target) {
+                    // This describes structured rows only. Before concluding that no
+                    // result evidence exists, review the event's attached files;
+                    // document selection order is not automatically a final placing.
                     $base['reason'] ??= 'No saved finishing result for this player';
                 }
                 $evidence->push($base + ['position' => null, 'points' => null, 'players' => []]);

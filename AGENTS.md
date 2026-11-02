@@ -33,6 +33,8 @@
 
 ## Verification
 
+- When investigating missing player results or CTR evidence, always check the event's attached documents when structured finishing results or match records are absent. Review the actual documents before concluding that no result evidence exists; a missing local attachment file does not mean the event has no document. Record the document reference and distinguish verified finishing positions from team-selection order, reserves, or registration lists. Preserve publication, identity, event-isolation, and rating-confidence checks; an attachment alone must not manufacture played matches or final placings.
+
 - For draw and scheduling work, consult `docs/draw-knowledge/README.md` for reviewed problem/solution history and focused regressions. Verify its rules against current owning code; historical repairs and release approvals do not authorize new live actions.
 
 - Individual round-robin scheduling rotates through group rounds by default, visiting larger groups before smaller groups within each round and breaking equal-size ties by group name, rather than finishing one group's programme first. Use the full group membership even when planning selected fixtures only. Preserve played and fixed assignments, court availability, player rest and playoff dependencies; this rule does not change team-tie ordering.

@@ -18,10 +18,24 @@ class InterproTemplateParityTest extends TestCase
 {
     use RefreshDatabase;
 
+    private array $temporaryDocuments = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->temporaryDocuments as $path) if (is_file($path)) unlink($path);
+        parent::tearDown();
+    }
+
     public function test_document_links_remain_public_and_management_controls_are_event_scoped(): void
     {
         $event = Event::factory()->create(['eventType' => 13]);
-        $file = File::forceCreate(['event_id' => $event->id, 'name' => 'Programme.pdf', 'path' => 'public/files/parity-missing.pdf']);
+        // A downloadable link requires a real local attachment; absent files
+        // now remain visible as unavailable rather than becoming dead links.
+        $path = storage_path('framework/testing/interpro-programme-'.uniqid().'.pdf');
+        if (!is_dir(dirname($path))) mkdir(dirname($path), 0777, true);
+        file_put_contents($path, '%PDF-1.4 synthetic programme');
+        $this->temporaryDocuments[] = $path;
+        $file = File::forceCreate(['event_id' => $event->id, 'name' => 'Programme.pdf', 'path' => $path]);
         $event->load('files');
         $publicLink = route('events.documents.show', [$event, $file]);
 

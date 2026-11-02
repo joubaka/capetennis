@@ -99,16 +99,8 @@ class FileController extends Controller
   private function serve(File $file)
   {
 
-    // Normalize path — only prepend storage_path() if it's not already absolute
-    $path = $file->path;
-    if (!$this->isAbsolutePath($path)) {
-      $path = storage_path('app/' . ltrim($path, '/'));
-    }
-
-    // Check if file exists before continuing
-    if (!file_exists($path)) {
-      abort(404, 'File not found: ' . $path);
-    }
+    $path = $file->resolvedLocalPath();
+    abort_if($path === null, 404, 'This event document is currently unavailable.');
 
     // Safely detect MIME type
     $mime = mime_content_type($path);
@@ -117,15 +109,6 @@ class FileController extends Controller
       'Content-Type' => $mime,
       'Content-Disposition' => 'inline; filename="' . basename($path) . '"'
     ]);
-  }
-
-  private function isAbsolutePath(?string $path): bool
-  {
-    return is_string($path) && (
-      str_starts_with($path, '/')
-      || str_starts_with($path, '\\\\')
-      || preg_match('/^[A-Za-z]:[\\\\\/]/', $path) === 1
-    );
   }
 
   public function destroy($id)
@@ -139,12 +122,8 @@ class FileController extends Controller
     $this->authorize('event.manage', $event);
 
     // Delete file from storage
-    $path = $file->path;
-    if (!$this->isAbsolutePath($path)) {
-      $path = storage_path('app/' . ltrim($path, '/'));
-    }
-
-    if (file_exists($path)) {
+    $path = $file->resolvedLocalPath(requireReadable: false);
+    if ($path !== null) {
       @unlink($path);
     }
 

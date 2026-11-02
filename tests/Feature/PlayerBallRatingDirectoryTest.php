@@ -82,6 +82,45 @@ class PlayerBallRatingDirectoryTest extends TestCase
         if ($path = getenv('CT_BALL_DIRECTORY_HTML')) file_put_contents($path, $default->getContent());
     }
 
+    public function test_red_and_orange_have_one_all_age_list_even_for_legacy_age_filtered_links(): void
+    {
+        $fields = [];
+        foreach (['red' => 'Red', 'orange' => 'Orange', 'standard' => 'Green'] as $ball => $label) {
+            [, , $players] = $this->finishingField($label);
+            $players[0]->update(['dateOfBirth' => '2019-01-01']);
+            $players[1]->update(['dateOfBirth' => '2018-01-01', 'gender' => 2]);
+            $players[2]->update(['dateOfBirth' => '2013-01-01']);
+            $fields[$ball] = $players;
+        }
+        $this->savedSnapshot();
+        $url = route('backend.player-performance.ratings');
+        foreach (['red', 'orange'] as $ball) {
+            foreach (['grouped', 'shared', 'age', 'score'] as $sort) {
+                $response = $this->get($url.'?ball_type='.$ball.'&age_group=u9&age_scope=younger&sort='.$sort)
+                    ->assertOk()->assertSee(ucfirst($ball).' ball CTR · all ages')
+                    ->assertDontSee('name="age_group"', false)->assertDontSee('name="age_scope"', false)
+                    ->assertDontSee('data-ctr-age-section=', false)->assertDontSee('value="age"', false)
+                    ->assertDontSee('value="grouped"', false);
+                $this->assertSame('', $response->viewData('ageGroup'));
+                $this->assertFalse($response->viewData('groupedOrder'));
+                $this->assertFalse($response->viewData('ageOrder'));
+                $this->assertSame([], $response->viewData('sections'));
+                $this->assertEqualsCanonicalizing($fields[$ball]->pluck('id')->all(), $response->viewData('players')->pluck('id')->all());
+            }
+            $boys = $this->get($url.'?ball_type='.$ball.'&gender=boys&age_group=u13')->assertOk();
+            $this->assertEqualsCanonicalizing([$fields[$ball][0]->id, $fields[$ball][2]->id], $boys->viewData('players')->pluck('id')->all());
+            $girls = $this->get($url.'?ball_type='.$ball.'&gender=girls&age_group=u7')->assertOk();
+            $this->assertSame([$fields[$ball][1]->id], $girls->viewData('players')->pluck('id')->all());
+            $search = $this->get($url.'?ball_type='.$ball.'&search='.urlencode($fields[$ball][1]->name))->assertOk();
+            $this->assertContains($fields[$ball][1]->id, $search->viewData('players')->pluck('id')->all());
+        }
+        $standard = $this->get($url.'?ball_type=standard&age_group=u13')->assertOk()
+            ->assertSee('name="age_group"', false)->assertSee('data-ctr-age-section="u13"', false);
+        $this->assertSame([$fields['standard'][2]->id], $standard->viewData('players')->pluck('id')->all());
+        $this->assertTrue($standard->viewData('groupedOrder'));
+        $this->assertDatabaseCount('players', 9);
+    }
+
     public function test_selected_ball_graph_membership_is_required_and_foreign_groups_are_rejected(): void
     {
         [, , $red] = $this->finishingField('Red');

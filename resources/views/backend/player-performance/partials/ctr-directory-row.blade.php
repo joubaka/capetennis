@@ -3,7 +3,7 @@
         <div class="ctr-player">
             <a href="{{ route('backend.player-performance.show', $player['id']) }}">{{ $player['name'] }}@if($player['birth_year'] ?? null) ({{ $player['birth_year'] }})@endif</a>
             <span class="small text-muted" title="Recorded regional team affiliations; may include past seasons"> · {{ implode(' · ', $player['region_affiliations']['names'] ?? []) ?: 'Region not recorded' }}@if(($player['region_affiliations']['additional'] ?? 0) > 0) · +{{ $player['region_affiliations']['additional'] }} more @endif</span>
-            <p>{{ $player['age_group'] }} · {{ $player['gender'] }}</p>
+            <p>@unless($allAgesBall ?? false){{ $player['age_group'] }} · @endunless{{ $player['gender'] }}</p>
         </div>
             @if($player['rating'])
                 @php($rating = $player['rating'])
