@@ -71,17 +71,19 @@ class EventExpenseReimbursementTest extends TestCase
         $this->record($data)->assertRedirect(route('admin.events.finances', $this->event));
         $this->record($data)->assertRedirect();
         $this->assertDatabaseCount('event_payouts', 1);
-        $this->assertDatabaseHas('event_payouts', ['amount' => '60000.00', 'purpose' => 'expense_reimbursement', 'funding_source' => 'registration_entries', 'paid_by' => $this->admin->id, 'recorded_by_name' => $this->admin->name, 'recipient_user_id' => $this->director->user_id, 'paid_at' => null]);
+        $this->assertDatabaseHas('event_payouts', ['amount' => '60000.00', 'purpose' => 'director_payment', 'funding_source' => 'registration_entries', 'paid_by' => $this->admin->id, 'recorded_by_name' => $this->admin->name, 'recipient_user_id' => $this->director->user_id, 'paid_at' => null]);
         $this->assertNull($this->expense->fresh()->approved_at);
         $this->assertNull($this->expense->fresh()->reimbursed_at);
         $type = new \App\Models\EventType;
         $type->forceFill(['name' => 'Team reimbursement test', 'type' => \App\Models\EventType::TEAM])->save();
         $this->event->update(['eventType' => $type->id]);
-        $this->get(route('admin.events.overview', $this->event))->assertOk()->assertSee('Record reimbursement already paid')->assertViewHas('reimbursementPayments');
+        $this->get(route('admin.events.overview', $this->event))->assertOk()->assertSee('Record payment to director')->assertViewHas('reimbursementPayments');
         $this->record(array_replace($data, ['amount' => '1']))->assertSessionHasErrors('amount');
         $response = $this->get(route('admin.events.finances', $this->event))->assertOk()->assertViewHas('totalExpenses', 63630.0);
         $row = $response->viewData('recon')->first();
-        $this->assertSame(3630.0, $row['owed_back'] - $row['reimbursed']);
+        $this->assertSame(3630.0, $row['final_payout']);
+        $this->assertSame(0.0, $row['reimbursed']);
+        $this->assertSame(60000.0, $row['director_paid']);
         $this->assertSame(-63630.0, $response->viewData('netProfit'));
     }
 
@@ -156,4 +158,75 @@ class EventExpenseReimbursementTest extends TestCase
         $this->assertSame(54095.93, $totals['registration_balance']);
         $this->assertSame(60000.0, $totals['total_paid_out']);
     }
+    private function registrationIncome(string $amount): void
+    {
+        $this->event->update(['cape_tennis_fee' => 0]);
+        $order = \App\Models\RegistrationOrder::create(['user_id' => $this->admin->id, 'total_fee' => $amount, 'pay_status' => true]);
+        \App\Models\RegistrationManualReceipt::create([
+            'order_id' => $order->id, 'event_id' => $this->event->id, 'amount' => $amount,
+            'method' => 'eft', 'reference' => 'TEST-INCOME', 'verified_by_user_id' => $this->admin->id, 'paid_at' => now(),
+        ]);
+    }
+
+    public function test_payment_can_cover_expenses_and_profit_share_without_changing_profit(): void
+    {
+        $this->registrationIncome('100000.02');
+        $data = $this->data(['amount' => '80000.01']);
+        $this->record($data)->assertRedirect();
+        $this->record($data)->assertRedirect();
+        $this->assertDatabaseCount('event_payouts', 1);
+        $response = $this->get(route('admin.events.finances', $this->event))->assertOk();
+        $row = $response->viewData('recon')->first();
+        $this->assertSame(18185.01, $row['profit_share_amount']);
+        $this->assertSame(0.0, $row['reimbursed']);
+        $this->assertSame(80000.01, $row['director_paid']);
+        $this->assertSame(1815.0, $row['final_payout']);
+        $this->assertEqualsWithDelta(36370.02, $response->viewData('netProfit'), 0.000001);
+        $this->record($this->data(['amount' => '1815.01']))->assertSessionHasErrors('amount');
+        $this->record($this->data(['amount' => '1815.00']))->assertRedirect();
+        $this->record($this->data(['amount' => '0.01']))->assertSessionHasErrors('amount');
+        $this->assertDatabaseCount('event_payouts', 2);
+        $totals = app(FinancialLedgerService::class)->buildForEvent($this->event)['totals'];
+        $this->assertSame(81815.01, $totals['total_paid_out']);
+        $this->assertSame(18185.01, $totals['registration_balance']);
+    }
+
+    public function test_profit_only_payment_needs_no_expenses_and_retains_audit_guards(): void
+    {
+        $this->expense->delete();
+        $this->registrationIncome('100.02');
+        $data = $this->data(['amount' => '50.01']);
+        $this->record($data)->assertRedirect();
+        $payment = EventPayout::firstOrFail();
+        foreach (['update', 'delete'] as $operation) {
+            try {
+                $operation === 'update' ? $payment->update(['amount' => '1.00']) : $payment->delete();
+                $this->fail('Must retain immutable director payment');
+            } catch (\Illuminate\Validation\ValidationException) {
+            }
+        }
+        $other = Event::factory()->create();
+        EventAdmin::create(['event_id' => $other->id, 'user_id' => $this->admin->id]);
+        $foreign = EventConvenor::create(['event_id' => $other->id, 'user_id' => User::factory()->create()->id, 'role' => 'hulp']);
+        $this->post(route('admin.events.expense-reimbursements.store', $other), array_replace($data, ['convenor_id' => $foreign->id]))->assertSessionHasErrors('amount');
+        $this->record($this->data(['amount' => '0.01']))->assertSessionHasErrors('amount');
+        $this->assertDatabaseCount('event_payouts', 1);
+        $this->assertDatabaseHas('event_payouts', ['id' => $payment->id, 'amount' => '50.01', 'event_id' => $this->event->id]);
+    }
+
+    public function test_historical_reimbursements_and_general_payments_are_each_deducted_once(): void
+    {
+        $this->registrationIncome('100000.00');
+        EventExpense::create(['event_id' => $this->event->id, 'paid_by_convenor_id' => $this->director->id, 'expense_type' => 'venue', 'amount' => '100.00', 'reimbursed_at' => now()]);
+        EventPayout::create(['event_id' => $this->event->id, 'convenor_id' => $this->director->id, 'amount' => '200.00', 'purpose' => 'expense_reimbursement', 'paid_by' => $this->admin->id, 'recipient_name' => $this->director->user->name]);
+        $this->record($this->data(['amount' => '70000.00']))->assertRedirect();
+        $response = $this->get(route('admin.events.finances', $this->event))->assertOk();
+        $row = $response->viewData('recon')->first();
+        $this->assertSame(300.0, $row['reimbursed']);
+        $this->assertSame(70000.0, $row['director_paid']);
+        $this->assertSame(11565.0, $row['final_payout']);
+        $this->assertDatabaseCount('event_payouts', 2);
+        $this->assertDatabaseHas('event_payouts', ['purpose' => 'expense_reimbursement', 'amount' => '200.00']);
+    }
+
 }

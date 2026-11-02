@@ -51,6 +51,7 @@ class PlayerPlusController extends Controller
         return response()->view('frontend.player-plus.player', [
             'player' => $player, 'membership' => $membership, 'canViewRating' => $canViewRating,
             'linked' => $linked, 'enabled' => $enabled, 'token' => (string) Str::uuid(),
+            'adminAccess' => \App\Services\Performance\PlayerPlusManagement::ready() ? $player->plusOverride()->first() : null,
             'readiness' => $readiness, 'termsVersion' => self::TERMS_VERSION, 'priceCents' => PlayerPlusService::priceCents(),
             'monthlyEnabled' => PlayerPlusService::monthlyEnabled(), 'monthlyPriceCents' => PlayerPlusService::monthlyPriceCents(),
         ])->header('Cache-Control', 'private, no-store');

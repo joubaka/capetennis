@@ -40,7 +40,7 @@
                 @endif
                 @if($outstanding > 0)
                 <li class="d-flex justify-content-between gap-2">
-                  <span>Expenses still owed:</span>
+                  <span>Expenses before general payments:</span>
                   <span class="text-danger fw-semibold text-nowrap flex-shrink-0">R {{ number_format($outstanding, 2) }}</span>
                 </li>
                 @endif
@@ -48,6 +48,12 @@
                 <li class="d-flex justify-content-between gap-2 mt-1 pt-1 border-top">
                   <span>Profit share ({{ number_format($row['profit_share_pct'], 1) }}% of R {{ number_format($netProfit, 2) }}):</span>
                   <span class="text-info fw-semibold text-nowrap flex-shrink-0">R {{ number_format($row['profit_share_amount'], 2) }}</span>
+                </li>
+                @endif
+                @if(($row['director_paid'] ?? 0) > 0)
+                <li class="d-flex justify-content-between gap-2">
+                  <span>General payments already made:</span>
+                  <span class="text-success text-nowrap flex-shrink-0">−R {{ number_format($row['director_paid'], 2) }}</span>
                 </li>
                 @endif
                 <li class="d-flex justify-content-between gap-2 mt-1 pt-1 border-top fw-semibold text-body">

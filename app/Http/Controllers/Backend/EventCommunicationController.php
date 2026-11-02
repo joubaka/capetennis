@@ -121,6 +121,7 @@ class EventCommunicationController extends Controller
     public function preview(Request $request, Event $event, EventCommunicationService $service)
     {
         $data = $request->validate([
+            'assistant_conversation_uuid' => 'nullable|uuid',
             'respect_status' => 'nullable|boolean',
             'pending_selection_import_id' => 'nullable|integer|min:1',
             'scope' => 'required|in:all,registrations,invitations,nominations,region,team,individual,rankings,legacy_registered,direct',
@@ -164,7 +165,9 @@ class EventCommunicationController extends Controller
             $options['wrap_up'] = true;
             $options['results_fingerprint'] = $data['results_fingerprint'];
         }
-        $batch = $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
+        $batch = ! empty($data['assistant_conversation_uuid'])
+            ? app(\App\Services\Assistant\AssistantEmailDraft::class)->preview($event, $request->user(), $data['assistant_conversation_uuid'], $options, $data['subject'], $data['body'])
+            : $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
 
         $rankingReview = ($batch->options['scope'] ?? null) === 'rankings' ? app(\App\Services\RegionalRankingMailAudience::class)->resolve($event, $request->user(), $batch->options) : null;
         return view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'));

@@ -921,7 +921,7 @@
               <th>Role</th>
               <th class="text-end">Paid Out</th>
               <th class="text-end">Reimbursed</th>
-              <th class="text-end">Outstanding</th>
+              <th class="text-end">Expenses before general payments</th>
               <th class="text-end">Profit Share</th>
               <th class="text-end">Final Payout</th>
               <th>Status</th>
@@ -954,9 +954,10 @@
                 </td>
                 <td class="text-end fw-bold {{ $row['final_payout'] > 0 ? 'text-primary' : 'text-muted' }}">
                   R {{ number_format($row['final_payout'], 2) }}
+                  <small class="d-block text-muted">General payments deducted: R {{ number_format($row['director_paid'], 2) }}</small>
                 </td>
                 <td>
-                  @if($outstanding <= 0)
+                  @if($row['final_payout'] <= 0)
                     <span class="badge bg-success"><i class="ti ti-check me-1"></i>Settled</span>
                   @else
                     <span class="badge bg-danger"><i class="ti ti-alert-circle me-1"></i>Outstanding</span>
@@ -978,6 +979,7 @@
               </td>
               <td class="text-end fw-bold text-primary">
                 R {{ number_format($recon->sum('final_payout'), 2) }}
+                <small class="d-block text-muted">General payments deducted: R {{ number_format($recon->sum('director_paid'), 2) }}</small>
               </td>
               <td></td>
             </tr>

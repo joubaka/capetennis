@@ -23,7 +23,7 @@
   }
 </style>
 
-<button type="button" class="ct-install-app" id="ct-install-app" aria-haspopup="dialog">
+<button type="button" class="ct-install-app" id="ct-install-app" aria-haspopup="dialog" @if(request()->routeIs('backend.event-assistant.workspace') && request()->boolean('home-screen')) data-shortcut-page="true" @endif>
   <i class="ti ti-device-mobile-down" aria-hidden="true"></i>
   <span>Install Cape Tennis</span>
 </button>
@@ -67,7 +67,7 @@
       });
     }
 
-    if (standalone) return;
+    if (standalone || installButton.dataset.shortcutPage === 'true') return;
 
     const showHelp = () => {
       const steps = isIos

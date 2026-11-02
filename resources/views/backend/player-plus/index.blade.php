@@ -2,6 +2,7 @@
 @section('title', 'Player Plus payment reviews')
 @section('content')
 <div class="container-xxl container-p-y" style="max-width:1000px">
+  <a href="{{ route('superadmin.player-plus.manage.index') }}">← Player Plus management</a>
   <h1>Player Plus payment reviews</h1>
   <p>Review late and additional payments against the original payer and every provider receipt. This queue records evidence of an external resolution; it does not execute refunds, transfer a purchase or activate membership.</p>
   <div class="list-group">

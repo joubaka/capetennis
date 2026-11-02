@@ -38,13 +38,13 @@ class EventPayout extends Model
     protected static function booted(): void
     {
         static::updating(function (self $payout) {
-            if ($payout->getRawOriginal('purpose') === 'expense_reimbursement') {
-                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded expense reimbursements are immutable.']);
+            if (in_array($payout->getRawOriginal('purpose'), ['expense_reimbursement', 'director_payment'], true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded director payments are immutable.']);
             }
         });
         static::deleting(function (self $payout) {
-            if ($payout->purpose === 'expense_reimbursement') {
-                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded expense reimbursements cannot be deleted.']);
+            if (in_array($payout->purpose, ['expense_reimbursement', 'director_payment'], true)) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded director payments cannot be deleted.']);
             }
         });
     }

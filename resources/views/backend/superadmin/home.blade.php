@@ -132,6 +132,11 @@
         <h2 id="sa-workspaces-heading" class="sa-section-title">Workspaces</h2>
         <div class="sa-workspace-grid">
           <div class="sa-workspace">
+            <div class="sa-workspace-heading"><i class="ti ti-star text-primary"></i>Player Plus</div>
+            <p class="small text-muted">Manage memberships, activate access and resolve payment problems.</p>
+            <div class="sa-workspace-links"><a class="sa-workspace-link" href="{{ route('superadmin.player-plus.manage.index') }}">Manage Player Plus</a><a class="sa-workspace-link" href="{{ route('superadmin.player-plus.index') }}">Payment reviews</a></div>
+          </div>
+          <div class="sa-workspace">
             <div class="sa-workspace-heading"><i class="ti ti-calendar-event text-primary"></i>Operations</div>
             <div class="sa-workspace-links">
               <a class="sa-workspace-link" href="{{ route('backend.dashboard') }}#tab-events">Events</a>

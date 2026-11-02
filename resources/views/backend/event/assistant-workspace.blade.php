@@ -1,6 +1,6 @@
 @extends('layouts.backend')
 
-@section('title', 'Tournament assistant — '.$event->name)
+@section('title', 'Cape Tennis Assistant')
 
 @section('content')
   @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Super-user assistant pilot'])

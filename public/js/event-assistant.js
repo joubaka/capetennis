@@ -7,6 +7,7 @@
     const input = find('#ea-input'), status = find('[data-ea-status]');
     const log = find('[data-ea-messages]'), proposalView = find('[data-ea-proposal]');
     const form = find('[data-ea-plan-form]'), messageForm = find('[data-ea-message-form]');
+    const emailView = find('[data-ea-email]'), emailForm = find('[data-ea-email-form]');
     const mic = find('[data-ea-mic]'), ai = find('[data-ea-ai]');
     const backdrop = document.getElementById('event-assistant-backdrop');
     const openers = [...document.querySelectorAll('[data-event-assistant-open]')];
@@ -23,7 +24,7 @@
     function setBusy(value) {
       busy = value;
       [...panel.querySelectorAll('button,input,textarea,select')].forEach(element => {
-        if (!element.matches('[data-ea-close]')) element.disabled = value || context?.available === false;
+        if (!element.matches('[data-ea-close], [data-ea-shortcut], [data-ea-shortcut-copy], [data-ea-shortcut-url]')) element.disabled = value || context?.available === false;
       });
       if (!value) {
         ai.disabled = context?.available === false || context?.capabilities?.ai_available === false;
@@ -92,6 +93,11 @@
     }
     function populateContext(data) {
       context = data;
+      if (emailForm) {
+        emailForm.elements.scope.replaceChildren();
+        const blank = node('option', 'Choose recipients to review'); blank.value = ''; emailForm.elements.scope.append(blank);
+        (data.email_audiences || []).forEach(choice => { const option = node('option', choice.name); option.value = choice.id; emailForm.elements.scope.append(option); });
+      }
       const defaults = { ...(data.defaults || {}), ...(data.preferences?.preferences || data.preferences || {}) };
       for (const name of ['duration', 'court_gap', 'player_rest', 'start_time', 'end_time']) if (defaults[name] !== undefined) form.elements[name].value = defaults[name];
       const initialDate = data.event?.start_date || data.event?.start || data.dates?.[0] || data.current_date;
@@ -142,9 +148,19 @@
       const type = proposal.type || proposal.action;
       const preview = proposal.preview || proposal.summary || {};
       syncPlan(proposal.options || preview.input);
-      const title = type === 'publication' ? 'Review public order of play' : type === 'draw_draft' ? 'Create draft draw' : type === 'draw_generate' ? 'Review round-robin generation' : 'Review schedule';
+      const title = type === 'category_copy' ? 'Review category copy' : type === 'publication' ? 'Review public order of play' : type === 'draw_draft' ? 'Create draft draw' : type === 'draw_generate' ? 'Review round-robin generation' : 'Review schedule';
       proposalView.append(node('h3', title));
-      proposalView.append(node('p', typeof proposal.description === 'string' ? proposal.description : type === 'publication' ? 'Confirming this proposal publishes the displayed scope.' : type === 'draw_draft' ? 'Creates an empty draft. Player selection, seeding and bracket generation continue in the draw guide.' : type === 'draw_generate' ? 'Generates first round-robin fixtures from the reviewed groups and seeds. It does not schedule or publish matches.' : 'Confirming saves the proposed working schedule. Publication is a separate action.'));
+      proposalView.append(node('p', typeof proposal.description === 'string' ? proposal.description : type === 'category_copy' ? preview.scope : type === 'publication' ? 'Confirming this proposal publishes the displayed scope.' : type === 'draw_draft' ? 'Creates an empty draft. Player selection, seeding and bracket generation continue in the draw guide.' : type === 'draw_generate' ? 'Generates first round-robin fixtures from the reviewed groups and seeds. It does not schedule or publish matches.' : 'Confirming saves the proposed working schedule. Publication is a separate action.'));
+      if (type === 'category_copy') {
+        proposalView.append(node('p', 'Source: ' + preview.source.name + ' (#' + preview.source.id + ')'));
+        proposalView.append(node('p', preview.count + ' categories to add. Existing categories and their fees stay unchanged.'));
+        (preview.destinations || []).forEach(destination => {
+          proposalView.append(node('h4', destination.name + ' (#' + destination.id + ')'));
+          const list = node('ul');
+          destination.categories.forEach(category => list.append(node('li', category.name + ' · ' + (category.action === 'add' ? 'Add' : 'Skip existing; keep destination settings') + ' · Fee: R' + category.result_effective_fee + (category.result_entry_fee === null ? ' (destination event fee; no override)' : ' (category override)') + ' · Order: ' + (category.result_ordering ?? 'Default'))));
+          proposalView.append(list);
+        });
+      }
       const rows = Array.isArray(preview.matches) ? preview.matches : Array.isArray(proposal.matches) ? proposal.matches : [];
       if (Array.isArray(preview.existing_matches) && preview.existing_matches.length) {
         const retained = preview.existing_matches.length;
@@ -177,7 +193,7 @@
       if (proposal.expires_at) proposalView.append(node('p', 'Proposal expires: ' + proposal.expires_at));
       const label = node('label', undefined, 'ea-ack'), ack = node('input'); ack.type = 'checkbox';
       label.append(ack, node('span', type === 'publication' ? 'I reviewed this scope and want to publish it.' : 'I reviewed these changes and want to apply them.'));
-      const confirm = node('button', type === 'publication' ? 'Confirm publication' : type === 'draw_draft' ? 'Create draft draw' : type === 'draw_generate' ? 'Generate round-robin fixtures' : 'Save schedule', 'ea-primary'); confirm.type = 'button'; confirm.dataset.eaConfirm = ''; confirm.dataset.blocked = String(proposal.can_confirm === false); confirm.disabled = true;
+      const confirm = node('button', type === 'category_copy' ? 'Copy categories' : type === 'publication' ? 'Confirm publication' : type === 'draw_draft' ? 'Create draft draw' : type === 'draw_generate' ? 'Generate round-robin fixtures' : 'Save schedule', 'ea-primary'); confirm.type = 'button'; confirm.dataset.eaConfirm = ''; confirm.dataset.blocked = String(proposal.can_confirm === false); confirm.disabled = true;
       ack.addEventListener('change', () => { confirm.disabled = !ack.checked || busy || proposal.can_confirm === false; });
       confirm.addEventListener('click', async () => {
         if (busy || !ack.checked || proposal.can_confirm === false || currentProposal !== proposal) return;
@@ -185,7 +201,7 @@
         try {
           const result = await request(panel.dataset.confirmUrl, { proposal_uuid: proposal.uuid || proposal.proposal_uuid, confirmation_token: proposal.confirmation_token, confirmed: true });
           currentProposal = null; proposalView.replaceChildren(); proposalView.hidden = true;
-          say(result.message || (type === 'publication' ? 'Order of play published.' : type === 'draw_draft' ? 'Draft draw created. Continue in the draw guide.' : type === 'draw_generate' ? 'Round-robin fixtures generated. Review the draw before scheduling or publishing.' : 'Schedule saved. Review publication separately.'));
+          say(result.message || (type === 'category_copy' ? 'Categories copied. Existing categories were kept unchanged.' : type === 'publication' ? 'Order of play published.' : type === 'draw_draft' ? 'Draft draw created. Continue in the draw guide.' : type === 'draw_generate' ? 'Round-robin fixtures generated. Review the draw before scheduling or publishing.' : 'Schedule saved. Review publication separately.'));
           renderLinks(result.action_links || result.result?.action_links || (result.result?.setup_url ? [{ url: result.result.setup_url, label: 'Continue draw setup' }] : []));
         } catch (error) { say(error.message, true); ack.checked = false; }
         finally { setBusy(false); confirm.disabled = !ack.checked; }
@@ -199,6 +215,12 @@
     }
     function accept(data) {
       if (data.conversation_uuid) conversation = data.conversation_uuid;
+      if (data.email_draft && emailForm) {
+        emailView.hidden = false;
+        emailForm.elements.subject.value = data.email_draft.subject || '';
+        emailForm.elements.body.value = data.email_draft.body || '';
+        emailForm.elements.assistant_conversation_uuid.value = conversation || '';
+      }
       syncPlan(data.options);
       if (data.message) addMessage('assistant', typeof data.message === 'string' ? data.message : data.message.content, data.message.id);
       if (data.clarification) say(typeof data.clarification === 'string' ? data.clarification : data.clarification.message || 'Please provide the missing schedule details.');
@@ -336,10 +358,22 @@
     });
     messageForm.addEventListener('submit', async event => {
       event.preventDefault(); if (busy || recorder || !input.value.trim()) return;
+      const draft = emailView && !emailView.hidden ? { subject: emailForm.elements.subject.value, body: emailForm.elements.body.value } : null;
       const text = input.value.trim(); setBusy(true); say('Preparing a response…'); addMessage('user', text); input.value = '';
-      try { const data = await request(panel.dataset.messageUrl, { message: text, conversation_uuid: conversation, use_ai: ai.checked }); say(''); accept(data); }
+      try { const data = await request(panel.dataset.messageUrl, { message: text, conversation_uuid: conversation, use_ai: ai.checked, ...(draft ? { email_draft: draft } : {}) }); say(''); accept(data); }
       catch (error) { input.value = text; say(error.message, true); } finally { setBusy(false); input.focus(); }
     });
+    emailForm?.elements.scope.addEventListener('change', () => {
+      const direct = emailForm.elements.scope.value === 'direct';
+      find('[data-ea-email-direct]').hidden = !direct;
+      emailForm.elements.direct_email.required = direct;
+      if (!direct) emailForm.elements.direct_email.value = '';
+    });
+    emailForm?.addEventListener('submit', event => {
+      if (busy || !conversation || !emailForm.reportValidity()) { event.preventDefault(); return; }
+      emailForm.elements.assistant_conversation_uuid.value = conversation;
+    });
+    find('[data-ea-email-close]')?.addEventListener('click', () => { emailView.hidden = true; say('Email editor closed. No email was sent.'); });
     form.addEventListener('submit', async event => {
       event.preventDefault(); if (busy || recorder || voiceStarting || !form.reportValidity()) return;
       const options = planningOptions();
@@ -367,7 +401,7 @@
       catch (error) { say(error.message, true); } finally { setBusy(false); }
     });
     mic.addEventListener('click', startVoice); find('[data-ea-cancel-voice]').addEventListener('click', () => stopVoice(true));
-    find('[data-ea-new]').addEventListener('click', () => { if (busy || recorder) return; conversation = null; currentProposal = null; log.replaceChildren(); renderProposal(null); input.value = ''; say('New conversation. Existing saved schedules are unchanged.'); input.focus(); });
+    find('[data-ea-new]').addEventListener('click', () => { if (busy || recorder) return; conversation = null; currentProposal = null; if (emailView) { emailView.hidden = true; emailForm.reset(); } log.replaceChildren(); renderProposal(null); input.value = ''; say('New conversation. Existing saved schedules are unchanged.'); input.focus(); });
     panel.querySelectorAll('[data-ea-prompt]').forEach(button => button.addEventListener('click', () => { input.value = button.dataset.eaPrompt; input.focus(); if (button.dataset.eaPrompt.includes('schedule')) find('[data-ea-planner]').open = true; }));
     find('[data-ea-remember]').addEventListener('click', async () => {
       if (busy) return; setBusy(true);
@@ -413,6 +447,29 @@
       if (!choices) return;
       const placeholder = node('option', 'Load matches from one selected draw'); placeholder.value = ''; choices.replaceChildren(placeholder);
     });
+    find('[data-ea-shortcut]')?.addEventListener('click', event => {
+      const help = find('#ea-shortcut-help');
+      help.hidden = !help.hidden;
+      event.currentTarget.setAttribute('aria-expanded', String(!help.hidden));
+    });
+    find('[data-ea-shortcut-copy]')?.addEventListener('click', async () => {
+      const address = find('[data-ea-shortcut-url]');
+      const feedback = find('[data-ea-shortcut-status]');
+      try {
+        await root.navigator.clipboard.writeText(address.value);
+        feedback.textContent = 'Address copied. Paste it into Chrome or Safari to add your shortcut.';
+      } catch (_) {
+        address.focus(); address.select();
+        feedback.textContent = 'Press and hold the selected address, then choose Copy.';
+      }
+    });
+    if (panel.dataset.autoOpen === 'true') {
+      if (new URLSearchParams(root.location.search).get('home-screen') === '1') {
+        const help = find('#ea-shortcut-help');
+        if (help) { help.hidden = false; find('[data-ea-shortcut]').setAttribute('aria-expanded', 'true'); }
+      }
+      open();
+    }
     root.addEventListener('pagehide', () => { if (recorder || voiceStarting) stopVoice(true); requestController?.abort(); });
     return { open, close, accept, planningOptions };
   }

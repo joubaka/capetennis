@@ -18,20 +18,26 @@ class PlayerPlusEntitlement
     {
         return PlayerPlusService::ready()
             && $this->linkedPlayers($user)->whereKey($player->id)->exists()
-            && $this->active()->where('player_id', $player->id)->exists();
+            && $this->activePlayers()->whereKey($player->id)->exists();
     }
 
     public function discovery(User $user): bool
     {
         return PlayerPlusService::ready()
-            && $this->active()->whereIn('player_id', $this->linkedPlayers($user)->select('players.id'))->exists();
+            && $this->activePlayers()->whereIn('players.id', $this->linkedPlayers($user)->select('players.id'))->exists();
     }
 
-    private function active(): Builder
+    public function activePlayers(): Builder
     {
-        return PlayerPlusMembership::query()->where('starts_at', '<=', now())->where('ends_at', '>', now())
-            ->whereHas('order', fn ($query) => $query->where('status', 'completed')->where('pay_status', true)
-                ->where('payfast_paid', true)->whereNotNull('activated_at')
-                ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id'));
+        $query = Player::query();
+        if (PlayerPlusManagement::ready()) $query->whereDoesntHave('plusOverride', fn ($q) => $q->where('mode', 'suspended'));
+        return $query->where(function ($q) {
+            $q->whereHas('plusMembership', fn ($membership) => $membership->where('starts_at', '<=', now())->where('ends_at', '>', now())
+                ->whereHas('order', fn ($order) => $order->where('status', 'completed')->where('pay_status', true)
+                    ->where('payfast_paid', true)->whereNotNull('activated_at')
+                    ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id')));
+            if (PlayerPlusManagement::ready()) $q->orWhereHas('plusOverride', fn ($override) => $override
+                ->where('mode', 'grant')->where('starts_at', '<=', now())->where('ends_at', '>', now()));
+        });
     }
 }

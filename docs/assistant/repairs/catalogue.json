@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "repairs": [
+    {
+      "id": "RK-001",
+      "title": "Round-robin groups finish one at a time instead of rotating",
+      "scope": "Individual round-robin schedule planning; not team ties or a repair of played schedules.",
+      "symptoms": "One group completes its programme before another starts, despite a request to rotate group rounds.",
+      "cause": "A planner that orders fixtures by group alone omits the dependencies between group turns. Check current code and saved assignments before diagnosing an existing event.",
+      "fix": "Use EventVenueScheduleService planning with configureRoundRobinGroupRotation: visit each group's round before the next round, larger full groups first and equal sizes by name. Preserve fixed and played assignments, rest, court availability and playoff feeders. Review the proposed schedule through the existing scheduling workflow before saving; publication is separate.",
+      "verification": "Reviewed current owning source and regression definitions on 2026-11-02. The referenced regression covers unequal groups, partial selections, day batches and spare courts. Source review is not a claim of fresh event, browser, deployment or live verification.",
+      "limits": "This guide performs no replanning, database repair or publication. Confirm event authorization and current state. If current code already follows this rule, investigate constraints rather than removing them or resetting matches.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Scheduling/EventVenueScheduleService.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php"]
+    }
+  ]
+}

@@ -1968,7 +1968,7 @@ class PlayerDuplicateService
 
     private function hasPlayerPlusHistory(Player $keep, Player $remove): bool
     {
-        foreach (['player_plus_orders', 'player_plus_memberships'] as $table) {
+        foreach (['player_plus_orders', 'player_plus_memberships', 'player_plus_access_overrides'] as $table) {
             if (Schema::hasTable($table) && DB::table($table)->whereIn('player_id', [$keep->id, $remove->id])->exists()) {
                 return true;
             }

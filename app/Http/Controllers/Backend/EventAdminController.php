@@ -1142,23 +1142,8 @@ class EventAdminController extends Controller
     $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
 
     $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
-      ->where('purpose', 'expense_reimbursement')->orderByDesc('id')->get();
-    $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $reimbursementPayments) {
-      $paid = $operationalExpenses
-        ->where('paid_by_convenor_id', $convenor->id)
-        ->sum(fn($e) => $e->calculatedAmount());
-
-      return [
-        'convenor'   => $convenor,
-        'total_paid' => $paid,
-        'owed_back'  => $paid,
-        'reimbursed' => $operationalExpenses
-          ->where('paid_by_convenor_id', $convenor->id)
-          ->whereNotNull('reimbursed_at')
-          ->sum(fn($e) => $e->calculatedAmount())
-          + $reimbursementPayments->where('convenor_id', $convenor->id)->sum(fn ($payout) => (float) $payout->amount),
-      ];
-    });
+      ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->orderByDesc('id')->get();
+    $recon = \App\Domain\Finance\Services\EventDirectorReconciliation::build($convenors, $operationalExpenses, $reimbursementPayments, $grandTotalIncome - $totalExpenses);
 
     $budgetCapWarning = $event->budget_cap
       ? ($totalExpenses / $event->budget_cap) >= 0.9

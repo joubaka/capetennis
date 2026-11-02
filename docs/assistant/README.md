@@ -4,7 +4,21 @@ The assistant is a **super-user-only pilot until testing and explicit approval f
 
 It supports typed requests, optional voice transcription, conversational corrections, reviewed schedule proposals, separate order-of-play publication, empty individual draw creation, feedback and explicit timing preferences.
 
+It also supports reviewed category copying between events. For example: `Copy categories from Panarottis/Spur Leg 1 to Legs 2 and 3, without creating duplicates.` Use exact event names; ambiguous or missing events require a corrected request. Event IDs are supported: `Copy categories from event #123 to event #124 and event #125`. Category copying is interpreted locally, including when **Use AI** is selected.
+
+The preview identifies source and destination names/IDs, each category to add or skip, the resulting fee (including the destination event fee when no override exists), and ordering. Review it, acknowledge the changes, then choose **Copy categories**. The copy shares the existing category definitions and copies fee overrides and ordering only. Existing category IDs or equivalent names are skipped and their settings kept. Entries, nominations, publication flags, locks, draws and results are not copied. Changes to the source, destinations or categories invalidate the preview; repeated confirmation is idempotent. Trials reject copied fee overrides. One request supports up to ten destinations and 1,000 existing category rows across the selected events. Category and settings permissions are rechecked when confirming.
+
 ## Use
+
+### Draft and review an email
+
+Ask `Draft an email to parents about possible rain delays` using typed input or reviewed voice transcription. Select **Use AI** to generate prose with the configured provider. Only that instruction and the explicitly submitted, visible current draft are sent for drafting or revision; no roster, recipient list, previous chat transcript or event data is sent. Separate Codex/ChatGPT chats are not accessible to the application assistant: paste their draft into the editor if needed. The current editable draft is included when asking a correction such as `I meant Under 13, not Under 30; finish by 14:00 on Sunday`. AI text remains a draft whose facts must be checked. Without AI opt-in, the assistant opens a manual editor and preserves an existing draft; it does not claim to generate prose.
+
+Edit **Email subject** and **Email message**, then explicitly choose **Email audience**. No broad audience is preselected. Available choices follow the event's canonical communication scopes; recorded player notification contacts can include primary and additional contacts, and are not a guessed list of parents. A direct email address is also supported. For region/team/individual targeting, copy the draft into the linked event email composer and choose its audience there.
+
+**Review recipients and email** opens the existing full-page communication review with the exact sender, message, deduplicated recipients and missing-contact issues. No email is sent by drafting, changing the draft, or opening this preview. Only **Send email(s)** on that review page approves the canonical managed queue. The existing ownership, one-hour preview expiry, missing-contact acknowledgement, stale-recipient fingerprint, deduplication and mail rate limit apply. An assistant review also expires when its conversation expires or is deleted, and any new message or recipient preview in that conversation invalidates an older review. Unsaved browser-only edits are not submitted until another request or preview. Repeated send confirmation does not queue the approved batch twice. Queue submission and delivery are separate evidence; check communication history for outcomes.
+
+Drafts are editable in the current panel; the normal assistant retention policy applies to draft metadata. Closing the editor leaves no automatic send instruction, and saying `send` in chat cannot approve mail. Starting a new conversation resets the editor. No new migration, mail transport or credentials are introduced.
 
 The lightweight testing page is `/backend/events/{event}/assistant`; the assistant panel also links to it. Current local U19 test evidence and data-copy details are recorded in [local-u19-qa.md](local-u19-qa.md).
 

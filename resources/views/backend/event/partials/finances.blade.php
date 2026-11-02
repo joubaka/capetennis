@@ -612,15 +612,15 @@
             <th>Event Director</th>
             <th>Role</th>
             <th class="text-end">Paid Out</th>
-            <th class="text-end">Reimbursed</th>
-            <th class="text-end">Outstanding</th>
+            <th class="text-end">Already paid</th>
+            <th class="text-end">Total still owed</th>
             <th>Status</th>
           </tr>
         </thead>
         <tbody>
           @foreach($recon as $row)
             @php
-              $outstanding = $row['owed_back'] - $row['reimbursed'];
+              $outstanding = $row['final_payout'];
             @endphp
             <tr>
               <td class="fw-semibold">{{ $row['convenor']->user->name ?? 'Unknown' }}</td>
@@ -629,8 +629,8 @@
                   {{ $row['convenor']->isHoof() ? 'Head Director' : ($row['convenor']->isHulp() ? 'Assist Director' : ucfirst($row['convenor']->role)) }}
                 </span>
               </td>
-              <td class="text-end">R {{ number_format($row['total_paid'], 2) }}</td>
-              <td class="text-end text-success">R {{ number_format($row['reimbursed'], 2) }}</td>
+              <td class="text-end">R {{ number_format($row['total_paid'], 2) }}<small class="d-block text-muted">Profit share: R {{ number_format($row['profit_share_amount'], 2) }}</small></td>
+              <td class="text-end text-success">R {{ number_format($row['reimbursed'] + $row['director_paid'], 2) }}</td>
               <td class="text-end {{ $outstanding > 0 ? 'text-danger fw-bold' : 'text-success' }}">
                 R {{ number_format($outstanding, 2) }}
               </td>
@@ -648,9 +648,9 @@
           <tr>
             <td colspan="2" class="fw-bold">Recon Total</td>
             <td class="text-end fw-bold">R {{ number_format($recon->sum('total_paid'), 2) }}</td>
-            <td class="text-end fw-bold text-success">R {{ number_format($recon->sum('reimbursed'), 2) }}</td>
-            <td class="text-end fw-bold {{ $recon->sum(fn($r) => $r['owed_back'] - $r['reimbursed']) > 0 ? 'text-danger' : 'text-success' }}">
-              R {{ number_format($recon->sum(fn($r) => $r['owed_back'] - $r['reimbursed']), 2) }}
+            <td class="text-end fw-bold text-success">R {{ number_format($recon->sum('reimbursed') + $recon->sum('director_paid'), 2) }}</td>
+            <td class="text-end fw-bold {{ $recon->sum('final_payout') > 0 ? 'text-danger' : 'text-success' }}">
+              R {{ number_format($recon->sum('final_payout'), 2) }}
             </td>
             <td></td>
           </tr>

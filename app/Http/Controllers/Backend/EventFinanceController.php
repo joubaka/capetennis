@@ -141,34 +141,8 @@ class EventFinanceController extends Controller
 
         // ── Per-convenor totals for reconciliation (operational only) ─────
         $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
-            ->where('purpose', 'expense_reimbursement')->orderByDesc('id')->get();
-        $profitAllocations = \App\Domain\Finance\Services\EventProfitAllocation::cents($convenors, $netProfit);
-        $recon = $convenors->map(function ($convenor) use ($operationalExpenses, $netProfit, $reimbursementPayments, $profitAllocations) {
-            $paid = $operationalExpenses
-                ->where('paid_by_convenor_id', $convenor->id)
-                ->sum(fn($e) => $e->calculatedAmount());
-
-            $profitSharePct    = (float) ($convenor->profit_share_pct ?? 0);
-            $profitShareAmount = ($profitAllocations[$convenor->id] ?? 0) / 100;
-
-            $reimbursed = $operationalExpenses
-                ->where('paid_by_convenor_id', $convenor->id)
-                ->whereNotNull('reimbursed_at')
-                ->sum(fn($e) => $e->calculatedAmount());
-
-            $reimbursed += $reimbursementPayments->where('convenor_id', $convenor->id)->sum(fn ($payout) => (float) $payout->amount);
-
-            return [
-                'convenor'           => $convenor,
-                'total_paid'         => $paid,
-                'owed_back'          => $paid,
-                'reimbursed'         => $reimbursed,
-                'profit_share_pct'   => $profitSharePct,
-                'profit_share_amount'=> $profitShareAmount,
-                // Final payout = expenses owed back + profit share
-                'final_payout'       => ($paid - $reimbursed) + $profitShareAmount,
-            ];
-        });
+            ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->orderByDesc('id')->get();
+        $recon = \App\Domain\Finance\Services\EventDirectorReconciliation::build($convenors, $operationalExpenses, $reimbursementPayments, $netProfit);
         $convenorPayoutProjection = app(\App\Domain\Finance\Services\ConvenorPayoutProjection::class)
             ->build($event, $recon, $clothingReconciliation);
 

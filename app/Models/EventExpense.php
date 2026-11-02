@@ -23,7 +23,7 @@ class EventExpense extends Model
     {
         $directorId = $this->getRawOriginal('paid_by_convenor_id');
         if ($directorId && \App\Domain\Finance\Services\EventExpenseReimbursementService::recordedCents((int) $this->getRawOriginal('event_id'), (int) $directorId) > 0) {
-            throw \Illuminate\Validation\ValidationException::withMessages(['expense' => 'This director has recorded reimbursements. Expense amounts, category and paying director cannot be changed or deleted.']);
+            throw \Illuminate\Validation\ValidationException::withMessages(['expense' => 'This director has recorded payments. Expense amounts, category and paying director cannot be changed or deleted.']);
         }
     }
 

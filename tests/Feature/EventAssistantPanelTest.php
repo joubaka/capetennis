@@ -13,6 +13,7 @@ class EventAssistantPanelTest extends TestCase
         $user->shouldReceive('hasAnyRole')->andReturn(false);
         $user->shouldReceive('hasRole')->with('super-user')->andReturn(true);
         $this->actingAs($user);
+        $this->app['session']->put('_token', 'test');
         $event = new Event;
         $event->id = 801;
         $event->name = 'Assistant demonstration event';
@@ -21,6 +22,9 @@ class EventAssistantPanelTest extends TestCase
         $this->assertStringContainsString('event-assistant.js', $html);
         $this->assertStringContainsString('event-assistant.css', $html);
         $this->assertStringContainsString('Review the transcript before sending', $html);
+        $this->assertStringContainsString('Add to home screen', $html);
+        $this->assertStringContainsString('/backend/events/801/assistant?home-screen=1', $html);
+        $this->assertStringContainsString('data-auto-open="false"', $html);
         if (getenv('CT_ASSISTANT_QA_HTML') === '1') {
             $directory = storage_path('framework/testing');
             if (! is_dir($directory)) mkdir($directory, 0755, true);

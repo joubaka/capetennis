@@ -78,6 +78,9 @@ Reuse live specialists within the same task. Across tasks, recreate roles from t
 
 Capester and its specialists should improve as work establishes new project knowledge. Record a learning only when it is verified, reusable beyond the current task, precisely scoped, and safe for a future agent to apply.
 
+- For reusable repairs, consult `docs/assistant/repairs/README.md` and the repair catalogue before investigating. Verify each guide against current owning code before applying it.
+- After verifying a reusable fix, update or add its catalogue record with symptoms, cause, scoped procedure, validation, source/test references, and assistant support status. A recorded procedure is not an executable assistant action; promote it only through reviewed application code and focused regression coverage. Previous repair or deployment approval never authorizes a new live action.
+
 - Put broad product, authorization, and safety rules in `AGENTS.md`.
 - Put agent workflow in the relevant skill and conditional technical procedures in skill references.
 - Put executable product invariants in regression tests.

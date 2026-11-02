@@ -1,6 +1,6 @@
 # Cape Tennis event assistant backend
 
-All routes live under the existing authenticated backend group at `events/{event}/assistant`. Each controller action independently authorizes `event.manage` for the route event. Conversation/proposal/feedback queries also bind the current actor and event. A confirmed new individual draft additionally requires `individual-draw.create`. No payment, mail, account-linking or role tools are exposed.
+All routes live under the existing authenticated backend group at `events/{event}/assistant`. Each controller action independently authorizes `event.manage` for the route event. Conversation/proposal/feedback queries also bind the current actor and event. A confirmed new individual draft additionally requires `individual-draw.create`. Email drafting hands off to canonical communication review and explicit send approval. No payment, account-linking or role tools are exposed.
 
 ## Endpoints
 
@@ -22,6 +22,14 @@ Route names are `backend.event-assistant.{suffix}`, with `conversation` and `pub
 
 ## Options
 
+### Email drafting and canonical review handoff
+
+`message` additionally accepts optional `email_draft:{subject,body}` (200/30,000 characters). Email requests or a submitted visible draft enter the email editor workflow before scheduling interpretation. With explicit `use_ai:true`, `AssistantProvider::draftEmail` receives only the current instruction and submitted draft, returning validated plain subject/body data. Without opt-in it returns an honest manual-editor response; no provider call is made. Responses include `email_draft` for the editable panel. Sender, recipients and action flags cannot be supplied by model output. Drafting never creates a communication batch or dispatches mail.
+
+The editor posts subject/body and an explicit audience to existing `backend.event-communications.preview`, with `assistant_conversation_uuid`. `AssistantEmailDraft::preview` checks pilot role, feature availability, event access and an owned, unexpired conversation, then under its lock mints a review-message revision. It whitelists canonical event-appropriate audience scopes, fixes normal player notification contacts/filter, resolves the sender server-side through `CommunicationSender::eventDefaults`, and delegates to `EventCommunicationService::preview`. The canonical batch stores the server-minted conversation/revision inside its fingerprinted options. Existing communication preview/send pages own recipient review, missing-contact acknowledgement and final send.
+
+Before canonical approval, `assertCurrentReview` rechecks pilot/event access and a locked owned, unexpired conversation whose latest message must match the review marker. New assistant messages/reviews or conversation deletion/pruning invalidate the old batch. Existing canonical one-hour expiry, stale-recipient/message/sender fingerprint and approved-batch idempotency still apply. No assistant proposal can send mail, and chat text cannot confirm sending. No new endpoint, table or transport is added. The same explicit input privacy rule applies to revisions; retained conversation transcripts are not provider context.
+
 Normalized intent options:
 
 ```json
@@ -39,6 +47,8 @@ Scheduling uses `EventVenueScheduleService::preview` directly. It never calls th
 ```
 
 Other types are `publication` (preview contains exact saved rows/count/date), `draw_draft` (preview name/discipline/event-wide empty scope), and `draw_generate` (preview name, per-group entrants/matches, count, and scope). Token hashes, fingerprints, actor/event scope and expiration are checked server-side; a new conversation request invalidates outstanding confirmations. Confirmed actions are idempotent under row locks and canonical transaction/locking. Publication rechecks published/unlocked draw lifecycle under locks as well as the canonical working/public revision. Saving and publication never send announcements.
+
+`category_copy` is available through the message endpoint using exact source/destination names or `event #ID`, with same-name-series `Legs 2 and 3` shorthand. Resolution and execution stay local even with `use_ai`. The immutable payload stores `source_id`, `destination_ids` and a snapshot revision; it never trusts client-submitted categories, fees or a new destination at confirmation. Preview includes source/destination names and IDs, add/skip decisions, resulting effective fees/overrides and ordering. All events require `event.manage` and `event-category.manage`; destinations additionally require `event.settings.manage`. Confirmation locks sorted event rows, category-event rows and canonical category definitions, rechecks authorization and the exact snapshot, and only attaches missing category IDs with the reviewed fee override/ordering. Equivalent normalized names also count as existing. Source duplicate names require repair before copying. Existing category settings remain intact. Trials reject a nonnull source category fee override. Publication flags, locks, participants and competition state are excluded. No migration is required. The event locks serialize assistant copies; existing legacy category writers do not all share this locking convention, and the schema has no global unique event/category constraint.
 
 `draw_draft` creates only a new, unpublished individual setup record using the same policy/type defaults and model lifecycle as the existing creation workflow. It never selects entrants, seeds, regenerates brackets or changes existing draws. The result contains `setup_url` for the canonical guide and `generated:false`.
 

@@ -91,6 +91,7 @@ class PlayerPlusService
         if ($plan === 'annual_recurring' && (! self::monthlyReady() || ! $recurringConsent)) $this->reject('Annual subscriptions need recurring-payment consent and must be available.');
         return DB::transaction(function () use ($player, $payer, $token, $quotedPrice, $plan, $recurringConsent) {
             Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
+            $this->checkAdminAccess($player);
             $existing = PlayerPlusOrder::where('request_token', $token)->lockForUpdate()->first();
             if ($existing) {
                 abort_unless((int) $existing->user_id === (int) $payer->id && (int) $existing->player_id === (int) $player->id, 409);
@@ -130,6 +131,7 @@ class PlayerPlusService
             Player::whereKey($order->player_id)->lockForUpdate()->firstOrFail();
             $order = PlayerPlusOrder::lockForUpdate()->findOrFail($order->id);
             abort_unless((int) $order->user_id === (int) $payer->id, 403);
+            $this->checkAdminAccess($order->player);
             if ($order->isRecurring() && (! self::monthlyReady() || ! $order->recurring_consented_at)) $this->reject('Subscription purchases are unavailable.');
             if ($order->isMonthly() && ! self::monthlyEnabled()) $this->reject('Monthly purchases are unavailable.');
             if ($order->isRecurring() && ! self::monthlyProviderReady()) $this->reject('Recurring payments are not configured yet. Please contact Cape Tennis support.');
@@ -189,6 +191,41 @@ class PlayerPlusService
         $order = $this->payments->cancelPayment($order);
         $order->update(['status' => $status]);
         return $order;
+    }
+
+    public function closeUnpaidAsAdmin(PlayerPlusOrder $order, User $actor, string $reason): void
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        if (mb_strlen(trim($reason)) < 10) $this->reject('Record a support reason of at least 10 characters.');
+        DB::transaction(function () use ($order, $actor, $reason) {
+            Player::whereKey($order->player_id)->lockForUpdate()->firstOrFail();
+            $order = PlayerPlusOrder::lockForUpdate()->findOrFail($order->id);
+            if (in_array($order->status, ['cancelled', 'expired'], true) && ! $order->pay_status && ! $order->payfast_paid && ! $order->wallet_debited
+                && ! $order->activated_at && ! $order->term_starts_at && ! $order->term_ends_at && ! filled($order->payfast_pf_payment_id)
+                && ! filled($order->reconciliation_reason) && ! app(PlayerPlusReconciliation::class)->receipts($order)->exists()) return;
+            if ($order->status !== 'pending' || $order->pay_status || $order->payfast_paid || $order->activated_at
+                || $order->wallet_debited || $order->term_starts_at || $order->term_ends_at
+                || filled($order->reconciliation_reason) || filled($order->payfast_pf_payment_id)
+                || app(PlayerPlusReconciliation::class)->receipts($order)->exists()
+                || ($order->payfast_handed_off_at && $order->expires_at->isFuture())) {
+                $this->reject('This checkout has payment evidence or an active payment window and cannot be closed here. Review its payment status.');
+            }
+            $before = ['status' => $order->status];
+            $this->close($order, $order->expires_at->isFuture() ? 'cancelled' : 'expired');
+            $audit = app(\App\Support\Audit\AuditWriter::class)->record(['category' => 'business', 'action' => 'player-plus.admin-checkout-closed',
+                'subject' => $order, 'actor' => $actor, 'reason' => trim($reason), 'before' => $before, 'after' => ['status' => $order->status]], true);
+            if (! $audit) throw new \RuntimeException('Checkout closure could not be audited.');
+        }, 3);
+    }
+
+    private function checkAdminAccess(Player $player): void
+    {
+        if (! PlayerPlusManagement::ready()) return;
+        $override = $player->plusOverride()->first();
+        if ($override?->mode === 'suspended') $this->reject('Player Plus access is deactivated. Contact Cape Tennis support before purchasing.');
+        if ($override?->mode === 'grant' && $override->starts_at?->lte(now()) && $override->ends_at?->isFuture()) {
+            $this->reject('This player already has current admin-granted access. Purchase after that access expires.');
+        }
     }
 
     /** Invoked only by the shared signature/merchant verifier, never by a browser return. */
@@ -345,19 +382,25 @@ class PlayerPlusService
             'provider_payment_id' => $providerId, 'cycle_number' => $cycle, 'created_at' => now(), 'updated_at' => now()]);
     }
 
-    public function cancelSubscription(PlayerPlusOrder $order, User $payer): void
+    public function cancelSubscription(PlayerPlusOrder $order, User $payer, ?string $adminReason = null): void
     {
+        if ($adminReason !== null) {
+            abort_unless($payer->hasRole('super-user'), 403);
+            if (mb_strlen(trim($adminReason)) < 10 || mb_strlen($adminReason) > 1500) $this->reject('Record a meaningful support reason from 10 to 1500 characters.');
+        }
         $rootId = $order->subscription_order_id ?: $order->id;
-        $subscription = DB::transaction(function () use ($rootId, $payer) {
+        $subscription = DB::transaction(function () use ($rootId, $payer, $adminReason, $order) {
             $root = PlayerPlusOrder::findOrFail($rootId);
-            abort_unless((int) $root->user_id === (int) $payer->id, 403);
+            abort_unless((int) $root->player_id === (int) $order->player_id && (int) $root->user_id === (int) $order->user_id, 404);
+            abort_unless((int) $root->user_id === (int) $payer->id || ($payer->hasRole('super-user') && mb_strlen(trim($adminReason ?? '')) >= 10), 403);
             Player::whereKey($root->player_id)->lockForUpdate()->firstOrFail();
             $root = PlayerPlusOrder::lockForUpdate()->findOrFail($rootId);
             $subscription = PlayerPlusSubscription::where('order_id', $root->id)->lockForUpdate()->firstOrFail();
             if ($subscription->cancelled_at) return $subscription;
+            if ($adminReason !== null) $this->auditSubscription($root, $payer, 'admin-cancellation-attempt', trim($adminReason));
             if (! $subscription->cancellation_requested_at) {
                 $subscription->update(['status' => 'cancel_pending', 'cancellation_requested_at' => now()]);
-                $this->auditSubscription($root, $payer, 'cancellation-requested');
+                $this->auditSubscription($root, $payer, 'cancellation-requested', $adminReason);
             }
             return $subscription;
         }, 3);
@@ -366,21 +409,21 @@ class PlayerPlusService
         if (! app(PlayerPlusSubscriptionGateway::class)->cancel($subscription->provider_token)) {
             $this->reject('Cancellation is requested but PayFast has not confirmed it. Automatic charges may continue. Retry or contact support; paid access is unchanged.');
         }
-        DB::transaction(function () use ($subscription, $payer) {
+        DB::transaction(function () use ($subscription, $payer, $adminReason) {
             $locked = PlayerPlusSubscription::lockForUpdate()->findOrFail($subscription->id);
             if ($locked->cancelled_at) return;
             $locked->update(['status' => 'cancelled', 'cancelled_at' => now()]);
-            $this->auditSubscription($locked->order, $payer, 'cancelled');
+            $this->auditSubscription($locked->order, $payer, 'cancelled', $adminReason);
         }, 3);
     }
 
-    private function auditSubscription(PlayerPlusOrder $root, ?User $payer, string $action): void
+    private function auditSubscription(PlayerPlusOrder $root, ?User $payer, string $action, ?string $reason = null): void
     {
         $audit = app(\App\Support\Audit\AuditWriter::class)->record(['category' => 'business',
             'action' => 'player-plus.subscription-'.$action,
             'actor' => $payer ?? (object) ['name' => null, 'userName' => null, 'email' => null],
             'actor_type' => $payer ? 'user' : 'system', 'source' => $payer ? 'web' : 'system', 'subject' => $root,
-            'metadata' => ['plan' => $root->plan]], true);
+            'reason' => $reason, 'metadata' => ['plan' => $root->plan]], true);
         if (! $audit) throw new \RuntimeException('The subscription change could not be recorded. Please try again.');
     }
 

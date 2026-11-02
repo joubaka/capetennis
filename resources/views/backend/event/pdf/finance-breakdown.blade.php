@@ -37,8 +37,9 @@ table { width: 100%; border-collapse: collapse; margin: 8px 0; } th { background
 <div class="payee"><h3>{{ $row['convenor']->user?->name ?? 'Unknown' }}</h3><table><tbody>
 <tr><td>Expenses paid out</td><td class="amount">R {{ number_format($row['total_paid'], 2) }}</td></tr>
 <tr><td>Already reimbursed</td><td class="amount">R {{ number_format($row['reimbursed'], 2) }}</td></tr>
-<tr><td>Expenses still owed</td><td class="amount">R {{ number_format($row['owed_back'] - $row['reimbursed'], 2) }}</td></tr>
+<tr><td>Expenses before general payments</td><td class="amount">R {{ number_format($row['owed_back'] - $row['reimbursed'], 2) }}</td></tr>
 <tr><td>Profit share ({{ number_format($row['profit_share_pct'], 1) }}%)</td><td class="amount">R {{ number_format($row['profit_share_amount'], 2) }}</td></tr>
+<tr><td>General payments already made</td><td class="amount">R {{ number_format($row['director_paid'] ?? 0, 2) }}</td></tr>
 <tr class="total"><td>Registration subtotal</td><td class="amount">R {{ number_format($row['final_payout'], 2) }}</td></tr>
 @foreach($projection['regions'] ?? collect() as $region)
 <tr><td>Clothing — {{ $region['region_name'] }} ({{ $region['contribution_cents'] < 0 ? 'proposed recovery' : 'still payable after pending refund reserve' }})</td><td class="amount">R {{ number_format($region['contribution_cents'] / 100, 2) }}</td></tr>

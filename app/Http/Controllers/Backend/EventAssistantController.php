@@ -28,7 +28,7 @@ class EventAssistantController extends Controller
     public function message(Request $request, Event $event, AssistantUsageLimits $limits): JsonResponse
     {
         $this->guard($event);
-        $data = $request->validate(['message' => ['required', 'string', 'max:2000'], 'conversation_uuid' => ['nullable', 'uuid'], 'use_ai' => ['sometimes', 'boolean'], 'options' => ['sometimes', 'array']]);
+        $data = $request->validate(['message' => ['required', 'string', 'max:2000'], 'conversation_uuid' => ['nullable', 'uuid'], 'use_ai' => ['sometimes', 'boolean'], 'options' => ['sometimes', 'array'], 'email_draft' => ['sometimes', 'array:subject,body'], 'email_draft.subject' => ['present_with:email_draft', 'nullable', 'string', 'max:200'], 'email_draft.body' => ['present_with:email_draft', 'nullable', 'string', 'max:30000']]);
         $limits->consume($request->user()->id, 'message');
         return $this->respond(fn () => $this->assistant->answer($event, $request->user(), $data));
     }

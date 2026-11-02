@@ -22,7 +22,11 @@
     </section>
   @endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
-  @if($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture())
+  @if(($adminAccess ?? null)?->mode === 'suspended')
+    <p class="alert alert-warning">Player Plus access is deactivated. Contact Cape Tennis support. Deactivation does not stop automatic renewal; the payer can manage billing in My Plus orders.</p>
+  @elseif(($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
+    <p class="alert alert-success">This player has admin-granted access until {{ $adminAccess->ends_at->format('j M Y H:i') }}. This grant does not record a payment or change existing subscription billing.</p>
+  @elseif($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture())
     <p class="alert alert-success">This player is covered until {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer can manage automatic renewal in My Plus orders.@else This existing once-off term has no automatic renewal or charge.@endif</p>
   @else
     @if($membership && $linked)<p class="alert alert-secondary mt-3">Membership expired on {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer should check payment and renewal status in My Plus orders.@else No renewal payment has been taken automatically.@endif</p>@endif

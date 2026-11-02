@@ -672,6 +672,7 @@ class EventCommunicationService
         return DB::transaction(function () use ($batch, $actor, $acknowledgeMissing) {
             $batch = EventCommunicationBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($batch->approved_at) return ['queued' => 0, 'duplicate' => true];
+            app(\App\Services\Assistant\AssistantEmailDraft::class)->assertCurrentReview($batch, $actor);
             $this->validateWrapUpResults($batch->event, $batch->options);
             if (($batch->options['source'] ?? null) === 'retry') {
                 $original = EventCommunicationBatch::where('event_id', $batch->event_id)->findOrFail($batch->options['original_batch_id']);

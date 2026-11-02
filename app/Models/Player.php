@@ -11,6 +11,10 @@ class Player extends Model
 {
   use HasFactory;
 
+  public function plusMembership() { return $this->hasOne(PlayerPlusMembership::class); }
+  public function plusOverride() { return $this->hasOne(PlayerPlusAccessOverride::class); }
+  public function plusOrders() { return $this->hasMany(PlayerPlusOrder::class); }
+
   protected static ?bool $hasIdentityHashColumns = null;
 
   protected $fillable = [

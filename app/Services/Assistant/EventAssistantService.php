@@ -39,7 +39,8 @@ final class EventAssistantService
             'court_labels' => $this->scheduler->fullDayCourtLabels($event),
             'defaults' => array_replace(['start_time' => '08:00', 'end_time' => '17:00', 'duration' => 60, 'court_gap' => 5, 'player_rest' => 60], $preferences),
             'preferences' => $preferences,
-            'capabilities' => ['ai_available' => app(AssistantProvider::class)->available(), 'voice_available' => app(AssistantTranscriptionProvider::class)->available(), 'voice_local' => app(AssistantTranscriptionProvider::class)->isLocal(), 'schedule' => true, 'publication' => true, 'draw_draft' => Gate::forUser($actor)->allows('individual-draw.create', $event), 'draw_generation' => 'prepared_initial_round_robin'],
+            'email_audiences' => app(AssistantEmailDraft::class)->audiences($event),
+            'capabilities' => ['ai_available' => app(AssistantProvider::class)->available(), 'voice_available' => app(AssistantTranscriptionProvider::class)->available(), 'voice_local' => app(AssistantTranscriptionProvider::class)->isLocal(), 'schedule' => true, 'publication' => true, 'category_copy' => true, 'draw_draft' => Gate::forUser($actor)->allows('individual-draw.create', $event), 'draw_generation' => 'prepared_initial_round_robin'],
         ];
     }
 
@@ -62,7 +63,23 @@ final class EventAssistantService
         $previous = $this->previousOptions($conversation);
         $question = $data['message'];
         EventAssistantProposal::where('conversation_id', $conversation->id)->whereNull('applied_at')->update(['expires_at' => now()]);
-        $conversation->messages()->create(['role' => 'user', 'content' => $question]);
+        DB::transaction(function () use ($conversation, $question) {
+            EventAssistantConversation::whereKey($conversation->id)->lockForUpdate()->firstOrFail();
+            $conversation->messages()->create(['role' => 'user', 'content' => $question]);
+        });
+        $email = app(AssistantEmailDraft::class);
+        if ($email->recognises($question, $data)) {
+            $result = $email->prepare($question, $data);
+            return $this->reply($conversation, $result['notice'], ['outcome' => 'email_draft', 'email_draft' => $result['draft']]);
+        }
+        $copy = app(AssistantCategoryCopy::class);
+        if ($copy->recognises($question)) {
+            $selection = $copy->resolve($question, $actor);
+            if (isset($selection['clarification'])) return $this->reply($conversation, $selection['clarification'], ['outcome' => 'clarification']);
+            $review = $copy->review($actor, $selection['source_id'], $selection['destination_ids']);
+            $proposal = $this->storeProposal($event, $actor, $conversation, 'category_copy', $selection + ['revision' => $review['revision']], $review['preview']);
+            return $this->reply($conversation, 'Review the source, destinations, fee overrides and categories to add or skip. Confirming copies category setup only.', ['outcome' => 'preview'], $proposal);
+        }
         if ($reason = app(AssistantInterpreter::class)->unsupportedConstraint($question)) {
             $interpretation = ['action' => 'help', 'clarification' => $reason];
         } elseif (! empty($data['use_ai'])) {
@@ -80,7 +97,7 @@ final class EventAssistantService
             'publication' => $this->publicationProposal($event, $actor, $conversation, $options),
             'draw_draft' => $this->drawProposal($event, $actor, $conversation, (string) ($interpretation['draw_name'] ?? '')),
             'draw_generate' => $this->generationProposal($event, $actor, $conversation, $options['draw_ids'] ?? []),
-            default => $this->reply($conversation, 'I can preview schedules, review saved orders of play for publication, and create an empty individual draft draw. For seeding and bracket generation, continue in the draw guide.', ['options' => $options, 'outcome' => 'unsupported']),
+            default => $this->reply($conversation, 'I can copy categories between events with a preview, preview schedules, review saved orders of play for publication, and create an empty individual draft draw. For seeding and bracket generation, continue in the draw guide.', ['options' => $options, 'outcome' => 'unsupported']),
         };
     }
 
@@ -222,7 +239,9 @@ final class EventAssistantService
             abort_if($proposal->expires_at->lte(now()), 409, 'This preview expired or was replaced. Generate a new preview.');
             $conversation = EventAssistantConversation::whereKey($proposal->conversation_id)->where('expires_at', '>', now())->firstOrFail();
             $payload = $proposal->payload;
-            if ($proposal->type === 'schedule') {
+            if ($proposal->type === 'category_copy') {
+                $result = app(AssistantCategoryCopy::class)->apply($actor, $payload);
+            } elseif ($proposal->type === 'schedule') {
                 $current = $this->scheduler->preview($event->fresh(), $payload['options']);
                 abort_if(empty($current['matches']) || ! empty($current['unscheduled']), 422, 'Resolve unscheduled matches before saving a nonempty schedule.');
                 $result = $this->scheduler->apply($event->fresh(), $payload['options'], $payload['revision']);
@@ -249,6 +268,7 @@ final class EventAssistantService
             }
             $proposal->update(['applied_at' => now(), 'result' => $result]);
             $conversation->messages()->create(['role' => 'assistant', 'content' => match ($proposal->type) {
+                'category_copy' => 'Reviewed categories copied. Existing categories were kept unchanged.',
                 'schedule' => 'Schedule saved privately. Publication remains a separate action.',
                 'publication' => 'The reviewed match times were published. No announcement was sent.',
                 'draw_generate' => 'Initial Round Robin fixtures generated. Scheduling and publication remain separate actions.',
@@ -285,7 +305,7 @@ final class EventAssistantService
     private function reply(EventAssistantConversation $conversation, string $content, array $metadata = [], ?array $proposal = null): array
     {
         $message = $conversation->messages()->create(['role' => 'assistant', 'content' => $content, 'metadata' => $metadata]);
-        return ['conversation_uuid' => $conversation->uuid, 'message' => ['id' => $message->id, 'content' => $content], 'options' => $metadata['options'] ?? [], 'clarification' => ($metadata['outcome'] ?? '') === 'clarification' ? $content : null, 'proposal' => $proposal, 'suggestions' => ['Preview a schedule', 'Review publication', 'Create draw named New Singles']];
+        return ['conversation_uuid' => $conversation->uuid, 'message' => ['id' => $message->id, 'content' => $content], 'email_draft' => $metadata['email_draft'] ?? null, 'options' => $metadata['options'] ?? [], 'clarification' => ($metadata['outcome'] ?? '') === 'clarification' ? $content : null, 'proposal' => $proposal, 'suggestions' => ['Preview a schedule', 'Review publication', 'Create draw named New Singles', 'Draft an email']];
     }
 
     private function storeProposal(Event $event, User $actor, EventAssistantConversation $conversation, string $type, array $payload, array $preview): array

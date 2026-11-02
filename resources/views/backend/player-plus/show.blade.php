@@ -4,6 +4,7 @@
 <div class="container-xxl container-p-y" style="max-width:1000px;overflow-wrap:anywhere">
   <a href="{{ route('superadmin.player-plus.index') }}">Back to Plus payment reviews</a>
   <h1 class="mt-3">Payment review · P{{ $order->id }}</h1>
+  <a class="d-inline-block py-2" href="{{ route('superadmin.player-plus.manage.show', $order->player_id) }}">Manage this player's access and orders</a>
   @if(session('success'))<p class="alert alert-success">{{ session('success') }}</p>@endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
   <p><strong>{{ $order->player?->full_name ?? 'Player unavailable' }}</strong> · Profile #{{ $order->player_id }}<br>Original payer: {{ $order->user?->name }} · {{ $order->user?->email }}<br>Stored checkout price: R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }}<br>Status: {{ $order->status }} · {{ $order->activated_at ? 'Original membership was activated' : 'Membership was not activated' }}</p>

@@ -25,7 +25,7 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
         if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
         if (url.pathname === '/css/event-assistant.css' || url.pathname === '/js/event-assistant.js') return route.fulfill({ contentType: url.pathname.endsWith('.css') ? 'text/css' : 'application/javascript', body: fs.readFileSync(path.join(root, 'public', url.pathname), 'utf8') });
         const action = url.pathname.split('/').pop();
-        if (action === 'context') return route.fulfill({ json: { available: true, dates: ['2026-11-07'], defaults: { end_time: '17:00' }, event: { name: 'Demo' }, draws: [{ id: 1, name: 'U14 Boys' }], venues: [{ id: 1, name: 'Main courts' }], capabilities: { ai_available: !voiceLocal, voice_available: true, voice_local: voiceLocal } } });
+        if (action === 'context') return route.fulfill({ json: { available: true, dates: ['2026-11-07'], defaults: { end_time: '17:00' }, event: { name: 'Demo' }, email_audiences: [{ id: 'registrations', name: 'Registered player contacts' }, { id: 'direct', name: 'One email address' }], draws: [{ id: 1, name: 'U14 Boys' }], venues: [{ id: 1, name: 'Main courts' }], capabilities: { ai_available: !voiceLocal, voice_available: true, voice_local: voiceLocal } } });
         if (action === 'transcribe') {
           transcriptions.push(request.postDataBuffer());
           if (holdTranscription) await new Promise(resolve => { releaseTranscription = resolve; });
@@ -36,8 +36,10 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
         if (action === 'publication-preview') return route.fulfill({ json: { proposal: { ...proposal, type: 'publication' }, message: { id: 3, content: 'Review the public order of play.' } } });
         if (action === 'generation-preview') return route.fulfill({ json: { proposal: { ...proposal, type: 'draw_generate', preview: { name: 'U14 Boys', count: 6, groups: [{ name: 'A', entrants: 4, matches: 6 }] } } } });
         if (action === 'improvements') return route.fulfill({ json: { feedback: [{ rating: 'unhelpful', category: 'understanding', count: 2 }] } });
+        if (action === 'message' && data.message.startsWith('Copy categories')) return route.fulfill({ json: { message: { id: 4, content: 'Review the category copy.' }, proposal: { ...proposal, uuid: 'category-copy', type: 'category_copy', preview: { source: { id: 10, name: 'Panarottis/Spur Leg 1' }, count: 1, scope: 'Copy setup only.', destinations: [{ id: 11, name: 'Panarottis/Spur Leg 2', categories: [{ name: 'Boys <img src=x>', action: 'skip_existing', result_entry_fee: 99, result_effective_fee: 99, result_ordering: 8 }] }, { id: 12, name: 'Panarottis/Spur Leg 3', categories: [{ name: 'Boys', action: 'add', result_entry_fee: null, result_effective_fee: 175, result_ordering: 3 }] }] } } } });
+        if (action === 'message' && (data.message.startsWith('Draft an email') || data.email_draft)) return route.fulfill({ json: { conversation_uuid: 'email-conversation', email_draft: { subject: data.email_draft ? 'Revised rain plan' : 'Rain plan <img src=x>', body: data.email_draft ? 'Under 13 may play until 14:00 Sunday.' : 'Under 30 may play on Sunday.' }, message: { id: 5, content: 'Review the draft and select recipients. No email has been sent.' } } });
         if (action === 'message') return route.fulfill({ json: { message: { id: 2, content: 'Which date should I use?' }, suggestions: ['2026-11-07'] } });
-        if (action === 'confirm') { confirmations.push(data); return route.fulfill({ status: confirmationServerError ? 500 : confirmationFails ? 409 : 200, json: confirmationServerError ? { message: 'SQLSTATE private debug database query' } : confirmationFails ? { message: 'The preview changed. Review a new proposal.' } : { status: 'applied', message: 'Schedule saved.' } }); }
+        if (action === 'confirm') { confirmations.push(data); return route.fulfill({ status: confirmationServerError ? 500 : confirmationFails ? 409 : 200, json: confirmationServerError ? { message: 'SQLSTATE private debug database query' } : confirmationFails ? { message: 'The preview changed. Review a new proposal.' } : data.proposal_uuid === 'category-copy' ? { status: 'applied', type: 'category_copy', result: { count: 1 } } : { status: 'applied', message: 'Schedule saved.' } }); }
         if (action === 'feedback') return route.fulfill({ json: { message: 'Feedback recorded.' } });
         return route.fulfill({ json: {} });
       });
@@ -96,6 +98,51 @@ test('event assistant preview, confirmation, privacy and voice recovery at phone
       await panel.getByText('6 fixtures to generate.', { exact: true }).waitFor();
       await panel.getByText('A · 4 players · 6 matches', { exact: true }).waitFor();
       assert.equal(await panel.getByRole('button', { name: 'Generate round-robin fixtures', exact: true }).isDisabled(), true);
+      await panel.locator('#ea-input').fill('Copy categories from Panarottis/Spur Leg 1 to Legs 2 and 3');
+      await panel.getByRole('button', { name: 'Send', exact: true }).click();
+      await panel.getByRole('heading', { name: 'Review category copy', exact: true }).waitFor();
+      await panel.getByText('Source: Panarottis/Spur Leg 1 (#10)', { exact: true }).waitFor();
+      await panel.getByRole('heading', { name: 'Panarottis/Spur Leg 2 (#11)' }).waitFor();
+      await panel.getByRole('heading', { name: 'Panarottis/Spur Leg 3 (#12)' }).waitFor();
+      assert.match(await panel.locator('[data-ea-proposal]').innerText(), /Skip existing; keep destination settings · Fee: R99 \(category override\) · Order: 8/);
+      assert.match(await panel.locator('[data-ea-proposal]').innerText(), /Fee: R175 \(destination event fee; no override\)/);
+      assert.equal(await panel.locator('img').count(), 0, 'category names stay plain text');
+      const copy = panel.getByRole('button', { name: 'Copy categories', exact: true });
+      assert.equal(await copy.isDisabled(), true);
+      assert.equal(confirmations.some(data => data.proposal_uuid === 'category-copy'), false);
+      await panel.locator('[data-ea-proposal] input[type=checkbox]').check();
+      await copy.click();
+      await panel.getByText('Categories copied. Existing categories were kept unchanged.', { exact: true }).waitFor();
+      assert.deepEqual(confirmations.at(-1), { proposal_uuid: 'category-copy', confirmation_token: 'token-1', confirmed: true });
+      await panel.locator('#ea-input').fill('Draft an email about rain delays');
+      await panel.getByRole('button', { name: 'Send', exact: true }).click();
+      const email = panel.locator('[data-ea-email]'), emailForm = email.locator('form');
+      await email.waitFor({ state: 'visible' });
+      assert.equal(await email.getByRole('textbox', { name: 'Email subject', exact: true }).inputValue(), 'Rain plan <img src=x>');
+      assert.equal(await email.locator('img').count(), 0, 'draft subjects remain plain text');
+      assert.equal(await email.getByRole('combobox', { name: /Email audience/ }).inputValue(), '', 'audience requires explicit choice');
+      assert.equal(await emailForm.evaluate(form => form.checkValidity()), false);
+      await email.getByRole('textbox', { name: 'Email subject', exact: true }).fill('Edited by organiser');
+      await email.getByRole('textbox', { name: 'Email message', exact: true }).fill('Under 30 may play Sunday; keep all other details.');
+      await panel.locator('#ea-input').fill('I meant Under 13, not Under 30; finish by 14:00 Sunday.');
+      await panel.getByRole('button', { name: 'Send', exact: true }).click();
+      await page.waitForFunction(() => document.querySelector('[data-ea-email-form] [name=subject]').value === 'Revised rain plan');
+      assert.equal(posts.at(-1).data.email_draft.subject, 'Edited by organiser');
+      assert.equal(posts.at(-1).data.email_draft.body, 'Under 30 may play Sunday; keep all other details.');
+      assert.equal(await email.getByRole('textbox', { name: 'Email message', exact: true }).inputValue(), 'Under 13 may play until 14:00 Sunday.');
+      await email.getByRole('combobox', { name: /Email audience/ }).selectOption('direct');
+      await email.getByRole('textbox', { name: 'Recipient email', exact: true }).fill('review@example.test');
+      assert.equal(await emailForm.evaluate(form => form.checkValidity()), true);
+      const handoff = await emailForm.evaluate(form => ({ action: new URL(form.action).pathname, data: Object.fromEntries(new FormData(form)) }));
+      assert.match(handoff.action, /\/backend\/event\/801\/communications\/preview$/);
+      assert.equal(handoff.data.assistant_conversation_uuid, 'email-conversation');
+      assert.equal(handoff.data.subject, 'Revised rain plan');
+      assert.equal(handoff.data.body, 'Under 13 may play until 14:00 Sunday.');
+      assert.equal(handoff.data.direct_email, 'review@example.test');
+      assert.equal(handoff.data._token, 'test');
+      assert.equal(posts.some(post => post.action === 'send'), false, 'drafting/revising never sends email');
+      await email.getByRole('button', { name: 'Close email draft', exact: true }).click();
+      assert.equal(await email.isVisible(), false);
       await page.evaluate(() => {
         Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => { throw Object.assign(new Error('denied'), { name: 'NotAllowedError' }); } } });
       });

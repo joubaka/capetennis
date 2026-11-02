@@ -23,7 +23,7 @@ class EventExpenseReimbursementService
             $fields = [
                 'event_id' => $event->id, 'convenor_id' => $director->id,
                 'amount' => EventExpenseAmounts::decimal(EventExpenseAmounts::cents($data['amount'])),
-                'purpose' => 'expense_reimbursement', 'funding_source' => 'registration_entries',
+                'purpose' => 'director_payment', 'funding_source' => 'registration_entries',
                 'paid_at' => $data['paid_at'] ?? null, 'reference' => $data['reference'] ?? null,
                 'description' => $data['description'] ?? null,
             ];
@@ -35,14 +35,18 @@ class EventExpenseReimbursementService
                 }
                 return $existing;
             }
-            $expenses = EventExpense::where('event_id', $event->id)->where('paid_by_convenor_id', $director->id)
+            $expenses = EventExpense::where('event_id', $event->id)
                 ->whereNotIn('expense_type', ['payfast', 'cape_tennis_fee'])->lockForUpdate()->get();
-            $total = $expenses->sum(fn ($expense) => self::expenseCents($expense));
-            $legacy = $expenses->whereNotNull('reimbursed_at')->sum(fn ($expense) => self::expenseCents($expense));
-            $recorded = self::recordedCents($event->id, $director->id);
+            $directors = EventConvenor::where('event_id', $event->id)->lockForUpdate()->get();
+            $payments = EventPayout::where('event_id', $event->id)
+                ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->get();
+            $income = app(FinancialLedgerService::class)->buildForEvent($event)['totals']['registration_net'];
+            $profit = $income - $expenses->sum(fn ($expense) => self::expenseCents($expense)) / 100;
+            $balance = EventDirectorReconciliation::build($directors, $expenses, $payments, $profit)
+                ->firstWhere('convenor.id', $director->id)['final_payout'];
             $amount = EventExpenseAmounts::cents($data['amount']);
-            if ($amount <= 0 || $amount > $total - $legacy - $recorded) {
-                throw ValidationException::withMessages(['amount' => 'The reimbursement must be positive and cannot exceed the director’s outstanding expenses.']);
+            if ($amount <= 0 || $amount > (int) round($balance * 100)) {
+                throw ValidationException::withMessages(['amount' => 'The payment must be positive and cannot exceed the total still owed to this director for expenses and profit share.']);
             }
             return EventPayout::create($fields + [
                 'recipient_name' => $director->user->name, 'paid_by' => $actor->id,
@@ -62,7 +66,7 @@ class EventExpenseReimbursementService
     public static function recordedCents(int $eventId, int $directorId): int
     {
         return EventPayout::where('event_id', $eventId)->where('convenor_id', $directorId)
-            ->where('purpose', 'expense_reimbursement')->get(['amount'])->sum(fn ($payout) => EventExpenseAmounts::cents($payout->amount));
+            ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->get(['amount'])->sum(fn ($payout) => EventExpenseAmounts::cents($payout->amount));
     }
 
     public function reimburseWholeExpense(EventExpense $expense, User $actor): void
@@ -77,7 +81,7 @@ class EventExpenseReimbursementService
                 throw ValidationException::withMessages(['expense' => 'Only submitted operational expenses with a paying director can be reimbursed.']);
             }
             if (self::recordedCents($expense->event_id, $expense->paid_by_convenor_id) > 0) {
-                throw ValidationException::withMessages(['expense' => 'Record reimbursements for this director in Registration reconciliation to avoid counting the same payment twice.']);
+                throw ValidationException::withMessages(['expense' => 'Record payments for this director in Registration reconciliation to avoid counting the same payment twice.']);
             }
             $expense->update(['reimbursed_at' => now(), 'reimbursed_by' => $actor->id]);
         });

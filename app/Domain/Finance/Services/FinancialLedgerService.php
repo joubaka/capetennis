@@ -52,7 +52,7 @@ class FinancialLedgerService
         return app(RegionalClothingSettlementService::class)->record($event, $actor, $data);
     }
 
-    /** Record an already-paid expense reimbursement; does not initiate a transfer. */
+    /** Record an already-paid director payment; does not initiate a transfer. */
     public function recordExpenseReimbursement(Event $event, \App\Models\User $actor, array $data): EventPayout
     {
         return app(EventExpenseReimbursementService::class)->record($event, $actor, $data);

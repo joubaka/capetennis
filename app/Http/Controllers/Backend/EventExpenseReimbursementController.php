@@ -23,6 +23,6 @@ class EventExpenseReimbursementController extends Controller
         ]);
         $ledger->recordExpenseReimbursement($event, $request->user(), $data);
 
-        return redirect()->route('admin.events.finances', $event)->with('success', 'Expense reimbursement recorded.');
+        return redirect()->route('admin.events.finances', $event)->with('success', 'Director payment recorded.');
     }
 }

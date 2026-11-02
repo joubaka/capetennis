@@ -126,6 +126,10 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreeme
   Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
 });
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/player-plus')->name('superadmin.player-plus.')->group(function () {
+  Route::get('/manage', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'index'])->name('manage.index');
+  Route::get('/manage/players/{player}', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'show'])->name('manage.show');
+  Route::post('/manage/players/{player}', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'update'])->name('manage.update');
+  Route::post('/manage/players/{player}/orders/{order}', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'orderAction'])->middleware('throttle:5,1,player-plus-admin-orders')->name('manage.order-action');
   Route::get('/', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'index'])->name('index');
   Route::get('/{order}', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'show'])->name('show');
   Route::post('/{order}/review', [\App\Http\Controllers\Backend\PlayerPlusReviewController::class, 'store'])->name('store');
