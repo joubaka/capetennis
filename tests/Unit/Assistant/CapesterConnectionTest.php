@@ -3,6 +3,9 @@
 namespace Tests\Unit\Assistant;
 
 use App\Services\Assistant\CapesterConnection;
+use App\Console\Commands\CapesterPing;
+use Illuminate\Container\Container;
+use Illuminate\Foundation\Application;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Process\Process;
 
@@ -27,15 +30,39 @@ class CapesterConnectionTest extends TestCase
         $_ENV['CT_HANDSHAKE_TEST_SECRET'] = 'fictional-secret';
         $_SERVER['CT_HANDSHAKE_SERVER_SECRET'] = 'fictional-secret';
         try {
-            $connection = new CapesterConnection(function (array $arguments, string $cwd, array $environment): Process {
-                $this->assertFalse($environment['CT_HANDSHAKE_TEST_SECRET']);
-                $this->assertFalse($environment['CT_HANDSHAKE_SERVER_SECRET']);
-                $this->assertArrayNotHasKey('PATH', $environment);
+            $capturedEnvironment = null;
+            $connection = new CapesterConnection(function (array $arguments, string $cwd, array $environment) use (&$capturedEnvironment): Process {
+                $capturedEnvironment = $environment;
                 throw new \RuntimeException('Stop after inspecting environment.');
             });
             $this->assertFalse($connection->ping());
+            $this->assertIsArray($capturedEnvironment);
+            $this->assertFalse($capturedEnvironment['CT_HANDSHAKE_TEST_SECRET']);
+            $this->assertFalse($capturedEnvironment['CT_HANDSHAKE_SERVER_SECRET']);
+            $this->assertArrayNotHasKey('PATH', $capturedEnvironment);
         } finally {
             unset($_ENV['CT_HANDSHAKE_TEST_SECRET'], $_SERVER['CT_HANDSHAKE_SERVER_SECRET']);
+        }
+    }
+
+    public function test_command_rejects_production_before_starting_a_process(): void
+    {
+        $originalContainer = Container::getInstance();
+        $application = $this->createMock(Application::class);
+        $application->expects($this->once())->method('environment')->with(['local', 'testing'])->willReturn(false);
+        $started = false;
+        $connection = new CapesterConnection(function () use (&$started): Process {
+            $started = true;
+            throw new \RuntimeException('Must not run.');
+        });
+        $command = $this->getMockBuilder(CapesterPing::class)->onlyMethods(['error'])->getMock();
+        $command->expects($this->once())->method('error')->with('This connection check is available only in local or testing environments.');
+        Container::setInstance($application);
+        try {
+            $this->assertSame(1, $command->handle($connection));
+            $this->assertFalse($started);
+        } finally {
+            Container::setInstance($originalContainer);
         }
     }
 

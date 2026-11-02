@@ -17,7 +17,7 @@ Verify installation/sign-in separately if the generic failure appears. Do not pa
 Unit tests use a mocked process and make no network calls:
 
 ```powershell
-php vendor/bin/phpunit --no-configuration --bootstrap vendor/autoload.php tests/Unit/Assistant/CapesterConnectionTest.php
+php vendor/bin/phpunit --no-configuration tests/Unit/Assistant/CapesterConnectionTest.php
 ```
 
 The future workflow remains separate: remote assistant sends explicitly scoped context to Capester; a local fix receives tests and review; an approved deployment aligns reviewed Git versions. This handshake implements none of those repair, data-access or deployment capabilities.
