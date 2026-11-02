@@ -65,7 +65,7 @@ class RegionalClothingSettlementService
         });
     }
 
-    public function record(Event $event, User $actor, array $input): RegionalClothingSettlement
+    public function record(Event $event, User $actor, array $input, ?\App\Models\EventPayout $directorSettlement = null): RegionalClothingSettlement
     {
         abort_unless($actor->hasRole('super-user'), 403);
         $data = Validator::make($input, [
@@ -110,6 +110,23 @@ class RegionalClothingSettlementService
         ];
         if ($recipient) {
             $normalized['recipient_user_id'] = $recipient->id;
+        }
+        if ($directorSettlement) {
+            $directorSettlement = $directorSettlement->fresh();
+            if (! $directorSettlement) {
+                throw ValidationException::withMessages(['settlement' => 'The confirmed director settlement is missing.']);
+            }
+            $leg = collect($directorSettlement->settlement_details['clothing'] ?? [])->firstWhere('event_region_id', $normalized['event_region_id']);
+            if ((int) $directorSettlement->event_id !== (int) $event->id || ! $leg
+                || $leg['kind'] !== $data['kind'] || abs($leg['contribution_cents']) !== $amount
+                || (int) $directorSettlement->recipient_user_id !== (int) ($recipient?->id ?? 0)
+                || $directorSettlement->payment_method !== 'recorded_net_settlement'
+                || $data['request_token'] !== \Ramsey\Uuid\Uuid::uuid5($directorSettlement->idempotency_key, 'clothing:'.$normalized['event_region_id'])->toString()
+                || $occurredAt !== $directorSettlement->paid_at?->format('Y-m-d H:i:s')
+                || $normalized['reference'] !== $directorSettlement->reference) {
+                throw ValidationException::withMessages(['settlement' => 'The clothing leg does not match the confirmed director settlement.']);
+            }
+            $normalized['event_payout_id'] = $directorSettlement->id;
         }
         $fingerprint = hash('sha256', json_encode($normalized, JSON_THROW_ON_ERROR));
 
@@ -186,7 +203,8 @@ class RegionalClothingSettlementService
                 }
             }
             $base = [
-                'event_id' => $event->id, 'amount' => $normalized['amount'], 'recipient_name' => $normalized['recipient_name'],
+                'event_id' => $event->id, 'event_payout_id' => $normalized['event_payout_id'] ?? null,
+                'amount' => $normalized['amount'], 'recipient_name' => $normalized['recipient_name'],
                 'occurred_at' => $occurredAt, 'reference' => $normalized['reference'], 'evidence' => $normalized['evidence'],
                 'recorded_by' => $actor->id, 'recorded_by_name' => $actor->name, 'request_token' => $data['request_token'],
                 'request_fingerprint' => $fingerprint, 'offset_agreement_confirmed' => $normalized['offset_agreement_confirmed'],

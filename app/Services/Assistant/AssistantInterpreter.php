@@ -7,6 +7,11 @@ use Carbon\Carbon;
 /** Conservative local parsing, with unambiguous server-provided names only. */
 final class AssistantInterpreter
 {
+    public function isUnsupportedBusinessAction(string $message): bool
+    {
+        return (bool) preg_match('/\b(delete|remove|refund|pay|withdraw|score|seed|regenerate|replace)\b/i', $message);
+    }
+
     public function unsupportedConstraint(string $message): ?string
     {
         if (preg_match('/\bcreate\s+(?:a\s+)?(?:new\s+)?(?:individual\s+)?draw\s+(?:named|called)\s+/i', $message)) {
@@ -21,17 +26,17 @@ final class AssistantInterpreter
 
     public function interpret(string $message, array $context, array $previous = []): array
     {
+        if ($this->isUnsupportedBusinessAction($message)) {
+            return ['action' => 'help', 'reason_code' => 'business_action_not_supported', 'clarification' => 'I can preview existing-match schedules, review publication and create a new draft draw. Use the existing draw guide for seeding or generation.'];
+        }
         if ($reason = $this->unsupportedConstraint($message)) {
-            return ['action' => 'help', 'clarification' => $reason];
+            return ['action' => 'help', 'clarification' => $reason, 'reason_code' => 'unsupported_constraint'];
         }
         $q = mb_strtolower(trim($message));
         if (preg_match('/\bgenerate\b/', $q) && ! preg_match('/\bregenerate\b/', $q)) {
             $draws = $this->matchingDraws($q, $context['draws']);
             if (count($draws) === 1) return ['action' => 'draw_generate', 'options' => ['draw_ids' => $draws]];
             return ['action' => 'help', 'clarification' => 'Choose exactly one prepared, unpublished Round Robin draw in the fields and review initial generation. Other draw formats continue in the draw guide.'];
-        }
-        if (preg_match('/\b(delete|remove|refund|pay|withdraw|score|seed|regenerate|replace)\b/', $q)) {
-            return ['action' => 'help', 'clarification' => 'I can preview existing-match schedules, review publication and create a new draft draw. Use the existing draw guide for seeding or generation.'];
         }
         if (preg_match('/\bcreate\s+(?:a\s+)?(?:new\s+)?(?:individual\s+)?draw\s+(?:named|called)\s+(.+)/i', $message, $match)) {
             return ['action' => 'draw_draft', 'draw_name' => trim($match[1], " \t\n\r\0\x0B\"'")];
@@ -86,7 +91,7 @@ final class AssistantInterpreter
             $options['courts'] = [$match[1]];
         }
         $recognised = preg_match('/\b(schedule|order of play|preview|publish|publication|public|from|start|until|finish|end|rest|duration|gap|changeover|court|tomorrow|today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/', $q) || $draws;
-        if (! $recognised) return ['action' => 'help', 'clarification' => 'Tell me which draws and date to schedule, or use the scheduling fields. Nothing changes until you review and confirm a proposal.'];
+        if (! $recognised) return ['action' => 'help', 'reason_code' => 'unsupported_request', 'clarification' => 'Tell me which draws and date to schedule, or use the scheduling fields. Nothing changes until you review and confirm a proposal.'];
         return ['action' => $action, 'options' => $options];
     }
 

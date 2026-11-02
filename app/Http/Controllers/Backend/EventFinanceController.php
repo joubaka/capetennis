@@ -174,7 +174,11 @@ class EventFinanceController extends Controller
             ->orderBy('venues.name')
             ->get();
 
+        $directorSettlementPreviews = auth()->user()?->hasRole('super-user')
+            ? app(\App\Domain\Finance\Services\EventDirectorNetSettlementService::class)->previews($event) : [];
+
         return compact(
+            'directorSettlementPreviews',
             'event',
             'eventTransactions',
             'totalGross',

@@ -12,7 +12,9 @@ The preview identifies source and destination names/IDs, each category to add or
 
 ### Send a reviewed problem to Capester
 
-When the separately configured support queue is enabled, **Send a problem to Capester** opens a manual, reviewed description form. The local receiver delivers that text into a private inbox; delivery does not execute a fix or deploy code. See [the queue and receiver guide](capester-queue.md) for permissions, retry behaviour and rollout prerequisites.
+When the separately configured support queue is enabled, **Send a task to Capester** opens a manual, reviewed description form. The local receiver delivers that text into a private inbox; delivery does not execute a fix or deploy code. See [the queue and receiver guide](capester-queue.md) for permissions, retry behaviour and rollout prerequisites.
+
+Separately opted-in users can have unsupported tasks and **Needs improvement** feedback recorded automatically for background capability review. The feature is off by default, requires an explicit actor allowlist, and forwards only one linked instruction excerpt plus fixed metadata. It excludes drafts, feedback comments, conversation history and provider responses. Read [the capability-improvement and privacy boundary](capability-improvement.md) before enabling it. Future code improvements require tests, review and an approved deployment.
 
 ### Draft and review an email
 

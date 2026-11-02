@@ -1,6 +1,8 @@
 # Reviewed Capester support handoff
 
-The event assistant can link to **Send a problem to Capester** when `CAPESTER_ENABLED=true`. A Super User with current event-management access types and reviews a description (maximum 2,000 characters), confirms transfer, and sends it. The queue contains only this explicit text, its event reference and operational delivery metadata. It does not copy conversations, player records, attachments, credentials or the current desktop chat.
+The event assistant can link to **Send a task to Capester** when `CAPESTER_ENABLED=true`. A Super User with current event-management access types and reviews a description (maximum 2,000 characters), confirms transfer, and sends it. Manual submission contains this explicit text, its event reference and operational delivery metadata. It does not automatically copy conversations, player records, attachments or the current desktop chat. Users must keep credentials out of manual descriptions.
+
+The separate, off-by-default [automatic capability-improvement handoff](capability-improvement.md) requires an explicit actor opt-in allowlist. It can create a background note containing one linked failed instruction excerpt and fixed reason/event/message metadata, or metadata only when the instruction looks credential-like. It never copies full transcripts, email drafts, feedback comments or provider output. This standing opt-in is distinct from manually reviewing a support form and does not opt in other Super Users.
 
 The event history shows only the signed-in actor's requests for that event, 20 per page. Each actor can have at most 20 pending/leased requests. Submission UUIDs make identical retries safe; a different payload cannot replace an existing submission. `received` means delivered to the private local inbox for review, **not fixed**. Support text remains untrusted data and is never sent to AI or executed by this receiver.
 

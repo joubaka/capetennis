@@ -4,10 +4,17 @@
     <testsuite name="CapesterUnit">
       <file>tests/Unit/Assistant/CapesterConnectionTest.php</file>
       <file>tests/Unit/Assistant/CapesterReceiverTest.php</file>
+      <file>tests/Unit/Assistant/AssistantInterpreterTest.php</file>
       <file>tests/Unit/DeploymentConfigTest.php</file>
     </testsuite>
     <testsuite name="CapesterFeature">
       <file>tests/Feature/Assistant/CapesterSupportQueueTest.php</file>
+      <file>tests/Feature/Assistant/AssistantCategoryCopyTest.php</file>
+      <file>tests/Feature/Assistant/AssistantImprovementHandoffTest.php</file>
+      <file>tests/Feature/Assistant/EventAssistantTest.php</file>
+      <file>tests/Feature/Assistant/EventAssistantProviderTest.php</file>
+      <file>tests/Feature/Assistant/AssistantEmailDraftTest.php</file>
+      <file>tests/Feature/EventAssistantPanelTest.php</file>
     </testsuite>
   </testsuites>
   <php>

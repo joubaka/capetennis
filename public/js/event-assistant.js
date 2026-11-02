@@ -83,7 +83,7 @@
             } else await sendFeedback(null);
             async function sendFeedback(reason) {
               setBusy(true);
-              try { await request(panel.dataset.feedbackUrl, { message_id: id, rating, reason }); feedback.replaceChildren(node('span', 'Feedback recorded.')); }
+              try { const result = await request(panel.dataset.feedbackUrl, { message_id: id, rating, reason }); feedback.replaceChildren(node('span', result.message || 'Feedback recorded.')); }
               catch (error) { say(error.message, true); } finally { setBusy(false); }
             }
           }); feedback.append(button);

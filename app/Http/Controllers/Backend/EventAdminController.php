@@ -1150,6 +1150,8 @@ class EventAdminController extends Controller
       : false;
 
     $netProfit = $grandTotalIncome - $totalExpenses;
+    $directorSettlementPreviews = auth()->user()?->hasRole('super-user')
+      ? app(\App\Domain\Finance\Services\EventDirectorNetSettlementService::class)->previews($event) : [];
 
     // Income by category (individual events)
     $incomeByCategory = collect();
@@ -1195,6 +1197,7 @@ class EventAdminController extends Controller
       'pendingReimbursement',
       'recon',
       'reimbursementPayments',
+      'directorSettlementPreviews',
       'budgetCapWarning',
       'netProfit'
     );

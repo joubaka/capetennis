@@ -63,10 +63,11 @@ final class EventAssistantService
         $previous = $this->previousOptions($conversation);
         $question = $data['message'];
         EventAssistantProposal::where('conversation_id', $conversation->id)->whereNull('applied_at')->update(['expires_at' => now()]);
-        DB::transaction(function () use ($conversation, $question) {
+        $instruction = DB::transaction(function () use ($conversation, $question) {
             EventAssistantConversation::whereKey($conversation->id)->lockForUpdate()->firstOrFail();
-            $conversation->messages()->create(['role' => 'user', 'content' => $question]);
+            return $conversation->messages()->create(['role' => 'user', 'content' => $question]);
         });
+        $conversation->setRelation('currentInstruction', $instruction)->setRelation('instructionActor', $actor)->setRelation('instructionEvent', $event);
         $email = app(AssistantEmailDraft::class);
         if ($email->recognises($question, $data)) {
             $result = $email->prepare($question, $data);
@@ -75,13 +76,15 @@ final class EventAssistantService
         $copy = app(AssistantCategoryCopy::class);
         if ($copy->recognises($question)) {
             $selection = $copy->resolve($question, $actor);
-            if (isset($selection['clarification'])) return $this->reply($conversation, $selection['clarification'], ['outcome' => 'clarification']);
+            if (isset($selection['clarification'])) return $this->reply($conversation, $selection['clarification'], ['outcome' => 'clarification', 'reason_code' => $selection['reason_code'] ?? 'category_reference_unresolved']);
             $review = $copy->review($actor, $selection['source_id'], $selection['destination_ids']);
             $proposal = $this->storeProposal($event, $actor, $conversation, 'category_copy', $selection + ['revision' => $review['revision']], $review['preview']);
             return $this->reply($conversation, 'Review the source, destinations, fee overrides and categories to add or skip. Confirming copies category setup only.', ['outcome' => 'preview'], $proposal);
         }
-        if ($reason = app(AssistantInterpreter::class)->unsupportedConstraint($question)) {
-            $interpretation = ['action' => 'help', 'clarification' => $reason];
+        if (app(AssistantInterpreter::class)->isUnsupportedBusinessAction($question)) {
+            $interpretation = app(AssistantInterpreter::class)->interpret($question, $context, $previous);
+        } elseif ($reason = app(AssistantInterpreter::class)->unsupportedConstraint($question)) {
+            $interpretation = ['action' => 'help', 'clarification' => $reason, 'reason_code' => 'unsupported_constraint'];
         } elseif (! empty($data['use_ai'])) {
             // Only event structure, never participant records or retained conversation transcripts, is sent.
             $interpretation = app(AssistantProvider::class)->interpret($question, array_intersect_key($context, array_flip(['event', 'dates', 'draws', 'venues', 'timezone'])), $previous);
@@ -90,14 +93,14 @@ final class EventAssistantService
         }
         $options = $this->intentOptions(array_replace($previous, (array) ($interpretation['options'] ?? []), $data['options'] ?? []));
         if (! empty($interpretation['clarification'])) {
-            return $this->reply($conversation, mb_substr((string) $interpretation['clarification'], 0, 600), ['options' => $options, 'outcome' => 'clarification']);
+            return $this->reply($conversation, mb_substr((string) $interpretation['clarification'], 0, 1000), ['options' => $options, 'outcome' => 'clarification', 'reason_code' => $interpretation['reason_code'] ?? 'needs_clarification']);
         }
         return match ($interpretation['action'] ?? 'help') {
             'schedule' => $this->scheduleProposal($event, $actor, $conversation, $options),
             'publication' => $this->publicationProposal($event, $actor, $conversation, $options),
             'draw_draft' => $this->drawProposal($event, $actor, $conversation, (string) ($interpretation['draw_name'] ?? '')),
             'draw_generate' => $this->generationProposal($event, $actor, $conversation, $options['draw_ids'] ?? []),
-            default => $this->reply($conversation, 'I can copy categories between events with a preview, preview schedules, review saved orders of play for publication, and create an empty individual draft draw. For seeding and bracket generation, continue in the draw guide.', ['options' => $options, 'outcome' => 'unsupported']),
+            default => $this->reply($conversation, 'I can copy categories between events with a preview, preview schedules, review saved orders of play for publication, and create an empty individual draft draw. For seeding and bracket generation, continue in the draw guide.', ['options' => $options, 'outcome' => 'unsupported', 'reason_code' => 'unsupported_request']),
         };
     }
 
@@ -278,10 +281,18 @@ final class EventAssistantService
         }, 3);
     }
 
-    public function feedback(Event $event, User $actor, array $data): void
+    public function feedback(Event $event, User $actor, array $data): array
     {
         $message = EventAssistantMessage::whereKey($data['message_id'])->where('role', 'assistant')->whereIn('conversation_id', EventAssistantConversation::where('event_id', $event->id)->where('user_id', $actor->id)->where('expires_at', '>', now())->select('id'))->firstOrFail();
         EventAssistantFeedback::updateOrCreate(['message_id' => $message->id, 'user_id' => $actor->id], ['rating' => $data['rating'], 'reason' => $data['reason'] ?? null, 'category' => FeedbackClassifier::classify($data['reason'] ?? ''), 'comment' => $data['comment'] ?? null]);
+        $handoff = null;
+        $notice = 'Feedback saved for review. It does not automatically train a model.';
+        if ($data['rating'] === 'unhelpful') {
+            $service = app(AssistantImprovementHandoff::class);
+            $handoff = $service->capture($event, $actor, $message);
+            if ($service->optedIn($actor)) $notice .= ' '.$service->notice($handoff);
+        }
+        return ['message' => $notice, 'improvement_handoff' => $handoff];
     }
 
     public function improvements(Event $event, User $actor): array
@@ -304,8 +315,17 @@ final class EventAssistantService
 
     private function reply(EventAssistantConversation $conversation, string $content, array $metadata = [], ?array $proposal = null): array
     {
+        if ($conversation->relationLoaded('currentInstruction')) $metadata['instruction_message_id'] = (int) $conversation->getRelation('currentInstruction')->id;
         $message = $conversation->messages()->create(['role' => 'assistant', 'content' => $content, 'metadata' => $metadata]);
-        return ['conversation_uuid' => $conversation->uuid, 'message' => ['id' => $message->id, 'content' => $content], 'email_draft' => $metadata['email_draft'] ?? null, 'options' => $metadata['options'] ?? [], 'clarification' => ($metadata['outcome'] ?? '') === 'clarification' ? $content : null, 'proposal' => $proposal, 'suggestions' => ['Preview a schedule', 'Review publication', 'Create draw named New Singles', 'Draft an email']];
+        $handoff = null;
+        if ($conversation->relationLoaded('currentInstruction') && in_array($metadata['reason_code'] ?? '', AssistantImprovementHandoff::AUTOMATIC_REASONS, true)) {
+            $service = app(AssistantImprovementHandoff::class);
+            $handoff = $service->capture($conversation->getRelation('instructionEvent'), $conversation->getRelation('instructionActor'), $message);
+            $content .= ' The requested action has not been performed.';
+            if ($service->optedIn($conversation->getRelation('instructionActor'))) $content .= ' '.$service->notice($handoff);
+            $message->update(['content' => $content]);
+        }
+        return ['conversation_uuid' => $conversation->uuid, 'message' => ['id' => $message->id, 'content' => $content], 'improvement_handoff' => $handoff, 'email_draft' => $metadata['email_draft'] ?? null, 'options' => $metadata['options'] ?? [], 'clarification' => ($metadata['outcome'] ?? '') === 'clarification' ? $content : null, 'proposal' => $proposal, 'suggestions' => ['Preview a schedule', 'Review publication', 'Create draw named New Singles', 'Draft an email']];
     }
 
     private function storeProposal(Event $event, User $actor, EventAssistantConversation $conversation, string $type, array $payload, array $preview): array

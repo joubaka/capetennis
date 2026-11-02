@@ -18,7 +18,7 @@ class AssistantCategoryCopyTest extends TestCase
         Http::preventStrayRequests();
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('super-user');
-        $events = collect([1, 2, 3])->map(fn ($leg) => Event::factory()->create(['name' => 'Panarottis/Spur Leg '.$leg]));
+        $events = collect([1, 2, 3])->map(fn ($leg) => Event::factory()->create(['name' => 'Panarottis/Spur Leg '.$leg, 'start_date' => '2026-11-07', 'end_date' => '2026-11-08']));
         foreach ($events as $event) DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $actor->id]);
         $category = Category::factory()->create(['name' => 'Under 14 Boys']);
         CategoryEvent::factory()->create(['event_id' => $events[0]->id, 'category_id' => $category->id, 'entry_fee' => 175, 'ordering' => 3, 'nominations_published' => true, 'locked_at' => now()]);
@@ -112,7 +112,7 @@ class AssistantCategoryCopyTest extends TestCase
     public function test_ambiguous_missing_and_self_destination_requests_do_not_write_categories(): void
     {
         [, $source] = $this->setupEvents();
-        Event::factory()->create(['name' => 'Panarottis/Spur Leg 2']);
+        Event::factory()->create(['name' => 'Panarottis/Spur Leg 2', 'start_date' => '2026-11-07']);
         $response = $this->preview($source);
         $this->assertNull($response['proposal']);
         $this->assertNotNull($response['clarification']);
@@ -149,5 +149,91 @@ class AssistantCategoryCopyTest extends TestCase
         $this->assertNull($response['proposal']['preview']['destinations'][0]['categories'][0]['entry_fee']);
         $this->confirm($source, $response)->assertOk();
         $this->assertNull($two->categoryEvents()->first()->entry_fee);
+    }
+
+    public function test_screenshot_speech_order_and_sponsor_conjunction_resolve_entire_events_without_mutation(): void
+    {
+        [, $source, $two] = $this->setupEvents();
+        $source->update(['name' => 'Hemanus Spur & Panarottis Series Leg 1']);
+        $two->update(['name' => 'Hemanus Spur & Panarottis Series Leg 2']);
+        Event::factory()->create(['name' => 'Hemanus Spur & Panarottis Series Leg 10']);
+        foreach (['Can you copy the spur and Panarottis leg one categories to the spur and Panarottis leg two as well.',
+            'Copy categories from Panarottis/Spur Leg One to Spur and Panarottis Leg Two, please.',
+            'Please copy Hemanus Panarottis & Spur Series Leg 1 categories to Hemanus Spur/Panarottis Series Leg 2 too.'] as $question) {
+            $response = $this->preview($source, $question);
+            $this->assertSame('category_copy', $response['proposal']['type']);
+            $this->assertSame($source->id, $response['proposal']['preview']['source']['id']);
+            $this->assertCount(1, $response['proposal']['preview']['destinations']);
+            $this->assertSame($two->id, $response['proposal']['preview']['destinations'][0]['id']);
+            $this->assertDatabaseCount('category_events', 1);
+        }
+        Http::assertNothingSent();
+    }
+
+    public function test_ambiguous_years_require_choice_and_supplied_year_place_are_never_discarded(): void
+    {
+        [, $source, $two] = $this->setupEvents();
+        $source->update(['name' => '2026 Hemanus Spur & Panarottis Series Leg 1']);
+        $two->update(['name' => '2026 Hemanus Spur & Panarottis Series Leg 2']);
+        $other = Event::factory()->create(['name' => '2025 Hemanus Spur & Panarottis Series Leg 1']);
+        $response = $this->preview($source, 'Copy Spur and Panarottis leg one categories to Spur and Panarottis leg two as well');
+        $this->assertNull($response['proposal']);
+        $this->assertStringContainsString('#'.$source->id, $response['clarification']);
+        $this->assertStringContainsString('#'.$other->id, $response['clarification']);
+        $exact = $this->preview($source, 'Copy categories from 2026 Hemanus Panarottis/Spur Leg One to 2026 Hemanus Spur/Panarottis Leg Two');
+        $this->assertSame($source->id, $exact['proposal']['preview']['source']['id']);
+        $this->assertSame($two->id, $exact['proposal']['preview']['destinations'][0]['id']);
+        $missingPlace = $this->preview($source, 'Copy categories from 2026 Elsewhere Spur Panarottis Leg 1 to 2026 Hemanus Spur Panarottis Leg 2');
+        $this->assertNull($missingPlace['proposal']);
+        $this->assertDatabaseCount('category_events', 1);
+    }
+
+    public function test_spoken_leg_ten_and_full_multi_destination_names_keep_significant_tokens(): void
+    {
+        [$actor, $source, $two, $three] = $this->setupEvents();
+        $ten = Event::factory()->create(['name' => 'Panarottis/Spur Leg 10', 'start_date' => '2026-11-07']);
+        $selection = app(\App\Services\Assistant\AssistantCategoryCopy::class)->resolve('Copy categories from Panarottis/Spur Leg Ten to Panarottis and Spur Leg Two', $actor);
+        $this->assertSame($ten->id, $selection['source_id']);
+        $this->assertSame([$two->id], $selection['destination_ids']);
+        $response = $this->preview($source, 'Copy categories from Spur and Panarottis Leg One to Spur and Panarottis Leg Two and Spur and Panarottis Leg Three');
+        $this->assertSame([$two->id, $three->id], array_column($response['proposal']['preview']['destinations'], 'id'));
+        $this->assertDatabaseCount('category_events', 1);
+    }
+
+    public function test_inaccessible_candidates_and_typo_sponsors_are_not_guessed(): void
+    {
+        [$actor, $source, $two] = $this->setupEvents();
+        $typo = $this->preview($source, 'Copy categories from Spur Panaratis leg one to Spur Panaratis leg two as well');
+        $this->assertNull($typo['proposal']);
+        $actor->removeRole('super-user');
+        DB::table('event_admins')->where('user_id', $actor->id)->where('event_id', $two->id)->delete();
+        $selection = app(\App\Services\Assistant\AssistantCategoryCopy::class)->resolve('Copy categories from Spur Panarottis Leg One to Spur Panarottis Leg Two', $actor);
+        $this->assertArrayNotHasKey('destination_ids', $selection);
+        $this->assertStringNotContainsString('#'.$two->id.' ', $selection['clarification']);
+        $this->assertDatabaseCount('category_events', 1);
+    }
+
+    public function test_shorthand_does_not_fall_back_to_another_year_or_place_but_explicit_full_reference_can(): void
+    {
+        [, $source, $two] = $this->setupEvents();
+        $source->update(['name' => '2026 Hemanus Spur & Panarottis Series Leg 1']);
+        $two->update(['name' => '2025 Hemanus Spur & Panarottis Series Leg 2', 'start_date' => '2025-11-07']);
+        Event::factory()->create(['name' => '2026 Elsewhere Spur & Panarottis Series Leg 2', 'start_date' => '2026-11-07']);
+        $response = $this->preview($source, 'Copy categories from 2026 Hemanus Spur Panarottis Leg One to Spur Panarottis Leg Two');
+        $this->assertNull($response['proposal']);
+        $explicit = $this->preview($source, 'Copy categories from 2026 Hemanus Spur Panarottis Leg One to 2025 Hemanus Spur Panarottis Series Leg Two');
+        $this->assertSame($two->id, $explicit['proposal']['preview']['destinations'][0]['id']);
+        $this->assertDatabaseCount('category_events', 1);
+    }
+
+    public function test_generic_exact_sponsor_name_still_requires_inferred_source_year_for_shorthand(): void
+    {
+        [, $source, $two] = $this->setupEvents();
+        $two->update(['start_date' => '2025-11-07']);
+        $response = $this->preview($source, 'Copy categories from Spur Panarottis Leg One to Spur Panarottis Leg Two');
+        $this->assertNull($response['proposal']);
+        $explicit = $this->preview($source, "Copy categories from event #{$source->id} to event #{$two->id}");
+        $this->assertSame($two->id, $explicit['proposal']['preview']['destinations'][0]['id']);
+        $this->assertDatabaseCount('category_events', 1);
     }
 }

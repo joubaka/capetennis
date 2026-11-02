@@ -30,7 +30,7 @@
   <p class="small text-muted px-3 d-xl-none">Swipe the table for the full clothing breakdown.</p>
   <div class="table-responsive">
     <table class="table table-sm mb-0" aria-label="Regional clothing settlement balances">
-      <thead class="table-light"><tr><th>Region</th><th class="text-end">Net clothing receipts</th><th class="text-end">Already paid out</th><th class="text-end">Recovered</th><th class="text-end">Agreed offsets (+ / −)</th><th class="text-end">Pending refunds</th><th class="text-end">Still payable / recover</th></tr></thead>
+      <thead class="table-light"><tr><th>Region</th><th class="text-end">Net clothing receipts</th><th class="text-end">Already paid out</th><th class="text-end">Recovered / withheld</th><th class="text-end">Agreed offsets (+ / −)</th><th class="text-end">Pending refunds</th><th class="text-end">Still payable / recover</th></tr></thead>
       <tbody>
         @forelse($visibleClothingRegions as $region)
           <tr>
@@ -66,7 +66,7 @@
           <dl class="row mb-2 small">
             <dt class="col-8">Net clothing receipts after completed refunds</dt><dd class="col-4 text-end">R {{ number_format($region['net_cents'] / 100, 2) }}</dd>
             <dt class="col-8">Less payments already made</dt><dd class="col-4 text-end">−R {{ number_format($region['payout_cents'] / 100, 2) }}</dd>
-            <dt class="col-8">Plus money recovered</dt><dd class="col-4 text-end">+R {{ number_format($region['recovery_cents'] / 100, 2) }}</dd>
+            <dt class="col-8">Plus recovered / withheld</dt><dd class="col-4 text-end">+R {{ number_format($region['recovery_cents'] / 100, 2) }}</dd>
             <dt class="col-8">Recorded agreed offsets</dt><dd class="col-4 text-end">{{ $region['offset_cents'] < 0 ? '−' : '+' }}R {{ number_format(abs($region['offset_cents']) / 100, 2) }}</dd>
             <dt class="col-8 border-top pt-2">{{ $region['balance_cents'] < 0 ? 'Clothing balance to recover' : 'Clothing balance still payable' }}</dt><dd class="col-4 border-top pt-2 text-end fw-semibold">R {{ number_format(abs($region['balance_cents']) / 100, 2) }}</dd>
             <dt class="col-8">Pending refunds reserved</dt><dd class="col-4 text-end">R {{ number_format($region['pending_cents'] / 100, 2) }}</dd>
@@ -83,7 +83,7 @@
           <h6 class="mt-3">Recorded payments and adjustments</h6>
           <ul class="list-unstyled small">
             @forelse($region['entries']->sortBy('occurred_at') as $entry)
-              <li class="mb-2">{{ $entry->occurred_at->format('d M Y') }} · {{ match($entry->kind) { 'payout' => 'Payment', 'recovery' => 'Recovery', 'offset_in' => 'Offset received', 'offset_out' => 'Offset deducted' } }} · <strong>R {{ $entry->amount }}</strong> · {{ $entry->recipient_name }}<span class="d-block text-muted">{{ $entry->reference }}</span></li>
+              <li class="mb-2">{{ $entry->occurred_at->format('d M Y') }} · {{ match($entry->kind) { 'payout' => 'Payment', 'recovery' => $entry->event_payout_id ? 'Withheld from director settlement' : 'Recovery', 'offset_in' => 'Offset received', 'offset_out' => 'Offset deducted' } }} · <strong>R {{ $entry->amount }}</strong> · {{ $entry->recipient_name }}<span class="d-block text-muted">{{ $entry->reference }}</span></li>
             @empty<li class="text-muted">No payments or adjustments recorded for this region.</li>@endforelse
           </ul>
           <h6 class="mt-3">Clothing refunds</h6>
@@ -143,7 +143,7 @@
     <summary class="p-3 fw-semibold">Clothing settlement audit history</summary>
     <div class="table-responsive"><table class="table table-sm mb-0" aria-label="Clothing settlement audit history"><thead class="table-light"><tr><th>Region / type</th><th class="text-end">Amount</th><th>Recipient</th><th>Actual date</th><th>Reference / evidence</th><th>Recorded by / date</th></tr></thead><tbody>
       @forelse($clothingReconciliation->flatMap(fn ($region) => $region['entries'])->sortByDesc('occurred_at') as $entry)
-        <tr><td>{{ $entry->region_name }}<small class="d-block">{{ match($entry->kind) { 'payout' => 'Payout already paid', 'recovery' => 'Recovery received', 'offset_in' => 'Agreed offset received', 'offset_out' => 'Agreed offset deducted' } }}</small>@if($entry->counterparty_event_region_id)<small class="d-block text-muted">Paired region record #{{ $entry->counterparty_event_region_id }} · {{ $entry->request_token }}</small>@endif</td><td class="text-end">R {{ $entry->amount }}</td><td>{{ $entry->recipient_name }}</td><td>{{ $entry->occurred_at->format($entry->hasDateOnlyEvidence() ? 'd M Y' : 'd M Y H:i') }}@if($entry->hasDateOnlyEvidence())<small class="d-block text-muted">Time not recorded</small>@endif</td><td>{{ $entry->reference }}<small class="d-block text-muted">{{ $entry->evidence }}</small>@if($entry->funding_shortfall > 0)<small class="d-block text-warning">Original funding shortfall R {{ $entry->funding_shortfall }} · {{ $entry->overpayment_reason }}</small>@endif</td><td>{{ $entry->recorded_by_name }}<small class="d-block text-muted">{{ $entry->created_at->format('d M Y H:i') }}</small></td></tr>
+        <tr><td>{{ $entry->region_name }}<small class="d-block">{{ match($entry->kind) { 'payout' => 'Payout already paid', 'recovery' => $entry->event_payout_id ? 'Withheld from director settlement' : 'Recovery received', 'offset_in' => 'Agreed offset received', 'offset_out' => 'Agreed offset deducted' } }}</small>@if($entry->counterparty_event_region_id)<small class="d-block text-muted">Paired region record #{{ $entry->counterparty_event_region_id }} · {{ $entry->request_token }}</small>@endif</td><td class="text-end">R {{ $entry->amount }}</td><td>{{ $entry->recipient_name }}</td><td>{{ $entry->occurred_at->format($entry->hasDateOnlyEvidence() ? 'd M Y' : 'd M Y H:i') }}@if($entry->hasDateOnlyEvidence())<small class="d-block text-muted">Time not recorded</small>@endif</td><td>{{ $entry->reference }}@if($entry->event_payout_id)<small class="d-block text-muted">Director settlement #{{ $entry->event_payout_id }}</small>@endif<small class="d-block text-muted">{{ $entry->evidence }}</small>@if($entry->funding_shortfall > 0)<small class="d-block text-warning">Original funding shortfall R {{ $entry->funding_shortfall }} · {{ $entry->overpayment_reason }}</small>@endif</td><td>{{ $entry->recorded_by_name }}<small class="d-block text-muted">{{ $entry->created_at->format('d M Y H:i') }}</small></td></tr>
       @empty<tr><td colspan="6" class="text-muted p-3">No clothing payouts, recoveries or offsets recorded. Net clothing receipts alone do not confirm a payout.</td></tr>@endforelse
     </tbody></table></div>
   </details>

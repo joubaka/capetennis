@@ -1,0 +1,5 @@
+# Local WAMP may serve the repository root rather than public/.
+# Environment files are configuration, never downloadable web content.
+<FilesMatch "^\.env(?:\..*)?$">
+    Require all denied
+</FilesMatch>

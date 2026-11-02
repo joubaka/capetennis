@@ -74,8 +74,7 @@ class EventAssistantController extends Controller
     {
         $this->guard($event);
         $data = $request->validate(['message_id' => ['required', 'integer'], 'rating' => ['required', 'in:helpful,unhelpful'], 'reason' => ['nullable', 'string', 'max:40'], 'comment' => ['nullable', 'string', 'max:1000']]);
-        $this->assistant->feedback($event, $request->user(), $data);
-        return response()->json(['message' => 'Feedback saved for review. It does not automatically train a model.']);
+        return response()->json($this->assistant->feedback($event, $request->user(), $data));
     }
 
     public function preferences(Request $request, Event $event): JsonResponse

@@ -11,8 +11,34 @@
       "verification": "Reviewed current owning source and regression definitions on 2026-11-02. The referenced regression covers unequal groups, partial selections, day batches and spare courts. Source review is not a claim of fresh event, browser, deployment or live verification.",
       "limits": "This guide performs no replanning, database repair or publication. Confirm event authorization and current state. If current code already follows this rule, investigate constraints rather than removing them or resetting matches.",
       "assistant_action": "guide_only",
-      "sources": ["app/Services/Scheduling/EventVenueScheduleService.php", "docs/draw-knowledge/catalogue.md"],
-      "tests": ["tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php"]
+      "sources": [
+        "app/Services/Scheduling/EventVenueScheduleService.php",
+        "docs/draw-knowledge/catalogue.md"
+      ],
+      "tests": [
+        "tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php"
+      ]
+    },
+    {
+      "id": "RK-002",
+      "title": "Director net payment leaves clothing deductions unreconciled",
+      "scope": "Recording an already-paid full director settlement; registration funds and explicitly linked regional clothing only.",
+      "symptoms": "The registration-only amount differs from the projected net payout because a linked clothing deficit must be withheld, or clothing payable must be included.",
+      "cause": "A registration-only director payment does not create the corresponding clothing settlement evidence. Recording only the cash amount leaves a residual registration balance and the clothing deficit unchanged.",
+      "fix": "Use the full outstanding balance option in Record payment to director. Review the server-derived registration balance, each linked clothing adjustment and actual net cash paid. Supply actual payment time and reference and confirm the already-paid amount. EventDirectorNetSettlementService atomically records the registration settlement and canonical linked clothing legs. A linked recovery is withholding, not a second cash receipt. Reject stale previews, ambiguous recipients, insufficient registration funds for deductions, and unsupported chronology; do not invent cross-region offsets.",
+      "verification": "On 2026-11-02 the focused net-settlement, reimbursement and payout-projection suite passed 24 tests with 230 assertions. DeploymentConfigTest passed 41 tests with 189 assertions. Checks are local; this record does not claim deployment or live verification.",
+      "limits": "Clothing recording remains super-user only. Pending refunds remain reserved and may leave a clothing ledger balance even when currently payable amounts are zero. Requires the reviewed director settlement link migration. This guide executes no transfer, refund, publication or deployment and grants no new assistant action.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Domain/Finance/Services/EventDirectorNetSettlementService.php",
+        "app/Domain/Finance/Services/RegionalClothingSettlementService.php",
+        "app/Domain/Finance/Services/FinancialLedgerService.php"
+      ],
+      "tests": [
+        "tests/Feature/EventDirectorNetSettlementTest.php",
+        "tests/Feature/EventExpenseReimbursementTest.php",
+        "tests/Feature/ConvenorPayoutProjectionTest.php"
+      ]
     }
   ]
 }

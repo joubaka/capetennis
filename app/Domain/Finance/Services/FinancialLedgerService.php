@@ -47,15 +47,21 @@ class FinancialLedgerService
     }
 
     /** Record clothing evidence separately from registration payouts and totals. */
-    public function recordClothingSettlement(Event $event, \App\Models\User $actor, array $data): \App\Models\RegionalClothingSettlement
+    public function recordClothingSettlement(Event $event, \App\Models\User $actor, array $data, ?EventPayout $directorSettlement = null): \App\Models\RegionalClothingSettlement
     {
-        return app(RegionalClothingSettlementService::class)->record($event, $actor, $data);
+        return app(RegionalClothingSettlementService::class)->record($event, $actor, $data, $directorSettlement);
     }
 
     /** Record an already-paid director payment; does not initiate a transfer. */
     public function recordExpenseReimbursement(Event $event, \App\Models\User $actor, array $data): EventPayout
     {
         return app(EventExpenseReimbursementService::class)->record($event, $actor, $data);
+    }
+
+    /** Record a full director settlement with separately audited clothing legs. */
+    public function recordDirectorNetSettlement(Event $event, \App\Models\User $actor, array $data): EventPayout
+    {
+        return app(EventDirectorNetSettlementService::class)->record($event, $actor, $data);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -422,7 +428,7 @@ class FinancialLedgerService
                 'payment_method'    => $p->payment_method,
                 'refund_status'     => null,
                 'withdrawal_status' => null,
-                'status_label'      => 'Payout',
+                'status_label'      => $p->settlement_details ? 'Registration settlement (including withholding)' : 'Payout',
                 'status_colour'     => 'dark',
                 'source_tx_id'      => null,
                 'source_order_id'   => null,
@@ -441,6 +447,8 @@ class FinancialLedgerService
                 'fee'         => 0,
                 'capeFee'     => 0,
                 'net'         => -(float) $p->amount,
+                'cash_net'    => -((float) $p->amount - collect($p->settlement_details['clothing'] ?? [])
+                    ->where('kind', 'recovery')->sum(fn ($leg) => abs($leg['contribution_cents'])) / 100),
                 'description' => $p->description,
                 'reference'   => $p->reference,
                 'model'       => $p,
@@ -505,6 +513,7 @@ class FinancialLedgerService
         $registrationBalance = round($registrationNet - $totalPaidOut, 2);
         $clothingPaidOut = round((float) ($clothingSettlements['payout'] ?? 0), 2);
         $clothingRecoveries = round((float) ($clothingSettlements['recovery'] ?? 0), 2);
+        $clothingWithheld = round((float) ($clothingSettlements['registration_withheld'] ?? 0), 2);
         $clothingOffsets = round((float) ($clothingSettlements['offset_in'] ?? 0) - (float) ($clothingSettlements['offset_out'] ?? 0), 2);
         $clothingBalance = round($clothingNet - $clothingPaidOut + $clothingRecoveries + $clothingOffsets, 2);
         $balance = round($registrationBalance + $clothingBalance, 2);
@@ -528,7 +537,8 @@ class FinancialLedgerService
             'clothing_recoveries'    => $clothingRecoveries,
             'clothing_offsets'      => $clothingOffsets,
             'clothing_balance'      => $clothingBalance,
-            'combined_paid_out'     => round($totalPaidOut + $clothingPaidOut, 2),
+            'clothing_withheld'     => $clothingWithheld,
+            'combined_paid_out'     => round($totalPaidOut + $clothingPaidOut - $clothingWithheld, 2),
             'total_paid_out'         => $totalPaidOut,
             'balance'                => $balance,
             // Legacy aliases for view compatibility
@@ -549,8 +559,12 @@ class FinancialLedgerService
     private function clothingSettlements(Event $event): array
     {
         // Preserve settlement evidence even if a region is removed from event setup.
-        return \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
+        $totals = \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
             ->selectRaw('kind, SUM(amount) as amount')->groupBy('kind')->pluck('amount', 'kind')->all();
+        $totals['registration_withheld'] = \App\Models\RegionalClothingSettlement::where('event_id', $event->id)
+            ->whereNotNull('event_payout_id')->where('kind', 'recovery')->sum('amount');
+
+        return $totals;
     }
 
     private function buildClothingRows(Event $event, bool $summaryOnly = false): Collection

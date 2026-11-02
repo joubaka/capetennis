@@ -23,11 +23,13 @@ class EventPayout extends Model
         'idempotency_key',
         'recipient_user_id',
         'recorded_by_name',
+        'settlement_details',
     ];
 
     protected $casts = [
         'amount'  => 'decimal:2',
         'paid_at' => 'datetime',
+        'settlement_details' => 'array',
     ];
 
     public function event()

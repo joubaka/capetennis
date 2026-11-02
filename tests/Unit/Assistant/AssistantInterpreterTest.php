@@ -12,6 +12,7 @@ class AssistantInterpreterTest extends TestCase
         foreach (['Keep court 2 free until 10', 'Move the final to Sunday', 'Schedule Saturday except court 2', 'Schedule only round 2', 'Schedule Saturday without court 2', 'Court 2 is unavailable', 'Use courts 1 to 3 and 5'] as $question) {
             $result = (new AssistantInterpreter)->interpret($question, $this->context(), ['draw_ids' => [7], 'date' => '2026-11-07']);
             $this->assertSame('help', $result['action']);
+            $this->assertSame('unsupported_constraint', $result['reason_code']);
             $this->assertNotEmpty($result['clarification']);
             $this->assertArrayNotHasKey('options', $result);
         }
@@ -69,5 +70,8 @@ class AssistantInterpreterTest extends TestCase
         $parser = new AssistantInterpreter;
         $this->assertSame('draw_draft', $parser->interpret('Create draw named New Singles', $this->context())['action']);
         $this->assertSame('help', $parser->interpret('Delete all draws and refund players', $this->context())['action']);
+        $this->assertSame('business_action_not_supported', $parser->interpret('Delete draws without changing fees', $this->context())['reason_code']);
+        $this->assertSame('unsupported_request', $parser->interpret('Translate the tournament guide', $this->context())['reason_code']);
+        $this->assertArrayNotHasKey('reason_code', $parser->interpret('Create a draw', $this->context()));
     }
 }

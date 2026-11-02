@@ -26,7 +26,10 @@
     <p class="ea-intro">Plan schedules, review the order of play, prepare a draw or draft an email. Review changes and recipients before confirming.</p>
     <p class="ea-intro"><a href="{{ route('backend.event-assistant.workspace', $event) }}">Open the dedicated assistant workspace</a></p>
     @if(config('capester.enabled'))
-    <p class="ea-intro"><a href="{{ route('backend.capester.index', $event) }}">Send a problem to Capester</a></p>
+    <p class="ea-intro"><a href="{{ route('backend.capester.index', $event) }}">Send a task to Capester</a></p>
+    @endif
+    @if(app(\App\Services\Assistant\AssistantImprovementHandoff::class)->optedIn(auth()->user()))
+    <p class="ea-intro">Your account is opted in to background improvement. While the Capester queue is enabled and available, unsupported tasks and Needs improvement feedback can save one instruction excerpt for future capability review. Drafts and conversation history are excluded. A saved note does not execute the task or deploy a fix.</p>
     @endif
     <button type="button" data-ea-shortcut aria-expanded="false" aria-controls="ea-shortcut-help">Add to home screen</button>
     <div id="ea-shortcut-help" hidden>
