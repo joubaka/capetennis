@@ -1,21 +1,21 @@
 <section id="player-development-pathway" class="ctr-pathway mt-3" aria-labelledby="ctr-pathway-heading" data-player-pathway>
   <style>
-    .ctr-pathway{border:1px solid #d9e8e4;border-radius:14px;padding:1rem;background:#f6faf9;overflow-wrap:anywhere;scroll-margin-top:6rem}
+    .ctr-pathway{border:1px solid #dbe4ef;border-radius:14px;padding:1rem;background:#f7f9fc;overflow-wrap:anywhere;scroll-margin-top:6rem}
     .ctr-pathway .pathway-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:1.25rem;margin-top:1rem}
-    .ctr-pathway .pathway-action{grid-column:1/-1;border-top:1px solid #d9e8e4;padding-top:1rem}
+    .ctr-pathway .pathway-action{grid-column:1/-1;border-top:1px solid #dbe4ef;padding-top:1rem}
     .ctr-pathway .pathway-map{list-style:none;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:1.1rem;margin:1.25rem 0}
-    .ctr-pathway .pathway-map > li{position:relative;border:1px solid #d9e8e4;border-top:4px solid var(--stage-ink);border-radius:14px;padding:1rem .8rem;background:linear-gradient(150deg,#fff,#f0f7f5);min-width:0;box-shadow:0 5px 14px #183c3210}
+    .ctr-pathway .pathway-map > li{position:relative;border:1px solid #dbe4ef;border-top:4px solid var(--stage-ink);border-radius:14px;padding:1rem .8rem;background:linear-gradient(150deg,#fff,#f1f5fa);min-width:0;box-shadow:0 5px 14px #172e4510}
     .ctr-pathway .pathway-step-number{display:flex;align-items:center;justify-content:center;width:2rem;height:2rem;border-radius:50%;background:var(--stage-ink);color:#fff;font-weight:700;margin-bottom:.75rem}
-    .ctr-pathway .pathway-map [aria-current="step"]{background:#e8f5ef;box-shadow:0 6px 20px #17684b20}
-    .ctr-pathway .pathway-map > li + li::before{content:'→';position:absolute;left:-1rem;top:1rem;color:#4d675f}
+    .ctr-pathway .pathway-map [aria-current="step"]{background:#fff0e1;box-shadow:0 6px 20px #172e4520}
+    .ctr-pathway .pathway-map > li + li::before{content:'→';position:absolute;left:-1rem;top:1rem;color:#52677c}
     .ctr-pathway .pathway-map [aria-current="step"]{outline:2px solid #233d50;outline-offset:2px}
     .ctr-pathway .pathway-map small{display:block;margin-top:.35rem}
     .ctr-pathway .pathway-score{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
     .ctr-pathway .pathway-list{padding-left:1.2rem;margin:0}.ctr-pathway .pathway-list li{margin-bottom:.65rem}
     .ctr-pathway .pathway-met{font-weight:700;color:#17684b}
     .ctr-pathway .pathway-stages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.6rem;margin-top:1rem}
-    .ctr-pathway .pathway-stage{padding:.75rem;border:1px solid #d9e8e4;border-top:3px solid var(--stage-ink);border-radius:8px;background:white}
-    .ctr-pathway .pathway-admin{border-top:1px solid #d9e8e4;padding-top:.75rem;margin-top:1rem}
+    .ctr-pathway .pathway-stage{padding:.75rem;border:1px solid #dbe4ef;border-top:3px solid var(--stage-ink);border-radius:8px;background:white}
+    .ctr-pathway .pathway-admin{border-top:1px solid #dbe4ef;padding-top:.75rem;margin-top:1rem}
     .ctr-pathway summary{cursor:pointer;min-height:44px;align-content:center}
     .ctr-pathway .pathway-admin form{display:flex;flex-wrap:wrap;gap:.75rem;align-items:end;margin-top:.75rem}
     .ctr-pathway .pathway-admin label{font-size:.8rem}.ctr-pathway .pathway-admin select,.ctr-pathway button,.ctr-pathway .pathway-browse{min-height:44px}

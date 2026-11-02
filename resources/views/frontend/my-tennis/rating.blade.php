@@ -1,32 +1,51 @@
 <section class="card ctr-history" aria-labelledby="player-rating-heading"><div class="card-body">
   <style>
+    .ctr-history { border:1px solid #dbe4ef;border-radius:18px;overflow:hidden; }
+    .ctr-history > .card-body { padding:clamp(1rem,3vw,2rem); }
+    .ctr-history .ctr-heading-hero { background:linear-gradient(115deg,#172e45,#004177);border-radius:14px;padding:clamp(1.25rem,3vw,1.75rem);margin-bottom:1.25rem;color:#fff; }
+    .ctr-history .ctr-heading-hero h2 { color:#fff;font-size:clamp(1.35rem,3vw,1.9rem);letter-spacing:-.025em; }
+    .ctr-history .ctr-heading-hero p { color:#e0ebf5;line-height:1.6;max-width:38rem; }
+    .ctr-history .ctr-heading-hero a { display:inline-block;color:#ff9f43;margin-top:.65rem;text-decoration:underline;text-underline-offset:3px; }
+    .ctr-history .ctr-plus-label { display:block;color:#ff9f43;font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.6rem; }
+    .ctr-history .ctr-heading-hero .badge { background:#ffffff18!important;color:#fff!important;border:1px solid #ffffff40; }
+    .ctr-history .ctr-current-summary { background:#f1f5fa;border-left:4px solid #004177; }
+    .ctr-history h3.h5 { color:#172e45;font-weight:600; }
+    .ctr-history a:focus-visible,.ctr-history button:focus-visible,.ctr-history select:focus-visible,.ctr-history summary:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
+    .ctr-history .btn-primary { background:#004177;border-color:#004177;color:#fff; }
+    .ctr-history .btn-primary:hover { background:#172e45;border-color:#172e45; }
+    .ctr-history .btn-outline-primary { color:#004177;border-color:#a5bcd5; }
+    .ctr-history .btn-outline-primary:hover { background:#eef3fa;color:#172e45;border-color:#004177; }
     .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem; }
-    .ctr-history .ctr-section-tabs .nav-link { min-height:44px;white-space:normal; }
+    .ctr-history .ctr-section-tabs .nav-link { min-height:44px;white-space:normal;color:#47645c;background:#f1f5fa;border:1px solid #dbe4ef;border-radius:10px;font-weight:600; }
+    .ctr-history .ctr-section-tabs .nav-link:hover { background:#e4edf8; }
+    .ctr-history .ctr-section-tabs .nav-link.active { background:#004177;border-color:#004177;color:#fff;box-shadow:0 3px 8px #172e4518; }
     .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }
     @media(max-width:767.98px) { .ctr-history .ctr-section-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
     .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
-    .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1rem;min-width:0; }
+    .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1.25rem;min-width:0; }
+    .ctr-history .ctr-stats .ctr-stat { background:#f7f9fc;border-top:3px solid #004177; }
+    .ctr-history .ctr-stats .ctr-stat:nth-child(2) { background:#fff6ed;border-top-color:#b85b00; }
     .ctr-history .ctr-stat h3 { font-size:.8rem;color:#5e716c;margin:0 0 .6rem; }
     .ctr-history .ctr-stat-value { color:#233d50;font-size:1.6rem;line-height:1.3;font-weight:700; }
-    .ctr-history .ctr-filters { display:grid;grid-template-columns:1.5fr 1fr;gap:.75rem; }
+    .ctr-history .ctr-filters { display:grid;grid-template-columns:1.5fr 1fr;gap:1rem;align-items:center;background:#f1f5fa;border:1px solid #dbe4ef;padding:1rem;border-radius:12px; }
     .ctr-history .ctr-filters label { font-size:.8rem;display:block;margin-bottom:.3rem; }
     .ctr-history .ctr-result { border-top:1px solid #e0e7e3;padding:1rem 0;overflow-wrap:anywhere; }
     .ctr-history .ctr-result-top { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.5rem;align-items:center; }
     .ctr-history .ctr-result h4 { font-size:1rem;margin:.5rem 0; }
     .ctr-history .ctr-legend { display:flex;flex-wrap:wrap;gap:.5rem 1.25rem;color:#5e716c;font-size:.8rem; }
-    .ctr-history .ctr-line-key { display:inline-block;vertical-align:middle;width:24px;border-top:3px solid #167b70;margin-right:.4rem; }
+    .ctr-history .ctr-line-key { display:inline-block;vertical-align:middle;width:24px;border-top:3px solid #004177;margin-right:.4rem; }
     .ctr-history .ctr-line-key-dashed { border-top-style:dashed; }
     .ctr-history [data-history-refresh]:disabled::before { content:'';display:inline-block;width:1rem;height:1rem;margin-right:.5rem;vertical-align:middle;border:.15em solid currentColor;border-right-color:transparent;border-radius:50%;animation:ctr-update-spin .75s linear infinite; }
     @keyframes ctr-update-spin { to { transform:rotate(360deg); } }
     @media(prefers-reduced-motion:reduce) { .ctr-history [data-history-refresh]:disabled::before { animation:none; } }
-    .ctr-history .ctr-chart-scroll { overflow-x:auto;max-width:100%;border:1px solid #e2e9e6;border-radius:10px; }
+    .ctr-history .ctr-chart-scroll { overflow-x:auto;max-width:100%;border:1px solid #dbe4ef;border-radius:14px;background:linear-gradient(#f7f9fc,#fff);padding:.75rem; }
     .ctr-history .ctr-method { border-top:1px solid #e0e7e3;margin-top:1.5rem;padding-top:1rem; }
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
-  <div class="ctr-heading">
-    <div><h2 id="player-rating-heading" class="h4 mb-1">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small text-muted mb-0">12-month progress · provisional ability estimates</p>
+  <div class="ctr-heading ctr-heading-hero">
+    <div><span class="ctr-plus-label"><i class="ti ti-sparkles me-1" aria-hidden="true"></i>Player Plus · Your game in focus</span><h2 id="player-rating-heading" class="h4 mb-2">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small mb-0">Follow 12 months of progress. Explore the results behind your rating and find your next development step.</p>
       <a class="small" href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings and badges</a>
     </div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
@@ -35,7 +54,7 @@
     $summaryPoints = $ratingHistory['points'] ?? [];
     $currentRating = $summaryPoints ? end($summaryPoints) : null;
   @endphp
-  <div class="ctr-stat mt-3" aria-label="Current rating summary">
+  <div class="ctr-stat ctr-current-summary mt-3" aria-label="Current rating summary">
     <h3>How strong is my singles game?</h3>
     @if($currentRating)
       <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$currentRating['score']" :local="($currentRating['connection_status'] ?? '') === 'disconnected'" />
@@ -134,9 +153,9 @@
         @foreach($points as $chartPoint)
           @php($before = $points[$loop->index - 1] ?? null)
           @if($before && $before['index'] + 1 === $chartPoint['index'])
-            <line x1="{{ 45 + $before['index'] * 53 }}" y1="{{ $plotY($before['score']) }}" x2="{{ 45 + $chartPoint['index'] * 53 }}" y2="{{ $plotY($chartPoint['score']) }}" stroke="#167b70" stroke-width="3" @if($before['group'] !== $chartPoint['group']) stroke-dasharray="6 5" @endif><title>{{ $before['group'] === $chartPoint['group'] ? 'Same comparison group' : 'Comparison group or reference changed; monthly change is not directly comparable' }}</title></line>
+            <line x1="{{ 45 + $before['index'] * 53 }}" y1="{{ $plotY($before['score']) }}" x2="{{ 45 + $chartPoint['index'] * 53 }}" y2="{{ $plotY($chartPoint['score']) }}" stroke="#004177" stroke-width="3" @if($before['group'] !== $chartPoint['group']) stroke-dasharray="6 5" @endif><title>{{ $before['group'] === $chartPoint['group'] ? 'Same comparison group' : 'Comparison group or reference changed; monthly change is not directly comparable' }}</title></line>
           @endif
-          <a href="{{ $ratingUrl(['month' => $chartPoint['index']]) }}" data-rating-link aria-label="Explore {{ $chartPoint['date'] }} rating {{ number_format($chartPoint['score'], 1) }}"><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="22" fill="transparent" aria-hidden="true"/><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="{{ $chartPoint['index'] === $ratingHistory['month'] ? 7 : 5 }}" fill="{{ $chartPoint['index'] === $ratingHistory['month'] ? '#d58a19' : '#167b70' }}"><title>{{ $chartPoint['date'] }}: {{ number_format($chartPoint['score'], 1) }} / 100</title></circle></a>
+          <a href="{{ $ratingUrl(['month' => $chartPoint['index']]) }}" data-rating-link aria-label="Explore {{ $chartPoint['date'] }} rating {{ number_format($chartPoint['score'], 1) }}"><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="22" fill="transparent" aria-hidden="true"/><circle cx="{{ 45 + $chartPoint['index'] * 53 }}" cy="{{ $plotY($chartPoint['score']) }}" r="{{ $chartPoint['index'] === $ratingHistory['month'] ? 7 : 5 }}" fill="{{ $chartPoint['index'] === $ratingHistory['month'] ? '#b85b00' : '#004177' }}"><title>{{ $chartPoint['date'] }}: {{ number_format($chartPoint['score'], 1) }} / 100</title></circle></a>
         @endforeach
         @foreach($ratingHistory['months'] as $index => $month)<text x="{{ 45 + $index * 53 }}" y="250" text-anchor="middle" font-size="11" fill="#334e60">{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M') }}</text>@endforeach
       </svg>

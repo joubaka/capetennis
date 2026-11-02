@@ -1,22 +1,25 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Player Plus')
 @section('content')
-<div id="player-plus-page" class="container-xxl container-p-y">
+<div id="player-plus-page" class="container-xxl container-p-y pp-journey">
   <style>
     #player-plus-page { max-width: 1120px; }
     #player-plus-page .plus-page-heading { display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.25rem; }
-    #player-plus-page .plus-page-heading h1 { font-size:1rem;margin:0;color:#14675c; }
-    #player-plus-page .plus-page-intro { padding:clamp(1.25rem,4vw,2.5rem);background:linear-gradient(120deg,#f5f9f6,#e9f4ef);border-radius:18px;margin-bottom:1.25rem; }
-    #player-plus-page .plus-page-intro h2 { font-size:clamp(1.8rem,4vw,2.8rem);letter-spacing:-.035em;color:#183c45;max-width:24ch; }
+    #player-plus-page .plus-page-heading h1 { font-size:1rem;margin:0;color:#004177; }
+    #player-plus-page .plus-page-intro { padding:clamp(1.25rem,4vw,2.5rem);background:linear-gradient(120deg,#f5f8fc,#eaf1f8);border-radius:18px;margin-bottom:1.25rem; }
+    #player-plus-page .plus-page-intro h2 { font-size:clamp(1.8rem,4vw,2.8rem);letter-spacing:-.035em;color:#172e45;max-width:24ch; }
     #player-plus-page .plus-page-intro p { color:#536873;max-width:60ch;line-height:1.6; }
-    #player-plus-page .plus-player-choice { background:#fff;border:1px solid #e5ece9;border-radius:16px;padding:clamp(1rem,3vw,1.5rem);margin-top:1.5rem; }
-    #player-plus-page .plus-player-choice .list-group-item { border-color:#e5ece9;overflow-wrap:anywhere; }
-    #player-plus-page .plus-player-choice .btn-primary, #player-plus-page .plus-page-intro .btn { background:#146f63;border-color:#146f63;color:#fff;min-height:44px; }
-    #player-plus-page .plus-page-intro .btn:hover, #player-plus-page .plus-player-choice .btn-primary:hover { background:#10594f;border-color:#10594f; }
+    #player-plus-page .plus-player-choice { background:#fff;border:1px solid #dce5ef;border-radius:16px;padding:clamp(1rem,3vw,1.5rem);margin-top:1.5rem; }
+    #player-plus-page .plus-player-choice .list-group-item { border-color:#dce5ef;overflow-wrap:anywhere; }
+    #player-plus-page .plus-player-choice .btn-primary, #player-plus-page .plus-page-intro .btn { background:#004177;border-color:#004177;color:#fff;min-height:44px; }
+    #player-plus-page .plus-page-intro .btn:hover, #player-plus-page .plus-player-choice .btn-primary:hover { background:#00345f;border-color:#00345f; }
     @media(max-width:575.98px) { #player-plus-page .plus-player-choice form .form-control { max-width:none !important; } }
   </style>
+  @include('frontend.player-plus.styles')
   <div class="plus-page-heading"><h1>Player Plus</h1><a class="d-inline-block py-2" href="{{ route('player-plus.orders.index') }}" style="min-height:44px">My Plus orders</a></div>
   <header class="plus-page-intro">
+    <span class="pp-hero-icon"><i class="ti ti-sparkles" aria-hidden="true"></i></span>
+    <span class="pp-visual-eyebrow">Player Plus · Your game in focus</span>
     <h2>See the bigger picture of their tennis.</h2>
     <p>Understand their playing strength, follow 12 months of progress and explore the results behind their Cape Tennis Rating.</p>
     <a class="btn" href="#choose-plus-player">{{ $enabled ? 'Explore Plus for a player' : 'View player membership details' }} <span aria-hidden="true">→</span></a>
