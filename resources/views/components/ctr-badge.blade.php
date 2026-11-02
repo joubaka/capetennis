@@ -30,7 +30,7 @@
     @if($validScore)<span style="font-size:{{ $inline ? '.375rem' : '.6rem' }};font-weight:500;line-height:1">/100</span>@endif
     @if($local && $validScore && !$inline && !$small)<span style="color:#754b0c;font-size:.5rem;font-weight:600;line-height:1.1;white-space:nowrap">within-group only</span>@endif
 </span>
-@if($stageKnown)<span class="small" style="color:{{ $ink }};font-size:.65rem;white-space:normal">{{ $stageLabel }}</span>@endif
+@if($stageKnown && in_array($ball, ['red', 'orange'], true))<span class="small" style="color:{{ $ink }};font-size:.65rem;white-space:normal">{{ $stageLabel }}</span>@endif
 @if($overall)<span class="small" style="color:{{ $ink }};font-size:.65rem;white-space:normal">Overall CTR · all ball levels</span>@endif
 @if($local && $validScore && ($inline || $small))<span class="small" style="color:#754b0c;font-size:.65rem;white-space:normal">within-group only</span>@endif
 @if(!$validScore && ($inline || $small))<span class="small" style="font-size:.65rem;white-space:normal">unavailable</span>@endif

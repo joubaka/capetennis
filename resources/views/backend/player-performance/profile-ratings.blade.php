@@ -1,6 +1,6 @@
 @php($configData = Helper::appClasses())
 @extends('layouts.backend')
-@section('title', 'Cape Tennis all-age ratings')
+@section('title', $ratingLabel.' ratings')
 @section('page-style')
 @include('backend.player-performance.partials.ctr-directory-style')
 @endsection
@@ -9,7 +9,7 @@
 @include('backend.partials.operational-controls')
 <div class="ctr-directory">
     <header class="ctr-hero">
-        <div><h1>CTR Rankings</h1><p>Cape Tennis all-age singles ratings</p></div>
+        <div><h1>CTR Rankings</h1><p>{{ $ballLevel ? $ratingLabel.' · singles ratings' : 'Cape Tennis all-age singles ratings' }}</p></div>
         <span class="ctr-hero-mark" aria-hidden="true">CTR</span>
     </header>
     <div class="ctr-summary">
@@ -21,12 +21,16 @@
         <div class="alert alert-info py-2 mb-3" role="status" data-ratings-refresh-message>Updating ratings. This page will refresh automatically when the calculation is ready.</div>
         <button type="button" class="btn btn-outline-primary mb-3" data-ratings-refresh-retry hidden>Retry ratings update</button>
     @endif
-    <p class="small mb-2">Find players by age group, gender or name.</p>
+    <p class="small mb-2">Find players by ball level, age group, gender or name.</p>
+    @if($ballLevel)<p class="small mb-2">{{ $ratingLabel }} uses verified singles and valid published final placings for this ball level. Final-placing-only ratings have low confidence. Ball levels have independent scales; compare only players connected to the same reference group.</p>@endif
     @if($diagnosticOrder && !$snapshot['reason'])<div class="alert alert-warning" role="status"><strong>Diagnostic score order — not a calibrated overall ability ranking.</strong> Local scores are not calibrated between comparison groups. These cross-group scores are uncalibrated. List numbers show numeric score order only; they do not establish who is stronger across groups. @if($ageOrder){{ $includeYounger ? 'Numbers apply across the selected ages combined' : 'Numbers restart within each current age group' }}; age does not change rating scores.@endif</div>@endif
-    @if($comparisonGroup)<p>Showing comparison group {{ $comparisonGroup }}. <a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.ratings') }}">Show all groups</a></p>@endif
+    @if($comparisonGroup)<p>Showing comparison group {{ $comparisonGroup }}. <a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.ratings', ['ball_type' => $ballType]) }}">Show all groups</a></p>@endif
     @if($withinGroup)<p class="alert alert-info" role="status"><strong>Within-group ratings only.</strong> These players have recorded connections to one another, but no established connection to the shared reference. Compare these estimates only within group {{ $comparisonGroup }}; a matching number in another group does not mean equal ability. Provisional badges and profile ratings carry the same low-confidence, within-group restriction.</p>@endif
     <form method="get" class="row g-2 mb-3 ctr-filters">
         @if($comparisonGroup)<input type="hidden" name="comparison_group" value="{{ $comparisonGroup }}">@endif
+        @if($comparisonGroup)<input type="hidden" name="ball_type" value="{{ $ballType }}">@else
+        <div class="col-sm-6 col-lg-3"><label for="ball-type" class="form-label">Ball level</label><select name="ball_type" id="ball-type" class="form-select" style="min-height:44px">@foreach(\App\Services\Performance\BallRatingModel::LABELS as $key => $label)<option value="{{ $key }}" @selected($ballType === $key)>{{ $label }}</option>@endforeach<option value="overall" @selected($ballType === 'overall')>Overall CTR · all ball levels</option></select></div>
+        @endif
         <div class="col-sm-6 col-lg-3"><label for="age-group" class="form-label">Age group / birth year</label><select name="age_group" id="age-group" class="form-select" style="min-height:44px"><option value="">All ages</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::birthYearLabels($year) as $key => $label)<option value="{{ $key }}" @selected($ageGroup === $key)>{{ $label }}</option>@endforeach</select></div>
         <div class="col-sm-6 col-lg-3"><label for="gender" class="form-label">Gender</label><select name="gender" id="gender" class="form-select" style="min-height:44px"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $key => $label)<option value="{{ $key }}" @selected($gender === $key)>{{ $label }}</option>@endforeach</select></div>
         <div class="col-sm-6 col-lg-3"><label for="region" class="form-label">Region</label><select name="region" id="region" class="form-select" style="min-height:44px"><option value="">All regions</option>@foreach($regionOptions as $option)<option value="{{ $option }}" @selected($region === $option)>{{ $option }}</option>@endforeach</select><p class="small text-muted mb-0 mt-1">Recorded team affiliations, including past seasons.</p></div>
@@ -41,8 +45,10 @@
     <p class="ctr-result-summary">{{ $players->total() }} players · @if($snapshot['reason'])players appear after a valid rating calculation.@elseif($groupedOrder)Highest to lowest shared-scale rating {{ $includeYounger ? 'across the selected ages, separately by gender' : 'within each age group and gender' }}. Positions restart for each list; players awaiting calibration have no position.@elseif($diagnosticOrder)diagnostic score order, highest to lowest {{ $ageOrder ? ($includeYounger ? 'across the selected ages combined' : 'within each current age group') : 'across all saved scores' }}. List numbers are not overall ability positions.@else{{ $withinGroup ? 'highest to lowest within-group singles rating' : ($combined ? 'highest to lowest shared-scale singles rating' : ($unified ? 'highest to lowest singles rating within the selected comparison group' : 'highest to lowest rating within each current age group and gender')) }}. @if($combined)Players awaiting calibration follow without an overall position.@endif @endif</p>
     <details class="small text-muted mb-3"><summary class="py-2">Rating details</summary>
     <p>{{ $year }} season: groups use the year players were born, from 1 January to 31 December, regardless of whether their birthday has passed. U7 includes younger players; U8–U13 each show that calendar age, and U18 includes ages 14–18. These profile groups do not establish event eligibility.</p>
-    <x-rating-explanation />
-    @if($sharedCoverage && !$snapshot['reason'])<p>Shared-scale coverage: {{ $sharedCoverage['connected'] }} of {{ $sharedCoverage['eligible'] }} players with eligible singles results within two years are connected to the reference group.</p>@endif
+    @unless($ballLevel)<x-rating-explanation />@else
+    <p>Each ball level has its own provisional 0–100 singles scale. Valid published final placings can support a low-confidence estimate when no played matches are recorded. Missing identities, invalid or incomplete finishing fields and unpublished final placings do not qualify. Eligible evidence is limited to two years, with recent results carrying more weight. Age and gender filters change the player list, not the estimate. Matching numbers across ball levels or disconnected groups do not establish equal ability.</p>
+    @endunless
+    @if($sharedCoverage && !$snapshot['reason'])<p>{{ $ballLevel ? $ratingLabel.' coverage' : 'Shared-scale coverage' }}: {{ $sharedCoverage['connected'] }} of {{ $sharedCoverage['eligible'] }} players with eligible singles results within two years are connected to the reference group.</p>@endif
     @if($connectionPlan && !$snapshot['reason'] && $connectionPlan['component_count'] > 1)
         @include('backend.player-performance.connection-plan', ['plan' => $connectionPlan])
     @endif
@@ -56,7 +62,7 @@
     <p>Boys and Girls appear separately {{ $includeYounger ? 'across the selected ages combined' : 'for each current age group' }}. Shared-scale positions restart in each list and stay the same when searching or paging. Players awaiting calibration follow without a position; their local estimates are not comparable with the shared reference.</p>
     @elseif($combined)
     <p>Players connected to the shared reference appear first, highest rating to lowest. Players awaiting calibration follow alphabetically; their local estimates do not determine an overall position. Age and gender filters change the player list, not the rating. Equal scores use a stable name order. Positions stay the same when searching or paging.</p>
-    <p>Scores are out of 100 and provisional. Compare players connected to the same singles reference group. Disconnected players receive a provisional within-group estimate with low confidence until suitable match evidence calibrates them against the reference. Verified completed singles count across all ball colours and court formats, without category-based rating offsets. This is not an official selection ranking.</p>
+    <p>Scores are out of 100 and provisional. Compare players connected to the same singles reference group. Disconnected players receive a provisional within-group estimate with low confidence until suitable match evidence calibrates them against the reference. @if($ballLevel)Only evidence assigned to {{ \App\Services\Performance\BallRatingModel::LABELS[$ballType] }} contributes to this list. Published final placings provide weaker evidence than played singles.@else Verified completed singles count across all ball colours and court formats, without category-based rating offsets.@endif This is not an official selection ranking.</p>
     <p>Recent results carry more weight. Matches up to two years old can connect groups; comparisons relying on a link older than one year are marked Low confidence — historical connection.</p>
     @elseif($unified)
     <p>Players in the selected shared reference group appear highest rating to lowest. Positions stay the same when searching or paging. Scores are provisional ability estimates, not official selection positions.</p>

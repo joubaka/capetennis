@@ -65,7 +65,7 @@
     <p class="small text-muted mt-2 mb-0">Provisional ability estimate, not an official ranking.@if($ratingHistory['as_of'] ?? null) Updated through {{ $ratingHistory['as_of'] }}.@endif</p>
   </div>
   <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
-    @foreach(['progress' => 'My progress', 'compare' => 'Compare', 'next' => 'My next step', 'understand' => 'Understand my rating'] as $section => $label)
+    @foreach(['progress' => 'My progress', 'compare' => 'My position & player search', 'next' => 'My next step', 'understand' => 'Understand my rating'] as $section => $label)
       <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>
     @endforeach
   </div>

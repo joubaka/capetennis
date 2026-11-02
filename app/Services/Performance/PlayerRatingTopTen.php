@@ -17,6 +17,10 @@ class PlayerRatingTopTen
     public function build(?User $user, ?Player $selected = null, array $filters = []): array
     {
         $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
+        $result['can_browse'] = $user?->hasRole('super-user') === true;
+        $search = is_string($filters['rating_search'] ?? null) ? mb_substr(trim($filters['rating_search']), 0, 100) : '';
+        $result['search'] = ['query' => $search, 'players' => []];
+        if (!$result['can_browse'] && (!$selected || !$user || !$this->access->allows($user, $selected))) $result['visible'] = false;
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $selectedAge = $selected ? $this->ageKey($selected->dateOfBirth, $today) : '';
         $age = $filters['rating_age'] ?? $selectedAge;
@@ -93,6 +97,14 @@ class PlayerRatingTopTen
                     $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
                 }
             }
+            if (!$result['can_browse']) {
+                if ($key === 'overall' && mb_strlen($search) >= 2) {
+                    $matches = array_values(array_filter($players, fn ($p) => mb_stripos($p['name'], $search) !== false));
+                    usort($matches, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
+                    $result['search']['players'] = array_map(fn ($p) => array_intersect_key($p, array_flip(['name', 'score', 'confidence'])), array_slice($matches, 0, 10));
+                }
+                continue;
+            }
             if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $this->matchesAgeScope($p['age'], $age)) && ($gender === '' || $p['gender'] === $gender)));
             $ranked = $this->positions($players);
             if ($selected) {
@@ -105,7 +117,8 @@ class PlayerRatingTopTen
                 $result['lists'][$key]['players'] = array_slice($ranked, 0, 10);
             }
         }
-        if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
+        if (!$result['can_browse']) $result['lists'] = [];
+        elseif ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
         return $result;
     }
 

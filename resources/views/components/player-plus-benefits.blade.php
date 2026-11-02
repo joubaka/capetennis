@@ -14,7 +14,7 @@
     <ul class="small ps-3 mb-2">
       <li><strong class="plus-benefit-title"><i class="ti ti-chart-line" aria-hidden="true"></i>See their progress</strong>View the player's saved Cape Tennis Rating (CTR), an estimate of singles playing strength, and 12-month progress history where eligible results are available.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-list-details" aria-hidden="true"></i>Explore the results</strong>Explore the recorded singles results and evidence behind the player's estimates.</li>
-      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>Put it in perspective</strong>See CTR comparisons and Top 10 lists among eligible published series participants.</li>
+      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>Put it in perspective</strong>See your player's rating position and search for another eligible published player's rating.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>Find the next step</strong>Understand your tennis pathway: ball-level progress, published benchmarks and suggested next steps where suitable evidence is available.</li>
     </ul>
   <details>

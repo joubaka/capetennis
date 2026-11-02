@@ -28,7 +28,7 @@ class PlayerRatingProfileDirectory
         ];
     }
 
-    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group', string $region = ''): array
+    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group', string $region = '', string $ballType = 'overall'): array
     {
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $year = $today->year;
@@ -60,7 +60,16 @@ class PlayerRatingProfileDirectory
             $query->whereIn(DB::raw('LOWER(TRIM(gender))'), $gender === 'boys' ? $boys : $girls);
         }
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
-        $unified = array_key_exists('all_age', $snapshot);
+        // Existing comparison-group links name the overall graph. New directory
+        // visits use a single ball graph, including its valid finish-only players.
+        if ($ballType === 'auto') $ballType = $comparisonGroup === '' && array_key_exists('ball_ratings', $snapshot) ? 'standard' : 'overall';
+        if (!in_array($ballType, ['overall', ...array_keys(BallRatingModel::LABELS)], true)) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['ball_type' => 'Choose a supported ball level.']);
+        }
+        $ballLevel = $ballType !== 'overall';
+        $ratingLabel = $ballLevel ? BallRatingModel::LABELS[$ballType].' CTR' : 'Overall CTR';
+        $selectedGraph = $ballLevel ? ($snapshot['ball_ratings'][$ballType] ?? []) : ($snapshot['all_age'] ?? []);
+        $unified = $ballLevel || array_key_exists('all_age', $snapshot);
         // Explicit group pages always retain their within-group positions.
         $sort = $comparisonGroup === '' ? $sort : 'shared';
         $groupedOrder = $sort === 'grouped';
@@ -73,29 +82,34 @@ class PlayerRatingProfileDirectory
         $combined = $comparisonGroup === '' && !$ageOrder && ($diagnosticOrder || $unified || $snapshot['reason']);
         $withinGroup = false;
         if ($comparisonGroup !== '') {
-            $component = $snapshot['all_age']['components'][$comparisonGroup] ?? null;
+            $component = $selectedGraph['components'][$comparisonGroup] ?? null;
             if ($snapshot['reason'] || !$component) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['comparison_group' => 'Choose an available saved comparison group.']);
             }
             $query->whereIn('id', $component['members']);
-            $withinGroup = $comparisonGroup !== ($snapshot['all_age']['reference_component'] ?? null);
+            $withinGroup = $comparisonGroup !== ($selectedGraph['reference_component'] ?? null);
         }
-        $connectionPlan = $unified ? app(AllAgeConnectivityService::class)->summarize($snapshot['all_age']) : null;
-        $sharedCoverage = $unified ? ['eligible' => count($snapshot['all_age']['ratings'] ?? []),
-            'connected' => count(array_filter($snapshot['all_age']['ratings'] ?? [], fn ($rating) => !empty($rating['comparable'])))] : null;
-        $ratings = $snapshot['reason'] ? [] : ($unified
-            ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot())
-            : app(PlayerSharedAbilityService::class)->badgeSnapshot());
+        $connectionPlan = $unified && !$ballLevel ? app(AllAgeConnectivityService::class)->summarize($selectedGraph) : null;
+        $sharedCoverage = $unified ? ['eligible' => count($selectedGraph['ratings'] ?? []),
+            'connected' => count(array_filter($selectedGraph['ratings'] ?? [], fn ($rating) => !empty($rating['comparable'])))] : null;
+        $ratings = $snapshot['reason'] ? [] : ($ballLevel
+            ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->ballBadgeSnapshot($ballType))
+            : ($unified ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot())
+            : app(PlayerSharedAbilityService::class)->badgeSnapshot()));
         if ($withinGroup) {
-            foreach (app(PlayerRatingGroupProjection::class)->project($snapshot, $comparisonGroup) as $id => $projection) {
+            foreach (app(PlayerRatingGroupProjection::class)->project(array_replace($snapshot, ['all_age' => $selectedGraph]), $comparisonGroup) as $id => $projection) {
+                if ($ballLevel) {
+                    $projection += array_intersect_key($selectedGraph['ratings'][$id] ?? [], array_flip(['evidence_basis', 'finish_events', 'inferred']));
+                    $projection['ball_type'] = $ballType;
+                }
                 $ratings[$id] = [$projection];
             }
         }
         // A profile belongs here only when its calculated group confirms membership.
         // Invalidated snapshots and orphaned/stale badge rows fail closed.
         foreach ($ratings as $id => &$savedRatings) {
-            $savedRatings = array_values(array_filter($savedRatings, function ($rating) use ($snapshot, $unified, $id) {
-                $graph = $unified ? $snapshot['all_age'] : ($snapshot['cohorts'][$rating['cohort'] ?? ''] ?? []);
+            $savedRatings = array_values(array_filter($savedRatings, function ($rating) use ($snapshot, $selectedGraph, $unified, $id) {
+                $graph = $unified ? $selectedGraph : ($snapshot['cohorts'][$rating['cohort'] ?? ''] ?? []);
                 $component = $graph['components'][$rating['component'] ?? ''] ?? [];
                 return in_array((int) $id, $component['members'] ?? [], true)
                     && isset($graph['ratings'][$id])
@@ -222,6 +236,6 @@ class PlayerRatingProfileDirectory
             foreach ($section['columns'] as $column) $column->through($withRegions);
         }
         unset($section);
-        return compact('region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
+        return compact('ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
     }
 }

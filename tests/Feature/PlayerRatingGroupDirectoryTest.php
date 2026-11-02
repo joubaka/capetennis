@@ -336,14 +336,14 @@ class PlayerRatingGroupDirectoryTest extends TestCase
             $response = $this->get(route('backend.player-performance.ratings', ['sort' => 'score']))->assertOk()
                 ->assertSee('players appear after a valid rating calculation.')
                 ->assertDontSee('Older Alpha')->assertDontSee('Unknown Middle')->assertDontSee('Young Zulu')
-                ->assertDontSee('data-rating-position=', false)->assertDontSee('/100')
+                ->assertDontSee('data-rating-position=', false)->assertDontSee('data-ctr-ranking-row', false)
                 ->assertDontSee('data-score-list-position=', false)->assertDontSee('Diagnostic score order')
                 ->assertDontSee('Awaiting calibration')->assertHeader('Cache-Control', 'no-store, private');
             $this->assertSame(0, $response->viewData('players')->total());
             $unavailableAge = $this->get(route('backend.player-performance.ratings', ['sort' => 'age']))->assertOk()
                 ->assertSee('players appear after a valid rating calculation.')
                 ->assertDontSee('Older Alpha')->assertDontSee('Unknown Middle')->assertDontSee('Young Zulu')
-                ->assertDontSee('data-rating-position=', false)->assertDontSee('data-score-list-position=', false)->assertDontSee('/100');
+                ->assertDontSee('data-rating-position=', false)->assertDontSee('data-score-list-position=', false)->assertDontSee('data-ctr-ranking-row', false);
             $this->assertSame(0, $unavailableAge->viewData('players')->total());
             if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
                 file_put_contents(storage_path('framework/testing/all-age-ratings-unavailable.html'), $response->getContent());
