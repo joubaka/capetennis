@@ -144,19 +144,19 @@
 
 @section('content')
 <div class="home-layout row g-4 align-items-start">
-  @if(auth()->user()?->hasRole('super-user'))
+  @if(app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
   <div class="col-12">
     <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
       <div class="home-ctr-copy">
         <h2 class="h4 mb-1" id="home-ctr-title">Discover CTR Rankings</h2>
-        <p>Cape Tennis Rating · Follow playing strength. Explore age groups and Top 10 lists.</p>
+        <p>Player Plus · Follow playing strength with Cape Tennis Rating. Explore age groups and Top 10 lists.</p>
       </div>
       <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Rankings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
     </section>
   </div>
   @endif
   <main class="col-xl-8">
-    @php($homeBrandLogo = \App\Models\SiteSetting::get('brand_logo_url', asset('assets/img/logos/cape-tennis-logo-transparent.png')))
+    @php($homeBrandLogo = \App\Models\SiteSetting::brandLogoPath())
     @php($homeBrandLogoUrl = filter_var($homeBrandLogo, FILTER_VALIDATE_URL) ? $homeBrandLogo : asset(ltrim($homeBrandLogo, '/')))
     <section class="home-brand" aria-label="Cape Tennis">
       <img class="home-brand-logo" src="{{ $homeBrandLogoUrl }}" alt="Cape Tennis logo">

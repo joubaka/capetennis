@@ -41,6 +41,7 @@ $configData = Helper::appClasses();
       </li>
       @endif
       @foreach ($menuData[1]->menu as $menu)
+      @continue(($menu->playerPlusMarketing ?? false) && !app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
 
       {{-- active menu method --}}
       @php($activeClass = $menuItemIsActive($menu) ? 'active' : null)

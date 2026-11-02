@@ -29,6 +29,18 @@ class PwaInstallTest extends TestCase
         $this->assertFileExists(public_path('offline.html'));
     }
 
+    public function test_application_icons_are_self_contained_and_have_manifest_dimensions(): void
+    {
+        foreach ([192, 512] as $size) {
+            $dimensions = getimagesize(public_path("assets/img/pwa/cape-tennis-app-{$size}.png"));
+            $this->assertSame([$size, $size], array_slice($dimensions, 0, 2));
+        }
+
+        $svg = file_get_contents(public_path('assets/img/pwa/cape-tennis-app.svg'));
+        $this->assertStringContainsString('href="data:image/png;base64,', $svg);
+        $this->assertStringNotContainsString('href="/assets/', $svg);
+    }
+
     public function test_deployment_syncs_all_pwa_root_files(): void
     {
         $deploymentConfig = file_get_contents(base_path('deploy.config'));

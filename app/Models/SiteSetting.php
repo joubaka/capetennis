@@ -70,6 +70,13 @@ class SiteSetting extends Model
         return $setting ? $setting->value : $default;
     }
 
+    /** An empty saved setting must never turn the logo into the homepage URL. */
+    public static function brandLogoPath(): string
+    {
+        return trim((string) static::get('brand_logo_url', ''))
+            ?: 'assets/img/logos/cape-tennis-logo-transparent.png';
+    }
+
     /**
      * Set a setting value by key, optionally specifying the group.
      * When the record already exists its group is preserved; when it is

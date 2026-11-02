@@ -37,6 +37,7 @@ $configData = Helper::appClasses();
     @endrole
     @endauth
     @foreach ($menuData[0]->menu as $menu)
+      @continue(($menu->playerPlusMarketing ?? false) && !app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
 
     {{-- adding active and open class if child is active --}}
 

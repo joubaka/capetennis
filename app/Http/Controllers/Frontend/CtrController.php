@@ -9,13 +9,12 @@ class CtrController extends Controller
 {
     public function __invoke(Request $request)
     {
-        if (!$request->user()?->hasRole('super-user')) {
+        if (!app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing($request->user())) {
             return response('Forbidden', 403)->header('Cache-Control', 'no-store, private');
         }
 
         return response()->view('frontend.ctr', [
-            'canSeeCtr' => true,
-            'isSuperUser' => true,
+            'isSuperUser' => (bool) $request->user()?->hasRole('super-user'),
         ])->header('Cache-Control', 'no-store, private');
     }
 }

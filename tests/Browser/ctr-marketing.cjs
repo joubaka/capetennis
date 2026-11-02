@@ -1,5 +1,5 @@
 /* Super User endpoint snapshots with actual linked CSS; all requests served locally.
- * Guest/non-Super User exclusion is verified by the HTTP feature tests.
+ * Guest/non-Super User discovery follows the sales switch in HTTP feature tests.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -62,6 +62,21 @@ const introHtml = read('intro');
       }), [], `intro ${width}px`);
       await intro.screenshot({ path: path.join(root, `storage/framework/testing/ctr-marketing-intro-${width}.png`) });
       console.log(`PASS ${width}px: Super User home banner, CTR navigation, protected directory link, containment`);
+    }
+    const guestHome = read('guest-home');
+    const guestIntro = read('guest-intro');
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 960 });
+      await page.setContent(guestHome, { waitUntil: 'networkidle' });
+      assert.equal(await page.locator('[data-home-ctr]').isVisible(), true);
+      await page.setContent(guestIntro, { waitUntil: 'networkidle' });
+      const intro = page.locator('[data-ctr-intro]');
+      assert.equal(await intro.getByRole('link', { name: 'Open CTR ratings' }).count(), 0);
+      assert.equal(await intro.getByRole('link', { name: 'Explore Player Plus' }).isVisible(), true);
+      assert.equal(await intro.locator('[data-ctr-rating], [data-ctr-top-player]').count(), 0);
+      assert.ok(await intro.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'guest intro fits');
+      await intro.screenshot({ path: path.join(root, 'storage/framework/testing/ctr-marketing-guest-' + width + '.png') });
+      console.log('PASS guest ' + width + 'px: marketing visible, admin and premium data absent');
     }
     assert.ok(styles.length, 'Actual linked stylesheets must load');
   } finally {

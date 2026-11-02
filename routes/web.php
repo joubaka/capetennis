@@ -109,6 +109,9 @@ $controller_path = 'App\Http\Controllers';
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/ctr', \App\Http\Controllers\Frontend\CtrController::class)->name('ctr.index');
 
+// Purchase disclosures are public; player selection and payment remain authenticated.
+Route::get('/player-plus/purchase-details', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'terms'])->name('player-plus.terms');
+
 // Payers must be able to review billing and stop renewal without unrelated player-profile gates.
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth'])->group(function () {
   Route::get('/orders', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'orders'])->name('orders.index');
@@ -117,7 +120,6 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth'])->group(
 });
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreement', 'profile.updated'])->group(function () {
   Route::get('/', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'index'])->name('index');
-  Route::get('/purchase-details', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'terms'])->name('terms');
   Route::get('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'player'])->name('player');
   Route::post('/players/{player}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'store'])->middleware('throttle:10,1')->name('store');
   Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');

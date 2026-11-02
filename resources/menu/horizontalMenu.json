@@ -17,6 +17,14 @@
       "menuLevel" : "all"
     },
     {
+      "url": "ctr",
+      "name": "Player Plus",
+      "icon": "menu-icon tf-icons ti ti-star",
+      "slug": "ctr.index",
+      "menuLevel": "all",
+      "playerPlusMarketing": true
+    },
+    {
       "name": "Super Admin",
       "icon": "menu-icon tf-icons ti ti-shield-check",
       "slug": ["superadmin", "backend.player-performance.membership-preview"],

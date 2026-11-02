@@ -9,6 +9,12 @@ class PlayerRatingAccess
 {
     public const SETTING = 'player_rating_membership_enabled';
 
+    /** Public offers never grant access to premium rating data. */
+    public function allowsMarketing(?User $user): bool
+    {
+        return $user?->hasRole('super-user') || PlayerPlusService::salesEnabled();
+    }
+
     /** Discovery is separate from access to a linked player's private history. */
     public function allowsDiscovery(?User $user): bool
     {

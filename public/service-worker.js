@@ -1,11 +1,11 @@
-const CACHE_NAME = 'cape-tennis-shell-v2';
+const CACHE_NAME = 'cape-tennis-shell-v3';
 const OFFLINE_URL = '/offline.html';
 const SHELL_FILES = [
   OFFLINE_URL,
   '/manifest.webmanifest',
-  '/assets/img/pwa/cape-tennis-app-192.png',
-  '/assets/img/pwa/cape-tennis-app-512.png',
-  '/assets/img/pwa/cape-tennis-app.svg'
+  '/assets/img/pwa/cape-tennis-app-192.png?v=3',
+  '/assets/img/pwa/cape-tennis-app-512.png?v=3',
+  '/assets/img/pwa/cape-tennis-app.svg?v=3'
 ];
 
 self.addEventListener('install', event => {

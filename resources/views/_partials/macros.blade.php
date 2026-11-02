@@ -1,5 +1,5 @@
 
-@php($capezLogo = \App\Models\SiteSetting::get('brand_logo_url', 'assets/img/logos/cape-tennis-logo-transparent.png'))
+@php($capezLogo = \App\Models\SiteSetting::brandLogoPath())
 @php($capezLogoIsRemote = filter_var($capezLogo, FILTER_VALIDATE_URL))
 @php($capezLogoPath = ltrim($capezLogo, '/'))
 @php($capezLogoFile = $capezLogoIsRemote ? null : public_path($capezLogoPath))

@@ -20,10 +20,10 @@ $configData = Helper::appClasses();
     <div class="auth-cover-bg auth-cover-bg-color d-flex justify-content-center align-items-center">
         @php
           $defaultLogo = asset('assets/img/logos/cape-tennis-logo-transparent.png');
-          $capezLogo = trim((string) \App\Models\SiteSetting::get('brand_logo_url', ''));
+          $capezLogo = \App\Models\SiteSetting::brandLogoPath();
           $capezLogo = $capezLogo === '' ? $defaultLogo : (filter_var($capezLogo, FILTER_VALIDATE_URL) ? $capezLogo : asset(ltrim($capezLogo, '/')));
         @endphp
-        <img src="{{ $capezLogo }}" data-default-logo="{{ $defaultLogo }}" onerror="this.onerror = null; this.src = this.dataset.defaultLogo;" alt="Capez logo" class="rounded img-fluid my-5 auth-illustration">
+        <img src="{{ $capezLogo }}" data-default-logo="{{ $defaultLogo }}" onerror="this.onerror = null; this.src = this.dataset.defaultLogo;" alt="Cape Tennis logo" class="rounded img-fluid my-5 auth-illustration">
 
      </div>
     </div>
