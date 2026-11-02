@@ -26,6 +26,9 @@
   .site-settings-page .settings-nav { display:flex; flex-wrap:wrap; gap:.5rem; padding:1rem; margin-bottom:1.5rem; border:1px solid var(--ct-border,#e4eaf0); border-radius:12px; background:#fff; }
   .site-settings-page .settings-nav a { display:inline-flex; align-items:center; gap:.45rem; min-height:44px; padding:.6rem .85rem; border-radius:7px; color:var(--ct-ink,#172e45); background:var(--ct-soft,#f2f5f8); font-size:.875rem; }
   .site-settings-page .settings-nav a:hover { background:#eaf4f2; color:#14796e; }
+  .site-settings-page .settings-nav a[aria-selected="true"] { background:#172e45; color:#fff; }
+  .site-settings-page .settings-nav a:focus-visible { outline:3px solid #14796e; outline-offset:3px; }
+  .site-settings-page [data-settings-panel][hidden] { display:none!important; }
   .site-settings-page :is(#settings-plus,#settings-fees,#settings-methods,#settings-agreements,#settings-content) { scroll-margin-top:var(--settings-scroll-offset); }
   .site-settings-page .settings-card { border:1px solid var(--ct-border,#e4eaf0); box-shadow:none; border-radius:14px; overflow:hidden; }
   .site-settings-page .settings-plus-header { display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; flex-wrap:wrap; padding:1.5rem; border-bottom:1px solid var(--ct-border,#e4eaf0); }
@@ -103,6 +106,7 @@
   <form action="{{ route('settings.store') }}" method="POST">
     @csrf
 
+    <div data-settings-panel="settings-plus">
     <section class="card settings-card mb-4" id="settings-plus" aria-labelledby="plus-settings-heading">
       <div class="settings-plus-header">
         <div>
@@ -136,8 +140,10 @@
       </div>
       <div class="settings-plus-footer"><a href="{{ route('superadmin.player-plus.index') }}"><i class="ti ti-receipt" aria-hidden="true"></i> Review Plus payment issues</a></div>
     </section>
+    </div>
 
     {{-- ===== DEFAULT / GLOBAL SETTINGS ===== --}}
+    <div data-settings-panel="settings-fees">
     <div class="card mb-4">
       <div class="card-header">
         <h5 id="settings-fees" class="mb-0"><i class="ti ti-credit-card me-1"></i> Default PayFast Fee Settings</h5>
@@ -186,6 +192,8 @@
     </div>
 
     {{-- ===== PER PAYMENT METHOD ===== --}}
+    </div>
+    <div data-settings-panel="settings-methods">
     <div class="card mb-4">
       <div class="card-header">
         <h5 id="settings-methods" class="mb-0"><i class="ti ti-list me-1"></i> Fee Percentage per Payment Method</h5>
@@ -240,6 +248,8 @@
     </div>
 
     {{-- ===== CODE OF CONDUCT & TERMS TOGGLES ===== --}}
+    </div>
+    <div data-settings-panel="settings-agreements">
     <div class="card mb-4">
       <div class="card-header">
         <h5 id="settings-agreements" class="mb-0"><i class="ti ti-file-check me-1"></i> Code of Conduct & Terms</h5>
@@ -294,6 +304,8 @@
     </div>
 
     {{-- ===== CODE OF CONDUCT CONTENT ===== --}}
+    </div>
+    <div data-settings-panel="settings-content">
     <div class="card mb-4">
       <div class="card-header d-flex align-items-center justify-content-between">
         <div>
@@ -331,6 +343,8 @@
       </div>
     </div>
 
+    </div>
+
     <div class="settings-save-bar">
       <div><strong>Save page settings</strong><p>Saves annual pricing, fees, player requirements and published content. Use the separate button above for monthly settings.</p></div>
       <button type="submit" class="btn btn-primary">
@@ -347,6 +361,56 @@
 
 @section('page-script')
 <script>
+  // Enhance section links into tabs; without JavaScript every section remains available.
+  const settingsNav = document.querySelector('.settings-nav');
+  const settingsTabs = Array.from(settingsNav.querySelectorAll('a'));
+  const settingsPanels = Array.from(document.querySelectorAll('[data-settings-panel]'));
+  settingsNav.setAttribute('role', 'tablist');
+  settingsTabs.forEach(function(tab, index) {
+    const key = tab.hash.slice(1);
+    const panel = settingsPanels.find(function(item) { return item.dataset.settingsPanel === key; });
+    tab.id = key + '-tab';
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', key + '-panel');
+    panel.id = key + '-panel';
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tab.id);
+    panel.tabIndex = 0;
+    tab.addEventListener('click', function(event) {
+      event.preventDefault();
+      activateSettingsTab(key);
+      history.replaceState(null, '', tab.hash);
+    });
+    tab.addEventListener('keydown', function(event) {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % settingsTabs.length;
+      if (event.key === 'ArrowLeft') next = (index - 1 + settingsTabs.length) % settingsTabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = settingsTabs.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      settingsTabs[next].click();
+      settingsTabs[next].focus();
+    });
+  });
+  function activateSettingsTab(key) {
+    if (!settingsPanels.some(function(panel) { return panel.dataset.settingsPanel === key; })) key = 'settings-plus';
+    settingsPanels.forEach(function(panel) { panel.hidden = panel.dataset.settingsPanel !== key; });
+    settingsTabs.forEach(function(tab) {
+      const active = tab.hash === '#' + key;
+      tab.setAttribute('aria-selected', String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+  }
+  activateSettingsTab(location.hash.slice(1));
+  window.addEventListener('hashchange', function() { activateSettingsTab(location.hash.slice(1)); });
+  // Reveal a hidden field before native validation tries to focus it.
+  document.querySelector('.settings-shell form').addEventListener('invalid', function(event) {
+    const firstInvalid = event.currentTarget.querySelector(':invalid') || event.target;
+    const panel = firstInvalid.closest('[data-settings-panel]');
+    if (panel) activateSettingsTab(panel.dataset.settingsPanel);
+  }, true);
+
   function calcFee(pct, flat, vat, amount) {
     return ((amount * pct / 100) + flat) * (1 + vat / 100);
   }

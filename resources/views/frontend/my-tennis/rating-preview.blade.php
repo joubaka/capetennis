@@ -57,12 +57,12 @@
       <div><span class="plus-feature-number">03 / EXPLORE</span><h3>Know what’s behind the number</h3><p>Explore recorded singles results, opponents and confidence. See CTR comparisons and Top 10 lists among eligible published series participants.</p></div>
     </div>
     <div class="plus-offer">
-      <div><div class="fw-semibold mb-1">A year of Player Plus for {{ $ratingPlayer->full_name }}</div><div class="plus-price">R{{ number_format(\App\Services\Performance\PlayerPlusService::priceCents() / 100, \App\Services\Performance\PlayerPlusService::priceCents() % 100 === 0 ? 0 : 2) }} <small>per player / year</small></div><p class="small mt-1 mb-0">One player. Shared with their linked parents or guardians.<br>Renew manually; no automatic renewal.</p></div>
+      <div><div class="fw-semibold mb-1">Player Plus for {{ $ratingPlayer->full_name }}</div><x-player-plus-pricing /><p class="small mt-1 mb-0">One player. Shared with their linked parents or guardians.</p></div>
       <a class="btn plus-cta" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
     </div>
     <div class="plus-terms">
       <p class="mb-1">Eligible results are needed for a rating; purchasing Plus does not guarantee one. Ratings can rise or fall and may be provisional or unavailable.</p>
-      <details><summary>How membership works</summary><p>Optional membership covers 12 months for one named player. Review availability and membership details before checkout. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Draw alerts are planned and are not included yet.</p></details>
+      <details><summary>How membership works</summary><p>Choose monthly or annual automatic renewal for one named player. Review availability and membership details before checkout. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Draw alerts are planned and are not included yet.</p></details>
     </div>
   </div>
 </section>

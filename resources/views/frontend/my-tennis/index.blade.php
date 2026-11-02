@@ -91,7 +91,9 @@
     #my-tennis-page .my-tennis-profile-header h2 { color: #20384b; font-size: clamp(1.4rem, 3vw, 1.8rem); margin: 0 0 .25rem; }
     #my-tennis-page .my-tennis-profile-header .my-tennis-player-avatar { background: #edf6f3; color: #14675c; border: 0; border-radius: 50%; }
     #my-tennis-page .my-tennis-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-    #my-tennis-page .my-tennis-plus-link { color: #14675c; background: #edf6f3; border: 1px solid #cce2da; }
+    #my-tennis-page .my-tennis-plus-link { color: #fff; background: #14675c; border: 1px solid #14675c; font-weight: 600; gap: .5rem; }
+    #my-tennis-page .my-tennis-plus-link:hover { color: #fff; background: #0d5148; border-color: #0d5148; }
+    #my-tennis-page .my-tennis-plus-link:focus-visible { outline: 3px solid #c58b20; outline-offset: 3px; }
     #my-tennis-page .my-tennis-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: 1rem; font-size: .8rem; }
     #my-tennis-page .my-tennis-preview-toolbar summary { cursor: pointer; padding: .75rem 0; }
     #my-tennis-page .my-tennis-player-summary { padding: 1rem 1.25rem; background: #fff; color: #20384b; border: 1px solid #e5ece9; margin-bottom: 1.25rem; }
@@ -100,8 +102,20 @@
     #my-tennis-page .my-tennis-upcoming-total { border-color: #dce5e3; }
     #my-tennis-page .my-tennis-upcoming-total strong { color: #20384b; }
     #my-tennis-page .my-tennis-upcoming-total span { color: #536873; }
-    #my-tennis-page .my-tennis-plus-invitation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem; margin-bottom: 1.25rem; background: #edf6f3; border-radius: 14px; }
-    #my-tennis-page .my-tennis-plus-invitation p { margin: .25rem 0 0; color: #536873; }
+    #my-tennis-page .my-tennis-plus-invitation { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.5rem; padding: clamp(1.25rem, 3vw, 2rem); margin-bottom: 1.5rem; background: linear-gradient(115deg, #123d39, #176458); border: 1px solid #256d60; border-radius: 16px; box-shadow: 0 8px 24px #123d3914; color: #fff; }
+    #my-tennis-page .my-tennis-plus-copy { flex: 1 1 24rem; min-width: 0; }
+    #my-tennis-page .my-tennis-plus-eyebrow { display: inline-flex; align-items: center; gap: .4rem; margin-bottom: .75rem; color: #ffe3a0; font-size: .75rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    #my-tennis-page .my-tennis-plus-invitation h2 { color: #fff; font-size: clamp(1.3rem, 3vw, 1.75rem); line-height: 1.25; letter-spacing: -.025em; margin: 0 0 .6rem; }
+    #my-tennis-page .my-tennis-plus-invitation p { margin: 0; color: #dfefea; max-width: 38rem; }
+    #my-tennis-page .my-tennis-plus-benefits { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; list-style: none; padding: 0; margin: 1rem 0 0; font-size: .8rem; color: #fff; }
+    #my-tennis-page .my-tennis-plus-benefits i { color: #ffe3a0; margin-right: .3rem; }
+    #my-tennis-page .my-tennis-plus-offer { flex: 0 1 16rem; }
+    #my-tennis-page .my-tennis-plus-offer .my-tennis-plus-price { color: #fff; margin-bottom: .75rem; }
+    #my-tennis-page .my-tennis-plus-price strong { font-size: 1.6rem; letter-spacing: -.03em; }
+    #my-tennis-page .my-tennis-plus-offer .my-tennis-plus-link { width: 100%; background: #ffe3a0; border-color: #ffe3a0; color: #173e36; }
+    #my-tennis-page .my-tennis-plus-offer .my-tennis-plus-link:hover { background: #ffd47a; border-color: #ffd47a; }
+    #my-tennis-page .my-tennis-plus-offer .my-tennis-plus-terms { margin-top: .65rem; font-size: .75rem; line-height: 1.6; }
+    @media (max-width: 575.98px) { #my-tennis-page .my-tennis-plus-offer { flex-basis: 100%; } }
     #my-tennis-page .player-chip > div:first-child { min-width: 0; overflow-wrap: anywhere; }
     #my-tennis-page .player-actions { flex-shrink: 0; position: relative; }
     #my-tennis-page .player-actions summary { cursor: pointer; color: #536873; padding: .75rem; min-height: 44px; }
@@ -219,8 +233,21 @@
     @endif
     @if(($ratingPlayer ?? null) && !($canViewRating ?? false))
       <aside class="my-tennis-plus-invitation" aria-label="Explore Player Plus">
-        <div><strong>Understand their game. Follow their progress.</strong><p class="small">Explore their CTR, 12 months of progress and the results behind the number.</p><p class="small">R{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }} per player / year · No automatic renewal. Eligible results required.</p></div>
-        <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+        <div class="my-tennis-plus-copy">
+          <span class="my-tennis-plus-eyebrow"><i class="ti ti-sparkles" aria-hidden="true"></i> Player Plus</span>
+          <h2>See the progress behind every match.</h2>
+          <p>Get a clearer picture of their game with a Cape Tennis Rating, a year of progress and the results behind the number.</p>
+          <ul class="my-tennis-plus-benefits">
+            <li><i class="ti ti-check" aria-hidden="true"></i>Player rating</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>12 months of progress</li>
+            <li><i class="ti ti-check" aria-hidden="true"></i>Results that explain the rating</li>
+          </ul>
+        </div>
+        <div class="my-tennis-plus-offer">
+          <x-player-plus-pricing class="my-tennis-plus-price" />
+          <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+          <p class="my-tennis-plus-terms">Eligible results required for a rating.</p>
+        </div>
       </aside>
     @endif
     <div class="d-flex align-items-center justify-content-between gap-2 mb-3">

@@ -17,6 +17,8 @@ class PlayerPlusMembershipTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // Keep legacy-price fixtures explicit; new offers default to R699.
+        SiteSetting::set(PlayerPlusService::PRICE_SETTING, '49900');
         Mail::fake();
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
     }

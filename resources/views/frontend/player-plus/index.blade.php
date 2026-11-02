@@ -23,7 +23,6 @@
     <p class="small mt-3 mb-0">Optional membership · Essential tournament information remains free.</p>
   </header>
   <x-player-plus-benefits />
-  @if(\App\Services\Performance\PlayerPlusService::monthlyEnabled())<p class="mt-3">Or choose monthly automatic renewal at R{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::monthlyPriceCents()) }} per player. Cancel future renewals from My Plus orders.</p>@endif
   @unless($enabled)<p class="alert alert-info">New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p>@endunless
   <section class="plus-player-choice" aria-labelledby="choose-plus-player">
   <h2 id="choose-plus-player" class="h4" style="scroll-margin-top:6rem">Choose a player</h2>

@@ -12,9 +12,9 @@
   <nav class="pp-nav" aria-label="Player Plus navigation"><a href="{{ route('player-plus.index') }}">← Choose another player</a><a href="{{ route('player-plus.orders.index') }}">My Plus orders →</a></nav>
   <header class="pp-hero">
     <div><p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">A clearer picture of their tennis. Understand playing strength, follow progress and explore the next step.</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p></div>
-    <div class="pp-price"><strong>R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</strong><span>per player / year</span><small>Annual automatic renewal<br>Renews until cancelled</small>@if($monthlyEnabled)<small>Or R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} / month<br>Automatically renews until cancelled</small>@endif</div>
+    <x-player-plus-pricing class="pp-price" />
   </header>
-  <x-player-plus-benefits :price-cents="$priceCents" plan="annual_recurring" class="pp-benefits" />
+  <x-player-plus-benefits :price-cents="$priceCents" class="pp-benefits" />
   @if($readiness)
     <section class="pp-status text-body" aria-label="Rating availability" data-plus-readiness="{{ $readiness['state'] }}">
       <strong>{{ $readiness['label'] }}</strong><p class="mb-0 mt-1">{{ $readiness['description'] }}</p>

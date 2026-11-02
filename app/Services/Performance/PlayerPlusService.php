@@ -11,7 +11,7 @@ use Illuminate\Validation\ValidationException;
 /** Sponsorship is payment ownership only. This service never creates user_players links. */
 class PlayerPlusService
 {
-    public const PRICE_CENTS = 49900;
+    public const PRICE_CENTS = 69900;
     // PayFast cannot process less than ZAR 5.00: https://developers.payfast.co.za/
     public const MIN_PRICE_CENTS = 500;
     public const MAX_PRICE_CENTS = 9999999; // Application cap, not a claimed provider limit.
