@@ -10,6 +10,10 @@ The preview identifies source and destination names/IDs, each category to add or
 
 ## Use
 
+### Send a reviewed problem to Capester
+
+When the separately configured support queue is enabled, **Send a problem to Capester** opens a manual, reviewed description form. The local receiver delivers that text into a private inbox; delivery does not execute a fix or deploy code. See [the queue and receiver guide](capester-queue.md) for permissions, retry behaviour and rollout prerequisites.
+
 ### Draft and review an email
 
 Ask `Draft an email to parents about possible rain delays` using typed input or reviewed voice transcription. Select **Use AI** to generate prose with the configured provider. Only that instruction and the explicitly submitted, visible current draft are sent for drafting or revision; no roster, recipient list, previous chat transcript or event data is sent. Separate Codex/ChatGPT chats are not accessible to the application assistant: paste their draft into the editor if needed. The current editable draft is included when asking a correction such as `I meant Under 13, not Under 30; finish by 14:00 on Sunday`. AI text remains a draft whose facts must be checked. Without AI opt-in, the assistant opens a manual editor and preserves an existing draft; it does not claim to generate prose.

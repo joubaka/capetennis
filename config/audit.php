@@ -19,7 +19,7 @@ return [
         'two_factor_secret', 'two_factor_recovery_codes', 'recovery_code',
         'refund_account_number', 'bank_account_number', 'account_number',
         'card_number', 'cvv', 'cvc', 'secret', 'private_key', 'smtp_password',
-        'payfast_raw_data',
+        'payfast_raw_data', 'capester_description', 'lease_token_hash',
     ],
     'excluded_models' => [
         App\Models\AuditEvent::class,

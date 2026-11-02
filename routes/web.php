@@ -1279,6 +1279,11 @@ Route::delete(
     ->name('backend.draw.venues.json');
 
 
+  Route::prefix('events/{event}/capester')->name('backend.capester.')->middleware(['role:super-user', 'throttle:20,1'])->group(function () {
+    Route::get('/', [\App\Http\Controllers\Backend\CapesterSupportController::class, 'index'])->name('index');
+    Route::post('/', [\App\Http\Controllers\Backend\CapesterSupportController::class, 'store'])->name('store');
+  });
+
   // Restricted pilot: widening access requires an explicit reviewed change after approval.
   Route::prefix('events/{event}/assistant')->name('backend.event-assistant.')->middleware(['role:super-user', 'throttle:40,1'])->group(function () {
     $controller = \App\Http\Controllers\Backend\EventAssistantController::class;

@@ -21,6 +21,11 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 
 Route::post('/subscribe', [SubscriberController::class, 'subscribe']);
 
+Route::prefix('v1/capester')->middleware(['auth:sanctum', \App\Http\Middleware\EnsureCapesterReceiver::class, 'throttle:20,1'])->name('api.v1.capester.')->group(function () {
+    Route::post('claim', [\App\Http\Controllers\Api\V1\CapesterReceiverController::class, 'claim'])->name('claim');
+    Route::post('{uuid}/ack', [\App\Http\Controllers\Api\V1\CapesterReceiverController::class, 'acknowledge'])->whereUuid('uuid')->name('ack');
+});
+
 Route::prefix('v1/integrations/jta')
     ->middleware(['auth:sanctum', 'jta.integration', 'throttle:jta-results'])
     ->name('api.v1.integrations.jta.')

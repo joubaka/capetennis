@@ -25,6 +25,9 @@
   <div class="ea-scroll">
     <p class="ea-intro">Plan schedules, review the order of play, prepare a draw or draft an email. Review changes and recipients before confirming.</p>
     <p class="ea-intro"><a href="{{ route('backend.event-assistant.workspace', $event) }}">Open the dedicated assistant workspace</a></p>
+    @if(config('capester.enabled'))
+    <p class="ea-intro"><a href="{{ route('backend.capester.index', $event) }}">Send a problem to Capester</a></p>
+    @endif
     <button type="button" data-ea-shortcut aria-expanded="false" aria-controls="ea-shortcut-help">Add to home screen</button>
     <div id="ea-shortcut-help" hidden>
       <p>Add a Cape Tennis Assistant shortcut for this event. Your browser requires you to confirm adding it.</p>
