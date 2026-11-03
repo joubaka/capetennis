@@ -39,6 +39,12 @@ Opponent Insights and past-event rating reconstruction require the selected
 player's active entitlement and relationship. Super-user previews do not create
 ownership. New shared player navigation is rendered only after that access gate.
 
+The rating panel keeps its player-view links and one latest saved rating inside
+the blue header. Embedded navigation omits Overview and Player rating because
+the dashboard already supplies those tabs. Historical month selection can show
+a separate badge when it differs from the latest month; identical current-month
+badges should not be repeated below the header.
+
 Playing Record is a curated saved-evidence view, not a complete career archive.
 Past-event ratings reconstruct eligible Cape Tennis events. TeamSheet evidence
 may contribute to a rating while its match details remain restricted. See

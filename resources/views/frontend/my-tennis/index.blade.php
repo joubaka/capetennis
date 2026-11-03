@@ -11,9 +11,10 @@
 @endsection
 
 @section('content')
-<div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y">
+<div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y ct-player-workspace">
   <style>
     #my-tennis-page { min-width: 0; overflow-x: clip; }
+    #my-tennis-page:has(#my-tennis-rating.active [data-rating-hero]) [data-player-profile-header]{display:none}
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }
     #my-tennis-page .table-responsive { max-width: 100%; }
     #my-tennis-page .my-tennis-heading { padding: .5rem 0 1.25rem; gap: 1rem; }
@@ -145,7 +146,7 @@
       <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
         @if($previewNonPlus ?? false)<input type="hidden" name="preview_non_plus" value="1">@endif
         <label for="my-tennis-player" class="visually-hidden">Player</label>
-        <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select" onchange="this.form.submit()">
+        <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select">
           @if(($ratingPreviewPlayer ?? null) && !$selectedPlayer)<option value="{{ $ratingPreviewPlayer->id }}" selected>{{ $ratingPreviewPlayer->full_name }} · Admin preview</option>@endif
           @foreach($players as $playerOption)
             <option value="{{ $playerOption->id }}" @selected($selectedPlayer?->id === $playerOption->id)>{{ $playerOption->full_name }}</option>
@@ -159,20 +160,19 @@
     $headerPlayer = $selectedPlayer ?? ($ratingPlayer ?? null);
   @endphp
   @if($headerPlayer)
-    <header class="my-tennis-profile-header" data-player-profile-header>
-      <span class="my-tennis-player-avatar" aria-hidden="true">{{ collect(preg_split('/\s+/u', trim($headerPlayer->full_name), -1, PREG_SPLIT_NO_EMPTY))->take(2)->map(fn ($part) => mb_strtoupper(mb_substr($part, 0, 1)))->implode('') }}</span>
-      <div class="my-tennis-player-details">
-        <h2>{{ $headerPlayer->full_name }}</h2>
-        @if($selectedPlayer)<p class="small text-muted mb-0">{{ $profile['message'] }}</p>@endif
-        <p class="small mb-0">{{ ($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional' }}</p>
-      </div>
-      <div class="my-tennis-header-actions">
+    <x-player-workspace-header :title="$headerPlayer->full_name" eyebrow="Cape Tennis · My Tennis" heading="h2" heading-id="my-tennis-player-heading" :subtitle="($selectedPlayer ? $profile['message'].' · ' : 'Admin preview · ').(($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional')" data-player-profile-header>
+      <x-slot:actions>
         @if($selectedPlayer)
-        <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
+        <button class="btn btn-outline-light" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
         @endif
-        <a class="btn my-tennis-plus-link" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
-      </div>
-    </header>
+        <a class="btn btn-outline-light" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
+      </x-slot:actions>
+      @if($canViewRating ?? false)
+        <x-slot:navigation>
+          @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true])
+        </x-slot:navigation>
+      @endif
+    </x-player-workspace-header>
   @else
     <p><a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
   @endif
@@ -209,9 +209,6 @@
   </div>
   @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
-  @if($canViewRating ?? false)
-    <section class="card mb-4 border-start border-primary border-3"><div class="card-body"><span class="small text-primary fw-semibold">PLAYER PLUS</span><h2 class="h5 mt-2">Put your results in perspective</h2><p class="text-muted">Explore your available results and player insights. Each view explains which records it covers.</p>@include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])</div></section>
-  @endif
   @if(!$selectedPlayer)
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body py-5 text-center">
@@ -416,6 +413,7 @@
 <script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
 <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
 <script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
+<script src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const button = document.getElementById('my-tennis-rating-tab');

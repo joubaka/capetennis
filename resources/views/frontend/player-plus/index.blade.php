@@ -1,7 +1,7 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Player Plus')
 @section('content')
-<div id="player-plus-page" class="container-xxl container-p-y pp-journey">
+<div id="player-plus-page" class="container-xxl container-p-y pp-journey ct-player-workspace">
   <style>
     #player-plus-page { max-width: 1120px; }
     #player-plus-page .plus-page-heading { display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:1rem;margin-bottom:1.25rem; }
@@ -16,13 +16,10 @@
     @media(max-width:575.98px) { #player-plus-page .plus-player-choice form .form-control { max-width:none !important; } }
   </style>
   @include('frontend.player-plus.styles')
-  <div class="plus-page-heading"><h1>Player Plus</h1><a class="d-inline-block py-2" href="{{ route('player-plus.orders.index') }}" style="min-height:44px">My Plus orders</a></div>
+  <x-player-workspace-header title="Who is Player Plus for?" eyebrow="Player Plus · Step 2 of 4" subtitle="Choose one player, then review the available plans. Already covered? Open their membership to view their progress.">
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis') }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index') }}">My Plus orders</a></nav></x-slot:navigation>
+  </x-player-workspace-header>
   <x-player-plus-stepper :current="2" />
-  <header class="plus-page-intro">
-    <span class="pp-visual-eyebrow">Player Plus · Step 2 of 4</span>
-    <h2>Who is Player Plus for?</h2>
-    <p>Choose one player, then review the available plans. Already covered? Open their membership to view their progress.</p>
-  </header>
   @unless($enabled)<p class="alert alert-info">New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p>@endunless
   <section class="plus-player-choice" aria-labelledby="choose-plus-player">
   <h2 id="choose-plus-player" class="h4" style="scroll-margin-top:6rem">Choose a player</h2>

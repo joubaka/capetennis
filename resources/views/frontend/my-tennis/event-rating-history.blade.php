@@ -1,12 +1,13 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Past-event player ratings')
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y" data-event-rating-history="v1">
+<div class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-event-rating-history="v1">
+    <x-player-workspace-header :title="$ratingPlayer->full_name.' · Past-event ratings'" eyebrow="Player Plus · Match by match">
+      <x-slot:navigation>@include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])</x-slot:navigation>
+    </x-player-workspace-header>
     <div class="card"><div class="card-body">
-        <header class="event-history-hero"><span><i class="ti ti-history me-1" aria-hidden="true"></i>Player Plus · Match by match</span><h1 class="h4 mt-2 mb-0">{{ $ratingPlayer->full_name }} · Past-event ratings</h1></header>
         <p>Reconstructed as of each event’s completion date, using only eligible results dated on or before that date. These are retrospective estimates, not ratings originally published at the time.</p>
         <p>Red, Orange and Green/Yellow are independent. Each date uses the normal {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day evidence window looking backwards from that date. Valid published final placings provide weaker evidence than scored matches. Results dated after the cutoff are excluded.</p>
-        @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])
         @if(session('event_history_status'))
             <p class="alert alert-info" role="status">{{ session('event_history_status') }}</p>
         @endif
@@ -21,8 +22,6 @@
             <span class="small text-muted d-block mt-2" role="status">{{ $refreshStatus['message'] }}</span>
         </form>
         <style>
-            .event-history-hero{background:linear-gradient(115deg,#172e45,#004177);color:#ff9f43;padding:1.5rem;border-radius:14px;margin-bottom:1.5rem}
-            .event-history-hero h1{color:#fff}.event-history-hero>span{font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
             .event-rating-levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
             .event-rating-card{min-width:0;overflow-wrap:anywhere;border:1px solid #d9e3e0;border-radius:.5rem;padding:1rem;margin-top:1rem}
             .event-rating-level{min-width:0;padding:.75rem;border-top:3px solid var(--ball-color);background:#f7faf9;border-radius:.3rem}

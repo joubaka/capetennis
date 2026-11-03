@@ -1,15 +1,11 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Player Plus purchase details')
 @section('content')
-<div class="container-xxl container-p-y pp-journey" style="max-width:900px">
+<div class="container-xxl container-p-y pp-journey ct-player-workspace" style="max-width:900px">
   @include('frontend.player-plus.styles')
-  <a href="{{ route('player-plus.index') }}">Back to Player Plus</a>
-  <header class="pp-visual-hero mt-3">
-    <span class="pp-hero-icon"><i class="ti ti-file-description" aria-hidden="true"></i></span>
-    <span class="pp-visual-eyebrow">Player Plus · Before you buy</span>
-    <h1>Player Plus purchase details</h1>
-    <p class="mb-0">Purchase details version {{ $version }}</p>
-  </header>
+  <x-player-workspace-header title="Player Plus purchase details" eyebrow="Player Plus · Before you buy" :subtitle="'Purchase details version '.$version">
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.index') }}">Back to Player Plus</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index') }}">My Plus orders</a></nav></x-slot:navigation>
+  </x-player-workspace-header>
   <x-player-plus-benefits />
   <div class="pp-terms-body mt-4">
   <h2 class="h4 mt-0"><i class="ti ti-calendar" aria-hidden="true"></i>Annual automatic renewal</h2>

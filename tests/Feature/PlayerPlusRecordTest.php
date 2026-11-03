@@ -210,4 +210,24 @@ class PlayerPlusRecordTest extends TestCase
             $this->assertNotEmpty(token_get_all($compiler->compileString(file_get_contents(resource_path('views/frontend/my-tennis/'.$view.'.blade.php'))), TOKEN_PARSE));
         }
     }
+
+    public function test_selected_matchup_is_before_the_list_with_one_match_register_and_anchored_navigation(): void
+    {
+        $rows = [];
+        for ($i = 1; $i <= 25; $i++) $rows[] = $this->row('match:'.$i);
+        $this->app->instance('request', Request::create('/my-tennis/players/42/record/opponents', 'GET', [
+            'year' => 2026, 'opponent' => 43, 'opponent_page' => 2, 'compare_first' => 2025, 'compare_second' => 2026]));
+        $record = $this->record($rows, ['year' => 2026, 'opponent' => 43]);
+        $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
+        $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record]);
+        $this->assertStringContainsString('Example Player vs Example Opponent', $html);
+        $this->assertLessThan(strpos($html, 'Your matchups'), strpos($html, 'id="opponent-meetings"'));
+        $this->assertStringNotContainsString('Recent meetings in this selection', $html);
+        $this->assertSame(20, substr_count($html, 'class="record-row"'));
+        $this->assertStringContainsString('View matchup →', $html);
+        $this->assertStringContainsString('meeting_page=2#opponent-meetings', $html);
+        $this->assertStringContainsString('opponent_page=2', $html);
+        $this->assertStringContainsString('compare_first=2025', $html);
+        $this->assertStringContainsString('year=2026', $html);
+    }
 }

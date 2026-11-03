@@ -7,7 +7,7 @@
   $stateTone = $order->reconciliation_reason || $order->status === 'reconciliation_required' ? 'review' : ($order->activated_at ? 'verified' : ($checkoutOpen ? 'pending' : 'closed'));
   $stateLabel = $stateTone === 'review' ? 'Payment needs review' : ($stateTone === 'verified' ? 'Payment verified' : ($checkoutOpen ? ($form ? 'Continue to PayFast' : ($order->payfast_handed_off_at ? 'Awaiting confirmation' : 'Checkout open')) : 'Checkout closed'));
 @endphp
-<div class="container-xxl container-p-y pp-checkout pp-journey" data-plus-checkout data-order-state="{{ $stateTone }}">
+<div class="container-xxl container-p-y pp-checkout pp-journey ct-player-workspace" data-plus-checkout data-order-state="{{ $stateTone }}">
   <style>
     .pp-checkout{max-width:1180px;color:#243e50}.pp-checkout *{box-sizing:border-box}.pp-checkout .pp-checkout-nav{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}.pp-checkout .pp-checkout-nav a{display:inline-flex;align-items:center;min-height:44px;font-size:.875rem;color:#004177}.pp-checkout .pp-checkout-nav span{font-size:.8rem;color:#607681}
     .pp-checkout .pp-checkout-hero{position:relative;overflow:hidden;border-radius:22px;background:linear-gradient(120deg,#172e45,#004177);padding:2.25rem;margin-bottom:1.5rem;color:#fff}.pp-checkout .pp-checkout-hero:after{content:'';position:absolute;right:-70px;top:-150px;width:340px;height:340px;border:1px solid #ffffff17;border-radius:50%;pointer-events:none}.pp-checkout .pp-checkout-eyebrow{font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:#ffd3aa;font-weight:700;margin:0 0 .8rem}.pp-checkout .pp-checkout-hero h1{color:#fff;font-size:clamp(1.7rem,3.7vw,2.4rem);letter-spacing:-.035em;line-height:1.2;margin:0 0 .9rem;max-width:850px;overflow-wrap:anywhere}.pp-checkout .pp-checkout-hero>p:last-of-type{color:#dce8f5;line-height:1.65;max-width:65ch;margin-bottom:1.25rem}.pp-checkout .pp-checkout-meta{position:relative;z-index:1;display:flex;align-items:center;flex-wrap:wrap;gap:.65rem 1rem;font-size:.8rem;color:#d1dfef}.pp-checkout .pp-order-chip{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .75rem;border:1px solid #ffffff38;border-radius:7px;background:#ffffff0b;color:#fff}.pp-checkout .pp-order-chip strong{font-weight:600}
@@ -18,17 +18,16 @@
     @media(max-width:575.98px){.pp-checkout .pp-checkout-hero{border-radius:16px;padding:1.4rem}.pp-checkout .pp-payment-card,.pp-checkout .pp-checkout-benefits{padding:1.2rem!important}.pp-checkout .pp-checkout-grid{gap:1rem}.pp-checkout .pp-checkout-benefits>ul{grid-template-columns:1fr}.pp-checkout .pp-checkout-benefits>ul>li{padding:1rem 1rem 1rem 3.7rem}.pp-checkout .pp-payment-heading{flex-wrap:wrap}.pp-checkout .pp-checkout-footer{align-items:flex-start;flex-direction:column;gap:.2rem}}
   </style>
   @include('frontend.player-plus.styles')
-  <nav class="pp-checkout-nav" aria-label="Checkout navigation"><a href="{{ route('player-plus.orders.index') }}">← Your orders</a><span>Player Plus checkout</span></nav>
-  <header class="pp-checkout-hero">
-    <p class="pp-checkout-eyebrow">Cape Tennis · Optional Player Plus</p>
-    <h1>Player Plus for {{ $order->player?->full_name ?? 'Player profile unavailable' }}</h1>
-    <p>Understand their playing strength. Follow their progress and explore the results behind their tennis.</p>
+  <x-player-workspace-header :title="'Player Plus for '.($order->player?->full_name ?? 'Player profile unavailable')" eyebrow="Cape Tennis · Optional Player Plus" subtitle="Understand their playing strength. Follow their progress and explore the results behind their tennis.">
+    <x-slot:summary>
     <div class="pp-checkout-meta">
       <span class="pp-order-chip"><i class="ti ti-receipt" aria-hidden="true"></i> Order <strong>P{{ $order->id }}</strong></span>
       <span>Profile #{{ $order->player_id }} @if($order->player?->dateOfBirth) · Born {{ substr($order->player->dateOfBirth, 0, 4) }} @endif</span>
       <span>{{ str_replace('_', ' ', ucfirst($order->status)) }}</span>
     </div>
-  </header>
+    </x-slot:summary>
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Checkout navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index') }}">← Your orders</a><a class="btn btn-outline-primary" href="{{ route('player-plus.index') }}">Player Plus checkout</a></nav></x-slot:navigation>
+  </x-player-workspace-header>
   @if(session('success'))<p class="alert alert-success">{{ session('success') }}</p>@endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
   @if(session('plus_checkout_review'))<p class="alert alert-info" role="status">{{ session('plus_checkout_review') }}</p>@endif

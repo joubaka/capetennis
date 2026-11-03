@@ -1,14 +1,11 @@
-<section class="card ctr-history" aria-labelledby="player-rating-heading"><div class="card-body">
+<section class="card ctr-history ct-player-workspace" aria-labelledby="player-rating-heading"><div class="card-body">
   <style>
     .ctr-history { border:1px solid #dbe4ef;border-radius:18px;overflow:hidden; }
     .ctr-history > .card-body { padding:clamp(1rem,3vw,2rem); }
-    .ctr-history .ctr-heading-hero { background:linear-gradient(115deg,#172e45,#004177);border-radius:14px;padding:clamp(1.25rem,3vw,1.75rem);margin-bottom:1.25rem;color:#fff; }
-    .ctr-history .ctr-heading-hero h2 { color:#fff;font-size:clamp(1.35rem,3vw,1.9rem);letter-spacing:-.025em; }
-    .ctr-history .ctr-heading-hero p { color:#e0ebf5;line-height:1.6;max-width:38rem; }
-    .ctr-history .ctr-heading-hero a { display:inline-block;color:#ff9f43;margin-top:.65rem;text-decoration:underline;text-underline-offset:3px; }
-    .ctr-history .ctr-plus-label { display:block;color:#ff9f43;font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.6rem; }
-    .ctr-history .ctr-heading-hero .badge { background:#ffffff18!important;color:#fff!important;border:1px solid #ffffff40; }
-    .ctr-history .ctr-current-summary { background:#f1f5fa;border-left:4px solid #004177; }
+    .ctr-history .ctr-header-rating { flex:0 1 18rem;min-width:0;max-width:100%;padding:1rem;background:#ffffff12;border:1px solid #ffffff35;border-radius:12px; }
+    .ctr-history .ctr-header-rating h3 { font-size:.9rem;color:#fff;margin:0 0 .75rem; }
+    .ctr-history .ctr-header-rating .ctr-badge + .small { color:#fff!important; }
+    .ctr-history .ct-workspace-header .badge { background:#ffffff18;color:#fff;border:1px solid #ffffff40; }
     .ctr-history h3.h5 { color:#172e45;font-weight:600; }
     .ctr-history a:focus-visible,.ctr-history button:focus-visible,.ctr-history select:focus-visible,.ctr-history summary:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
     .ctr-history .btn-primary { background:#004177;border-color:#004177;color:#fff; }
@@ -22,7 +19,7 @@
     .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }
     @media(max-width:767.98px) { .ctr-history .ctr-section-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
-    .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
+    .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
     .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1.25rem;min-width:0; }
     .ctr-history .ctr-stats .ctr-stat { background:#f7f9fc;border-top:3px solid #004177; }
     .ctr-history .ctr-stats .ctr-stat:nth-child(2) { background:#fff6ed;border-top-color:#b85b00; }
@@ -44,27 +41,29 @@
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
-  <div class="ctr-heading ctr-heading-hero">
-    <div><span class="ctr-plus-label"><i class="ti ti-sparkles me-1" aria-hidden="true"></i>Player Plus · Your game in focus</span><h2 id="player-rating-heading" class="h4 mb-2">{{ $ratingPlayer->full_name }} · Player rating</h2><p class="small mb-0">Follow 12 months of progress. Explore the results behind your rating and find your next development step.</p>
-      <a class="small" href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings and badges</a>
-    </div>
-    @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
-  </div>
-  @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])
   @php
     $summaryPoints = $ratingHistory['points'] ?? [];
-    $currentRating = $summaryPoints ? end($summaryPoints) : null;
+    $currentRating = empty($ratingHistory['reason']) && $summaryPoints ? end($summaryPoints) : null;
   @endphp
-  <div class="ctr-stat ctr-current-summary mt-3" aria-label="Current rating summary">
-    <h3>How strong is my singles game?</h3>
+  <x-player-workspace-header :title="$ratingPlayer->full_name.' · Player rating'" eyebrow="Player Plus · Your game in focus" subtitle="Follow 12 months of progress. Explore the results behind your rating and find your next development step." heading="h2" heading-id="player-rating-heading" data-rating-hero>
+      @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
+    <x-slot:summary>
+    <section class="ctr-header-rating" aria-label="Latest saved rating summary" data-current-rating-summary>
+    <h3>Latest saved estimate</h3>
     @if($currentRating)
       <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$currentRating['score']" :local="($currentRating['connection_status'] ?? '') === 'disconnected'" />
       <p class="small mt-2 mb-0">{{ $ratingHistory['current_group_label'] ?? 'Current rating' }} · {{ $currentRating['confidence_label'] ?? 'Not recorded' }} confidence · {{ $currentRating['date'] }}</p>
+      @if(($currentRating['evidence_basis'] ?? null) === 'finish_only')<p class="small mb-0">Low confidence · final placings only</p>@endif
       @if(($currentRating['connection_status'] ?? '') === 'disconnected')<p class="small mb-0">Provisional within-group estimate; not calibrated against other groups.</p>@endif
-      @if(!empty($currentRating['historical_connection']))<p class="small mb-0">Low confidence — historical connection.</p>@endif
+      @if(!empty($currentRating['historical_connection']))<p class="small mb-0">Low confidence — historical connection. Link dated {{ $currentRating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
     @else<p class="mb-0">Not rated yet. Suitable eligible results are needed to estimate playing strength.</p>@endif
-    <p class="small text-muted mt-2 mb-0">Provisional ability estimate, not an official ranking.@if($ratingHistory['as_of'] ?? null) Updated through {{ $ratingHistory['as_of'] }}.@endif</p>
-  </div>
+    <p class="small mt-2 mb-0">Provisional ability estimate, not an official ranking.@if($ratingHistory['as_of'] ?? null) Updated through {{ $ratingHistory['as_of'] }}.@endif</p>
+    </section>
+    </x-slot:summary>
+    <x-slot:navigation>
+    @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true])
+    </x-slot:navigation>
+  </x-player-workspace-header>
   <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
     @foreach(['progress' => 'My progress', 'compare' => 'My position & player search', 'next' => 'My next step', 'understand' => 'Understand my rating'] as $section => $label)
       <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>
@@ -99,6 +98,7 @@
       $previous = $ratingHistory['previous'];
       $evidence = $ratingHistory['evidence'];
       $comparable = $point && $previous && $point['group'] === $previous['group'];
+      $selectedIsLatest = $point && $latest && $point['index'] === $latest['index'] && $point['date'] === $latest['date'];
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
       $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']] + ($ratingTopTen['filters'] ?? []);
@@ -120,16 +120,8 @@
       <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
     </form>
     <div class="ctr-stats">
-      <div class="ctr-stat"><h3>Latest {{ ucfirst($ratingHistory['cohort']) }} estimate</h3>
-        @if($latest)
-          <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$latest['score']" :local="($latest['connection_status'] ?? '') === 'disconnected'" />
-          @if(($latest['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
-          <p class="small text-muted mt-2 mb-0">{{ $latest['date'] }} · 0–100 ability scale</p>
-          @if(!empty($latest['historical_connection']))<p class="small mt-2 mb-0"><strong>Low confidence — historical connection</strong> · link dated {{ $latest['connection_reference_date'] ?? 'unknown' }}.</p>@endif
-        @else<div class="ctr-stat-value">Unrated</div>@endif
-      </div>
-      <div class="ctr-stat"><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
-        <div>@if($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
+      <div class="ctr-stat" data-selected-month-summary><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
+        <div>@if($selectedIsLatest)<p class="mb-0">Latest saved month · estimate shown in the header.</p>@elseif($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
         @if(($point['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
         @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p><p class="small text-muted mt-1 mb-0">Results, opponents’ results and older matches losing weight can all move your rating.</p>
         @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable. The difference does not reliably show improvement or decline.</p>

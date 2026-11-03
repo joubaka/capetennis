@@ -38,9 +38,11 @@ comparison year minus the starting year; rate changes use percentage points,
 calculated before rounding. Identical or unavailable seasons have no delta.
 Recorded date ranges describe the available evidence, not full-year coverage.
 
-Across seasons groups the selected opponent's eligible meetings by calendar
-year within the active year filter. Its recent-meetings list is capped at five;
-the complete meeting register remains paginated. Sparse records are labelled.
+Selecting an opponent opens a matchup above the list and anchors navigation
+and meeting pagination to it. Across seasons groups that opponent's eligible
+meetings by calendar year within the active year filter. A single paginated
+match register shows the scores, without a duplicate recent-meetings list.
+Sparse records are labelled.
 Estimated dates and matches sharing a date do not establish exact playing
 order, so these views do not infer streaks or playing-strength improvement.
 
