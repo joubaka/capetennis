@@ -93,7 +93,12 @@
 .ctr-offer h2{font-size:1.7rem}
 .ctr-disclosures{flex-direction:column;gap:.75rem}
 .ctr-intro-actions a{flex:1 1 auto}
-.ctr-offer-links{gap:.2rem 1rem}}@media(max-width:399.98px){.ctr-offer-pricing{padding:1rem}
+.ctr-offer-links{gap:.2rem 1rem}}@media(max-width:575.98px){.ctr-intro-hero{padding:1.25rem;gap:1.25rem;border-radius:18px}
+.ctr-intro .ctr-intro-hero h1{font-size:clamp(1.85rem,5.5vw,2.1rem);line-height:1.1;max-width:100%;gap:.5rem;margin-bottom:.85rem}
+.ctr-intro-hero h1 span{max-width:13ch}
+.ctr-intro-hero .ctr-eyebrow{font-size:.65rem;letter-spacing:.1em;margin-bottom:.65rem}
+.ctr-hero-description{font-size:.9rem;line-height:1.6;margin-bottom:1.1rem}
+.ctr-hero-note{margin-top:.75rem}}@media(max-width:399.98px){.ctr-offer-pricing{padding:1rem}
 .ctr-offer-pricing [data-player-plus-pricing]{gap:.5rem!important}
 .ctr-offer-pricing [data-player-plus-pricing] strong{font-size:1.35rem}}@media(prefers-reduced-motion:no-preference){.ctr-intro-actions a{transition:background .15s}}
 </style>
