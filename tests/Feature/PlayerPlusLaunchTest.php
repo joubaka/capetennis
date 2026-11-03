@@ -92,7 +92,8 @@ class PlayerPlusLaunchTest extends TestCase
             $this->postJson($url, ['player_plus_annual_price' => $value])->assertOk();
             $this->assertSame($cents, PlayerPlusService::priceCents());
         }
-        $this->get(route('player-plus.index'))->assertOk()->assertSee('R649.95');
+        $this->get(route('player-plus.index'))->assertOk()->assertSee('Choose a player');
+        $this->get(route('player-plus.player', Player::factory()->create()))->assertOk()->assertSee('R649.95');
     }
 
     public function test_legacy_low_pending_checkout_cannot_start_handoff_and_is_not_repriced_or_closed(): void
@@ -245,7 +246,8 @@ class PlayerPlusLaunchTest extends TestCase
         SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '0');
         $response = $this->actingAs($payer)->get(route('player-plus.player', $player))->assertOk()
             ->assertSee('Annual Player Plus')->assertSee('Monthly purchases are currently unavailable')
-            ->assertSee('age-group Top 10')->assertSee('choose one eligible published player')
+            ->assertSee('data-plus-plan-choices', false)->assertSee('Review &amp; pay', false)
+            ->assertSee('data-plus-stepper', false)->assertDontSee('data-player-plus-benefits', false)
             ->assertDontSee('R69.00')->assertDontSee('data-player-plus-pricing', false);
         $document = new \DOMDocument;
         $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
@@ -579,16 +581,20 @@ class PlayerPlusLaunchTest extends TestCase
         $this->actingAs($payer);
         $this->export('orders-empty', $this->get(route('player-plus.orders.index'))->assertOk());
         $this->history(['reason' => null, 'stale' => false, 'series' => ['ball-standard' => [['score' => 50]]]]);
-        $this->export('index', $this->get(route('player-plus.index'))->assertOk()->assertSee('tennis pathway'));
+        $this->export('index', $this->get(route('player-plus.index'))->assertOk()->assertSee('data-plus-stepper', false)->assertSee('Who is Player Plus for?')->assertDontSee('data-player-plus-benefits', false));
         $this->export('player', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('Saved progress is available'));
+        SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '1');
+        $this->export('player-monthly', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('Monthly Player Plus'));
+        SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '0');
         $this->export('terms', $this->get(route('player-plus.terms'))->assertOk()->assertSee('Purchase details version'));
         $order = $this->order($player, $payer);
         $this->export('orders', $this->get(route('player-plus.orders.index'))->assertOk());
         $this->export('order', $this->get(route('player-plus.orders.show', $order))->assertOk());
         $order = $this->activate($order);
-        $this->export('player-active', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('View tennis pathway'));
+        $this->export('player-active', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('View tennis pathway')->assertDontSee('data-plus-stepper', false));
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
         $this->export('paused', $this->get(route('player-plus.index'))->assertOk()->assertSee('purchases are currently paused'));
+        $this->export('player-paused', $this->get(route('player-plus.player', Player::factory()->create()))->assertOk()->assertSee('Purchases are paused'));
         SiteSetting::set('admin_notification_email', 'plus-operator@example.test');
         app(PlayerPlusService::class)->receive($this->itn($order, 'qa-extra-receipt'));
         $this->actingAs($this->admin());

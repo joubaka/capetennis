@@ -81,6 +81,7 @@
 @endsection
 @section('content')
 <main class="ctr-intro" data-ctr-intro>
+  <x-player-plus-stepper :current="1" />
   <section class="ctr-intro-hero" aria-labelledby="ctr-title">
     <div>
       <p class="ctr-eyebrow">Cape Tennis · Player Plus</p>

@@ -1,8 +1,11 @@
 @extends('layouts/contentNavbarLayout')
 @section('title', 'Player Plus registration')
 @section('content')
-<div class="container-xxl container-p-y pp-player pp-journey" data-plus-player-page>
+<div class="container-xxl container-p-y pp-player pp-journey" data-plus-player-page data-plus-review-plan="{{ $errors->any() ? old('plan', 'annual_recurring') : '' }}">
   @include('frontend.player-plus.styles')
+  <style>
+    .pp-player .pp-layout{display:block!important;max-width:760px;margin:auto}.pp-player .pp-plan-choices{padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-plan-choices h2{color:#172e45;font-size:1.5rem}.pp-player .pp-plan-choice{display:flex;flex-direction:column;gap:.5rem;text-align:left;width:100%;padding:1.25rem;margin:1rem 0;background:#eef4fa;border:1px solid #9ab4cf;border-radius:12px;color:#172e45;min-height:44px}.pp-player .pp-plan-choice:hover{border-color:#004177;background:#e5eff8}.pp-player .pp-plan-choice>span:last-child{align-self:flex-start;background:#ff9f43;border-radius:7px;padding:.5rem 1rem;color:#172e45;font-weight:700}.pp-player [hidden]{display:none!important}.pp-player .pp-purchase [data-plus-change-plan]{width:auto;margin:0 0 1rem}
+  </style>
   <style>
     .pp-player{max-width:1120px;color:#243e50;font-size:1rem;line-height:1.65}.pp-player .small,.pp-player small{font-size:.875rem}.pp-player .pp-nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;justify-content:space-between;margin-bottom:1rem}.pp-player .pp-nav a{min-height:44px;display:inline-flex;align-items:center}
     .pp-player .pp-hero{background:linear-gradient(115deg,#172e45,#004177);color:#fff;border-radius:18px;padding:clamp(1.5rem,4vw,2.5rem);margin-bottom:1.5rem}.pp-player .pp-eyebrow{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}.pp-player .pp-hero h1{color:#fff;font-size:clamp(1.8rem,4vw,2.5rem);line-height:1.2;letter-spacing:-.025em;margin:0 0 .75rem}.pp-player .pp-intro{color:#dee9f5;max-width:65ch;margin:0}.pp-player .pp-profile{color:#dee9f5;margin:1rem 0 0;font-size:.875rem}
@@ -11,8 +14,14 @@
     @media(min-width:992px){.pp-player .pp-details{grid-column:1;grid-row:1}.pp-player .pp-checkout{grid-column:2;grid-row:1}}@media(max-width:991.98px){.pp-player .pp-layout{grid-template-columns:1fr}.pp-player .pp-benefits>ul{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:575.98px){.pp-player .pp-purchase,.pp-player .pp-actions{padding:1.2rem}.pp-player .pp-benefits>ul{grid-template-columns:1fr}.pp-player .pp-action-links{flex-direction:column}.pp-player .pp-action-links .btn{width:100%}}
   </style>
   <nav class="pp-nav" aria-label="Player Plus navigation"><a href="{{ route('player-plus.index') }}">← Choose another player</a><a href="{{ route('player-plus.orders.index') }}">My Plus orders →</a></nav>
+  @php
+    $membershipStatusOnly = ($adminAccess ?? null)?->mode === 'suspended'
+      || (($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
+      || ($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture());
+  @endphp
+  @unless($membershipStatusOnly)<x-player-plus-stepper :current="3" />@endunless
   <header class="pp-hero">
-    <p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">A clearer picture of their tennis. Understand playing strength, follow progress and explore the next step.</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
+    <p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">@if($canViewRating)Your player views are available below. Check membership status and follow their progress.@elseif($membershipStatusOnly)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before continuing to PayFast.@endif</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
   </header>
   @if($errors->any())
     <section class="alert alert-danger pp-error-summary" role="alert" aria-labelledby="pp-error-heading"><h2 class="h6" id="pp-error-heading">Please review your checkout details</h2><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></section>
@@ -32,13 +41,22 @@
       @else
         @if($membership && $linked)<p class="alert alert-secondary">Membership expired on {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer should check payment and renewal status in My Plus orders.@else No renewal payment has been taken automatically.@endif</p>@endif
         @if($enabled && \App\Services\Performance\PlayerPlusService::monthlyReady())
-          <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" aria-labelledby="pp-annual-heading">
+          <section class="pp-plan-choices" data-plus-plan-choices hidden aria-labelledby="pp-plan-heading">
+            <h2 id="pp-plan-heading" tabindex="-1">Choose a plan</h2>
+            <p>For {{ $player->full_name }} · One named player</p>
+            <button type="button" class="pp-plan-choice" data-plus-choose="annual_recurring"><strong>Annual · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} / year</strong><span>Renews automatically each year until cancelled.</span><span>Continue <span aria-hidden="true">→</span></span></button>
+            @if($monthlyEnabled)<button type="button" class="pp-plan-choice" data-plus-choose="monthly"><strong>Monthly · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} / month</strong><span>Renews automatically each month until cancelled.</span><span>Continue <span aria-hidden="true">→</span></span></button>@endif
+            <p class="small">Eligible results are needed; buying Plus does not guarantee a rating. <a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></p>
+          </section>
+          <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-plan="annual_recurring" aria-labelledby="pp-annual-heading">
             @csrf
             <input type="hidden" name="request_token" value="{{ $token }}">
             <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
             <input type="hidden" name="quoted_price_cents" value="{{ $priceCents }}">
             <input type="hidden" name="plan" value="annual_recurring">
-            <h2 id="pp-annual-heading">Annual Player Plus</h2>
+            <button type="button" class="btn btn-outline-primary" data-plus-change-plan hidden>← Change plan</button>
+            <h2 id="pp-annual-heading" tabindex="-1">Review &amp; pay · Annual Player Plus</h2>
+            <p>For {{ $player->full_name }}</p>
             <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} <span>/ player / year</span></p>
             <p class="pp-plan-note">Pay now, then renew automatically each year through PayFast until cancelled. Stop future renewals from My Plus orders; paid access continues until the paid period ends.</p>
             <fieldset class="pp-consents"><legend>Confirm your purchase</legend>
@@ -50,9 +68,11 @@
             <button class="btn btn-primary">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</button>
           </form>
           @if($monthlyEnabled)
-            <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-monthly-purchase aria-labelledby="pp-monthly-heading">
+            <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-monthly-purchase data-plus-plan="monthly" aria-labelledby="pp-monthly-heading">
               @csrf
-              <h2 id="pp-monthly-heading">Monthly Player Plus</h2>
+              <button type="button" class="btn btn-outline-primary" data-plus-change-plan hidden>← Change plan</button>
+              <h2 id="pp-monthly-heading" tabindex="-1">Review &amp; pay · Monthly Player Plus</h2>
+              <p>For {{ $player->full_name }}</p>
               <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} <span>/ player / month</span></p>
               <p class="pp-plan-note">Pay the first month now. PayFast charges the same agreed price each month until you cancel. Stop future renewals from My Plus orders; verified paid access remains until the end of the paid period.</p>
               <input type="hidden" name="request_token" value="{{ $token }}">
@@ -75,9 +95,6 @@
         @endif
       @endif
     </section>
-    <div class="pp-details">
-      <x-player-plus-benefits :price-cents="$priceCents" :show-pricing="false" class="pp-benefits" />
-    </div>
   </div>
   @if($canViewRating)
     <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
@@ -85,6 +102,7 @@
       <a class="btn btn-outline-primary" href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
     </div></section>
   @endif
+  <script src="{{ asset('assets/js/player-plus-stepper.js') }}" defer></script>
   <p class="pp-footer"><a href="{{ route('my.tennis') }}">← Back to My Tennis</a></p>
 </div>
 @endsection
