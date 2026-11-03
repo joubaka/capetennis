@@ -10,6 +10,18 @@ use Illuminate\Http\Request;
 
 class EventCategoryController extends Controller
 {
+  public function updateLimit(Request $request, CategoryEvent $categoryEvent)
+  {
+    $this->authorize('event-category.manage', $categoryEvent->event);
+    abort_unless($categoryEvent->event->isIndividual(), 422, 'Division entry caps apply to individual entry events.');
+    $data = $request->validate(['entry_limit' => ['nullable', 'integer', 'min:1', 'max:100000']]);
+    \Illuminate\Support\Facades\DB::transaction(function () use ($categoryEvent, $data) {
+      $locked = CategoryEvent::whereKey($categoryEvent->id)->lockForUpdate()->firstOrFail();
+      $locked->update(['entry_limit' => $data['entry_limit'] ?? null]);
+    });
+    return back()->with('success', 'Division entry cap saved. Existing entries and checkouts are retained.');
+  }
+
   /**
    * List all categories for an event
    * (with entry counts and fee overrides)

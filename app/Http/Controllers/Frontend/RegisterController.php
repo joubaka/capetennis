@@ -1423,6 +1423,8 @@ class RegisterController extends Controller
     // ----------------------------
     $regorder = DB::transaction(function () use ($request, $authUser, $playerIds, $categoryIds) {
 
+      CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get();
+
       $regorder           = new RegistrationOrder();
       $regorder->user_id  = $authUser->id;
       $regorder->save();
@@ -1432,6 +1434,7 @@ class RegisterController extends Controller
       for ($i = 0; $i < count($playerIds); $i++) {
 
         $categoryEvent = CategoryEvent::findOrFail((int) $categoryIds[$i]);
+        app(\App\Services\DivisionCapacityService::class)->assertAvailable($categoryEvent);
         $currentPlayerId = (int) $playerIds[$i];
 
         $registration = new Registration();

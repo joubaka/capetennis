@@ -341,6 +341,7 @@ class AdminRegistrationRefundController extends Controller
     }
 
     $restored = DB::transaction(function () use ($event, $registration, $invitations, $user): ?CategoryEventRegistration {
+      $category = \App\Models\CategoryEvent::whereKey($registration->category_event_id)->lockForUpdate()->firstOrFail();
       $locked = CategoryEventRegistration::query()
         ->with('categoryEvent')
         ->lockForUpdate()
@@ -377,6 +378,8 @@ class AdminRegistrationRefundController extends Controller
         ]);
       }
 
+      abort_unless((int) $category->id === (int) $locked->category_event_id, 409);
+      app(\App\Services\DivisionCapacityService::class)->assertAvailable($category);
       $locked->update([
         'status'        => 'active',
         'withdrawn_at'  => null,

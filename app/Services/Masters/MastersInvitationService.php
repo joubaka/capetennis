@@ -681,6 +681,9 @@ final class MastersInvitationService
                 throw ValidationException::withMessages(['invitation' => 'This invitation is no longer available.']);
             }
 
+            $category = CategoryEvent::whereKey($locked->category_event_id)->lockForUpdate()->firstOrFail();
+            app(\App\Services\DivisionCapacityService::class)->assertAvailable($category);
+
             $registration = Registration::create([]);
             $registration->players()->sync([$locked->player_id]);
 

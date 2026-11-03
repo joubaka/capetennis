@@ -38,6 +38,17 @@
       const score = Number(rating.score ?? rating.label);
       if (!Number.isFinite(score)) return '';
       const local = !['all_age', 'ball'].includes(rating.rating_scope) || rating.comparable === false;
+      // Fixed-height draw rows cannot accommodate the circular rating stamp.
+      if (node.closest('.fm-player-identity')) {
+        const details = [rating.title || 'Cape Tennis Rating',
+          (rating.confidence_label || rating.confidence_band || 'Low') + ' confidence',
+          local ? 'within-group only' : '',
+          rating.evidence_basis === 'finish_only' ? 'final placings only' : '',
+          rating.historical_connection ? 'old link' : ''].filter(Boolean).join(' · ');
+        return '<span class="player-rating-badge fm-ctr-badge" title="' + escape(details)
+          + '" aria-label="CTR ' + escape(score.toFixed(1) + ' · ' + details) + '">CTR '
+          + escape(score.toFixed(1)) + (local ? '*' : '') + '</span>';
+      }
       // Explicit ball metadata only. Age, score and category names never establish a stage.
       const ball = typeof rating.ball_type === 'string' ? rating.ball_type.trim().toLowerCase() : '';
       const stage = ['red', 'orange', 'green', 'yellow', 'standard'].includes(ball) ? ball : 'unknown';

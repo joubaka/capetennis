@@ -395,6 +395,8 @@ class InvitationService
                 $locked->refresh();
             }
 
+            $category = CategoryEvent::whereKey($category->id)->lockForUpdate()->firstOrFail();
+            app(\App\Services\DivisionCapacityService::class)->assertAvailable($category);
             $registration = Registration::create([]);
             $registration->players()->sync([(int) $locked->player_id]);
             $registration->categoryEvents()->syncWithoutDetaching([

@@ -4,6 +4,7 @@
 @php($registrationOpen = $invitation->event->published && $invitation->event->hasOpenRegistrationLifecycle() && (int) $invitation->event->signUp === 1 && (!$invitation->event->registrationClosesAt() || now()->lte($invitation->event->registrationClosesAt()->endOfDay())))
 <div class="card"><div class="card-body">
 <h4>{{ $invitation->event->name }}</h4><p>{{ $invitation->player->name }} {{ $invitation->player->surname }} has been invited for {{ $invitation->categoryEvent->category->name }}.</p>
+@include('frontend.event.partials.division-availability', ['division' => $invitation->categoryEvent])
 @if($invitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)<div class="alert alert-success">Registration confirmed.</div>
 @elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
   @if($registrationOpen)<div class="alert alert-secondary">Not registered.</div><form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.nominations.register', [$invitation->event, $invitation->categoryEvent, $invitation->nomination]) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>

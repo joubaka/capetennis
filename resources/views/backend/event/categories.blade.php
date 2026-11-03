@@ -49,6 +49,8 @@
       ->all();
   @endphp
 
+  @error('entry_limit')<div class="alert alert-danger" role="alert">{{ $message }}</div>@enderror
+
   {{-- CATEGORY LIST --}}
   <div class="card">
     <div class="card-header"><h3 class="h5 mb-0">Categories in this event</h3></div>
@@ -59,6 +61,7 @@
             <th>Category</th>
             <th class="text-center">Entries</th>
             <th class="text-center">Entry Fee Override</th>
+            <th>Division entry cap</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -90,6 +93,31 @@
                 </div>
               </td>
 
+              <td style="min-width:260px">
+                @if($event->isIndividual())
+                <form method="POST" action="{{ route('admin.events.category-limit.update', $categoryEvent) }}" class="division-limit-form">
+                  @csrf @method('PATCH')
+                  <label for="entry-limit-{{ $categoryEvent->id }}" class="form-label small">Maximum entries (blank = unlimited)</label>
+                  <div class="d-flex gap-2">
+                    <input id="entry-limit-{{ $categoryEvent->id }}" name="entry_limit" class="form-control" type="number" min="1" max="100000" value="{{ $categoryEvent->entry_limit }}">
+                    <button class="btn btn-outline-primary" type="submit">Save cap</button>
+                  </div>
+                  <details class="mt-2">
+                    <summary class="small">Calculate from allocated courts</summary>
+                    <label class="form-label small">Normal courts allocated to this division
+                      <input class="form-control division-courts" type="number" min="1" max="12500" step="1" value="1">
+                    </label>
+                    <label class="form-label small">Ball format
+                      <select class="form-select division-players-per-court"><option value="4">Orange / Green / Yellow — 4 per court</option><option value="8">Red — 8 per court</option></select>
+                    </label>
+                    <button class="btn btn-sm btn-outline-secondary use-court-cap" type="button">Use calculated cap</button>
+                    <p class="small text-muted mb-0">Allocate shared venue courts once across divisions. Save cap to apply.</p>
+                  </details>
+                </form>
+                @else
+                  <span class="text-muted small">Available for individual entry events.</span>
+                @endif
+              </td>
               <td class="text-end">
                 @if($categoryEvent->categoryEventRegistrations->isEmpty())
                   <button class="btn btn-sm btn-outline-danger delete-category-btn"
@@ -103,7 +131,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="4" class="text-center text-muted py-3">
+              <td colspan="5" class="text-center text-muted py-3">
                 No categories attached to this event.
               </td>
             </tr>
@@ -194,6 +222,14 @@
 @section('page-script')
 
 <script>
+document.addEventListener('click', function (event) {
+  const button = event.target.closest('.use-court-cap');
+  if (!button) return;
+  const form = button.closest('form');
+  const courts = form.querySelector('.division-courts');
+  if (!courts.checkValidity()) { courts.reportValidity(); return; }
+  form.querySelector('[name="entry_limit"]').value = Number(courts.value) * Number(form.querySelector('.division-players-per-court').value);
+});
 window.categoryConfig = {
     attachedIds: @json($attachedCategoryIds),
     feeUpdateUrl: "{{ route('admin.events.category-fee.update', ':id') }}"

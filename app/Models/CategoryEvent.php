@@ -15,6 +15,7 @@ class CategoryEvent extends Model
     'ordering',
     'nominations_published',
     'locked_at',
+    'entry_limit',
   ];
 
   public $timestamps = false;

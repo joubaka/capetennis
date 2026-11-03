@@ -27,6 +27,7 @@
                 <div class="col-md-6">
                   <section class="border rounded p-3 h-100">
                     <h6>{{ $categoryEvent->category?->name ?? 'Category' }}</h6>
+                    @include('frontend.event.partials.division-availability', ['division' => $categoryEvent])
                     <ul class="list-group list-group-flush">
                       @forelse($categoryEvent->nominations as $nomination)
                         @php

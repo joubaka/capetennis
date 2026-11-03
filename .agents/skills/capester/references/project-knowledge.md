@@ -88,6 +88,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Individual division caps include unresolved checkout and category-move holds,
+  including orders without an active entry row. Release places through canonical
+  cancellation/expiry; elapsed time alone is insufficient. Admission needs current
+  reads under the division lock. See `docs/division-entry-limits.md`,
+  `DivisionCapacityService` and capped category-adjustment regressions.
+
 - A finance dashboard reconciliation is not a bank reconciliation. State which
   sources were compared and distinguish clothing, registration, ledger and
   settlement evidence before attributing a discrepancy or proposing a correction.

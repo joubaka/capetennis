@@ -354,6 +354,25 @@
   text-overflow: ellipsis;
 }
 :where(.fm-surface) .fm-player-link:hover { text-decoration: underline; }
+:where(.fm-surface) .fm-player-identity [data-rating-registration] {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+}
+:where(.fm-surface) .fm-ctr-badge {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 4px;
+  border: 1px solid #b9d8ee;
+  border-radius: 4px;
+  background: #fff;
+  color: #155d91;
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
 :where(.fm-surface) .fm-player-identity-withdrawal {
   color: #b42318;
   border-color: #f1a7a1;

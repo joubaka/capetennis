@@ -80,6 +80,7 @@ class CategoryAdjustmentTest extends TestCase
     public function test_upgrade_stays_in_original_category_until_verified_payment_and_replays_once(): void
     {
         $f = $this->fixture();
+        $f['target']->update(['entry_limit' => 1]);
         $originalOrder = $f['order']->fresh()->getRawOriginal();
         $originalItem = $f['item']->fresh()->getRawOriginal();
         $adjustment = $this->start($f);
@@ -101,6 +102,7 @@ class CategoryAdjustmentTest extends TestCase
     public function test_downgrade_credits_wallet_once_without_withdrawing_or_marking_refunded(): void
     {
         $f = $this->fixture(500, 300);
+        $f['target']->update(['entry_limit' => 1]);
         $quote = $f['service']->quote($f['entry'], $f['target'], $f['payer']);
         $first = $f['service']->start($f['entry'], $f['target'], $f['payer'], $quote['quote_token'], $quote['request_token']);
         $second = $f['service']->start($f['entry']->fresh(), $f['target'], $f['payer'], $quote['quote_token'], $quote['request_token']);
@@ -139,6 +141,7 @@ class CategoryAdjustmentTest extends TestCase
     public function test_same_price_move_has_no_payment_or_wallet_transaction(): void
     {
         $f = $this->fixture(500, 500, 'wallet');
+        $f['target']->update(['entry_limit' => 1]);
         $this->start($f);
         $this->assertEquals($f['target']->id, $f['entry']->fresh()->category_event_id);
         $this->assertDatabaseCount('wallet_transactions', 2);

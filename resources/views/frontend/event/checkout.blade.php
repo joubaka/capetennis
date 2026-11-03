@@ -300,14 +300,11 @@
                     <label class="form-label">Category</label>
                     <select name="category[]" class="select2Basic select2category form-select form-select-lg">
                       <option value="0">Please select</option>
-                      @foreach($eventCats as $value)
-                        <option value="{{ $value->id }}"
-                                data-price="{{ $value->entry_fee }}"
-                                data-name="{{ $value->category->name }}">
-                          {{ $value->category->name }}
-                        </option>
-                      @endforeach
+                      @include('frontend.event.partials.division-entry-options')
                     </select>
+                    @if(collect($eventCats)->contains(fn ($division) => $division->entry_limit !== null))
+                      <div class="form-text">Available spots include places held by checkouts in progress and are checked again when you continue.</div>
+                    @endif
                   </div>
 
                 </div>

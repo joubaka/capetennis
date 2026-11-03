@@ -23,6 +23,19 @@
       </div>
     @endif
 
+    @php($cappedDivisions = collect($event->eventCategories ?? [])->filter(fn ($division) => $division->entry_limit !== null))
+    @if($cappedDivisions->isNotEmpty())
+      <div class="mt-3 pt-3 border-top" data-division-entry-limits>
+        <h5>Division entry limits</h5>
+        <p>Entries are capped per division. Available places are shown when you enter.</p>
+        <ul class="mb-0">
+          @foreach($cappedDivisions as $division)
+            <li>{{ $division->category?->name ?? 'Division' }}: maximum {{ $division->entry_limit }} players</li>
+          @endforeach
+        </ul>
+      </div>
+    @endif
+
     @php($publishedDrawCount = ($eventDraws ?? collect())->where('published', true)->count())
     @if($publishedDrawCount > 0)
       <div class="mt-3 pt-3 border-top">

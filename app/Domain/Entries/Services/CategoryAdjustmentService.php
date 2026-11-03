@@ -92,6 +92,7 @@ class CategoryAdjustmentService
                 }
                 $this->cancel($attempt, $actor, true, $admin);
             }
+            app(\App\Services\DivisionCapacityService::class)->assertAvailable($target);
             $payment = $this->funding($entry);
             $origin = CategoryAdjustment::where('entry_id', $entry->id)->oldest('id')->value('original_order_item_id')
                 ?? RegistrationOrderItems::where('registration_id', $entry->registration_id)->where('category_event_id', $entry->category_event_id)->value('id');
@@ -374,7 +375,7 @@ class CategoryAdjustmentService
                 ['entry_id' => $entry->id, 'event_id' => $adjustment->event_id, 'reference' => $adjustment->event->name]);
             $adjustment->wallet_transaction_id = $transaction->id;
         }
-        $this->entries->transferEntry($entry, $target, $actor, true);
+        $this->entries->transferEntry($entry, $target, $actor, true, $adjustment->id);
         $this->invitations->apply($entry->fresh(), (int) $adjustment->source_category_id, $target, $actor);
         $after = array_merge($before, ['gross' => $gross / 100, 'wallet_paid' => $wallet / 100,
             'total_paid' => ($gross + $wallet) / 100, 'net' => $gross / 100, 'fee' => 0.0,

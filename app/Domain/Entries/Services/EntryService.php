@@ -105,6 +105,7 @@ class EntryService
                 throw ValidationException::withMessages(['collection_status' => 'Receive and record the Trials payment before creating a paid administrative entry, or use the nominee checkout.']);
             }
 
+            app(\App\Services\DivisionCapacityService::class)->assertAvailable($lockedCategoryEvent);
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
             $capeTennisFee = round((float) $lockedCategoryEvent->event()
                 ->value('cape_tennis_fee'), 2);
@@ -694,11 +695,25 @@ class EntryService
         CategoryEventRegistration $entry,
         CategoryEvent $targetCategory,
         User $actingUser,
-        bool $adminOverride = false
+        bool $adminOverride = false,
+        ?int $capacityReservationId = null
     ): CategoryEventRegistration {
         $this->eligibility->assertCanTransfer($entry, $targetCategory, $actingUser, $adminOverride);
 
-        return DB::transaction(function () use ($entry, $targetCategory, $actingUser) {
+        return DB::transaction(function () use ($entry, $targetCategory, $actingUser, $capacityReservationId) {
+            CategoryEvent::whereIn('id', [$entry->category_event_id, $targetCategory->id])->orderBy('id')->lockForUpdate()->get();
+            $targetCategory = $targetCategory->fresh();
+            if ($capacityReservationId !== null) {
+                // Only the exact pending move may consume its already-held place.
+                abort_unless(\App\Models\CategoryAdjustment::whereKey($capacityReservationId)
+                    ->where('entry_id', $entry->id)->where('target_category_id', $targetCategory->id)
+                    ->where('source_category_id', $entry->category_event_id)->where('event_id', $targetCategory->event_id)
+                    ->whereNull('applied_at')->where(fn ($query) => $query->where('status', 'pending')
+                        ->orWhere(fn ($paid) => $paid->where('status', 'completed')->where('pay_status', 1)))
+                    ->lockForUpdate()->exists(), 409);
+            } else {
+                app(\App\Services\DivisionCapacityService::class)->assertAvailable($targetCategory);
+            }
             $fromCategoryId = $entry->category_event_id;
 
             $entry->update(['category_event_id' => $targetCategory->id]);
