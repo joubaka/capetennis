@@ -32,6 +32,13 @@ older published records remain available through event results.
 
 ## Standard and Plus views
 
+Customer player pages share `x-player-workspace-header` and the versioned
+`public/assets/css/player-workspace.css`. Use its title, eyebrow, subtitle and
+heading props plus summary/actions/navigation slots instead of adding another
+page-specific hero. Callers must authorise private navigation before supplying
+that slot. Billing help is a compact disclosure with the payer-only renewal
+instructions retained.
+
 Standard linked accounts can see their dashboard entries, published matches,
 results and official rankings, manage existing access and connect TeamSheet
 when configured. Personal ratings, pathway, Playing Record, season comparison,
@@ -75,6 +82,9 @@ loading states. Native, Bootstrap and SweetAlert indicators share ring styling;
 filled action buttons retain contrasting white indicators. Programmatic heading
 focus does not show a keyboard outline, while actionable keyboard focus remains
 visible. Preserve cancellation, timeouts, retries and focus restoration.
+My Tennis player switching uses the same modal before the GET navigation, keeps
+the selected input enabled, and clears the handle on Back/Forward restoration,
+timeout or submission failure. Native and Select2 changes use one handler.
 
 ## Regression pointers
 
@@ -87,3 +97,6 @@ visible. Preserve cancellation, timeouts, retries and focus restoration.
 - `tests/Unit/MyTennisServiceTest.php`
 - `tests/Frontend/site-loading.test.cjs`
 - `tests/Frontend/admin-loading.test.cjs`
+- `tests/Frontend/my-tennis-player-switch.test.cjs`
+- `tests/Feature/PlayerWorkspaceHeaderTest.php`
+- `tests/Feature/PlayerRatingHeaderPresentationTest.php`
