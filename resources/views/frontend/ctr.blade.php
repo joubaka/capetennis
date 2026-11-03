@@ -31,7 +31,20 @@
 .ctr-section-intro h2{font-size:1.7rem;letter-spacing:-.04em;margin:0}
 .ctr-section-intro p{color:#536873;font-size:.9rem;margin:0;max-width:25rem}
 .ctr-intro-features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
-.ctr-intro-feature{padding:1.5rem;border:1px solid #dce5ef;background:#fff;border-radius:14px;min-width:0}
+.ctr-intro-feature{border:1px solid #dce5ef;background:#fff;border-radius:14px;min-width:0;align-self:start;overflow:hidden}
+.ctr-feature-summary{display:block;padding:1.5rem;cursor:pointer;list-style:none}
+.ctr-feature-summary::-webkit-details-marker{display:none}
+.ctr-feature-summary:hover{background:#f5f8fc}
+.ctr-feature-summary:focus-visible{outline:3px solid #ff9f43;outline-offset:-4px;border-radius:13px}
+.ctr-feature-toggle{align-items:center;color:#004177;display:flex;font-size:.78rem;font-weight:700;gap:.5rem;margin-top:1rem}
+.ctr-feature-chevron{border-bottom:2px solid currentColor;border-right:2px solid currentColor;height:.45rem;margin-left:auto;transform:rotate(45deg);width:.45rem}
+.ctr-feature-less{display:none}
+.ctr-intro-feature[open]{border-color:#9db8d5;box-shadow:0 4px 16px #172e450a}
+.ctr-intro-feature[open] .ctr-feature-chevron{transform:rotate(225deg)}
+.ctr-intro-feature[open] .ctr-feature-more{display:none}
+.ctr-intro-feature[open] .ctr-feature-less{display:inline}
+.ctr-feature-details{border-top:1px solid #dce5ef;margin:0 1.5rem;padding:1rem 0 1.5rem}
+.ctr-feature-details p+p{margin-top:.75rem}
 .ctr-feature-icon{width:42px;height:42px;display:grid;place-items:center;background:#eaf1f8;border-radius:10px;color:#004177;font-size:1.3rem;margin-bottom:1.15rem}
 .ctr-intro-feature h3{font-size:1.05rem;letter-spacing:-.02em;margin-bottom:.6rem}
 .ctr-intro-feature p{font-size:.875rem;line-height:1.75;color:#536873;margin:0}
@@ -62,15 +75,17 @@
 @media(max-width:991.98px){.ctr-intro-hero{gap:1.5rem}
 .ctr-illustration{transform:none}
 .ctr-offer{gap:1.25rem}
-.ctr-intro-feature{padding:1.2rem}}@media(max-width:767.98px){.ctr-intro{margin:1rem auto 2rem}
+.ctr-feature-summary{padding:1.2rem}
+.ctr-feature-details{margin:0 1.2rem;padding-bottom:1.2rem}}@media(max-width:767.98px){.ctr-intro{margin:1rem auto 2rem}
 .ctr-intro-hero,.ctr-offer{grid-template-columns:1fr}
 .ctr-intro .ctr-intro-hero h1{max-width:12ch}
 .ctr-illustration{max-width:430px;width:100%;justify-self:center}
 .ctr-section-intro{display:block;margin-top:2rem}
 .ctr-section-intro p{margin-top:.6rem}
 .ctr-intro-features{grid-template-columns:1fr}
-.ctr-intro-feature{display:grid;grid-template-columns:42px 1fr;column-gap:1rem}
-.ctr-feature-icon{grid-row:1/3;margin:0}
+.ctr-feature-summary{display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:1rem}
+.ctr-feature-icon{grid-row:1/4;margin:0}
+.ctr-feature-summary p,.ctr-feature-toggle{grid-column:2}
 .ctr-intro-feature h3{margin:.15rem 0 .4rem}
 .ctr-offer h2{font-size:1.7rem}
 .ctr-disclosures{flex-direction:column;gap:.75rem}
@@ -113,10 +128,22 @@
 
   <div class="ctr-section-intro"><h2>More context. A clearer next step.</h2><p>Useful insight for players and families, built on eligible recorded singles results.</p></div>
   <div class="ctr-intro-features">
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>What is my next tournament?</h3><p>Explore event types for your ball level, from beginner and school events to Wilson and TSA options. Use development guidance to plan with your coach, then check event dates and entry rules.</p></section>
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow 12 months of saved rating history and the recorded singles results behind changes in playing strength, where evidence is available.</p></section>
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p></section>
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Search by name and select one eligible published player to see their available rating and confidence. Compare playing strength where ratings share a comparable scale.</p></section>
+    <details class="ctr-intro-feature">
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>What is my next tournament?</h3><p>Explore event types for your ball level, from beginner and school events to Wilson and TSA options. Use development guidance to plan with your coach, then check event dates and entry rules.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <div class="ctr-feature-details"><p>Start with your current rated ball level in My Tennis. The pathway brings together your saved ball-level rating and eligible published singles participation, so you and your coach can discuss the next event types to explore.</p><p>Progression benchmarks need suitable, comparable evidence. They are guidance for that conversation, not automatic promotion or entry approval. Always check the event’s age, ball-level, nomination and entry requirements before registering.</p></div>
+    </details>
+    <details class="ctr-intro-feature">
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow 12 months of saved rating history and the recorded singles results behind changes in playing strength, where evidence is available.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <div class="ctr-feature-details"><p>Your history follows the ball level of your latest saved rating across the available monthly snapshots. Select a month to review its estimate and the eligible evidence behind it. Months without enough evidence may have no rating.</p><p>Read the curve alongside confidence, result dates and comparison-group context. A change in opponents or comparison group can affect an estimate; a higher number alone does not prove improvement, and ratings from different ball levels are not interchangeable.</p></div>
+    </details>
+    <details class="ctr-intro-feature">
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <div class="ctr-feature-details"><p>CTR is an estimate of playing strength from eligible recorded evidence. Check the saved update date and confidence label together with the number: sparse or older evidence needs more care, and confidence is not a guarantee of accuracy.</p><p>A provisional within-group estimate is not calibrated against other groups. Missing or non-comparable evidence may leave a rating or position unavailable. Buying Player Plus does not create results, guarantee a rating, or change tournament rankings or selection.</p></div>
+    </details>
+    <details class="ctr-intro-feature">
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Search by name and select one eligible published player to see their available rating and confidence. Compare playing strength where ratings share a comparable scale.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <div class="ctr-feature-details"><p>Use the eligible-player lookup to select the person you mean and review their available published rating and confidence. It gives context for preparation; it does not predict a match result or reveal their private rating history.</p><p>Compare only ratings on the same comparable scale. A local or disconnected estimate cannot be compared directly with a player in another group, and some players may have no available rating. Opponent lookup does not link that player to your account or grant access to private records.</p></div>
+    </details>
   </div>
 
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">

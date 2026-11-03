@@ -84,9 +84,10 @@
   .event-date { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; margin: 0; min-width: 0; }
   .event-date dt { color: #6f6b7d; font-size: .84rem; font-weight: 600; margin: 0; }
   .event-date dd { margin: 0; }
-  .event-date-value { border-radius: .35rem; display: inline-block; font-size: .78rem; font-weight: 700; line-height: 1.3; padding: .35rem .65rem; }
-  .start_date, .end_date { background: #dff7e9; color: #28c76f; }
-  .deadline { background: #fff0e1; color: #ff9f43; }
+  .event-date-value { border: 1px solid transparent; border-radius: .45rem; display: inline-block; font-size: .78rem; font-weight: 700; line-height: 1.4; padding: .35rem .65rem; }
+  .home-layout .event-date-value.start_date { background: #e7f0ff; border-color: #c4d8f7; color: #174575; }
+  .home-layout .event-date-value.end_date { background: #edf1f6; border-color: #d0dce8; color: #243e59; }
+  .home-layout .event-date-value.deadline { background: #fff0dc; border-color: #f4cc95; color: #874600; }
   .deadline-date { grid-column: 1 / -1; }
   .event-card-footer { align-items: center; display: flex; justify-content: space-between; margin-top: 1rem; }
   .event-card .buttons { position: relative; }
@@ -102,11 +103,17 @@
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
   .ranking-link:hover .ranking-name { color: #14796e; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
-  .home-ctr { align-items: center; background: linear-gradient(120deg, #172e45, #0e5360); border-radius: .8rem; color: #fff; display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; padding: 1.35rem; }
-  .home-layout .home-ctr h2 { color: #fff !important; }
-  .home-ctr p { color: #e2f2f1; margin: 0; }
-  .home-ctr-copy { flex: 1 1 16rem; min-width: 0; }
-  .home-layout .home-ctr .btn { align-items: center; display: inline-flex; justify-content: center; min-height: 44px !important; white-space: normal; }
+  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 0%, rgba(51,103,157,.22), transparent 60%), linear-gradient(115deg, #172e45, #102940); border: 1px solid rgba(127,173,220,.22); border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr) auto; isolation: isolate; overflow: hidden; padding: 1.45rem 1.65rem; position: relative; }
+  .home-ctr::after { background: linear-gradient(90deg, transparent calc(50% - 1px), #fff calc(50% - 1px), #fff calc(50% + 1px), transparent calc(50% + 1px)), linear-gradient(0deg, transparent 24%, #fff 24%, #fff calc(24% + 2px), transparent calc(24% + 2px), transparent 74%, #fff 74%, #fff calc(74% + 2px), transparent calc(74% + 2px)); border: 2px solid #fff; content: ''; height: 17rem; opacity: .1; pointer-events: none; position: absolute; right: 3rem; top: -4rem; transform: rotate(-22deg); width: 10rem; z-index: -1; }
+  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.2vw, 2rem); font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-bottom: .65rem !important; }
+  .home-ctr h2 span { color: #ffb45b; }
+  .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
+  .home-ctr-copy { min-width: 0; }
+  .home-ctr [data-player-plus-coming-soon] { align-items: center; background: rgba(255,180,91,.12) !important; border: 1px solid rgba(255,180,91,.65); color: #ffbd70 !important; display: inline-flex; font-size: .7rem !important; font-weight: 800; gap: .45rem; letter-spacing: .08em; padding: .4rem .7rem !important; text-transform: uppercase; }
+  .home-ctr [data-player-plus-coming-soon]::before { background: currentColor; border-radius: 50%; content: ''; height: .35rem; width: .35rem; }
+  .home-layout .home-ctr .btn { align-items: center; background: #ffab45 !important; border: 1px solid #ffbd70 !important; border-radius: .6rem; box-shadow: 0 .3rem .8rem rgba(8,30,59,.2); color: #102a4a !important; display: inline-flex; font-weight: 800 !important; gap: .15rem; justify-content: center; min-height: 48px !important; padding: .8rem 1.1rem; transition: background-color .2s ease, box-shadow .2s ease; white-space: normal; }
+  .home-layout .home-ctr .btn:hover { background: #ffc077 !important; box-shadow: 0 .4rem 1rem rgba(8,30,59,.3); }
+  .home-layout .home-ctr .btn:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
 
   @media (max-width: 991.98px) {
     .home-controls { grid-template-columns: 1fr; }
@@ -118,6 +125,9 @@
     .home-layout { padding-top: 5rem; }
   }
   @media (max-width: 767.98px) {
+    .home-ctr { gap: 1.1rem; grid-template-columns: minmax(0, 1fr); padding: 1.4rem; }
+    .home-ctr::after { right: -2rem; }
+    .home-layout .home-ctr .btn { justify-self: start; }
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
     .home-controls { min-width: 0; padding: .8rem; }
@@ -149,7 +159,7 @@
     <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
       <div class="home-ctr-copy">
         <x-player-plus-coming-soon class="mb-2" />
-        <h2 class="h4 mb-1" id="home-ctr-title">Discover CTR Ratings</h2>
+        <h2 class="h4 mb-1" id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
         <p>Player Plus · What should I play next? Follow your rating and progress, check an eligible opponent’s rating, and explore the pathway from Red Ball to Yellow Ball and TSA events.</p>
       </div>
       <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Ratings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
