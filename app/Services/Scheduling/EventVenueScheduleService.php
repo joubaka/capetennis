@@ -1593,14 +1593,18 @@ final class EventVenueScheduleService
 
     private function isEarlier(array $candidate, array $best, array $nodes): bool
     {
+        $left = $nodes[$candidate['id']];
+        $right = $nodes[$best['id']];
+        $leftOrder = $left['fallback_order_key'] ?? $candidate['id'];
+        $rightOrder = $right['fallback_order_key'] ?? $best['id'];
         if (! empty($candidate['day_batch'])) {
-            return ([$candidate['time']->timestamp, $candidate['rank_penalty'] ?? 0, $candidate['fairness'], $candidate['draw_priority'], $candidate['tie_priority'] ?? 1, count($candidate['venue_changes'] ?? []), $nodes[$candidate['id']]['play_order'], $candidate['id']]
-                <=> [$best['time']->timestamp, $best['rank_penalty'] ?? 0, $best['fairness'], $best['draw_priority'], $best['tie_priority'] ?? 1, count($best['venue_changes'] ?? []), $nodes[$best['id']]['play_order'], $best['id']]) < 0;
+            return ([$candidate['time']->timestamp, $candidate['rank_penalty'] ?? 0, $candidate['fairness'], $candidate['draw_priority'], $candidate['tie_priority'] ?? 1, count($candidate['venue_changes'] ?? []), $left['play_order'], $leftOrder]
+                <=> [$best['time']->timestamp, $best['rank_penalty'] ?? 0, $best['fairness'], $best['draw_priority'], $best['tie_priority'] ?? 1, count($best['venue_changes'] ?? []), $right['play_order'], $rightOrder]) < 0;
         }
         return ([$candidate['tie_priority'] ?? 1, $candidate['rank_penalty'] ?? 0, count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
-            $nodes[$candidate['id']]['play_order'], $candidate['id']]
+            $left['play_order'], $leftOrder]
             <=> [$best['tie_priority'] ?? 1, $best['rank_penalty'] ?? 0, count($best['venue_changes'] ?? []), $best['time']->timestamp, $best['fairness'], $nodes[$best['id']]['wave'],
-                $nodes[$best['id']]['play_order'], $best['id']]) < 0;
+                $right['play_order'], $rightOrder]) < 0;
     }
 
     public function programmeFixtureRounds(Draw $draw): array

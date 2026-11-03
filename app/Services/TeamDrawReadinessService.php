@@ -14,7 +14,7 @@ class TeamDrawReadinessService
         private TeamTieValidationService $validator,
     ) {}
 
-    public function preview(Collection $teams, ?TeamEventFormat $format, int $openingRound = 1): array
+    public function preview(Collection $teams, ?TeamEventFormat $format, int $openingRound = 1, array $tieOrder = []): array
     {
         $warnings = [];
         if ($teams instanceof \Illuminate\Database\Eloquent\Collection) {
@@ -40,7 +40,7 @@ class TeamDrawReadinessService
         }
         $rounds = [];
         $tieCount = $rubberCount = $missingSlots = $byeCount = 0;
-        $schedule = $teams->count() >= 2 ? $this->generator->buildRoundRobinSchedule($teams) : [];
+        $schedule = $teams->count() >= 2 ? $this->generator->buildRoundRobinSchedule($teams, 1, $tieOrder) : [];
         $openingChoices = [];
         foreach ($schedule as $number => $matches) {
             $playingIds = collect($matches)->flatten()->pluck('id')->all();
@@ -48,7 +48,7 @@ class TeamDrawReadinessService
             foreach ($teams->whereNotIn('id', $playingIds) as $team) $labels[] = $team->name.' — bye';
             $openingChoices[] = ['value' => $number, 'label' => implode('; ', $labels)];
         }
-        if ($teams->count() >= 2) $schedule = $this->generator->buildRoundRobinSchedule($teams, $openingRound);
+        if ($teams->count() >= 2) $schedule = $this->generator->buildRoundRobinSchedule($teams, $openingRound, $tieOrder);
         foreach ($schedule as $roundNumber => $matches) {
             $ties = [];
             $playing = [];
@@ -121,12 +121,12 @@ class TeamDrawReadinessService
                     ];
                 }
                 $tieCount++;
-                $ties[] = ['home_team' => ['id' => $home->id, 'name' => $home->name],
+                $ties[] = ['pair_key' => $this->generator->pairKey($home, $away), 'home_team' => ['id' => $home->id, 'name' => $home->name],
                     'away_team' => ['id' => $away->id, 'name' => $away->name], 'rubbers' => $rubbers];
             }
             $byes = $teams->whereNotIn('id', $playing)->map(fn ($team) => ['id' => $team->id, 'name' => $team->name])->values()->all();
             $byeCount += count($byes);
-            $rounds[] = ['round_nr' => $roundNumber, 'ties' => $ties, 'byes' => $byes];
+            $rounds[] = ['round_nr' => $roundNumber, 'source_round' => ($roundNumber + $openingRound - 2) % count($schedule) + 1, 'ties' => $ties, 'byes' => $byes];
         }
         if ($missingSlots > 0) {
             $warnings[] = "{$missingSlots} player slots cannot be assigned from the current rosters.";

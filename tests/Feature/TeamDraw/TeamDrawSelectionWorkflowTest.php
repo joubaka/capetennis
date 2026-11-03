@@ -63,6 +63,103 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         return $this->actingAs($this->admin)->postJson(route($preview ? 'headoffice.previewTeamDraw' : 'headoffice.createSingleDraw.team', $this->event), ['batch_key' => $key, 'draws' => $items]);
     }
 
+    private function fourBoysTeams(): array
+    {
+        foreach (['North', 'South'] as $name) {
+            $team = Team::factory()->create(['category_event_id' => $this->categories['Boys'], 'name' => $name]);
+            NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 1, 'name' => $name, 'surname' => 'Player', 'pay_status' => 0]);
+        }
+        return $this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => 1];
+    }
+
+    public function test_tie_order_survives_opening_rotation_deferred_generation_and_scheduling(): void
+    {
+        $item = $this->fourBoysTeams();
+        $base = $this->request([$item], true)->assertOk()->json('readiness.rounds');
+        $order = array_reverse(array_column($base[1]['ties'], 'pair_key'));
+        $chosen = $item + ['opening_round' => 2, 'tie_order' => [2 => $order]];
+        $preview = $this->request([$chosen, $item], true)->assertOk()->json('draws');
+        $this->assertSame($order, array_column($preview[0]['readiness']['rounds'][0]['ties'], 'pair_key'));
+        $this->assertSame(array_column($base[0]['ties'], 'pair_key'), array_column($preview[1]['readiness']['rounds'][0]['ties'], 'pair_key'));
+        $this->assertSame(2, $preview[0]['readiness']['rounds'][0]['source_round']);
+        $payload = ['draws' => [$chosen], 'batch_key' => 'ordered-ties', 'guided_setup' => 1];
+        $url = route('headoffice.createSingleDraw.team', $this->event);
+        $created = $this->postJson($url, $payload)->assertOk();
+        $draw = Draw::findOrFail($created->json('draw.id'));
+        $this->assertSame($order, $draw->team_draw_selection['tie_order'][2]);
+        $this->assertSame(0, $draw->teamTies()->count());
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('draw.id', $draw->id);
+        $this->postJson(route('draw.guide.generate-team', [$this->event, $draw]), ['confirm_generation' => 1])->assertOk();
+        $ties = $draw->teamTies()->where('round_nr', 1)->orderBy('tie_nr')->get();
+        $this->assertSame($order, $ties->map(fn ($tie) => min($tie->home_team_id, $tie->away_team_id).'-'.max($tie->home_team_id, $tie->away_team_id))->all());
+        foreach ($ties as $index => $tie) $this->assertSame($index + 1, $tie->rubbers()->firstOrFail()->tie_nr);
+        // Force IDs across a lexical boundary: the scheduler must use tie order, not ID text.
+        foreach ($ties as $index => $tie) {
+            $original = $tie->rubbers()->firstOrFail();
+            $replacement = $original->replicate()->forceFill(['id' => [999999, 1000000][$index]]);
+            $slots = $original->fixturePlayers->map(fn ($slot) => $slot->replicate());
+            $original->fixturePlayers()->delete();
+            $original->delete();
+            $replacement->save();
+            foreach ($slots as $slot) $slot->forceFill(['team_fixture_id' => $replacement->id])->save();
+        }
+        $otherResponse = $this->request([$this->item('Singles', [$this->categories['Girls']]) + ['players_per_team' => 1]], false, 'competing-draw')->assertOk();
+        $otherDraw = Draw::findOrFail($otherResponse->json('draw.id'));
+        $venue = \App\Models\Venue::forceCreate(['name' => 'One court']);
+        $this->event->venues()->attach($venue->id, ['num_courts' => 1]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 1]);
+        $otherDraw->venues()->attach($venue->id, ['num_courts' => 1]);
+        $nodes = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->nodes($draw, 'team_ready');
+        $this->assertSame(1, $nodes['team:999999']['tie_order']);
+        $this->assertSame(2, $nodes['team:1000000']['tie_order']);
+        $schedule = app(\App\Services\Scheduling\EventVenueScheduleService::class)->preview($this->event->fresh(), [
+            'draw_ids' => [$draw->id, $otherDraw->id], 'venue_ids' => [$venue->id], 'start' => '2026-11-06 08:00:00', 'end' => '2026-11-06 18:00:00',
+            'duration' => 60, 'court_gap' => 0, 'player_rest' => 0,
+        ]);
+        $rows = collect($schedule['matches'])->where('draw_id', $draw->id)->sortBy('scheduled_at')->values();
+        $this->assertSame('team:'.$ties[0]->rubbers()->firstOrFail()->id, $rows[0]['fixture_key'], json_encode($rows->map(fn ($row) => array_intersect_key($row, array_flip(['fixture_key', 'scheduled_at', 'tie_nr', 'tie_order', 'wave', 'play_order', 'participants'])))->all()));
+        $this->assertSame('team:'.$ties[1]->rubbers()->firstOrFail()->id, $rows[1]['fixture_key']);
+        $this->assertDatabaseMissing('team_fixtures', ['draw_id' => $draw->id, 'scheduled' => 1]);
+        $changed = $chosen; $changed['tie_order'][2] = array_reverse($order);
+        $this->postJson($url, ['draws' => [$changed], 'batch_key' => 'ordered-ties', 'guided_setup' => 1])->assertUnprocessable();
+        $this->assertSame(2, Draw::count());
+        $this->assertSame(6, $draw->teamTies()->count());
+    }
+
+    public function test_invalid_or_foreign_tie_orders_are_rejected_atomically(): void
+    {
+        $item = $this->fourBoysTeams();
+        $base = $this->request([$item], true)->assertOk()->json('readiness.rounds');
+        $keys = array_column($base[0]['ties'], 'pair_key');
+        $foreign = Team::factory()->create();
+        foreach ([
+            [1 => [$keys[0], $keys[0]]], [1 => [$keys[0]]], [1 => [$keys[0], '999999-'.$foreign->id]],
+            [1 => array_column($base[1]['ties'], 'pair_key')], [99 => $keys], ['bad' => $keys],
+            [1 => ['not-a-pair', $keys[0]]],
+        ] as $invalid) {
+            $this->request([$item, $item + ['tie_order' => $invalid]])->assertUnprocessable();
+            $this->assertDatabaseCount('draws', 0);
+            $this->assertDatabaseCount('team_ties', 0);
+        }
+    }
+
+    public function test_appended_rounds_do_not_change_original_rotated_tie_preferences(): void
+    {
+        $item = $this->fourBoysTeams();
+        $base = $this->request([$item], true)->assertOk()->json('readiness.rounds');
+        $order = array_reverse(array_column($base[0]['ties'], 'pair_key'));
+        $created = $this->request([$item + ['opening_round' => 2, 'tie_order' => [1 => $order]]])->assertOk();
+        $draw = Draw::findOrFail($created->json('draw.id'));
+        $adapter = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class);
+        $before = collect($adapter->nodes($draw, 'team_ready'))->where('round', 3)->map(fn ($node) => [$node['tie_order'], $node['fallback_order_key']])->all();
+        $this->assertSame([1, 2], array_column(array_values($before), 0));
+        $appended = TeamFixture::create(['draw_id' => $draw->id, 'round_nr' => 4, 'tie_nr' => 1, 'match_nr' => 1, 'rubber_sequence' => 1, 'fixture_type' => 1, 'match_status' => 0]);
+        $after = $adapter->nodes($draw, 'team_ready');
+        $this->assertSame($before, collect($after)->where('round', 3)->map(fn ($node) => [$node['tie_order'], $node['fallback_order_key']])->all());
+        $this->assertNull($after['team:'.$appended->id]['tie_order']);
+        $this->assertArrayNotHasKey('fallback_order_key', $after['team:'.$appended->id]);
+    }
+
     public function test_opening_round_matches_preview_and_guided_generation_and_retains_every_pair_once(): void
     {
         foreach (['North', 'South'] as $name) {

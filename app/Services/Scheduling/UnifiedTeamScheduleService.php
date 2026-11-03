@@ -59,7 +59,12 @@ final class UnifiedTeamScheduleService
             if ($source) $sourceDependencies = $source->fixtures()->pluck('team_fixtures.id')->map(fn ($id) => 'team:'.$id)->all();
         }
         $nodes = [];
+        $tiePreferences = [];
+        foreach ($draw->team_draw_selection['tie_order'] ?? [] as $order) {
+            foreach ($order as $index => $pairKey) $tiePreferences[$pairKey] = $index + 1;
+        }
         foreach ($fixtures as $fixture) {
+            $pairKey = $fixture->teamTie ? min($fixture->teamTie->home_team_id, $fixture->teamTie->away_team_id).'-'.max($fixture->teamTie->home_team_id, $fixture->teamTie->away_team_id) : null;
             $teams = array_filter([$fixture->teamTie?->home_team_id, $fixture->teamTie?->away_team_id]);
             $regions = array_filter([$fixture->region1, $fixture->region2]);
             $dependencies = $fixtures->filter(function ($earlier) use ($fixture, $teams, $regions, $progression) {
@@ -77,10 +82,23 @@ final class UnifiedTeamScheduleService
                 'round' => max(1, (int) $fixture->round_nr), 'match' => $fixture->match_nr ?: $fixture->rubber_sequence,
                 'rank' => app(TeamFixtureOrder::class)->rank($fixture),
                 'play_order' => (int) ($fixture->rubber_sequence ?: $fixture->match_nr ?: $fixture->id),
+                'tie_order' => $tiePreferences[$pairKey] ?? null,
                 'dependencies' => $dependencies, 'participants' => $this->participants($fixture),
                 'participant_names' => [$home, $away], 'participant_group' => null,
                 'automatic' => false, 'played' => $this->protected($fixture),
             ];
+        }
+        // Reuse this cohort's existing fallback slots so other draws retain the
+        // same priority positions, while selected ties have a total ordering.
+        $cohorts = [];
+        foreach ($nodes as $key => $node) {
+            if ($node['tie_order'] !== null) $cohorts[$node['round'].'-'.$node['play_order']][] = $key;
+        }
+        foreach ($cohorts as $keys) {
+            $slots = $keys;
+            sort($slots, SORT_STRING);
+            usort($keys, fn ($left, $right) => [$nodes[$left]['tie_order'], $left] <=> [$nodes[$right]['tie_order'], $right]);
+            foreach ($keys as $index => $key) $nodes[$key]['fallback_order_key'] = $slots[$index];
         }
         return $nodes;
     }

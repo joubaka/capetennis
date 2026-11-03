@@ -1225,6 +1225,9 @@ class HeadOfficeController extends Controller
     abort_unless((int) $event->eventTypeModel?->type === \App\Models\EventType::TEAM, 403, 'Team draws require a team event.');
     $rules = [
       'opening_round' => 'sometimes|integer|min:1|max:100',
+      'tie_order' => 'sometimes|array|max:100',
+      'tie_order.*' => 'array|min:1|max:100',
+      'tie_order.*.*' => 'required|string|max:40|regex:/^[1-9][0-9]*-[1-9][0-9]*$/',
       'players_per_team' => 'nullable|integer|min:1|max:12',
       'drawName' => 'required|string|max:255',
       'draw_type_id' => ['required', 'integer', Rule::exists('draw_types', 'id')->where('type', 'team')],

@@ -92,9 +92,11 @@ class TeamDrawSelectionService
         $effective = new TeamEventFormat($snapshot);
         $effective->setRelation('rubbers', collect($snapshot['rubbers'])->map(fn ($r) => new TeamEventFormatRubber($r)));
         $openingRound = (int) ($item['opening_round'] ?? 1);
-        $preview = $this->readiness->preview($teams, $effective, $openingRound);
+        $tieOrder = $item['tie_order'] ?? [];
+        $preview = $this->readiness->preview($teams, $effective, $openingRound, $tieOrder);
         $selection['opening_round'] = $openingRound;
         $selection['team_order'] = $teams->pluck('id')->all();
+        if ($tieOrder) $selection['tie_order'] = $tieOrder;
         if ($playerCount !== null) $selection['players_per_team'] = $playerCount;
         $preview['warnings'] = array_values(array_unique(array_merge($preview['warnings'], $errors)));
         $preview['ready'] = !$preview['warnings'];

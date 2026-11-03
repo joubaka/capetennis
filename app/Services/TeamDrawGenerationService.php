@@ -64,7 +64,7 @@ class TeamDrawGenerationService
 
         $order = $draw->team_draw_selection['team_order'] ?? [];
         if ($order) $teams = $teams->sortBy(fn ($team) => array_search($team->id, $order, true))->values();
-        $schedule = $this->buildRoundRobinSchedule($teams, (int) ($draw->team_draw_selection['opening_round'] ?? 1));
+        $schedule = $this->buildRoundRobinSchedule($teams, (int) ($draw->team_draw_selection['opening_round'] ?? 1), $draw->team_draw_selection['tie_order'] ?? []);
 
         return DB::transaction(function () use ($draw, $schedule, $format, $allowOverride, $captureSnapshot) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -136,7 +136,7 @@ class TeamDrawGenerationService
      * @param  Collection<int, Team> $teams
      * @return array<int, array<int, array{0: Team, 1: Team}>>
      */
-    public function buildRoundRobinSchedule(Collection $teams, int $openingRound = 1): array
+    public function buildRoundRobinSchedule(Collection $teams, int $openingRound = 1, array $tieOrder = []): array
     {
         $list      = $teams->values()->all();
         $teamCount = count($list);
@@ -186,6 +186,18 @@ class TeamDrawGenerationService
             array_unshift($ring, array_pop($ring));
         }
 
+        foreach ($tieOrder as $round => $keys) {
+            if (!ctype_digit((string) $round) || !isset($schedule[$round]) || !is_array($keys) || !array_is_list($keys)) {
+                throw new \InvalidArgumentException('Choose a valid tie order within an available round.');
+            }
+            $pairs = [];
+            foreach ($schedule[$round] as $pair) $pairs[$this->pairKey($pair[0], $pair[1])] = $pair;
+            if (count($keys) !== count($pairs) || count(array_unique($keys, SORT_REGULAR)) !== count($pairs)
+                || array_filter($keys, fn ($key) => !is_string($key) || !array_key_exists($key, $pairs))) {
+                throw new \InvalidArgumentException('Include every tie in its original round exactly once.');
+            }
+            $schedule[$round] = array_map(fn ($key) => $pairs[$key], $keys);
+        }
         if ($openingRound < 1 || $openingRound > count($schedule)) {
             throw new \InvalidArgumentException('Choose an available opening round for these teams.');
         }
@@ -196,5 +208,10 @@ class TeamDrawGenerationService
             ));
         }
         return $schedule;
+    }
+
+    public function pairKey(Team $home, Team $away): string
+    {
+        return min($home->id, $away->id).'-'.max($home->id, $away->id);
     }
 }

@@ -84,6 +84,7 @@
   var creationButtonText = '';
   var previewPending = false;
   var openingRounds = {};
+  var tieOrders = {};
   function pairingKey(item) {
     return [item.draw_type_id, item.category_ids.slice().map(String).sort().join(','), item.format_id || '', item.players_per_team || ''].join('|');
   }
@@ -91,6 +92,7 @@
     var playerCount = document.getElementById('players_per_team');
     if (playerCount && playerCount.value) item.players_per_team = playerCount.value;
     item.opening_round = openingRounds[pairingKey(item)] || 1;
+    if (tieOrders[pairingKey(item)]) item.tie_order = tieOrders[pairingKey(item)];
     return item;
   }
 
@@ -461,15 +463,45 @@
       ' rubbers, ' + readiness.bye_count + ' byes.', 'fw-semibold mb-2');
     (readiness.warnings || []).forEach(function (warning) { previewLine(container, warning, 'text-warning mb-1'); });
     if (readiness.ready) previewLine(container, 'All required player slots are assigned. Review before publication.', 'text-success mb-2');
+    if (item && (readiness.rounds || []).some(function (round) { return round.ties.length > 1; })) {
+      previewLine(container, 'Open a round below to move its ties earlier or later for scheduling.', 'small text-muted mb-2');
+    }
     (readiness.rounds || []).forEach(function (round) {
       var detail = document.createElement('details');
       var summary = document.createElement('summary');
       summary.textContent = 'Round ' + round.round_nr;
       detail.appendChild(summary);
       detail.className = 'border rounded p-2 mt-2';
+      if (item && tieOrders[pairingKey(item)] && tieOrders[pairingKey(item)][round.source_round]) detail.open = true;
       (round.byes || []).forEach(function (bye) { previewLine(detail, bye.name + ' — bye', 'text-muted small'); });
-      (round.ties || []).forEach(function (tie) {
-        previewLine(detail, tie.home_team.name + ' vs ' + tie.away_team.name, 'fw-semibold mt-2');
+      (round.ties || []).forEach(function (tie, index) {
+        var heading = document.createElement('div');
+        heading.className = 'd-flex flex-wrap align-items-center gap-2 mt-2';
+        previewLine(heading, (index + 1) + '. ' + tie.home_team.name + ' vs ' + tie.away_team.name, 'fw-semibold');
+        if (item && round.ties.length > 1) {
+          [-1, 1].forEach(function (direction) {
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-sm btn-outline-secondary';
+            button.textContent = direction < 0 ? 'Move earlier' : 'Move later';
+            button.setAttribute('data-tie-move', String(direction));
+            button.setAttribute('aria-label', button.textContent + ': ' + tie.home_team.name + ' vs ' + tie.away_team.name);
+            button.disabled = index + direction < 0 || index + direction >= round.ties.length;
+            button.addEventListener('click', function (event) {
+              event.preventDefault(); event.stopPropagation();
+              if (creationPending || previewPending || button.disabled) return;
+              var key = pairingKey(item);
+              var order = round.ties.map(function (entry) { return entry.pair_key; });
+              var swap = order[index]; order[index] = order[index + direction]; order[index + direction] = swap;
+              if (!tieOrders[key]) tieOrders[key] = {};
+              tieOrders[key][round.source_round] = order;
+              batchKey = null; previewRevision++;
+              $('#previewTeamDrawButton').trigger('click');
+            });
+            heading.appendChild(button);
+          });
+        }
+        detail.appendChild(heading);
         (tie.rubbers || []).forEach(function (rubber) {
           previewLine(detail, rubber.sequence + '. ' + rubber.name + ' (' + rubber.rubber_code.replace(/_/g, ' ') + ')', 'small');
           var home = (rubber.slots || []).map(function (slot) { return slot.team1_name || 'Missing player'; }).join(' + ');
@@ -479,6 +511,9 @@
       });
       container.appendChild(detail);
     });
+    if (item && (readiness.rounds || []).some(function (round) { return round.ties.length > 1; })) {
+      previewLine(container, 'Move ties earlier or later to set the scheduling preference within each round. Court availability, player rest and fixed matches still apply.', 'small text-muted mt-2');
+    }
   }
 
   $('#previewTeamDrawButton').on('click', function () {
@@ -497,7 +532,7 @@
           var section = document.createElement('details'); section.className = 'border rounded p-2 mt-2';
           var summary = document.createElement('summary'); summary.textContent = draw.drawName + (draw.readiness.can_create === false ? ' — needs attention' : '');
           section.appendChild(summary); var body = document.createElement('div'); section.appendChild(body); renderPreview(draw.readiness, body, payload.draws[index]); container.appendChild(section);
-          if (openingRounds[pairingKey(payload.draws[index])]) section.open = true;
+          if (openingRounds[pairingKey(payload.draws[index])] || tieOrders[pairingKey(payload.draws[index])]) section.open = true;
         });
       } else renderPreview(response.readiness, null, payload.draws ? payload.draws[0] : payload);
     })

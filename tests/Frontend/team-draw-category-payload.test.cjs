@@ -3,13 +3,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function submit(type, choices, manualChoices, bulkChoices, chooseOpening, playerCount) {
+function submit(type, choices, manualChoices, bulkChoices, chooseOpening, playerCount, swapTie) {
   let submitHandler;
   let inputHandler;
   let posted;
   let previewHandler;
   const selects = [];
-  function element(tag) { return { tag, children: [], classList: { remove() {} }, setAttribute() {}, replaceChildren() { this.children = []; }, appendChild(child) { this.children.push(child); }, addEventListener(name, handler) { this[name] = handler; } }; }
+  const moveButtons = [];
+  function element(tag) { return { tag, children: [], attributes: {}, classList: { remove() {} }, setAttribute(name, value) { this.attributes[name] = value; }, replaceChildren() { this.children = []; }, appendChild(child) { this.children.push(child); }, addEventListener(name, handler) { this[name] = handler; } }; }
   const previewPanel = element('div');
   const button = {};
   const nameInput = { id: 'drawName', value: '' };
@@ -34,7 +35,7 @@ function submit(type, choices, manualChoices, bulkChoices, chooseOpening, player
   const toggle = { checked: false };
   const otherToggle = { checked: false };
   const bulkToggle = { checked: false };
-  const document = { querySelector() { return null; }, querySelectorAll() { return []; }, createTextNode(text) { return { textContent: text }; }, createElement(tag) { const node = element(tag); if (tag === 'select') selects.push(node); return node; }, getElementById(id) { return id === 'players_per_team' ? { value: playerCount || '' } : id === 'teamDrawPreview' ? previewPanel : id === 'createDrawForm' ? form : (id === 'drawName' ? nameInput : (id === 'manualTeamCategories' ? toggle : (id === 'bulkTeamDraws' ? bulkToggle : otherToggle))); } };
+  const document = { querySelector() { return null; }, querySelectorAll() { return []; }, createTextNode(text) { return { textContent: text }; }, createElement(tag) { const node = element(tag); if (tag === 'select') selects.push(node); if (tag === 'button') moveButtons.push(node); return node; }, getElementById(id) { return id === 'players_per_team' ? { value: playerCount || '' } : id === 'teamDrawPreview' ? previewPanel : id === 'createDrawForm' ? form : (id === 'drawName' ? nameInput : (id === 'manualTeamCategories' ? toggle : (id === 'bulkTeamDraws' ? bulkToggle : otherToggle))); } };
   function $(selector) {
     const chain = { on(name, handler) { if (selector === '#previewTeamDrawButton') previewHandler = handler; return chain; }, trigger() { previewHandler.call({}); return chain; }, off() { return chain; }, toggleClass() { return chain; }, text() { return chain; }, css() { return chain; }, prop() { return chain; },
       empty() { return chain; }, addClass() { return chain; }, removeClass() { return chain; },
@@ -45,7 +46,14 @@ function submit(type, choices, manualChoices, bulkChoices, chooseOpening, player
     posted = payload;
     const chain = { done(handler) {
       if (url === '/preview') {
-        const readiness = item => ({ opening_round: item.opening_round, opening_round_choices: [{ value: 1, label: 'East vs West; North vs South' }, { value: 2, label: 'East vs North; West vs South' }], rounds: [] });
+        const readiness = item => {
+          const ties = [
+            { pair_key: '1-2', home_team: { name: 'East' }, away_team: { name: 'West' }, rubbers: [] },
+            { pair_key: '3-4', home_team: { name: 'North' }, away_team: { name: 'South' }, rubbers: [] }
+          ];
+          const ordered = item.tie_order?.[1] ? item.tie_order[1].map(key => ties.find(tie => tie.pair_key === key)) : ties;
+          return { opening_round: item.opening_round, opening_round_choices: [{ value: 1, label: 'East vs West; North vs South' }, { value: 2, label: 'East vs North; West vs South' }], rounds: swapTie ? [{ round_nr: 1, source_round: 1, ties: ordered, byes: [] }] : [] };
+        };
         handler({ readiness: readiness(payload.draws ? payload.draws[0] : payload), draws: payload.draws?.map(item => ({ drawName: item.drawName, readiness: readiness(item) })) });
       }
       return chain;
@@ -66,6 +74,17 @@ function submit(type, choices, manualChoices, bulkChoices, chooseOpening, player
     previewHandler.call({});
     assert.equal(selects.at(-(bulkChoices ? bulkChoices.categories.length : 1)).children[1].selected, true);
   }
+  if (swapTie) {
+    previewHandler.call({});
+    const lastDrawButtonCount = bulkChoices ? 4 : 0;
+    const earlier = moveButtons.at(-(lastDrawButtonCount + 2));
+    assert.equal(earlier.attributes['aria-label'], 'Move earlier: North vs South');
+    earlier.click({ preventDefault() {}, stopPropagation() {} });
+    assert.equal(moveButtons.at(-(lastDrawButtonCount + 2)).attributes['aria-label'], 'Move earlier: East vs West');
+    assert.equal(moveButtons.at(-(lastDrawButtonCount + 4)).disabled, true);
+    previewHandler.call({});
+    assert.equal(moveButtons.at(-(lastDrawButtonCount + 2)).attributes['aria-label'], 'Move earlier: East vs West');
+  }
   submitHandler({ preventDefault() {}, stopImmediatePropagation() {} });
   return posted ? JSON.parse(JSON.stringify(posted)) : undefined;
 }
@@ -73,6 +92,21 @@ function submit(type, choices, manualChoices, bulkChoices, chooseOpening, player
 test('changing opening pairings re-previews, retains selection and submits chosen round', () => {
   const payload = submit('1', { category_choice: { dataset: { pivotIds: '[11]' } } }, null, null, true);
   assert.equal(payload.opening_round, 2);
+});
+
+test('tie move buttons re-preview and retain the selected full permutation for creation', () => {
+  const payload = submit('1', { category_choice: { dataset: { pivotIds: '[11]' } } }, null, null, true, '6', true);
+  assert.deepEqual(payload.tie_order, { 1: ['3-4', '1-2'] });
+  assert.equal(payload.opening_round, 2);
+});
+
+test('batch tie order changes only its selected category draw', () => {
+  const payload = submit('1', {}, null, {
+    types: [{ value: '1', dataset: { code: 'singles', name: 'Singles' } }],
+    categories: [{ dataset: { name: 'Boys', pivotIds: '[11]' } }, { dataset: { name: 'Girls', pivotIds: '[12]' } }]
+  }, false, '6', true);
+  assert.deepEqual(payload.draws[0].tie_order, { 1: ['3-4', '1-2'] });
+  assert.equal(payload.draws[1].tie_order, undefined);
 });
 
 test('batch retains independent opening choices and applies players per source team to every draw', () => {
