@@ -21,7 +21,7 @@
   @endphp
   @unless($membershipStatusOnly)<x-player-plus-stepper :current="3" />@endunless
   <header class="pp-hero">
-    <p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">@if($canViewRating)Your player views are available below. Check membership status and follow their progress.@elseif($membershipStatusOnly)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before continuing to PayFast.@endif</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
+    <p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">@if($canViewRating)Your player views are available below. Check membership status and follow their progress.@elseif($membershipStatusOnly)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before paying.@endif</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
   </header>
   @if($errors->any())
     <section class="alert alert-danger pp-error-summary" role="alert" aria-labelledby="pp-error-heading"><h2 class="h6" id="pp-error-heading">Please review your checkout details</h2><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></section>
@@ -45,6 +45,7 @@
             <h2 id="pp-plan-heading" tabindex="-1">Choose a plan</h2>
             <p>For {{ $player->full_name }} · One named player</p>
             <button type="button" class="pp-plan-choice" data-plus-choose="annual_recurring"><strong>Annual · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} / year</strong><span>Renews automatically each year until cancelled.</span><span>Continue <span aria-hidden="true">→</span></span></button>
+            <button type="button" class="pp-plan-choice" data-plus-choose="annual"><strong>Wallet · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} for 12 months</strong><span>Once-off payment. No automatic renewal. Available wallet funds: R{{ \App\Services\Performance\PlayerPlusService::amount($walletAvailableCents ?? 0) }}.</span><span>Review wallet payment <span aria-hidden="true">→</span></span></button>
             @if($monthlyEnabled)<button type="button" class="pp-plan-choice" data-plus-choose="monthly"><strong>Monthly · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} / month</strong><span>Renews automatically each month until cancelled.</span><span>Continue <span aria-hidden="true">→</span></span></button>@endif
             <p class="small">Eligible results are needed; buying Plus does not guarantee a rating. <a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></p>
           </section>
@@ -59,6 +60,7 @@
             <p>For {{ $player->full_name }}</p>
             <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} <span>/ player / year</span></p>
             <p class="pp-plan-note">Pay now, then renew automatically each year through PayFast until cancelled. Stop future renewals from My Plus orders; paid access continues until the paid period ends.</p>
+            <button type="button" class="btn btn-outline-primary" data-plus-choose="annual" hidden data-plus-wallet-alternative>Pay once from wallet instead · No automatic renewal</button>
             <fieldset class="pp-consents"><legend>Confirm your purchase</legend>
               <label class="pp-consent" for="pp-annual-confirm"><input id="pp-annual-confirm" type="checkbox" name="confirm" value="1" required @error('confirm') aria-invalid="true" aria-describedby="pp-annual-confirm-error" @enderror><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a> and am buying Player Plus for {{ $player->full_name }}. Ratings or pathway assessments may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
               @error('confirm')<p class="pp-field-error" id="pp-annual-confirm-error">{{ $message }}</p>@enderror
@@ -66,6 +68,27 @@
               @error('recurring_consent')<p class="pp-field-error" id="pp-annual-recurring-error">{{ $message }}</p>@enderror
             </fieldset>
             <button class="btn btn-primary">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</button>
+          </form>
+          <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-plan="annual" aria-labelledby="pp-wallet-heading">
+            @csrf
+            <input type="hidden" name="request_token" value="{{ $token }}">
+            <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
+            <input type="hidden" name="quoted_price_cents" value="{{ $priceCents }}">
+            <input type="hidden" name="plan" value="annual">
+            <input type="hidden" name="payment_method" value="wallet">
+            <button type="button" class="btn btn-outline-primary" data-plus-change-plan hidden>← Change plan</button>
+            <h2 id="pp-wallet-heading" tabindex="-1">Review &amp; pay · Wallet</h2>
+            <p>For {{ $player->full_name }}</p>
+            <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} <span>for 12 months</span></p>
+            <p class="pp-plan-note">Pay once from your wallet. No automatic renewal or future wallet debit. Available wallet funds: <strong>R{{ \App\Services\Performance\PlayerPlusService::amount($walletAvailableCents ?? 0) }}</strong>. Funds reserved for other checkouts are excluded.</p>
+            @if(($walletAvailableCents ?? 0) < $priceCents)<p class="alert alert-info">Your available wallet funds do not cover this purchase. Choose the PayFast plan or add wallet funds before paying.</p>@endif
+            <fieldset class="pp-consents"><legend>Confirm your wallet purchase</legend>
+              <label class="pp-consent" for="pp-wallet-confirm"><input id="pp-wallet-confirm" type="checkbox" name="confirm" value="1" required @error('confirm') aria-invalid="true" aria-describedby="pp-wallet-confirm-error" @enderror><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a> and am buying Player Plus for {{ $player->full_name }}. Ratings may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
+              @error('confirm')<p class="pp-field-error" id="pp-wallet-confirm-error">{{ $message }}</p>@enderror
+              <label class="pp-consent" for="pp-wallet-consent"><input id="pp-wallet-consent" type="checkbox" name="wallet_consent" value="1" required @error('wallet_consent') aria-invalid="true" aria-describedby="pp-wallet-consent-error" @enderror><span>I authorise a once-off R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} debit from my wallet for 12 months. There is no automatic renewal.</span></label>
+              @error('wallet_consent')<p class="pp-field-error" id="pp-wallet-consent-error">{{ $message }}</p>@enderror
+            </fieldset>
+            <button class="btn btn-primary" @disabled(($walletAvailableCents ?? 0) < $priceCents)>Pay from wallet · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</button>
           </form>
           @if($monthlyEnabled)
             <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-monthly-purchase data-plus-plan="monthly" aria-labelledby="pp-monthly-heading">
@@ -88,7 +111,7 @@
               <button class="btn btn-primary">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }}</button>
             </form>
           @else
-            <p class="pp-plan-availability">Monthly purchases are currently unavailable. The annual plan is available above.</p>
+            <p class="pp-plan-availability">Monthly purchases are currently unavailable. Annual PayFast and once-off wallet options are available above.</p>
           @endif
         @else
           <section class="pp-status" aria-label="Purchases paused"><h2>Purchases are paused</h2><p>New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p></section>
@@ -96,13 +119,15 @@
       @endif
     </section>
   </div>
+  <p class="small">To stop a PayFast subscription, open <strong>My Plus orders</strong> from My Profile or your player dashboard, choose the order, then <strong>Stop automatic renewal</strong>. Only the payer can cancel. Paid access continues until expiry. Once-off wallet purchases have no renewal to cancel.</p>
   @if($canViewRating)
     <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
       <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
-      <a class="btn btn-outline-primary" href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
+      <a class="btn btn-outline-primary" data-pathway-navigation href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
     </div></section>
   @endif
   <script src="{{ asset('assets/js/player-plus-stepper.js') }}" defer></script>
+  <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}" defer></script>
   <p class="pp-footer"><a href="{{ route('my.tennis') }}">← Back to My Tennis</a></p>
 </div>
 @endsection

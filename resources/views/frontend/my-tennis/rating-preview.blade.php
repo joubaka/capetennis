@@ -13,14 +13,14 @@
     .plus-preview .plus-chart { width:100%;height:auto;display:block;margin:.5rem 0; }
     .plus-preview .plus-chart-labels { display:flex;justify-content:space-between;font-size:.75rem;color:#536c73; }
     .plus-preview .plus-body { padding:clamp(1.25rem,3vw,2.5rem); }
-    .plus-preview .plus-features { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1.5rem;margin-bottom:1.75rem; }
+    .plus-preview .plus-features { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-bottom:1.75rem; }
     .plus-preview .plus-feature-number { color:#004177;font-size:.75rem;font-weight:700;letter-spacing:.1em;display:block;margin-bottom:.6rem; }
     .plus-preview h3 { font-size:1.05rem;color:#172e45;margin-bottom:.5rem; }
     .plus-preview .plus-features p { font-size:.875rem;line-height:1.6;margin:0;color:#536873; }
     .plus-preview .plus-offer { background:#f1f5fa;border:1px solid #dbe4ef;border-radius:14px;padding:1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1.5rem; }
     .plus-preview .plus-price { color:#172e45;font-size:1.8rem;font-weight:700;line-height:1.3; }
     .plus-preview .plus-price small { font-size:.85rem;font-weight:400;color:#536873; }
-    .plus-preview .plus-cta { background:#004177;color:#fff;border:1px solid #004177;min-height:48px;padding:.8rem 1.25rem;font-weight:700;white-space:normal; }
+    .plus-preview .plus-cta { display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:#004177;color:#fff;border:1px solid #004177;min-height:48px;padding:.8rem 1.25rem;font-weight:700;white-space:normal; }
     .plus-preview .plus-cta:hover,.plus-preview .plus-cta:focus-visible { background:#172e45;color:#fff;border-color:#172e45; }
     .plus-preview .plus-terms { margin-top:1rem;color:#536873;font-size:.8rem;line-height:1.6; }
     .plus-preview summary { cursor:pointer;min-height:44px;display:list-item;padding:.65rem 0;color:#004177;font-weight:600; }
@@ -38,9 +38,9 @@
   <div class="plus-hero">
     <div>
       <span class="plus-eyebrow">Cape Tennis · Player Plus</span>
-      <h2 id="rating-preview-title">Understand their game.<br>Follow their progress.</h2>
-      <p class="plus-intro">How strong is {{ $ratingPlayer->full_name }}'s singles game? How is it changing? Bring their rating, progress and the results behind it into one clear view.</p>
-      <a class="btn plus-cta" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+      <h2 id="rating-preview-title">Know their game.<br>Find their next step.</h2>
+      <p class="plus-intro">What should {{ $ratingPlayer->full_name }} play next? Player Plus helps primary-school players, beginners and their families explore the pathway from Red Ball through Orange, Green and Yellow Ball to TSA events, alongside their rating and progress.</p>
+      <a class="btn plus-cta" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
       <p class="small mt-2 mb-0">Essential tournament information remains free.</p>
     </div>
     <div class="plus-demo">
@@ -61,13 +61,14 @@
   </div>
   <div class="plus-body">
     <div class="plus-features">
-      <div><i class="ti ti-target-arrow plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">01 / UNDERSTAND</span><h3>More than a win or a loss</h3><p>See their saved Cape Tennis Rating (CTR), an estimate of singles playing strength based on eligible results.</p></div>
-      <div><i class="ti ti-chart-line plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">02 / FOLLOW</span><h3>See the longer game</h3><p>Explore 12 months of rating history. Follow changes over time instead of judging progress on one tournament.</p></div>
-      <div><i class="ti ti-list-details plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">03 / EXPLORE</span><h3>Know what’s behind the number</h3><p>Explore recorded singles results, opponents and confidence. See CTR comparisons and Top 10 lists among eligible published series participants.</p></div>
+      <div><i class="ti ti-route plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">01 / PLAN</span><h3>What is my next tournament?</h3><p>Explore event types for their ball level and suggested development steps, including Wilson and TSA options. Plan with their coach, then check event dates and entry rules.</p></div>
+      <div><i class="ti ti-chart-line plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">02 / FOLLOW</span><h3>How am I progressing?</h3><p>Explore 12 months of saved rating history and the recorded singles results behind changes in playing strength.</p></div>
+      <div><i class="ti ti-target-arrow plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">03 / UNDERSTAND</span><h3>What is my rating?</h3><p>See their saved Cape Tennis Rating (CTR), an estimate of singles playing strength, with evidence and confidence labels. Explore their age-group Top 10 and rating position where available.</p></div>
+      <div><i class="ti ti-list-details plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">04 / PREPARE</span><h3>How strong is tomorrow’s opponent?</h3><p>Search by name and select one eligible published player to check their available rating and confidence. Compare playing strength where ratings share a comparable scale.</p></div>
     </div>
     <div class="plus-offer">
       <div><div class="fw-semibold mb-1">Player Plus for {{ $ratingPlayer->full_name }}</div><x-player-plus-pricing /><p class="small mt-1 mb-0">One player. Shared with their linked parents or guardians.</p></div>
-      <a class="btn plus-cta" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+      <a class="btn plus-cta" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
     </div>
     <div class="plus-terms">
       <p class="mb-1">Eligible results are needed for a rating; purchasing Plus does not guarantee one. Ratings can rise or fall and may be provisional or unavailable.</p>

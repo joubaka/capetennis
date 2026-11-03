@@ -29,8 +29,7 @@ class PlayerPlusNotificationsCommand extends Command
         foreach (PlayerPlusNotifications::TYPES as $kind) {
             $query = $kind === 'reconciliation'
                 ? PlayerPlusOrder::whereNotNull('reconciliation_reason')
-                : PlayerPlusOrder::where('status', 'completed')->where('pay_status', true)->where('payfast_paid', true)
-                    ->whereNotNull('activated_at')->whereDoesntHave('mailLogs', fn ($logs) => $logs->where('mail_type', 'player_plus_'.$kind));
+                : PlayerPlusOrder::verifiedSettlement()->whereDoesntHave('mailLogs', fn ($logs) => $logs->where('mail_type', 'player_plus_'.$kind));
             if ($kind === 'renewal') {
                 if (! PlayerPlusService::salesEnabled()) continue;
                 $query->where('term_ends_at', '>', now())->where('term_ends_at', '<=', now()->addDays(14))

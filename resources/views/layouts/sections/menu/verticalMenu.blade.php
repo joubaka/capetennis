@@ -83,6 +83,7 @@ $configData = Helper::appClasses();
         <i class="{{ $menu->icon }}"></i>
         @endisset
         <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
+        @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         @isset($menu->badge)
         <div class="badge bg-label-{{ $menu->badge[0] }} rounded-pill ms-auto">{{ $menu->badge[1] }}</div>
         @endisset
@@ -102,6 +103,7 @@ $configData = Helper::appClasses();
         <i class="{{ $menu->icon }}"></i>
         @endisset
         <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
+        @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         @isset($menu->badge)
         <div class="badge bg-label-{{ $menu->badge[0] }} rounded-pill ms-auto">{{ $menu->badge[1] }}</div>
         @endisset

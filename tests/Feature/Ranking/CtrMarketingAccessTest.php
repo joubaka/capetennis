@@ -18,7 +18,7 @@ class CtrMarketingAccessTest extends TestCase
         config(['cache.default' => 'array']);
         Schema::shouldReceive('hasTable')->andReturn(true);
         foreach ([PlayerPlusService::PRICE_SETTING => '69900', PlayerPlusService::MONTHLY_PRICE_SETTING => '6900',
-            PlayerPlusService::MONTHLY_ENABLED_SETTING => '0'] as $key => $value) {
+            PlayerPlusService::MONTHLY_ENABLED_SETTING => '0', PlayerRatingAccess::COMING_SOON_SETTING => '0'] as $key => $value) {
             Cache::put('site_setting.'.$key, (object) ['value' => $value]);
         }
     }
@@ -54,5 +54,25 @@ class CtrMarketingAccessTest extends TestCase
         foreach (['index', 'player', 'store', 'orders.index', 'orders.show', 'orders.pay', 'orders.stop-renewal'] as $name) {
             $this->assertContains('auth', $routes->getByName('player-plus.'.$name)->gatherMiddleware());
         }
+    }
+
+    public function test_coming_soon_exposes_marketing_without_enabling_sales_or_private_access(): void
+    {
+        Cache::put('site_setting.'.PlayerRatingAccess::SETTING, (object) ['value' => '0']);
+        Cache::put('site_setting.'.PlayerRatingAccess::COMING_SOON_SETTING, (object) ['value' => '1']);
+        $access = app(PlayerRatingAccess::class);
+        $this->assertTrue($access->allowsMarketing(null));
+        $this->assertTrue($access->comingSoon());
+        $this->assertFalse(PlayerPlusService::salesEnabled());
+        $this->assertFalse($access->allowsDiscovery(null));
+        $html = view('frontend.ctr', ['isSuperUser' => false])->render();
+        $this->assertStringContainsString('data-player-plus-coming-soon', $html);
+        $this->assertStringContainsString('Purchases are not open yet.', $html);
+        $this->assertStringNotContainsString('href="'.route('player-plus.index').'"', $html);
+        Cache::put('site_setting.'.PlayerRatingAccess::SETTING, (object) ['value' => '1']);
+        $this->assertFalse($access->comingSoon());
+        $html = view('frontend.ctr', ['isSuperUser' => false])->render();
+        $this->assertStringNotContainsString(' data-player-plus-coming-soon>', $html);
+        $this->assertStringContainsString('Choose a player', $html);
     }
 }

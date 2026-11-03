@@ -80,6 +80,8 @@
 
 <input type="hidden" value="{{ $user->id }}" id="user">
 
+<x-player-plus-renewal-help />
+
 <div class="row">
 
   @if($showDashboardTabs)

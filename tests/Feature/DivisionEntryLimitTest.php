@@ -104,4 +104,56 @@ class DivisionEntryLimitTest extends TestCase
         $this->patch(route('admin.events.category-limit.update', $other), ['entry_limit' => 8])->assertForbidden();
         $this->assertSame(2, (int) $other->fresh()->entry_limit);
     }
+
+    public function test_batch_caps_save_together_and_leave_unsubmitted_categories_unchanged(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        $first = $this->division(2);
+        $second = CategoryEvent::factory()->create(['event_id' => $first->event_id, 'entry_limit' => 3]);
+        $untouched = CategoryEvent::factory()->create(['event_id' => $first->event_id, 'entry_limit' => null]);
+        DB::table('event_admins')->insert(['event_id' => $first->event_id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->patchJson(route('admin.events.category-limits.update', $first->event), ['limits' => [
+            ['category_event_id' => $second->id, 'entry_limit' => 32],
+            ['category_event_id' => $first->id, 'entry_limit' => 16],
+        ]])->assertOk()->assertJsonPath('success', true)->assertJsonCount(2, 'limits');
+        $this->assertSame(16, (int) $first->fresh()->entry_limit);
+        $this->assertSame(32, (int) $second->fresh()->entry_limit);
+        $this->assertNull($untouched->fresh()->entry_limit);
+    }
+
+    public function test_batch_caps_reject_cross_event_invalid_and_duplicate_rows_without_partial_writes(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('super-user');
+        $first = $this->division(2);
+        $foreign = $this->division(3);
+        $second = CategoryEvent::factory()->create(['event_id' => $first->event_id, 'entry_limit' => 4]);
+        $url = route('admin.events.category-limits.update', $first->event);
+        $this->actingAs($admin);
+        foreach ([
+            [],
+            [['category_event_id' => $first->id, 'entry_limit' => 16], ['category_event_id' => $foreign->id, 'entry_limit' => 32]],
+            [['category_event_id' => $first->id, 'entry_limit' => 16], ['category_event_id' => $first->id, 'entry_limit' => 32]],
+            [['category_event_id' => $first->id, 'entry_limit' => 100001]],
+            [['category_event_id' => $first->id, 'entry_limit' => 0]],
+            [['category_event_id' => $first->id, 'entry_limit' => 16], ['category_event_id' => $second->id, 'entry_limit' => 1.5]],
+        ] as $limits) {
+            $this->patchJson($url, ['limits' => $limits])->assertUnprocessable();
+            $this->assertSame(2, (int) $first->fresh()->entry_limit);
+            $this->assertSame(3, (int) $foreign->fresh()->entry_limit);
+            $this->assertSame(4, (int) $second->fresh()->entry_limit);
+        }
+    }
+
+    public function test_batch_caps_require_event_management_authority(): void
+    {
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $first = $this->division(2);
+        $url = route('admin.events.category-limits.update', $first->event);
+        $payload = ['limits' => [['category_event_id' => $first->id, 'entry_limit' => 16]]];
+        $this->actingAs(User::factory()->create())->patchJson($url, $payload)->assertForbidden();
+        $this->actingAs(User::factory()->create()->assignRole('admin'))->patchJson($url, $payload)->assertForbidden();
+        $this->assertSame(2, (int) $first->fresh()->entry_limit);
+    }
 }

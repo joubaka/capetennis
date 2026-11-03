@@ -168,12 +168,15 @@
         @if($selectedPlayer)
         <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
         @endif
-        <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
+        <a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
       </div>
     </header>
   @else
-    <p><a class="btn my-tennis-plus-link" href="{{ route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
+    <p><a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
   @endif
+
+  <x-player-plus-coming-soon class="mb-3" />
+  <x-player-plus-renewal-help />
 
   @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
     <div class="my-tennis-preview-toolbar" data-non-plus-preview-control>
@@ -234,7 +237,7 @@
         @endif
         <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
         <p class="small text-muted mb-2">These are development targets; each tournament has its own entry rules.</p>
-        <a class="btn my-tennis-plus-link align-self-start" href="{{ route('my.tennis.pathway', $selectedPlayer) }}">Explore my tennis pathway <span aria-hidden="true">→</span></a>
+        <a class="btn my-tennis-plus-link align-self-start" data-pathway-navigation href="{{ route('my.tennis.pathway', $selectedPlayer) }}">Explore my tennis pathway <span aria-hidden="true">→</span></a>
       </aside>
     @endif
     @if(($ratingPlayer ?? null) && !($canViewRating ?? false))

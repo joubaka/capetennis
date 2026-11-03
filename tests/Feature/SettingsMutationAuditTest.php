@@ -105,6 +105,19 @@ class SettingsMutationAuditTest extends TestCase
         }
     }
 
+    public function test_coming_soon_toggle_is_super_user_only_and_audited_independently_of_sales(): void
+    {
+        $key = \App\Services\Performance\PlayerRatingAccess::COMING_SOON_SETTING;
+        $this->actingAs(User::factory()->create())->postJson(route('settings.store.single'), ['key' => $key, 'value' => '1'])->assertForbidden();
+        $this->assertDatabaseMissing('site_settings', ['key' => $key]);
+        $this->actingAs($this->admin)->postJson(route('settings.store.single'), ['key' => $key, 'value' => '1'])->assertOk();
+        $this->assertSame('1', SiteSetting::get($key));
+        $this->assertDatabaseMissing('site_settings', ['key' => \App\Services\Performance\PlayerRatingAccess::SETTING]);
+        $event = AuditEvent::where('action', 'settings.updated')->sole();
+        $this->assertSame('1', $event->after[$key]['value']);
+        $this->assertSame($this->admin->id, $event->actor_id);
+    }
+
     public function test_audit_failure_rolls_back_all_values_and_does_not_invalidate_cache(): void
     {
         SiteSetting::set('registration_open', '1', SiteSetting::GROUP_REGISTRATION);

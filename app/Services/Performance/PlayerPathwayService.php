@@ -46,6 +46,11 @@ class PlayerPathwayService
         $benchmark_division = null;
         $wilsonCutoff = $this->validScore(config('pathway.wilson_a_above'));
         $tsaCutoff = $this->validScore(config('pathway.tsa_above'));
+        // Locate the displayed saved badge without claiming a fresh progression assessment.
+        $savedComparable = $current_stage === 'standard' && $score !== null
+            && ($stageRating['comparable'] ?? false) === true && ($stageRating['local'] ?? false) !== true;
+        $currentCompetition = $savedComparable && $wilsonCutoff !== null
+            ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.($score > $wilsonCutoff ? 'A' : 'B')) : null;
         $suggestedDivision = $current_stage === 'standard' && $eligible && $wilsonCutoff !== null ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
         $suggestedCompetition = $suggestedDivision ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.$suggestedDivision) : null;
         $targetKey = $current_stage === 'standard' ? null : $current_stage;
@@ -122,6 +127,7 @@ class PlayerPathwayService
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
             'assessment_available' => $assessmentAvailable,
+            'currentCompetition' => $currentCompetition,
             'benchmarks' => $this->benchmarks(),
         ];
     }
@@ -176,6 +182,7 @@ class PlayerPathwayService
             'wilsonProgress' => [], 'benchmark_division' => null,
             'wilsonCutoff' => (new self)->validScore(config('pathway.wilson_a_above')), 'suggestedDivision' => null,
             'tsaCutoff' => (new self)->validScore(config('pathway.tsa_above')), 'suggestedCompetition' => null,
+            'currentCompetition' => null,
             'benchmarks' => (new self)->benchmarks(),
         ];
     }

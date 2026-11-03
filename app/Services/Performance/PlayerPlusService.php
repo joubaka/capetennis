@@ -3,7 +3,8 @@
 namespace App\Services\Performance;
 
 use App\Domain\Payments\Services\{PaymentOrchestrator, PaymentTransactionService};
-use App\Models\{Player, PlayerPlusMembership, PlayerPlusOrder, PlayerPlusSubscription, SiteSetting, User};
+use App\Models\{Player, PlayerPlusMembership, PlayerPlusOrder, PlayerPlusSubscription, RegistrationOrder, TeamPaymentOrder, SiteSetting, User};
+use App\Support\Audit\AuditWriter;
 use App\Services\Payfast;
 use Illuminate\Support\Facades\{DB, Schema};
 use Illuminate\Validation\ValidationException;
@@ -81,6 +82,70 @@ class PlayerPlusService
     private function reject(string $message): never
     {
         throw ValidationException::withMessages(['membership' => $message]);
+    }
+
+    /** Unreleased reservations remain unavailable, even when their checkout is old. */
+    public function walletAvailableCents(User $payer, bool $lock = false): int
+    {
+        $walletQuery = $payer->wallet();
+        $wallet = ($lock ? $walletQuery->lockForUpdate() : $walletQuery)->first();
+        if (!$wallet) return 0;
+        $reserved = 0;
+        foreach ([RegistrationOrder::class, TeamPaymentOrder::class, PlayerPlusOrder::class] as $model) {
+            if (!Schema::hasTable((new $model)->getTable())) continue;
+            $query = $model::where('user_id', $payer->id);
+            if (!$lock) {
+                $reserved += (int) round((float) $query->where('wallet_debited', false)->sum('wallet_reserved') * 100);
+                continue;
+            }
+            // Lock the payer's entire order range, including rows not yet reserved.
+            foreach ($query->select(['id', 'wallet_reserved', 'wallet_debited'])->lockForUpdate()->cursor() as $order) {
+                if (!$order->wallet_debited) $reserved += (int) round((float) $order->wallet_reserved * 100);
+            }
+        }
+        return max(0, (int) round($wallet->balance * 100) - $reserved);
+    }
+
+    /** Atomic once-off purchase: no provider mandate, handoff or fabricated PayFast receipt. */
+    public function purchaseWithWallet(Player $player, User $payer, string $token, int $quote, string $terms): PlayerPlusOrder
+    {
+        abort_unless(self::salesEnabled() && self::monthlyReady(), 404);
+        return DB::transaction(function () use ($player, $payer, $token, $quote, $terms) {
+            Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
+            $available = $this->walletAvailableCents($payer, true);
+            $existing = PlayerPlusOrder::where('request_token', $token)->lockForUpdate()->first();
+            if ($existing) {
+                abort_unless((int) $existing->user_id === (int) $payer->id && (int) $existing->player_id === (int) $player->id, 409);
+                if ($existing->price_cents === $quote && $existing->isWalletPurchase()) return $existing;
+                $this->reject('This request belongs to an existing checkout. Review its original payment method and status.');
+            }
+            $order = $this->start($player, $payer, $token, $quote, 'annual', false);
+            if ($order->request_token !== $token || $order->price_cents !== $quote || $order->plan !== 'annual') {
+                $this->reject('A different saved checkout exists. Close it or review its original details before purchasing.');
+            }
+            if ($order->hasVerifiedSettlement() && $order->isWalletPurchase()) return $order;
+            if ($order->status !== 'pending' || !$order->expires_at->isFuture() || $order->payfast_handed_off_at
+                || $order->pay_status || $order->payfast_paid || $order->wallet_debited || filled($order->payfast_pf_payment_id)
+                || filled($order->reconciliation_reason) || $order->activated_at || (float) $order->wallet_reserved !== 0.0) {
+                $this->reject('This checkout cannot be paid from your wallet. Review its status before starting again.');
+            }
+            if ($available < $order->price_cents) $this->reject('Your available wallet funds do not cover the full annual price. Use PayFast or add wallet funds first.');
+            $audit = app(AuditWriter::class)->record(['category' => 'business', 'action' => 'player-plus.purchase-details-accepted',
+                'actor' => $payer, 'subject' => $order, 'metadata' => ['terms_version' => $terms, 'price_cents' => $order->price_cents,
+                    'plan' => 'annual', 'payment_method' => 'wallet', 'recurring_consent' => false]], true);
+            if (!$audit) throw new \RuntimeException('Purchase details could not be recorded. Please try again.');
+            $order = $this->payments->initiatePayment($order, $order->price_cents / 100, 0);
+            $order = $this->payments->finalizePayment($order, ['payment_method' => 'wallet',
+                'wallet_source_type' => PlayerPlusOrder::WALLET_SOURCE,
+                'wallet_meta' => ['order_id' => $order->id, 'player_id' => $player->id, 'payer_id' => $payer->id]]);
+            $starts = now()->toImmutable();
+            $ends = $starts->addYearNoOverflow();
+            PlayerPlusMembership::updateOrCreate(['player_id' => $player->id], ['order_id' => $order->id, 'starts_at' => $starts, 'ends_at' => $ends]);
+            $order->update(['activated_at' => $starts, 'term_starts_at' => $starts, 'term_ends_at' => $ends]);
+            if (!$order->hasVerifiedSettlement()) throw new \RuntimeException('Wallet settlement could not be verified.');
+            app(PlayerPlusNotifications::class)->record($order, 'activation');
+            return $order;
+        }, 3);
     }
 
     public function start(Player $player, User $payer, string $token, ?int $quotedPrice = null, string $plan = 'annual', bool $recurringConsent = false): PlayerPlusOrder
@@ -236,6 +301,7 @@ class PlayerPlusService
             $reference = PlayerPlusOrder::findOrFail((int) ($data['custom_int5'] ?? 0));
             Player::whereKey($reference->player_id)->lockForUpdate()->firstOrFail();
             $order = PlayerPlusOrder::lockForUpdate()->findOrFail($reference->id);
+            if ($order->wallet_debited || (float) $order->wallet_reserved > 0) $this->reject('This checkout is not a PayFast payment.');
             foreach (['custom_str5' => 'PlayerPlus', 'custom_int2' => $order->player_id,
                 'custom_int4' => $order->user_id, 'custom_int5' => $order->id, 'custom_int1' => '', 'custom_int3' => ''] as $key => $expected) {
                 if ((string) ($data[$key] ?? '') !== (string) $expected) { $this->reject('Payment identity mismatch.'); }

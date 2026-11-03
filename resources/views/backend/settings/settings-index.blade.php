@@ -117,12 +117,18 @@
           <p class="small text-muted">New plans renew automatically until cancelled. Existing paid terms and agreed subscription prices stay unchanged.</p>
         </div>
         <div>
+          <input type="hidden" name="player_plus_coming_soon_enabled" value="0">
+          <label class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" id="sa-plus-coming-soon" name="player_plus_coming_soon_enabled" value="1" @checked(($generalSettings['player_plus_coming_soon_enabled'] ?? '1') === '1')>
+            <span class="form-check-label">Show Coming Soon marketing while sales are paused</span>
+          </label>
+          <p class="small text-muted">Saves immediately. Users can explore the benefits without purchasing. Turn on Accept new purchases below to launch Player Plus.</p>
           <input type="hidden" name="player_rating_membership_enabled" value="0">
           <label class="form-check form-switch">
             <input class="form-check-input" type="checkbox" role="switch" id="sa-plus-sales" name="player_rating_membership_enabled" value="1" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
             <span class="form-check-label">Accept new purchases</span>
           </label>
-          <p class="small text-muted mb-0">Saves immediately. Pausing sales keeps paid access until expiry.</p>
+          <p class="small text-muted mb-0">Saves immediately. Enabling sales launches purchases and removes the Coming Soon badge. Pausing sales keeps paid access until expiry.</p>
         </div>
       </div>
       <div class="settings-plan-grid">
@@ -479,13 +485,13 @@
     });
   });
 
-  $('#sa-plus-sales').on('change', function () {
+  $('#sa-plus-sales, #sa-plus-coming-soon').on('change', function () {
     var input = $(this);
     input.prop('disabled', true);
     $.ajax({url: '{{ route('settings.store.single') }}', method: 'POST',
-      data: {_token: csrfToken, key: 'player_rating_membership_enabled', value: input.is(':checked') ? '1' : '0'},
-      success: function () { $('#sa-plus-price-status').text('Purchase availability saved. Existing paid access is unchanged.'); },
-      error: function () { input.prop('checked', !input.is(':checked')); $('#sa-plus-price-status').text('Purchase availability could not be saved.'); },
+      data: {_token: csrfToken, key: input.attr('name'), value: input.is(':checked') ? '1' : '0'},
+      success: function () { $('#sa-plus-price-status').text('Player Plus visibility saved. Existing paid access is unchanged.'); },
+      error: function () { input.prop('checked', !input.is(':checked')); $('#sa-plus-price-status').text('Player Plus visibility could not be saved.'); },
       complete: function () { input.prop('disabled', false); }
     });
   });

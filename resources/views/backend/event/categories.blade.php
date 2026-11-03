@@ -54,6 +54,7 @@
   @endphp
 
   @error('entry_limit')<div class="alert alert-danger" role="alert">{{ $message }}</div>@enderror
+  <p id="courtAllocationFeedback" role="status" aria-live="polite" class="text-success"></p>
 
   {{-- CATEGORY LIST --}}
   <div class="card">
@@ -212,7 +213,7 @@
 @if($event->isIndividual())
 <div class="modal fade" id="allocateCourtsModal" tabindex="-1" aria-labelledby="allocateCourtsTitle" aria-describedby="allocateCourtsHelp" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <form class="modal-content" id="allocateCourtsForm">
+    <form class="modal-content" id="allocateCourtsForm" data-save-url="{{ route('admin.events.category-limits.update', $event) }}">
       <div class="modal-header">
         <h2 class="modal-title h5" id="allocateCourtsTitle">Allocate courts</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -225,7 +226,7 @@
             preg_match('/\b(red|orange|green|yellow)\b/i', $division->category->name, $ballMatch);
             $suggestedBall = strtolower($ballMatch[1] ?? 'standard');
           @endphp
-          <div class="row g-3 align-items-end border rounded p-2 mb-3 court-allocation-row" data-cap-input="entry-limit-{{ $division->id }}">
+          <div class="row g-3 align-items-end border rounded p-2 mb-3 court-allocation-row" data-cap-input="entry-limit-{{ $division->id }}" data-category-event-id="{{ $division->id }}">
             <div class="col-12 col-md-3"><h3 class="h6 mb-2">{{ $division->category->name }}</h3><span class="small text-muted" id="current-cap-{{ $division->id }}">Current cap: {{ $division->entry_limit ?? 'Unlimited' }}</span></div>
             <div class="col-12 col-sm-6 col-md-3">
               <label for="court-format-{{ $division->id }}" class="form-label">Ball format</label>
@@ -243,7 +244,8 @@
             <div class="col-12 col-md-4"><output class="court-result d-block small" for="court-format-{{ $division->id }} court-count-{{ $division->id }}">Unchanged</output></div>
           </div>
         @endforeach
-        <p class="small mb-2">After reviewing the results, <strong>Use caps</strong> fills the category inputs. Then select <strong>Save cap</strong> beside each changed category to save it.</p>
+        <p class="small mb-2">After reviewing the results, <strong>Use caps</strong> saves all calculated caps together. Categories with blank courts stay unchanged.</p>
+        <p class="text-danger mb-2" role="alert" id="allocateCourtsError"></p>
         <div role="status" aria-live="polite" aria-atomic="true" id="allocateCourtsStatus">Enter courts to calculate caps.</div>
       </div>
       <div class="modal-footer flex-wrap">
@@ -271,9 +273,13 @@
   const rows = Array.from(modal.querySelectorAll('.court-allocation-row'));
   const status = document.getElementById('allocateCourtsStatus');
   const apply = document.getElementById('allocateCourtsApply');
+  const error = document.getElementById('allocateCourtsError');
   let calculated = [];
+  let saving = false;
   function invalidate() {
+    if (saving) return;
     calculated = [];
+    error.textContent = '';
     apply.disabled = true;
     rows.forEach(row => {
       const courts = row.querySelector('.court-count');
@@ -285,8 +291,10 @@
   form.addEventListener('input', invalidate);
   form.addEventListener('change', invalidate);
   modal.addEventListener('shown.bs.modal', function () { rows[0]?.querySelector('.court-count').focus(); });
+  modal.addEventListener('hide.bs.modal', function (event) { if (saving) event.preventDefault(); });
   form.addEventListener('submit', function (event) {
     event.preventDefault();
+    if (saving) return;
     invalidate();
     if (!form.reportValidity()) return;
     calculated = rows.filter(row => row.querySelector('.court-count').value !== '').map(row => {
@@ -296,23 +304,63 @@
       row.querySelector('.court-result').textContent = red
         ? `${courts} normal ${courts === 1 ? 'court' : 'courts'} × 4 mini-courts × 4 players = ${cap} players`
         : `${courts} ${courts === 1 ? 'court' : 'courts'} × 4 players = ${cap} players`;
-      return { inputId: row.dataset.capInput, cap, courts };
+      return { inputId: row.dataset.capInput, categoryId: Number(row.dataset.categoryEventId), cap, courts };
     });
     apply.disabled = calculated.length === 0;
     const totalCourts = calculated.reduce((sum, row) => sum + row.courts, 0);
     const totalPlayers = calculated.reduce((sum, row) => sum + row.cap, 0);
     status.textContent = calculated.length ? `${calculated.length} category caps calculated: ${totalCourts} normal courts allocated, ${totalPlayers} players. Review the results, then select Use caps.` : 'Enter courts for at least one category; blank categories stay unchanged.';
   });
-  apply.addEventListener('click', function () {
-    if (apply.disabled || !calculated.length || !form.reportValidity()) return;
-    calculated.forEach(({ inputId, cap }) => {
-      const input = document.getElementById(inputId);
-      if (!input) return;
-      input.value = cap;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    bootstrap.Modal.getInstance(modal).hide();
+  apply.addEventListener('click', async function () {
+    if (saving || apply.disabled || !calculated.length || !form.reportValidity()) return;
+    const pending = calculated.slice();
+    const inputs = pending.map(row => document.getElementById(row.inputId));
+    if (inputs.some(input => !input || input.disabled)) {
+      error.textContent = 'Wait for the current category save to finish, then try again.';
+      return;
+    }
+    saving = true;
+    error.textContent = '';
+    const controls = [...form.querySelectorAll('input, select, button'), ...inputs.flatMap(input => [input, input.closest('form').querySelector('[type="submit"]')])];
+    const previousStates = controls.map(control => control.disabled);
+    controls.forEach(control => { control.disabled = true; });
+    const label = apply.textContent;
+    apply.textContent = 'Saving caps…';
+    status.textContent = 'Saving all calculated caps…';
+    let saved = false;
+    try {
+      const response = await fetch(form.dataset.saveUrl, {
+        method: 'PATCH', headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+        body: JSON.stringify({ limits: pending.map(row => ({ category_event_id: row.categoryId, entry_limit: row.cap })) })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.redirected || !response.ok || data.success !== true) {
+        throw new Error(response.redirected || response.status === 419 ? 'Your session expired. Reload this page before saving.'
+          : Object.values(data.errors || {}).flat().join(' ') || data.message || 'Could not save these caps. Please try again.');
+      }
+      pending.forEach(({ inputId, cap }) => {
+        const input = document.getElementById(inputId);
+        input.value = cap;
+        const rowForm = input.closest('form');
+        rowForm.querySelector('.cap-save-status').textContent = 'Cap saved.';
+        rowForm.querySelector('.cap-save-error').textContent = '';
+        const current = document.getElementById(inputId.replace('entry-limit-', 'current-cap-'));
+        if (current) current.textContent = `Current cap: ${cap}`;
+      });
+      document.getElementById('courtAllocationFeedback').textContent = `${pending.length} category caps saved.`;
+      status.textContent = 'All calculated caps saved.';
+      calculated = [];
+      saved = true;
+    } catch (failure) {
+      error.textContent = failure.message || 'Could not save these caps. Please try again.';
+      status.textContent = 'Caps were not confirmed saved. Your allocations are ready to retry.';
+    } finally {
+      saving = false;
+      controls.forEach((control, index) => { control.disabled = previousStates[index]; });
+      apply.textContent = label;
+      apply.disabled = calculated.length === 0;
+      if (saved) bootstrap.Modal.getInstance(modal).hide();
+    }
   });
 })();
 // Save one cap without discarding the other categories' unsaved allocations.

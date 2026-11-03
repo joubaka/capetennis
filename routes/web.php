@@ -1040,6 +1040,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   )->name('admin.events.category-fee.update');
   Route::patch('event/category/{categoryEvent}/entry-limit', [EventCategoryController::class, 'updateLimit'])
     ->name('admin.events.category-limit.update');
+  Route::patch('event/{event}/category-entry-limits', [EventCategoryController::class, 'updateLimits'])
+    ->name('admin.events.category-limits.update');
   Route::patch(
     'event/{event}/information',
     [EventController::class, 'updateInformation']

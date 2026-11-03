@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 
 class PlayerPlusController extends Controller
 {
-    public const TERMS_VERSION = '2026-11-01-recurring';
+    public const TERMS_VERSION = '2026-11-03-wallet';
 
     public function terms()
     {
@@ -42,8 +42,8 @@ class PlayerPlusController extends Controller
     public function player(Request $request, Player $player, PlayerPlusEntitlement $entitlements)
     {
         $membership = PlayerPlusService::ready() ? PlayerPlusMembership::where('player_id', $player->id)
-            ->whereHas('order', fn ($query) => $query->where('status', 'completed')->where('pay_status', true)->where('payfast_paid', true)
-                ->whereNotNull('activated_at')->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id'))->first() : null;
+            ->whereHas('order', fn ($query) => $query->verifiedSettlement()
+                ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id'))->first() : null;
         $canViewRating = app(PlayerRatingAccess::class)->allows($request->user(), $player);
         $linked = $entitlements->linkedPlayers($request->user())->whereKey($player->id)->exists();
         $enabled = PlayerPlusService::salesEnabled();
@@ -54,12 +54,23 @@ class PlayerPlusController extends Controller
             'adminAccess' => \App\Services\Performance\PlayerPlusManagement::ready() ? $player->plusOverride()->first() : null,
             'readiness' => $readiness, 'termsVersion' => self::TERMS_VERSION, 'priceCents' => PlayerPlusService::priceCents(),
             'monthlyEnabled' => PlayerPlusService::monthlyEnabled(), 'monthlyPriceCents' => PlayerPlusService::monthlyPriceCents(),
+            'walletAvailableCents' => app(PlayerPlusService::class)->walletAvailableCents($request->user()),
         ])->header('Cache-Control', 'private, no-store');
     }
 
     public function store(Request $request, Player $player, PlayerPlusService $service)
     {
+        if ($request->input('payment_method') === 'wallet') {
+            $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
+                'wallet_consent' => ['required', 'accepted'], 'recurring_consent' => ['prohibited'],
+                'plan' => ['required', 'in:annual'], 'payment_method' => ['required', 'in:wallet'],
+                'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
+                'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]]);
+            $order = $service->purchaseWithWallet($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents'], $data['terms_version']);
+            return redirect()->route('player-plus.orders.show', $order)->with('success', 'Wallet payment confirmed. Player Plus is active for the purchased 12-month term, with no automatic renewal.');
+        }
         $data = $request->validate(['request_token' => ['required', 'uuid'], 'confirm' => ['accepted'],
+            'payment_method' => ['sometimes', 'in:payfast'],
             'plan' => ['required', \Illuminate\Validation\Rule::in(['annual_recurring', 'monthly'])],
             'recurring_consent' => ['required', 'accepted'],
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
@@ -140,7 +151,7 @@ class PlayerPlusController extends Controller
             && !$order->pay_status && !$order->payfast_paid && !$order->activated_at && !$order->reconciliation_reason) {
             return ['state' => 'pending', 'destination' => null];
         }
-        $verified = $order->status === 'completed' && $order->pay_status && $order->payfast_paid && $order->activated_at
+        $verified = $order->hasVerifiedSettlement()
             && !$order->reconciliation_reason && $order->term_starts_at?->lte(now()) && $order->term_ends_at?->isFuture();
         $player = $order->player;
         $canView = $verified && $player && app(PlayerPlusEntitlement::class)->forPlayer($request->user(), $player)

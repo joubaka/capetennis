@@ -298,6 +298,7 @@ class PlayerPathwayTest extends TestCase
         $access = $this->mock(PlayerRatingAccess::class);
         $access->shouldReceive('allows')->andReturnUsing(function () use (&$allowed) { return $allowed; });
         $access->shouldReceive('allowsMarketing')->andReturn(true);
+        $access->shouldReceive('comingSoon')->andReturn(false);
         $history = $this->mock(PlayerRatingHistoryService::class);
         $metrics = $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 1]);
         $history->shouldReceive('forPlayer')->times(3)->andReturnUsing(function () use (&$metrics) {
@@ -464,6 +465,41 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame('A', $summary['suggestedDivision']);
         $this->assertNull($summary['benchmark_division']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
+    }
+
+    public function test_stale_saved_badge_highlights_its_competition_without_assessing_progress(): void
+    {
+        $service = app(PlayerPathwayService::class); $player = Player::findOrFail(1);
+        $metrics = $this->metrics(67.4, ['red' => 0, 'orange' => 0, 'standard' => 6]);
+        $metrics['stale'] = true; $metrics['assessment_available'] = false;
+        $history = ['reason' => null, 'pathway_metrics' => $metrics];
+        $summary = $service->summary($player, $history);
+        $this->assertSame('Wilson A', $summary['currentCompetition']);
+        $this->assertNull($summary['suggestedCompetition']);
+        $this->assertFalse($summary['assessed']);
+        $this->assertFalse($summary['ready']);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
+        $this->actingAs($this->actor());
+        $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Not assessed')->getContent();
+        $this->assertStringContainsString('data-pathway-competition="Wilson A"  aria-current="step"', $html);
+        preg_match_all('/<li\b[^>]*aria-current="step"[^>]*>/', $html, $currentCards);
+        $this->assertCount(1, $currentCards[0]);
+        $this->assertStringContainsString('You are here · latest saved badge', $html);
+        foreach ([['local' => true], ['comparable' => false], ['score' => null]] as $change) {
+            $invalid = $metrics;
+            $invalid['stage_ratings']['standard'] = array_replace($invalid['stage_ratings']['standard'], $change);
+            $this->assertNull($service->summary($player, ['pathway_metrics' => $invalid])['currentCompetition']);
+        }
+        $this->assertNull($service->summary($player, ['reason' => 'Publication changed', 'pathway_metrics' => $metrics])['currentCompetition']);
+        $this->assertNull($service->summary($player, ['pathway_metrics' => array_replace($metrics, ['player_id' => 2])])['currentCompetition']);
+        foreach ([0 => 'Wilson B', 50 => 'Wilson B', 75 => 'Wilson A', 100 => 'TSA tournaments'] as $score => $competition) {
+            $boundary = $metrics; $boundary['stage_ratings']['standard']['score'] = $score;
+            $this->assertSame($competition, $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+        }
+        $boundary['stage_ratings']['standard']['score'] = 75.1;
+        $this->assertSame('TSA tournaments', $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+        $boundary['stage_ratings']['standard']['score'] = 50.1;
+        $this->assertSame('Wilson A', $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
     }
 
     public function test_manual_verification_is_gone_and_existing_audit_records_are_not_progress(): void

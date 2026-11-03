@@ -29,6 +29,7 @@ final class DrawPublicationService
             $eventId = (int) $draw->event_id;
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($draw->event_id);
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            if ($draw->published) app(\App\Services\PlusPublicationNotificationService::class)->record($draw, baseline: true);
             if ($draw->isPlacementDraft()) throw new \RuntimeException('Confirm playoff qualifiers before publishing this draw.');
             if (($draw->team_draw_selection['competition']['phase'] ?? null) === 'playoff' && $draw->fixtures()->where('clash_flag', true)->exists()) throw new \RuntimeException('Review the saved playoff schedule conflicts before publishing. Times and courts have been retained.');
             if ((int) $draw->event_id !== $eventId) {
@@ -47,6 +48,7 @@ final class DrawPublicationService
                 $draw->update(['published' => true]);
                 DrawAuditLog::record($draw->id, 'published', null, ['published' => true]);
             }
+            app(\App\Services\PlusPublicationNotificationService::class)->record($draw);
         });
 
         Log::info('[DrawPublication] Draw published', ['draw_id' => $draw->id]);

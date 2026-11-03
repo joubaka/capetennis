@@ -1,5 +1,22 @@
 (function (root) {
   'use strict';
+  if (root.document) {
+    let navigationLoading, navigationTimeout;
+    const closeNavigationLoading = () => {
+      navigationLoading?.close();
+      navigationLoading = null;
+      root.clearTimeout(navigationTimeout);
+    };
+    root.document.addEventListener('click', event => {
+      const link = event.target.closest('[data-pathway-navigation]');
+      if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || link.target === '_blank') return;
+      closeNavigationLoading();
+      navigationLoading = root.CapeLoading?.show({title: 'Loading your tennis pathway', message: 'Please wait while we load your latest saved badge and pathway.'});
+      // Let normal browser navigation retain its usual errors and retry controls.
+      navigationTimeout = root.setTimeout(closeNavigationLoading, 30000);
+    });
+    root.addEventListener('pageshow', closeNavigationLoading);
+  }
   class PlayerPathwayUI {
     constructor(panel, reload, options = {}) {
       this.panel = panel;

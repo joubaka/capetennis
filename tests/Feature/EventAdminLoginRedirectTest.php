@@ -17,6 +17,24 @@ class EventAdminLoginRedirectTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_player_specific_my_tennis_link_survives_normal_login(): void
+    {
+        $user = User::factory()->create();
+        $this->get('/my-tennis?player=123')->assertRedirect('/login');
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect('/my-tennis?player=123');
+    }
+
+    public function test_player_specific_my_tennis_link_survives_two_factor_login(): void
+    {
+        $user = $this->twoFactorUser('profile-recovery');
+        $this->get('/my-tennis?player=123')->assertRedirect('/login');
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])
+            ->assertRedirect(route('two-factor.login'));
+        $this->post(route('two-factor.login'), ['recovery_code' => 'profile-recovery'])
+            ->assertRedirect('/my-tennis?player=123');
+    }
+
     public function test_login_returns_to_same_site_referrer_with_query_string(): void
     {
         $user = User::factory()->create();

@@ -8,8 +8,10 @@ An older, unhanded checkout below R5.00 cannot start a new PayFast handoff. Its 
 
 - Saved Cape Tennis Rating (CTR), with provisional and unavailable states preserved.
 - Twelve-month progress history and the recorded evidence behind eligible estimates.
-- Eligible published-series comparisons and CTR Top 10 lists.
-- Tennis pathway guidance: ball-level progress, configured benchmarks and suggested next steps when suitable evidence exists. Guidance does not promote players or guarantee selection; development decisions remain a discussion with a coach.
+- Eligible published-series comparisons and CTR Top 10 lists, including bounded name search to check an eligible published opponent's rating. This does not grant access to the opponent's private history or guarantee a match outcome.
+- Tennis pathway guidance for primary-school and beginner players, from Red through Orange, Green and Yellow ball to exploring TSA events: ball-level progress, configured benchmarks and suggested next steps when suitable evidence exists. Guidance does not promote players or guarantee selection; development decisions remain a discussion with a coach.
+
+Marketing should lead with the player's questions: “What is my next tournament?”, “How am I progressing?”, “What is my rating?” and “How strong is my next opponent?”. The tournament question describes help choosing a suitable type or level of event, not a personalised calendar or a guaranteed next dated fixture. Event dates, availability and entry requirements must still be checked with the organiser. These are offer-positioning decisions; they do not expand rating access or eligibility.
 
 Essential tournament information remains free. Draw alerts remain a historical design concept and are excluded. The authoritative customer offer is `/player-plus`; the private backend membership preview is labelled historical.
 
@@ -18,6 +20,13 @@ The player purchase page shows a linked account only an availability summary (av
 Before a new checkout, the payer confirms the versioned purchase details, named player and displayed price. An outdated quote is rejected, while an existing checkout keeps its original price. Acceptance version, actual order price and actor are recorded in the canonical append-only audit. Payer order history is private and paginated; player links do not grant access to another payer's orders. Membership expiry is visible, including after purchases are paused.
 
 ## Sales pause
+
+`player_plus_coming_soon_enabled` defaults to on when unset. With sales paused,
+it exposes the public Player Plus marketing and an orange **Coming Soon** badge,
+while purchase actions remain closed. Super users can turn this marketing off
+or on under Site Settings → Player Plus. Enabling **Accept new purchases**
+launches purchasing and removes the coming-soon badges automatically; the
+marketing toggle never grants private ratings, player links or paid access.
 
 `player_rating_membership_enabled` is the existing setting key, now presented as **Player Plus · accept new purchases**. It controls new orders and new PayFast handoffs. Turning sales off preserves current paid benefits until their exact expiry. Already handed-off verified payments still use their original immutable order amount and payment window. The sale setting is not an entitlement or player-link override.
 

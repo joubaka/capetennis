@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /** Independent singles graphs with weaker published finishing fields; unstated conditions belong to normal tennis. */
 class BallRatingModel
 {
-    public const VERSION = 2;
+    public const VERSION = 3;
     public const LABELS = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
     public const COHORTS = ['red' => 'red ball · singles', 'orange' => 'orange ball · singles', 'standard' => 'green/yellow ball · singles'];
 
@@ -51,6 +51,24 @@ class BallRatingModel
             || preg_match('/\bu\s*\/?\s*9\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $specific) === 1;
     }
 
+    /** Reviewed event/category defaults apply only when explicit conditions are absent. */
+    public static function isNamedOrange(?string $category, ?string $eventName = null): bool
+    {
+        if (self::isWilsonOrange($category, $eventName)) return true;
+        $event = mb_strtolower((string) $eventName);
+        $category = mb_strtolower((string) $category);
+        // Combined A/B or multi-age fields do not establish this specific division.
+        if (preg_match('/\ba\b/u', $category) === 1 || preg_match_all('/\bu\s*\/?\s*\d+/u', $category) > 1) return false;
+        if (preg_match('/\bceres\b/u', $event) === 1 && preg_match('/\btournament\b/u', $event) === 1) {
+            return preg_match('/\bu\s*\/?\s*9\s*[- ]?\s*b\b/u', $category) === 1
+                || preg_match('/\bu\s*\/?\s*9\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $category) === 1;
+        }
+        if (preg_match('/\b(?:overberg|west[\s-]*coast)\b/u', $event) !== 1
+            || preg_match('/\btrials?\b/u', $event) !== 1) return false;
+        return preg_match('/\bu\s*\/?\s*10\s*[- ]?\s*b\b/u', $category) === 1
+            || preg_match('/\bu\s*\/?\s*10\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $category) === 1;
+    }
+
     public static function stage(string $cohort): ?string
     {
         $stage = array_search($cohort, self::COHORTS, true);
@@ -63,7 +81,7 @@ class BallRatingModel
         if (in_array($match['ball_type'] ?? null, ['red', 'orange', 'green', 'yellow', 'standard'], true)) return self::bucket($match['ball_type']);
         $category = self::labelled($match['category'] ?? null, true);
         if ($category !== null) return $category['stage'];
-        if (self::isWilsonOrange($match['category'] ?? null, $match['event_name'] ?? $match['event'] ?? null)) return 'orange';
+        if (self::isNamedOrange($match['category'] ?? null, $match['event_name'] ?? $match['event'] ?? null)) return 'orange';
         return self::bucket(null, $match['event_name'] ?? $match['event'] ?? null);
     }
 

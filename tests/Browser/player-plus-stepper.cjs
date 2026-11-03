@@ -64,6 +64,27 @@ const fixture = name => fs.readFileSync(path.join(root, `storage/framework/testi
       await page.addScriptTag({ content: script });
       assert.equal(await page.locator('[data-plus-plan="monthly"]').isVisible(), true, 'validation return restores chosen plan');
       assert.equal(await page.locator('[data-plus-plan="monthly"] [name="recurring_consent"]').isChecked(), false);
+      for (const name of ['wallet', 'wallet-insufficient']) {
+        await page.setContent(fixture(name), { waitUntil: 'networkidle' });
+        const wallet = page.locator('[data-plus-plan="annual"]');
+        assert.equal(await wallet.isVisible(), true, 'no-JS wallet review fallback');
+        assert.equal(await wallet.locator('[name="recurring_consent"]').count(), 0);
+        await page.addScriptTag({ content: script });
+        await page.locator('[data-plus-plan-choices] [data-plus-choose="annual"]').click();
+        assert.equal(await wallet.isVisible(), true);
+        assert.equal(await wallet.evaluate(form => form.checkValidity()), false);
+        await wallet.locator('[name="confirm"]').check();
+        await wallet.locator('[name="wallet_consent"]').check();
+        assert.equal(await wallet.evaluate(form => form.checkValidity()), true);
+        assert.equal(await wallet.locator('button[type="submit"],button:not([type])').isEnabled(), name === 'wallet');
+        await wallet.locator('[data-plus-change-plan]').click();
+        assert.equal(await wallet.locator('[name="wallet_consent"]').isChecked(), false);
+        await page.locator('[data-plus-choose="annual_recurring"]').click();
+        await page.locator('[data-plus-wallet-alternative]').click();
+        assert.equal(await wallet.isVisible(), true);
+        assert.equal(await wallet.locator('[name="confirm"]').isChecked(), false);
+        assert.equal(await page.locator('[data-plus-player-page]').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true);
+      }
     }
     assert.equal(posts, 0, 'choosing and reviewing plans creates no checkout or payment');
     console.log('Player Plus stepper passed at 320, 390, 768 and 1440px. No POSTs made.');

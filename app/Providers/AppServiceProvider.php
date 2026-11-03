@@ -97,6 +97,9 @@ class AppServiceProvider extends ServiceProvider
       }
     });
     \App\Models\Fixture::observe(\App\Observers\TrialFixtureObserver::class);
+    \App\Models\Draw::observe(\App\Observers\PlusPublicationVisibilityObserver::class);
+    \App\Models\Event::observe(\App\Observers\PlusPublicationVisibilityObserver::class);
+    \App\Models\DrawSetting::observe(\App\Observers\PlusPublicationVisibilityObserver::class);
     \App\Models\FixtureResult::observe(\App\Observers\TrialResultObserver::class);
     $this->app['router']->pushMiddlewareToGroup('web', \App\Http\Middleware\RefreshTrialsAfterMutation::class);
     $this->app['router']->pushMiddlewareToGroup('api', \App\Http\Middleware\RefreshTrialsAfterMutation::class);

@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-014",
+      "title": "Regional junior results appear under the wrong ball-level rating",
+      "scope": "Named competition and B-division ball-level fallback classification; boys and girls.",
+      "symptoms": "Overberg or West Coast Trials U10 B, or Ceres U9 B, is classified as Green/Yellow despite the confirmed Orange playing format.",
+      "cause": "Without explicit ball metadata or a recognised label, the default classification is standard. The existing Wilson U9 B fallback does not cover these competitions.",
+      "fix": "Apply the shared named-event and exact-division Orange fallback in BallRatingModel and BallRatingContext. Preserve explicit court/ball labels and unrelated event/division classifications. Increment the classification version to invalidate old saved calculations. See docs/performance/ball-level-classification.md.",
+      "verification": "On 2026-11-03 the focused model and isolated SQLite pipeline checks passed 9 tests/175 assertions; independent model and catalogue checks passed 11 tests/237 assertions before the final ambiguity guard, which was independently reviewed afterward. Coverage includes both genders, event isolation, explicit metadata precedence, ambiguous combined fields, finishing fields and canonical matches. A broader 22-test run had three unresolved monthly/pathway/private-import failures; baseline attribution was not verified.",
+      "limits": "Classification does not manufacture results or change publication, identity or confidence gates. Saved ratings and history require the canonical refresh workflow; this guide does not execute a refresh, mutate production or authorize deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/BallRatingModel.php", "app/Services/Performance/BallRatingContext.php", "docs/performance/ball-level-classification.md"],
+      "tests": ["tests/Unit/BallRatingModelTest.php", "tests/Feature/BallRatingPipelineTest.php"]
+    },
+    {
       "id": "RK-012",
       "title": "Legacy home event feed throws a missing controller method exception",
       "scope": "GET /events/ajax/home compatibility endpoint for the public home event feed.",
@@ -208,6 +221,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Http/Controllers/Backend/SuperAdminController.php", "docs/superadmin-dashboard-audit.md"],
       "tests": ["tests/Feature/SuperAdminWorkspaceLoadingTest.php", "tests/Feature/SuperAdminWorkspacePresentationTest.php"]
+    },
+    {
+      "id": "RK-013",
+      "title": "Saved pathway badge has no highlighted competition while an update is pending",
+      "scope": "Player Plus personal pathway snapshot; saved comparable standard-ball rating positioning only.",
+      "symptoms": "A saved numeric badge is visible but none of Wilson B, Wilson A or TSA is highlighted when progression is not assessed.",
+      "cause": "The visual current position used suggestedCompetition, which correctly becomes unavailable when the freshness assessment is pending.",
+      "fix": "Use PlayerPathwayService currentCompetition to position the latest saved comparable nonlocal standard-ball score against configured cutoffs. Render the current card with aria-current and latest saved badge wording. Keep suggestedCompetition, assessed and readiness subject to freshness. Retain matching player, publication validation, entitlement and comparability gates. Use the shared loading modal on pathway navigation with timeout and pageshow cleanup.",
+      "verification": "On 2026-11-03 local focused PHP checks passed 34 tests and 500 assertions; independent frontend checks passed seven tests. Coverage includes stale saved positioning, exactly one highlighted card, cutoff boundaries, invalid scores, local estimates, player mismatch and revoked evidence. Synthetic browser checks passed loading success/failure and navigation at 390/1440 pixels. No production verification.",
+      "limits": "Saved position is not a fresh progression recommendation or event eligibility. No rating recalculation, publication, ownership change or production action is authorized by this guide.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/PlayerPathwayService.php", "app/Services/Performance/PlayerPathwayEvidence.php"],
+      "tests": ["tests/Feature/PlayerPathwayTest.php", "tests/Browser/pathway-loading.cjs"]
     }
   ]
 }

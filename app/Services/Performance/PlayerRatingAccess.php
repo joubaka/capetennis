@@ -8,11 +8,18 @@ use Illuminate\Support\Facades\Gate;
 class PlayerRatingAccess
 {
     public const SETTING = 'player_rating_membership_enabled';
+    public const COMING_SOON_SETTING = 'player_plus_coming_soon_enabled';
+
+    public function comingSoon(): bool
+    {
+        return !PlayerPlusService::salesEnabled()
+            && \App\Models\SiteSetting::get(self::COMING_SOON_SETTING, '1') === '1';
+    }
 
     /** Public offers never grant access to premium rating data. */
     public function allowsMarketing(?User $user): bool
     {
-        return $user?->hasRole('super-user') || PlayerPlusService::salesEnabled();
+        return $user?->hasRole('super-user') || PlayerPlusService::salesEnabled() || $this->comingSoon();
     }
 
     /** Discovery is separate from access to a linked player's private history. */

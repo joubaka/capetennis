@@ -110,9 +110,17 @@ class AccountStatementService
 
         $debits = $this->bounded(WalletTransaction::query()->whereHas('wallet', fn ($q) => $q
             ->where('payable_type', $user->getMorphClass())->where('payable_id', $user->id))
-            ->where('type', 'debit')->whereIn('source_type', ['event_registration_wallet_payment', 'team_registration_wallet_payment'])
+            ->where('type', 'debit')->whereIn('source_type', ['event_registration_wallet_payment', 'team_registration_wallet_payment', \App\Models\PlayerPlusOrder::WALLET_SOURCE])
             ->whereBetween('created_at', [$start, $end]));
         foreach ($debits as $debit) {
+            if ($debit->source_type === \App\Models\PlayerPlusOrder::WALLET_SOURCE) {
+                $plus = \App\Models\PlayerPlusOrder::with('player')->whereKey($debit->source_id)->where('user_id', $user->id)
+                    ->verifiedSettlement()->where('payfast_paid', false)->first();
+                if ($plus) $rows->push($this->row($debit->created_at, 'Player Plus / Wallet', 'W'.$debit->id, 'P'.$plus->id,
+                    [['player' => $plus->player?->full_name ?? 'Player unavailable', 'event' => 'Player Plus · 12 months (no automatic renewal)',
+                        'event_date' => null, 'fee' => $plus->price_cents]], $plus->price_cents, 0));
+                continue;
+            }
             $team = $debit->source_type === 'team_registration_wallet_payment';
             $order = $this->order($user, $team, (int) $debit->source_id);
             if ($order && $order->wallet_debited) {

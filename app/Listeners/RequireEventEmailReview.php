@@ -19,6 +19,25 @@ class RequireEventEmailReview
 
     public function handle(MessageSending $mail): ?bool
     {
+        if (($mail->data['publicationDelivery'] ?? null) instanceof \App\Models\PlusPublicationDelivery) {
+            $delivery = $mail->data['publicationDelivery']->fresh();
+            $service = app(\App\Services\PlusPublicationNotificationService::class);
+            abort_unless($delivery && $delivery->status === 'sending' && $delivery->claimed_at && $service->current($delivery), 409, 'Publication notification is no longer authorized.');
+            $message = new \App\Mail\PlusPublicationMail($delivery);
+            $checks = [
+                'recipient' => count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $delivery->recipient,
+                'copies' => ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments(),
+                'text' => $mail->message->getTextBody() === null,
+                'subject' => $mail->message->getSubject() === $message->subjectLine(),
+                'body' => $message->canonicalHtml((string) $mail->message->getHtmlBody()) === $message->canonicalHtml($message->body()),
+                'from' => count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                    && $mail->message->getFrom()[0]->getName() === config('mail.from.name'),
+                'reply' => count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === config('mail.from.address')
+                    && $mail->message->getReplyTo()[0]->getName() === config('mail.from.name'),
+            ];
+            foreach ($checks as $check => $allowed) abort_unless($allowed, 409, 'Publication notification content is no longer authorized: '.$check.'.');
+            return null;
+        }
         if (isset($mail->data['player_plus_notification_log_id'])) {
             $log = \App\Models\BulkEmailLog::find($mail->data['player_plus_notification_log_id']);
             $message = $log ? app(\App\Services\Performance\PlayerPlusNotifications::class)->authorizedMailable($log) : null;

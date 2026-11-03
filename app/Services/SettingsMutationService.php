@@ -103,7 +103,7 @@ class SettingsMutationService
         }
         foreach (['require_code_of_conduct', 'require_terms', 'require_profile_update', 'brand_logo_url',
             'code_of_conduct_content', 'terms_conditions_content', SiteSetting::DISCIPLINARY_SYSTEM_ENABLED,
-            PlayerRatingAccess::SETTING, PlayerPlusService::PRICE_SETTING,
+            PlayerRatingAccess::SETTING, PlayerRatingAccess::COMING_SOON_SETTING, PlayerPlusService::PRICE_SETTING,
             PlayerPlusService::MONTHLY_PRICE_SETTING, PlayerPlusService::MONTHLY_ENABLED_SETTING] as $key) {
             $keys[$key] = SiteSetting::GROUP_GENERAL;
         }

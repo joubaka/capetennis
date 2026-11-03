@@ -253,7 +253,7 @@ class PlayerPlusLaunchTest extends TestCase
         $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
         $xpath = new \DOMXPath($document);
         $forms = $xpath->query('//*[@data-plus-player-page]//form');
-        $this->assertSame(1, $forms->length);
+        $this->assertSame(2, $forms->length);
         $form = $forms->item(0);
         foreach (['confirm', 'recurring_consent'] as $name) {
             $inputs = $xpath->query('.//input[@name="'.$name.'"]', $form);
@@ -281,7 +281,7 @@ class PlayerPlusLaunchTest extends TestCase
         $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
         $xpath = new \DOMXPath($document);
         $this->assertSame(0, $xpath->query('//*[@data-plus-player-page]//input[@type="checkbox"][@checked]')->length);
-        $this->assertSame(1, $xpath->query('//*[@data-plus-readiness]/following::form[contains(@class, "pp-purchase")]')->length);
+        $this->assertSame(2, $xpath->query('//*[@data-plus-readiness]/following::form[contains(@class, "pp-purchase")]')->length);
     }
 
     public function test_readiness_exposes_only_availability_to_currently_linked_accounts(): void

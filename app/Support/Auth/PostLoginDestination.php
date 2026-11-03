@@ -133,6 +133,7 @@ class PostLoginDestination
 
         return in_array($route->getName(), [
             'home',
+            'my.tennis',
             'events.index',
             'events.show',
             'events.results',

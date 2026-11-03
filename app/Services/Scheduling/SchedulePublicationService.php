@@ -227,6 +227,10 @@ final class SchedulePublicationService
                 }
             });
             $before = $this->publishedAssignments($event);
+            $notificationDraws = $working->pluck('draw_id')->concat((clone $old)->pluck('draw_id'))->when($drawId, fn ($ids) => $ids->push($drawId))->unique();
+            foreach (Draw::whereIn('id', $notificationDraws)->get() as $notificationDraw) {
+                app(\App\Services\PlusPublicationNotificationService::class)->record($notificationDraw, baseline: true);
+            }
             $oldDrawIds = (clone $old)->pluck('draw_id'); $removed = $old->delete();
             if (! $hide) foreach ($working as $row) DB::table('published_schedule_assignments')->updateOrInsert([
                 'event_id' => $event->id, 'fixture_kind' => $row['fixture_kind'], 'fixture_id' => $row['fixture_id'],
@@ -244,6 +248,9 @@ final class SchedulePublicationService
             }
             request()->attributes->remove('published_schedule_rows_'.$event->id);
             request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
+            foreach (Draw::whereIn('id', $notificationDraws)->get() as $notificationDraw) {
+                app(\App\Services\PlusPublicationNotificationService::class)->record($notificationDraw);
+            }
             return $hide ? $removed : $working->count();
         });
     }

@@ -33,8 +33,7 @@ class PlayerPlusEntitlement
         if (PlayerPlusManagement::ready()) $query->whereDoesntHave('plusOverride', fn ($q) => $q->where('mode', 'suspended'));
         return $query->where(function ($q) {
             $q->whereHas('plusMembership', fn ($membership) => $membership->where('starts_at', '<=', now())->where('ends_at', '>', now())
-                ->whereHas('order', fn ($order) => $order->where('status', 'completed')->where('pay_status', true)
-                    ->where('payfast_paid', true)->whereNotNull('activated_at')
+                ->whereHas('order', fn ($order) => $order->verifiedSettlement()
                     ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id')));
             if (PlayerPlusManagement::ready()) $q->orWhereHas('plusOverride', fn ($override) => $override
                 ->where('mode', 'grant')->where('starts_at', '<=', now())->where('ends_at', '>', now()));

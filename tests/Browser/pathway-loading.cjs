@@ -38,6 +38,19 @@ const style = fs.readFileSync(path.join(root, 'resources/views/layouts/sections/
         assert.match(await page.locator('[data-pathway-info-content]').textContent(), failed ? /try again/ : /Wilson A guidance/);
       }
       assert.deepEqual(errors, []);
+      // Intercept normal navigation so the shared popup can be inspected while it is pending.
+      await page.evaluate(() => {
+        const link = document.createElement('a'); link.id = 'pathway-link'; link.href = '/pathway';
+        link.dataset.pathwayNavigation = ''; link.textContent = 'Explore my tennis pathway'; document.body.append(link);
+        document.addEventListener('click', event => { if (event.target.id === 'pathway-link') event.preventDefault(); });
+      });
+      await page.locator('#pathway-link').click({modifiers: ['Control']});
+      assert.equal(await page.locator('#ct-loading-dialog').evaluate(el => el.open), false);
+      await page.locator('#pathway-link').click();
+      await page.locator('#ct-loading-dialog[open]').waitFor();
+      assert.equal(await page.locator('#ct-loading-title').textContent(), 'Loading your tennis pathway');
+      await page.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', {persisted: true})));
+      await page.locator('#ct-loading-dialog[open]').waitFor({state: 'hidden'});
       await page.close();
     }
     console.log('PASS: Shared More info modal appears immediately, stays blue/responsive, closes on error/success, restores focus and retries at 390/1440px.');

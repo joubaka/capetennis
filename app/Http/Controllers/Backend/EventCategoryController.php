@@ -10,6 +10,33 @@ use Illuminate\Http\Request;
 
 class EventCategoryController extends Controller
 {
+  public function updateLimits(Request $request, Event $event)
+  {
+    $this->authorize('event-category.manage', $event);
+    abort_unless($event->isIndividual(), 422, 'Division entry caps apply to individual entry events.');
+    $data = $request->validate([
+      'limits' => ['required', 'array', 'min:1', 'max:1000'],
+      'limits.*' => ['required', 'array:category_event_id,entry_limit'],
+      'limits.*.category_event_id' => ['required', 'integer', 'min:1', 'distinct'],
+      'limits.*.entry_limit' => ['required', 'integer', 'min:1', 'max:100000'],
+    ]);
+    $limits = collect($data['limits'])->keyBy('category_event_id');
+    \Illuminate\Support\Facades\DB::transaction(function () use ($event, $limits) {
+      $categories = CategoryEvent::where('event_id', $event->id)->whereIn('id', $limits->keys())
+        ->orderBy('id')->lockForUpdate()->get();
+      if ($categories->count() !== $limits->count()) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['limits' => 'Every category must belong to this event. No caps were saved.']);
+      }
+      foreach ($categories as $category) {
+        $category->update(['entry_limit' => (int) $limits[$category->id]['entry_limit']]);
+      }
+    }, 3);
+
+    return response()->json(['success' => true, 'limits' => $limits->values()->map(fn ($limit) => [
+      'category_event_id' => (int) $limit['category_event_id'], 'entry_limit' => (int) $limit['entry_limit'],
+    ])]);
+  }
+
   public function updateLimit(Request $request, CategoryEvent $categoryEvent)
   {
     $this->authorize('event-category.manage', $categoryEvent->event);

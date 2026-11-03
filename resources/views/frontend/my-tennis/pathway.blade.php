@@ -45,10 +45,10 @@
       </li>
     @endforeach
     @foreach(['Wilson B' => ['#12765a', 3], 'Wilson A' => ['#145c8d', 4], 'TSA tournaments' => ['#6654a3', 5]] as $competition => [$ink, $step])
-      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}" @if($pathway['suggestedCompetition'] === $competition) aria-current="step" @endif>
+      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}" @if(($pathway['currentCompetition'] ?? null) === $competition) aria-current="step" @endif>
         <span class="pathway-step-number" aria-hidden="true">{{ $step }}</span>
         <strong>{{ $competition === 'TSA tournaments' ? 'TSA' : $competition }}</strong>
-        @if($pathway['suggestedCompetition'] === $competition)<small class="fw-semibold">You are here · suggested competition</small>@endif
+        @if(($pathway['currentCompetition'] ?? null) === $competition)<small class="fw-semibold">You are here · latest saved badge</small>@endif
         @if($competition === 'Wilson B')
           <small>After Orange</small><small>@if($pathway['wilsonCutoff'] !== null) CTR {{ number_format($pathway['wilsonCutoff'], 0) }} or below @else Recommendation awaiting configuration @endif</small>
         @elseif($competition === 'Wilson A')

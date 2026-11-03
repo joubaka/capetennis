@@ -31,7 +31,7 @@ class BallRatingContext
         $label = $field?->category?->name ?? ($context instanceof Draw ? $context->drawName : '');
         $specific = BallRatingModel::labelled($label, true);
         if ($specific !== null) return $specific['stage'];
-        if (BallRatingModel::isWilsonOrange($label, $event?->name)) return 'orange';
+        if (BallRatingModel::isNamedOrange($label, $event?->name)) return 'orange';
         return BallRatingModel::bucket(null, $event?->name);
     }
 }

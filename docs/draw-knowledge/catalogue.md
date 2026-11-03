@@ -154,6 +154,8 @@ Paths below are relative to the repository root. Test references are executable 
 
 **Solution:** `app/Services/Scheduling/SchedulePublicationService.php` and hub projections represent partial, changed and preview-only states.
 
+Player Plus publication notices use a five-minute quiet period after the latest meaningful public change. Compare normalized public content, not the publication timestamps rewritten on identical republishing. See [publication notifications](../player-plus-publication-notifications.md) and `tests/Feature/Draw/PlusPublicationNotificationTest.php` for audience, backlog and delivery safeguards; delivery remains disabled by default.
+
 **Regression:** `tests/Feature/Draw/DrawHubTest.php`, `SchedulePublicationTest.php`, `TrialPublicDrawSharingTest.php`.
 
 **History:** `01a1898e-7195-7fd2-afc8-59ce13583717` (Audit main draw workflow); `01a17cf5-865d-76d1-b315-88d70f9caa25` (Match draw publishing to team events).

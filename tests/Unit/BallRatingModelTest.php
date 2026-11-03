@@ -134,4 +134,33 @@ class BallRatingModelTest extends TestCase
         $this->assertStringContainsString('did not converge', $fit['orange']['unrated_reason']);
         $this->assertSame(3, $fit['orange']['excluded']['Ball-level model did not converge']);
     }
+
+    public function test_regional_trials_u10_b_defaults_to_orange_without_overriding_explicit_conditions(): void
+    {
+        foreach (['Overberg Tennis Trials - Leg 2 2026', 'Westcoast Trials 2026', 'West Coast Tennis Trials', 'West-Coast Trials'] as $event) {
+            foreach (['u/10 Girls - B division', 'U10 Boys B', 'u10b Girls'] as $category) {
+                $match = ['category' => $category, 'event_name' => $event];
+                $this->assertSame('orange', BallRatingModel::forMatch($match));
+                $this->assertSame('standard', BallRatingModel::forMatch(['ball_type' => 'green'] + $match));
+                $this->assertSame('red', BallRatingModel::forMatch(['category' => 'Red Ball '.$category] + $match));
+                $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'Green Ball '.$category] + $match));
+            }
+            foreach (['U10 Girls A', 'U12 Girls B', 'U10 Girls', 'U9B', 'U10 Girls A and B', 'U10 Girls A / U12 Girls B'] as $category) {
+                $this->assertSame('standard', BallRatingModel::forMatch(['category' => $category, 'event_name' => $event]));
+            }
+        }
+        foreach (['Overberg Junior Open', 'West Coast Festival', 'Other District Trials'] as $event) {
+            $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'U10 Girls B', 'event_name' => $event]));
+        }
+        foreach (['u/9 Girls B - Division', 'U9 Boys B', 'U9B Girls'] as $category) {
+            $match = ['category' => $category, 'event_name' => 'Cavaliers Junior Ceres Tournament 2026'];
+            $this->assertSame('orange', BallRatingModel::forMatch($match));
+            $this->assertSame('standard', BallRatingModel::forMatch(['ball_type' => 'yellow'] + $match));
+            $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'Green Ball '.$category] + $match));
+        }
+        foreach (['U9 Girls A', 'U10 Boys B', 'U9 Girls'] as $category) {
+            $this->assertSame('standard', BallRatingModel::forMatch(['category' => $category, 'event_name' => 'Cavaliers Junior Ceres Tournament 2026']));
+        }
+        $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'U9 Girls B', 'event_name' => 'Ceres School Trials']));
+    }
 }

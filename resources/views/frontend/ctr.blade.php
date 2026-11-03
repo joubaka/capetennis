@@ -30,7 +30,7 @@
 .ctr-section-intro{display:flex;justify-content:space-between;align-items:end;gap:1rem;margin:2.5rem 0 1.1rem}
 .ctr-section-intro h2{font-size:1.7rem;letter-spacing:-.04em;margin:0}
 .ctr-section-intro p{color:#536873;font-size:.9rem;margin:0;max-width:25rem}
-.ctr-intro-features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
+.ctr-intro-features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
 .ctr-intro-feature{padding:1.5rem;border:1px solid #dce5ef;background:#fff;border-radius:14px;min-width:0}
 .ctr-feature-icon{width:42px;height:42px;display:grid;place-items:center;background:#eaf1f8;border-radius:10px;color:#004177;font-size:1.3rem;margin-bottom:1.15rem}
 .ctr-intro-feature h3{font-size:1.05rem;letter-spacing:-.02em;margin-bottom:.6rem}
@@ -43,6 +43,7 @@
 .ctr-offer-pricing [data-player-plus-pricing]{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:.5rem 1rem!important}
 .ctr-offer-pricing [data-player-plus-pricing]>div{display:flex;flex-direction:column;gap:.1rem;min-width:0}
 .ctr-offer-pricing [data-player-plus-pricing]>p{grid-column:1/-1}
+.ctr-offer-pricing [data-player-plus-coming-soon]{grid-column:1/-1;justify-self:start}
 .ctr-offer-pricing [data-player-plus-pricing] strong{font-size:1.85rem;letter-spacing:-.04em;color:#172e45}
 .ctr-offer-pricing [data-player-plus-pricing] .small{font-size:.8rem;line-height:1.7;color:#536873}
 .ctr-offer-pricing [data-player-plus-pricing]>p{margin-top:.6rem!important}
@@ -81,14 +82,16 @@
 @endsection
 @section('content')
 <main class="ctr-intro" data-ctr-intro>
+  @php($plusSalesOpen = \App\Services\Performance\PlayerPlusService::salesEnabled())
   <x-player-plus-stepper :current="1" />
   <section class="ctr-intro-hero" aria-labelledby="ctr-title">
     <div>
       <p class="ctr-eyebrow">Cape Tennis · Player Plus</p>
+      <x-player-plus-coming-soon class="mb-3" />
       <h1 id="ctr-title">Discover CTR Rankings</h1>
-      <p class="ctr-hero-description">See the progress behind every match. Understand playing strength, follow their journey and explore the results behind their Cape Tennis Rating.</p>
+      <p class="ctr-hero-description">What should I play next? How am I progressing? Player Plus helps primary-school players, beginners and their families understand playing strength and explore the journey from Red Ball through Orange, Green and Yellow Ball to TSA events.</p>
       <div class="ctr-intro-actions">
-        <a class="btn ctr-primary" href="{{ route('player-plus.index') }}">Explore Player Plus <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
+        <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
         <a class="btn ctr-secondary" href="{{ route('my.tennis') }}#rating">Preview in My Tennis</a>
       </div>
       <p class="ctr-hero-note">For one player and their linked parents or guardians.<br>Essential tournament information stays free.</p>
@@ -110,16 +113,23 @@
 
   <div class="ctr-section-intro"><h2>More context. A clearer next step.</h2><p>Useful insight for players and families, built on eligible recorded singles results.</p></div>
   <div class="ctr-intro-features">
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>Follow their progress</h3><p>See their saved CTR, 12-month progress history and the results behind the estimate where evidence is available.</p></section>
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>Compare with context</h3><p>Explore comparable ratings and Top 10 lists within eligible published series. Birth-year groups run from 1 January to 31 December.</p></section>
-    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>Explore their pathway</h3><p>Understand ball-level progress, published benchmarks and suggested next steps to discuss with their coach.</p></section>
+    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>What is my next tournament?</h3><p>Explore event types for your ball level, from beginner and school events to Wilson and TSA options. Use development guidance to plan with your coach, then check event dates and entry rules.</p></section>
+    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow 12 months of saved rating history and the recorded singles results behind changes in playing strength, where evidence is available.</p></section>
+    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p></section>
+    <section class="ctr-intro-feature"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Search by name and select one eligible published player to see their available rating and confidence. Compare playing strength where ratings share a comparable scale.</p></section>
   </div>
 
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">
     <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Their tennis journey.<br>Your choice of plan.</h2><p class="ctr-offer-copy">One named player. Shared with their linked parents or guardians. Choose monthly or annual access and keep the focus on their progress.</p></div>
     <div class="ctr-offer-pricing">
       <x-player-plus-pricing />
-      <div class="ctr-intro-actions"><a class="btn ctr-primary" href="{{ route('player-plus.index') }}">Choose a player <i class="ti ti-arrow-right" aria-hidden="true"></i></a></div>
+      <div class="ctr-intro-actions">
+        @if($plusSalesOpen)
+          <a class="btn ctr-primary" href="{{ route('player-plus.index') }}">Choose a player <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
+        @else
+          <button class="btn ctr-primary" type="button" disabled>{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? 'Coming Soon' : 'Purchases paused' }}</button>
+        @endif
+      </div>
       <div class="ctr-offer-links"><a href="{{ route('rankings.index') }}">View series rankings</a><a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></div>
     </div>
   </section>

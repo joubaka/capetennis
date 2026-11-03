@@ -27,9 +27,10 @@
     });
     if (focus) (selected || choices).querySelector('h2')?.focus();
   }
-  choices.querySelectorAll('[data-plus-choose]').forEach(button => {
+  page.querySelectorAll('[data-plus-choose]').forEach(button => {
     button.addEventListener('click', () => show(button.dataset.plusChoose));
   });
+  page.querySelectorAll('[data-plus-wallet-alternative]').forEach(button => { button.hidden = false; });
   page.querySelectorAll('[data-plus-change-plan]').forEach(button => {
     button.hidden = false;
     button.addEventListener('click', () => show(null));

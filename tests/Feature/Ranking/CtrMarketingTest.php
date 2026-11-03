@@ -13,6 +13,12 @@ class CtrMarketingTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        SiteSetting::set(PlayerRatingAccess::COMING_SOON_SETTING, '0');
+    }
+
     public function test_guest_discovery_tracks_sales_and_purchase_details_remain_public(): void
     {
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldNotReceive('current');
@@ -30,6 +36,25 @@ class CtrMarketingTest extends TestCase
             file_put_contents(storage_path('framework/testing/ctr-marketing-guest-home.html'), $home->getContent());
             file_put_contents(storage_path('framework/testing/ctr-marketing-guest-intro.html'), $landing->getContent());
         }
+    }
+
+    public function test_coming_soon_marketing_is_visible_by_default_but_purchases_stay_closed(): void
+    {
+        SiteSetting::where('key', PlayerRatingAccess::COMING_SOON_SETTING)->delete();
+        \Illuminate\Support\Facades\Cache::forget('site_setting.'.PlayerRatingAccess::COMING_SOON_SETTING);
+        SiteSetting::set(PlayerRatingAccess::SETTING, '0');
+        $this->get(route('home'))->assertOk()->assertSee('data-player-plus-coming-soon', false);
+        $this->get(route('ctr.index'))->assertOk()->assertSee('Coming Soon')
+            ->assertDontSee('href="'.route('player-plus.index').'"', false);
+        $this->actingAs(User::factory()->create());
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
+        $this->get(route('player-plus.index'))->assertOk()->assertSee('New purchases are currently paused.');
+        $this->post(route('player-plus.store', Player::factory()->create()), [
+            'request_token' => (string) \Illuminate\Support\Str::uuid(), 'confirm' => '1',
+            'plan' => 'annual_recurring', 'recurring_consent' => '1',
+            'terms_version' => \App\Http\Controllers\Frontend\PlayerPlusController::TERMS_VERSION,
+            'quoted_price_cents' => \App\Services\Performance\PlayerPlusService::priceCents(),
+        ])->assertNotFound();
     }
 
     public function test_normal_user_discovery_tracks_sales_without_granting_premium_or_admin_access(): void

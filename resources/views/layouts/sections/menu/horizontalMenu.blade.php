@@ -56,6 +56,7 @@ $configData = Helper::appClasses();
           <i class="{{ $menu->icon }}"></i>
           @endisset
           <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
+        @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         </a>
 
         {{-- submenu --}}
@@ -72,6 +73,7 @@ $configData = Helper::appClasses();
           <i class="{{ $menu->icon }}"></i>
           @endisset
           <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
+        @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         </a>
 
         {{-- submenu --}}

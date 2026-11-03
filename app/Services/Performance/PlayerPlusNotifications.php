@@ -25,7 +25,7 @@ class PlayerPlusNotifications
         $content = $this->content($order, $kind);
         if (! $content) {
             // A missing payer/profile must not occupy the bounded repair batch forever.
-            if ($kind === 'activation' && $order->activated_at && $order->pay_status && $order->payfast_paid
+            if ($kind === 'activation' && $order->hasVerifiedSettlement()
                 && ! $order->mailLogs()->where('mail_type', 'player_plus_activation')->exists()) {
                 BulkEmailLog::firstOrCreate(['deduplication_key' => hash('sha256', 'player-plus:unavailable-activation:'.$order->id)],
                     ['mail_type' => 'player_plus_activation', 'related_type' => PlayerPlusOrder::class, 'related_id' => $order->id,
@@ -81,7 +81,7 @@ class PlayerPlusNotifications
             $name = 'Cape Tennis support';
         } else {
             if (! $order->user || ! $order->player || ! $order->activated_at || ! $order->term_ends_at
-                || $order->status !== 'completed' || ! $order->pay_status || ! $order->payfast_paid) return null;
+                || !$order->hasVerifiedSettlement()) return null;
             if ($kind === 'renewal' && ($order->isRecurring() || ! PlayerPlusService::salesEnabled() || $order->term_ends_at->lte(now())
                 || $order->term_ends_at->gt(now()->addDays(14))
                 || ! PlayerPlusMembership::where('player_id', $order->player_id)->where('order_id', $order->id)

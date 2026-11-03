@@ -146,6 +146,27 @@ class BallRatingPipelineTest extends TestCase
         $this->assertCount(3, $snapshot['ball_ratings']['standard']['ratings'], 'A ranked historical membership remains valid after withdrawal.');
     }
 
+    public function test_reviewed_orange_event_categories_align_finishes_matches_and_display_context(): void
+    {
+        $players = Player::factory()->count(4)->create();
+        $fixtures = [];
+        foreach ([['Overberg Tennis Trials - Leg 2 2026', 'u/10 Girls - B division'],
+            ['West Coast Tennis Trials 2026', 'U10 Boys B'],
+            ['Cavaliers Junior Ceres Tournament 2026', 'u/9 Girls B - Division']] as $index => [$event, $category]) {
+            [$finishEvent, $field] = $this->finishField($event, $category);
+            $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($field));
+            $fixture = $this->match($event, $players[0], $players[$index + 1], '2026-10-20');
+            $fixture->draw->categoryEvent->category->update(['name' => $category]);
+            $fixtures[] = $fixture;
+        }
+        $ability = app(PlayerSharedAbilityService::class);
+        $snapshot = $ability->calculateSnapshot(CarbonImmutable::today());
+        $this->assertSame([], $snapshot['ball_ratings']['standard']['ratings']);
+        $this->assertCount(13, $snapshot['ball_ratings']['orange']['ratings']);
+        $this->assertSame(3, $snapshot['ball_ratings']['orange']['ratings'][$players[0]->id]['played']);
+        foreach ($fixtures as $fixture) $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($fixture->draw));
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

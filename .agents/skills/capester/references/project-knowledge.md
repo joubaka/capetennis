@@ -7,6 +7,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Ratings, evidence and pathway
 
+- For user-confirmed regional Trials U10 B and Ceres U9 B Orange formats, consult
+  `docs/performance/ball-level-classification.md` and verify `BallRatingModel`
+  and `BallRatingContext`. Keep named-event fallbacks separate from general
+  age rules; classification changes invalidate saved calculations.
 - The user-facing rating choices are Red, Orange and Overall CTR. Age and gender
   filter comparison populations; they must not create a different strength score
   for the same selected rating. Red and Orange directories are age independent,

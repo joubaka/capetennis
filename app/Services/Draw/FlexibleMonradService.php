@@ -296,7 +296,9 @@ final class FlexibleMonradService
     public function publish(Draw $draw, int $revision, bool $published): FlexibleMonradDraw
     {
         return DB::transaction(function () use ($draw, $revision, $published) {
+            \App\Models\Event::whereKey($draw->event_id)->lockForUpdate()->firstOrFail();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            if ($draw->published) app(\App\Services\PlusPublicationNotificationService::class)->record($draw, baseline: true);
             abort_if($draw->locked, 409, 'The draw is locked.');
             $record = FlexibleMonradDraw::where('draw_id', $draw->id)->firstOrFail();
             $this->revision($record, $revision);
@@ -307,6 +309,7 @@ final class FlexibleMonradService
             $draw->update(['published' => $published]);
             $record->increment('revision');
             DrawAuditLog::record($draw->id, $published ? 'monrad_published' : 'monrad_unpublished');
+            app(\App\Services\PlusPublicationNotificationService::class)->record($draw);
             return $record->refresh();
         });
     }

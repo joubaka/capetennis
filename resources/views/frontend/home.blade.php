@@ -148,8 +148,9 @@
   <div class="col-12">
     <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
       <div class="home-ctr-copy">
+        <x-player-plus-coming-soon class="mb-2" />
         <h2 class="h4 mb-1" id="home-ctr-title">Discover CTR Rankings</h2>
-        <p>Player Plus · Follow playing strength with Cape Tennis Rating. Explore age groups and Top 10 lists.</p>
+        <p>Player Plus · What should I play next? Follow your rating and progress, check an eligible opponent’s rating, and explore the pathway from Red Ball to Yellow Ball and TSA events.</p>
       </div>
       <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Rankings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
     </section>
