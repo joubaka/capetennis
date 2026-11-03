@@ -1,4 +1,10 @@
 @props(['size' => 'small'])
+@once
+<style>
+  .layout-menu .menu-link:has([data-ctr-mark]) [data-player-plus-coming-soon] { font-size:.65rem!important;padding:.3rem .45rem!important;white-space:nowrap!important; }
+  .layout-menu .menu-link:has([data-ctr-mark]) > div { min-width:0; }
+</style>
+@endonce
 {{-- A decorative identity mark, never a player score or an unavailable rating. --}}
 @php($dimension = $size === 'heading' ? '3rem' : '1.8rem')
 <svg {{ $attributes->class(['ctr-mark'])->merge(['style' => 'display:inline-block;width:'.$dimension.';height:'.$dimension.';flex-shrink:0;vertical-align:middle;']) }} viewBox="0 0 112 112" fill="none" aria-hidden="true" focusable="false" data-ctr-mark>

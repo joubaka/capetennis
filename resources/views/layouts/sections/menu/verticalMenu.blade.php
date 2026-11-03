@@ -3,10 +3,6 @@ $configData = Helper::appClasses();
 @endphp
 
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
-  <style>
-    .menu-vertical .menu-link [data-player-plus-coming-soon] { font-size:.65rem!important;padding:.3rem .45rem!important;white-space:nowrap!important; }
-    .menu-vertical .menu-link:has([data-ctr-mark]) > div { min-width:0; }
-  </style>
 
   <!-- ! Hide app brand if navbar-full -->
   @if(!isset($navbarFull))
