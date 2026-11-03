@@ -96,6 +96,10 @@ class DivisionEntryLimitTest extends TestCase
         $this->patch($url, ['entry_limit' => 0])->assertSessionHasErrors('entry_limit');
         $this->patch($url, ['entry_limit' => null])->assertRedirect();
         $this->assertNull($category->fresh()->entry_limit);
+        $this->patchJson($url, ['entry_limit' => 32])->assertOk()->assertExactJson(['success' => true, 'entry_limit' => 32]);
+        $this->patchJson($url, ['entry_limit' => 0])->assertUnprocessable()->assertJsonValidationErrors('entry_limit');
+        $this->assertSame(32, (int) $category->fresh()->entry_limit);
+        $this->patchJson($url, ['entry_limit' => null])->assertOk()->assertExactJson(['success' => true, 'entry_limit' => null]);
         $other = $this->division();
         $this->patch(route('admin.events.category-limit.update', $other), ['entry_limit' => 8])->assertForbidden();
         $this->assertSame(2, (int) $other->fresh()->entry_limit);

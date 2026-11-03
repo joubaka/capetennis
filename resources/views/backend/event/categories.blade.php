@@ -41,7 +41,9 @@
   ])
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Manage categories</h2><p class="text-muted mb-0">Attach categories, set event fees and remove unused setup.</p></div>
-
+    @if($event->isIndividual() && $categoryEvents->isNotEmpty())
+      <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#allocateCourtsModal">Allocate courts</button>
+    @endif
   </div>
 
   @php
@@ -104,10 +106,8 @@
                     <input id="entry-limit-{{ $categoryEvent->id }}" name="entry_limit" class="form-control" type="number" min="1" max="100000" value="{{ $categoryEvent->entry_limit }}">
                     <button class="btn btn-outline-primary" type="submit">Save cap</button>
                   </div>
-                  <button class="btn btn-sm btn-outline-secondary mt-2" type="button"
-                          data-bs-toggle="modal" data-bs-target="#allocateCourtsModal"
-                          data-cap-input="entry-limit-{{ $categoryEvent->id }}"
-                          data-division-name="{{ $categoryEvent->category->name }}">Allocate courts</button>
+                  <p class="small text-danger mb-0 mt-1 cap-save-error" role="alert"></p>
+                  <p class="small text-muted mb-0 mt-1 cap-save-status" role="status"></p>
                 </form>
                 @else
                   <span class="text-muted small">Available for individual entry events.</span>
@@ -210,32 +210,46 @@
 </div>
 
 @if($event->isIndividual())
-<div class="modal fade" id="allocateCourtsModal" tabindex="-1" aria-labelledby="allocateCourtsTitle" aria-describedby="allocateCourtsDivision" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+<div class="modal fade" id="allocateCourtsModal" tabindex="-1" aria-labelledby="allocateCourtsTitle" aria-describedby="allocateCourtsHelp" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <form class="modal-content" id="allocateCourtsForm">
       <div class="modal-header">
         <h2 class="modal-title h5" id="allocateCourtsTitle">Allocate courts</h2>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p id="allocateCourtsDivision" class="fw-semibold"></p>
-        <label for="allocateCourtsFormat" class="form-label">Ball format</label>
-        <select id="allocateCourtsFormat" class="form-select mb-3" aria-describedby="allocateCourtsFormatHelp">
-          <option value="red">Red</option>
-          <option value="orange" selected>Orange</option>
-          <option value="green">Green</option>
-          <option value="yellow">Yellow</option>
-        </select>
-        <p id="allocateCourtsFormatHelp" class="small text-muted"></p>
-        <label for="allocateCourtsCount" class="form-label">Normal courts allocated to this division</label>
-        <input id="allocateCourtsCount" class="form-control" type="number" min="1" max="25000" step="1" value="1" required aria-describedby="allocateCourtsSharingHelp">
-        <p id="allocateCourtsSharingHelp" class="small text-muted mt-2">Allocate shared venue courts once across divisions. This calculator does not reserve courts.</p>
-        <div class="alert alert-primary mb-2" role="status" aria-live="polite" aria-atomic="true" id="allocateCourtsResult"></div>
-        <p class="small mb-0">Use cap fills the division's maximum entries. Then select <strong>Save cap</strong> on that division to save it.</p>
+        <p id="allocateCourtsHelp">Enter normal courts beside each category, then select <strong>Calculate</strong>. Leave courts blank to keep that category's cap unchanged.</p>
+        <p class="small text-muted">Red: 4 mini-courts × 4 players = 16 per normal court. Orange, Green and Yellow: 4 players per normal court. Allocate shared venue courts once across categories; this calculator does not reserve courts.</p>
+        @foreach($categoryEvents as $division)
+          @php
+            preg_match('/\b(red|orange|green|yellow)\b/i', $division->category->name, $ballMatch);
+            $suggestedBall = strtolower($ballMatch[1] ?? 'standard');
+          @endphp
+          <div class="row g-3 align-items-end border rounded p-2 mb-3 court-allocation-row" data-cap-input="entry-limit-{{ $division->id }}">
+            <div class="col-12 col-md-3"><h3 class="h6 mb-2">{{ $division->category->name }}</h3><span class="small text-muted" id="current-cap-{{ $division->id }}">Current cap: {{ $division->entry_limit ?? 'Unlimited' }}</span></div>
+            <div class="col-12 col-sm-6 col-md-3">
+              <label for="court-format-{{ $division->id }}" class="form-label">Ball format</label>
+              <select id="court-format-{{ $division->id }}" class="form-select court-format" aria-label="Ball format for {{ $division->category->name }}">
+                <option value="standard" @selected($suggestedBall === 'standard')>Standard — 4 per court</option>
+                @foreach(['red' => 'Red', 'orange' => 'Orange', 'green' => 'Green', 'yellow' => 'Yellow'] as $ball => $label)
+                  <option value="{{ $ball }}" @selected($suggestedBall === $ball)>{{ $label }}</option>
+                @endforeach
+              </select>
+            </div>
+            <div class="col-12 col-sm-6 col-md-2">
+              <label for="court-count-{{ $division->id }}" class="form-label">Normal courts</label>
+              <input id="court-count-{{ $division->id }}" class="form-control court-count" type="number" min="1" max="{{ $suggestedBall === 'red' ? 6250 : 25000 }}" step="1" placeholder="Unchanged" aria-label="Normal courts for {{ $division->category->name }}">
+            </div>
+            <div class="col-12 col-md-4"><output class="court-result d-block small" for="court-format-{{ $division->id }} court-count-{{ $division->id }}">Unchanged</output></div>
+          </div>
+        @endforeach
+        <p class="small mb-2">After reviewing the results, <strong>Use caps</strong> fills the category inputs. Then select <strong>Save cap</strong> beside each changed category to save it.</p>
+        <div role="status" aria-live="polite" aria-atomic="true" id="allocateCourtsStatus">Enter courts to calculate caps.</div>
       </div>
       <div class="modal-footer flex-wrap">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary" id="allocateCourtsApply">Use cap</button>
+        <button type="submit" class="btn btn-outline-primary">Calculate caps</button>
+        <button type="button" class="btn btn-primary" id="allocateCourtsApply" disabled>Use caps</button>
       </div>
     </form>
   </div>
@@ -254,53 +268,94 @@
   const modal = document.getElementById('allocateCourtsModal');
   if (!modal) return;
   const form = document.getElementById('allocateCourtsForm');
-  const format = document.getElementById('allocateCourtsFormat');
-  const courts = document.getElementById('allocateCourtsCount');
-  const result = document.getElementById('allocateCourtsResult');
+  const rows = Array.from(modal.querySelectorAll('.court-allocation-row'));
+  const status = document.getElementById('allocateCourtsStatus');
   const apply = document.getElementById('allocateCourtsApply');
-  let origin = null;
-
-  function updateCalculation() {
-    const red = format.value === 'red';
-    courts.max = red ? '6250' : '25000';
-    document.getElementById('allocateCourtsFormatHelp').textContent = red
-      ? 'Each normal court holds four red mini-courts, with four players on each: 16 players per normal court.'
-      : `${format.options[format.selectedIndex].text} uses four players per normal court.`;
-    const valid = courts.checkValidity();
-    apply.disabled = !valid;
-    if (!valid) {
-      result.textContent = `Enter a whole number of courts between 1 and ${courts.max}.`;
-      return;
-    }
-    const count = Number(courts.value);
-    const total = count * (red ? 16 : 4);
-    result.textContent = red
-      ? `${count} normal ${count === 1 ? 'court' : 'courts'} × 4 mini-courts × 4 players = ${total} players`
-      : `${count} ${count === 1 ? 'court' : 'courts'} × 4 players = ${total} players`;
+  let calculated = [];
+  function invalidate() {
+    calculated = [];
+    apply.disabled = true;
+    rows.forEach(row => {
+      const courts = row.querySelector('.court-count');
+      courts.max = row.querySelector('.court-format').value === 'red' ? '6250' : '25000';
+      row.querySelector('.court-result').textContent = courts.value === '' ? 'Unchanged' : 'Select Calculate';
+    });
+    status.textContent = 'Select Calculate to review the current allocations.';
   }
-
-  modal.addEventListener('show.bs.modal', function (event) {
-    origin = event.relatedTarget;
-    if (!origin?.dataset.capInput) { event.preventDefault(); return; }
-    document.getElementById('allocateCourtsDivision').textContent = origin.dataset.divisionName;
-    format.value = origin.dataset.ballFormat || 'orange';
-    courts.value = origin.dataset.courtCount || '1';
-    updateCalculation();
-  });
-  modal.addEventListener('shown.bs.modal', function () { format.focus(); });
-  format.addEventListener('change', updateCalculation);
-  courts.addEventListener('input', updateCalculation);
+  form.addEventListener('input', invalidate);
+  form.addEventListener('change', invalidate);
+  modal.addEventListener('shown.bs.modal', function () { rows[0]?.querySelector('.court-count').focus(); });
   form.addEventListener('submit', function (event) {
     event.preventDefault();
-    if (!form.reportValidity() || !origin) return;
-    const input = document.getElementById(origin.dataset.capInput);
-    if (!input) return;
-    input.value = Number(courts.value) * (format.value === 'red' ? 16 : 4);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    origin.dataset.ballFormat = format.value;
-    origin.dataset.courtCount = courts.value;
+    invalidate();
+    if (!form.reportValidity()) return;
+    calculated = rows.filter(row => row.querySelector('.court-count').value !== '').map(row => {
+      const courts = Number(row.querySelector('.court-count').value);
+      const red = row.querySelector('.court-format').value === 'red';
+      const cap = courts * (red ? 16 : 4);
+      row.querySelector('.court-result').textContent = red
+        ? `${courts} normal ${courts === 1 ? 'court' : 'courts'} × 4 mini-courts × 4 players = ${cap} players`
+        : `${courts} ${courts === 1 ? 'court' : 'courts'} × 4 players = ${cap} players`;
+      return { inputId: row.dataset.capInput, cap, courts };
+    });
+    apply.disabled = calculated.length === 0;
+    const totalCourts = calculated.reduce((sum, row) => sum + row.courts, 0);
+    const totalPlayers = calculated.reduce((sum, row) => sum + row.cap, 0);
+    status.textContent = calculated.length ? `${calculated.length} category caps calculated: ${totalCourts} normal courts allocated, ${totalPlayers} players. Review the results, then select Use caps.` : 'Enter courts for at least one category; blank categories stay unchanged.';
+  });
+  apply.addEventListener('click', function () {
+    if (apply.disabled || !calculated.length || !form.reportValidity()) return;
+    calculated.forEach(({ inputId, cap }) => {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      input.value = cap;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
     bootstrap.Modal.getInstance(modal).hide();
+  });
+})();
+// Save one cap without discarding the other categories' unsaved allocations.
+(function () {
+  document.querySelectorAll('.division-limit-form').forEach(function (form) {
+    form.querySelector('[name="entry_limit"]').addEventListener('input', function () {
+      form.querySelector('.cap-save-status').textContent = 'Unsaved cap.';
+      form.querySelector('.cap-save-error').textContent = '';
+    });
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      const button = form.querySelector('[type="submit"]');
+      if (button.disabled || !form.reportValidity()) return;
+      const input = form.querySelector('[name="entry_limit"]');
+      const error = form.querySelector('.cap-save-error');
+      const status = form.querySelector('.cap-save-status');
+      const body = new FormData(form);
+      const submittedValue = input.value;
+      const label = button.textContent;
+      button.disabled = true;
+      button.textContent = 'Saving…';
+      input.disabled = true;
+      error.textContent = '';
+      status.textContent = '';
+      try {
+        const response = await fetch(form.action, { method: 'POST', headers: { 'Accept': 'application/json' }, body });
+        const data = await response.json().catch(() => ({}));
+        if (response.redirected || !response.ok || data.success !== true) {
+          throw new Error(response.redirected || response.status === 419
+            ? 'Your session expired. Reload this page before saving.'
+            : Object.values(data.errors || {}).flat().join(' ') || data.message || 'Could not save this cap. Please try again.');
+        }
+        status.textContent = input.value === submittedValue ? 'Cap saved.' : 'Previous cap saved; current value is unsaved.';
+        const current = document.getElementById(input.id.replace('entry-limit-', 'current-cap-'));
+        if (current) current.textContent = `Current cap: ${data.entry_limit ?? 'Unlimited'}`;
+      } catch (failure) {
+        error.textContent = failure.message || 'Could not save this cap. Please try again.';
+      } finally {
+        button.disabled = false;
+        button.textContent = label;
+        input.disabled = false;
+      }
+    });
   });
 })();
 window.categoryConfig = {

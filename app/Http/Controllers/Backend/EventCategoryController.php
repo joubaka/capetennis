@@ -19,6 +19,9 @@ class EventCategoryController extends Controller
       $locked = CategoryEvent::whereKey($categoryEvent->id)->lockForUpdate()->firstOrFail();
       $locked->update(['entry_limit' => $data['entry_limit'] ?? null]);
     });
+    if ($request->expectsJson()) {
+      return response()->json(['success' => true, 'entry_limit' => isset($data['entry_limit']) ? (int) $data['entry_limit'] : null]);
+    }
     return back()->with('success', 'Division entry cap saved. Existing entries and checkouts are retained.');
   }
 
