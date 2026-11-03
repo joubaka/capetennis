@@ -9,6 +9,20 @@ class PlayerRatingHistoryService
 {
     public function __construct(private readonly PlayerSharedAbilityService $ability, private readonly PlayerRatingHistoryStore $store) {}
 
+    /** Existing saved results only; callers must enforce per-player Plus access. */
+    public function recordSource(): array
+    {
+        $saved = $this->store->read();
+        if (!$saved) return ['reason' => 'Your playing record will be available after the next saved results update.'];
+        if (isset($saved['publication_manifest']['teamsheet_context']) && !app(TeamSheetTennisEvidence::class)->published($saved['publication_manifest']['teamsheet_context'])) {
+            return ['reason' => 'Saved results are awaiting an update because their source access changed.'];
+        }
+        $pending = $saved['source_fingerprint'] !== $this->ability->fingerprint();
+        if ($pending && !$this->canRetainSavedHistory($saved)) return ['reason' => 'Saved results are awaiting an update because results or publication changed.'];
+        return ['reason' => null, 'evidence' => $saved['evidence'], 'as_of' => $saved['as_of'], 'stale' => $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString(),
+            'built_at' => $saved['built_at']];
+    }
+
     /** Page reads never calculate, enqueue, or update ratings. */
     public function forPlayer(Player $player, array $filters = []): array
     {

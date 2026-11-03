@@ -68,6 +68,17 @@ class MyTennisController extends Controller
         ])->header('Cache-Control', 'private, no-store');
     }
 
+    public function playingRecord(Request $request, \App\Models\Player $player, string $section = 'record')
+    {
+        abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
+        $filters = $request->validate(['year' => 'nullable|integer|min:1900|max:2100', 'compare_first' => 'nullable|integer|min:1900|max:2100',
+            'compare_second' => 'nullable|integer|min:1900|max:2100', 'opponent' => 'nullable|integer|min:1',
+            'page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
+        return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
+            'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
     public function pathwayInfo(Request $request, \App\Models\Player $player, string $stage)
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);

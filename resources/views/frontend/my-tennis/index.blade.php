@@ -207,6 +207,9 @@
   </div>
   @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
+  @if($canViewRating ?? false)
+    <section class="card mb-4 border-start border-primary border-3"><div class="card-body"><span class="small text-primary fw-semibold">PLAYER PLUS</span><h2 class="h5 mt-2">Put your results in perspective</h2><p class="text-muted">Explore your available match record by season, or revisit the results against familiar opponents.</p><div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="{{ route('my.tennis.record', $ratingPlayer) }}">Playing Record</a><a class="btn btn-outline-primary" href="{{ route('my.tennis.record', ['player' => $ratingPlayer, 'section' => 'opponents']) }}">Opponent Insights</a></div></div></section>
+  @endif
   @if(!$selectedPlayer)
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body py-5 text-center">
