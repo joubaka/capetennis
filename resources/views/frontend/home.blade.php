@@ -109,6 +109,8 @@
   .home-ctr h2 span { color: #ffb45b; }
   .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
   .home-ctr-copy { min-width: 0; }
+  .home-ctr-examples { grid-column: 1; }
+  .home-ctr > .btn { grid-column: 2; grid-row: 1 / 3; }
   .home-ctr-badges { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
   .home-ctr-badge-preview { align-items: center; display: flex; flex-direction: column; gap: .35rem; }
   .home-ctr-badge-preview > .small { display: none; }
@@ -130,10 +132,15 @@
     .home-layout { padding-top: 5rem; }
   }
   @media (max-width: 767.98px) {
-    .home-ctr { gap: 1.1rem; grid-template-columns: minmax(0, 1fr); padding: 1.4rem; }
+    .home-ctr { gap: .8rem 1rem; grid-template-columns: minmax(0, 1fr) 6rem; padding: 1rem; }
+    .home-ctr-copy { grid-column: 1 / -1; }
+    .home-ctr-examples { grid-column: 2; grid-row: 2; text-align: center; }
+    .home-ctr-badges { justify-content: center; margin-top: 0; }
+    .home-ctr-badge-preview [data-ctr-badge] { width: 5rem !important; height: 5rem !important; }
+    .home-ctr-example-note { font-size: .6rem; line-height: 1.35; }
     .home-ctr::after { right: -2rem; }
     .home-ctr-badge-preview--extra { display: none; }
-    .home-layout .home-ctr .btn { justify-self: start; }
+    .home-layout .home-ctr .btn { grid-column: 1; grid-row: 2; justify-self: start; font-size: .85rem; padding: .65rem .75rem; }
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
     .home-controls { min-width: 0; padding: .8rem; }
@@ -167,6 +174,8 @@
         <x-player-plus-coming-soon class="mb-2" />
         <h2 class="h4 mb-1" id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
         <p>Player Plus · What should I play next? Follow your rating and progress, check an eligible opponent’s rating, and explore the pathway from Red Ball to Yellow Ball and TSA events.</p>
+      </div>
+      <div class="home-ctr-examples">
         <div class="home-ctr-badges" role="group" aria-label="Example CTR badges">
           <div class="home-ctr-badge-preview home-ctr-badge-preview--extra">
             <x-ctr-badge :score="35.6" stage="red" title="Example Red Ball CTR badge; illustrative score only." />
