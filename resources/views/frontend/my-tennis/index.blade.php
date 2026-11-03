@@ -254,7 +254,7 @@
         </div>
         <div class="my-tennis-plus-offer">
           <x-player-plus-pricing class="my-tennis-plus-price" />
-          <a class="btn my-tennis-plus-link" href="{{ route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+          <a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
           <p class="my-tennis-plus-terms">Eligible results required for a rating.</p>
         </div>
       </aside>

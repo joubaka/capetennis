@@ -1,5 +1,5 @@
 @extends('layouts/layoutMaster')
-@section('title', 'CTR Rankings · Cape Tennis Rating')
+@section('title', 'CTR Ratings · Cape Tennis Rating')
 @section('page-style')
 <style>
 .ctr-intro{font-family:'Public Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:1180px;margin:1.5rem auto 3rem;color:#172e45}
@@ -88,7 +88,7 @@
     <div>
       <p class="ctr-eyebrow">Cape Tennis · Player Plus</p>
       <x-player-plus-coming-soon class="mb-3" />
-      <h1 id="ctr-title">Discover CTR Rankings</h1>
+      <h1 id="ctr-title">Discover CTR Ratings</h1>
       <p class="ctr-hero-description">What should I play next? How am I progressing? Player Plus helps primary-school players, beginners and their families understand playing strength and explore the journey from Red Ball through Orange, Green and Yellow Ball to TSA events.</p>
       <div class="ctr-intro-actions">
         <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>

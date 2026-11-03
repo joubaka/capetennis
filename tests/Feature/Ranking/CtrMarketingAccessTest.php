@@ -39,9 +39,13 @@ class CtrMarketingAccessTest extends TestCase
                 $this->assertSame($expected ? 200 : 403, $response->getStatusCode());
                 if ($expected) $this->assertSame($super === true, $response->getOriginalContent()->getData()['isSuperUser']);
                 $html = Blade::render('@if(app(\\App\\Services\\Performance\\PlayerRatingAccess::class)->allowsMarketing($user))<x-player-plus-pricing />@endif', ['user' => $user]);
-                if ($expected) {
+                if ($enabled) {
                     $this->assertStringContainsString('R69.00', $html);
                     $this->assertStringContainsString('R699.00', $html);
+                } elseif ($expected) {
+                    $this->assertStringNotContainsString('R69.00', $html);
+                    $this->assertStringNotContainsString('R699.00', $html);
+                    $this->assertStringContainsString('Pricing will be published', $html);
                 } else $this->assertSame('', $html);
             }
         }
@@ -68,6 +72,8 @@ class CtrMarketingAccessTest extends TestCase
         $html = view('frontend.ctr', ['isSuperUser' => false])->render();
         $this->assertStringContainsString('data-player-plus-coming-soon', $html);
         $this->assertStringContainsString('Purchases are not open yet.', $html);
+        $this->assertStringNotContainsString('R69.00', $html);
+        $this->assertStringNotContainsString('R699.00', $html);
         $this->assertStringNotContainsString('href="'.route('player-plus.index').'"', $html);
         Cache::put('site_setting.'.PlayerRatingAccess::SETTING, (object) ['value' => '1']);
         $this->assertFalse($access->comingSoon());

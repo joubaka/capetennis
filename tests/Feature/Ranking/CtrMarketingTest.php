@@ -45,6 +45,7 @@ class CtrMarketingTest extends TestCase
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
         $this->get(route('home'))->assertOk()->assertSee('data-player-plus-coming-soon', false);
         $this->get(route('ctr.index'))->assertOk()->assertSee('Coming Soon')
+            ->assertDontSee('R69.00')->assertDontSee('R699.00')
             ->assertDontSee('href="'.route('player-plus.index').'"', false);
         $this->actingAs(User::factory()->create());
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
@@ -95,6 +96,21 @@ class CtrMarketingTest extends TestCase
     {
         Role::findOrCreate('super-user', 'web');
         return User::factory()->create()->assignRole('super-user');
+    }
+
+    public function test_player_dashboard_coming_soon_hides_prices_and_links_to_marketing(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        SiteSetting::set(PlayerRatingAccess::SETTING, '0');
+        SiteSetting::set(PlayerRatingAccess::COMING_SOON_SETTING, '1');
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
+        $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id]))
+            ->assertOk()->assertSee(' data-player-plus-coming-soon>', false)
+            ->assertSee('Pricing will be published when Player Plus launches.')
+            ->assertDontSee('R69.00')->assertDontSee('R699.00')
+            ->assertSee('href="'.route('ctr.index').'"', false)
+            ->assertDontSee('href="'.route('player-plus.player', $player).'"', false);
     }
 
     public function test_super_users_keep_marketing_preview_when_sales_are_paused(): void

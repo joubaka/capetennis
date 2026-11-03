@@ -22,5 +22,15 @@ canonical refresh workflow after the appropriate authorization. No player profil
 canonical result, publication gate or rating-confidence policy should be changed
 to repair a classification.
 
+The personal history page selects the highest valid ball level in the latest
+saved month (Green/Yellow, then Orange, then Red). A requested historical cohort
+or a recorded starting pathway stage does not override that current level.
+When testing separation, inspect the saved curves and evidence registry for
+each ball level, while checking that the displayed evidence stays in the current
+level and private sources remain redacted. Progression uses each level's own
+score; an Overall score cannot fill a missing ball-level score.
+
 Regression references: `tests/Unit/BallRatingModelTest.php` and
-`tests/Feature/BallRatingPipelineTest.php`.
+`tests/Feature/BallRatingPipelineTest.php`, with current-group selection in
+`tests/Feature/PlayerRatingCurrentGroupTest.php` and pathway rules in
+`tests/Feature/PlayerPathwayTest.php`.

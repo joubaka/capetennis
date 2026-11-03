@@ -9,7 +9,7 @@
 @include('backend.partials.operational-controls')
 <div class="ctr-directory">
     <header class="ctr-hero">
-        <div><h1>CTR Rankings</h1><p>{{ $ballLevel ? $ratingLabel.' · singles ratings' : 'Cape Tennis all-age singles ratings' }}</p></div>
+        <div><h1>CTR Ratings</h1><p>{{ $ballLevel ? $ratingLabel.' · singles ratings' : 'Cape Tennis all-age singles ratings' }}</p></div>
         <span class="ctr-hero-mark" aria-hidden="true">CTR</span>
     </header>
     <div class="ctr-summary">

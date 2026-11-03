@@ -27,6 +27,7 @@ while purchase actions remain closed. Super users can turn this marketing off
 or on under Site Settings → Player Plus. Enabling **Accept new purchases**
 launches purchasing and removes the coming-soon badges automatically; the
 marketing toggle never grants private ratings, player links or paid access.
+Public marketing hides monetary plan amounts until sales are enabled, including super-user previews; historical order amounts remain visible to their authorised payer.
 
 `player_rating_membership_enabled` is the existing setting key, now presented as **Player Plus · accept new purchases**. It controls new orders and new PayFast handoffs. Turning sales off preserves current paid benefits until their exact expiry. Already handed-off verified payments still use their original immutable order amount and payment window. The sale setting is not an entitlement or player-link override.
 

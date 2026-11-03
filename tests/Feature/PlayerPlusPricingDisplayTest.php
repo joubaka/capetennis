@@ -30,13 +30,13 @@ class PlayerPlusPricingDisplayTest extends TestCase
         $this->assertStringContainsString('Monthly purchases are currently unavailable.', $html);
     }
 
-    public function test_paused_sales_do_not_hide_either_price_or_offer_checkout(): void
+    public function test_paused_sales_hide_unpublished_prices_and_do_not_offer_checkout(): void
     {
         Cache::put('site_setting.'.PlayerRatingAccess::SETTING, (object) ['value' => '0']);
         $html = Blade::render('<x-player-plus-pricing />');
-        $this->assertStringContainsString('R69.00', $html);
-        $this->assertStringContainsString('R699.00', $html);
-        $this->assertStringContainsString('New purchases are currently paused.', $html);
+        $this->assertStringNotContainsString('R69.00', $html);
+        $this->assertStringNotContainsString('R699.00', $html);
+        $this->assertStringContainsString('Pricing will be published when Player Plus launches.', $html);
         $this->assertStringNotContainsString('<form', $html);
     }
 

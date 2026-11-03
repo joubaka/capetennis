@@ -233,9 +233,14 @@ class BallRatingPipelineTest extends TestCase
             $saved = $history->calculate(CarbonImmutable::today()); $store->replace($saved, $ability->fingerprint());
             foreach (BallRatingModel::COHORTS as $stage => $cohort) {
                 $result = $history->forPlayer($players[0], ['cohort' => $cohort, 'scope' => 'all']);
-                $this->assertSame($stage, $result['ball_stage']); $this->assertSame(1, $result['evidence']['matches']);
-                $this->assertSame($stage, $result['evidence']['rows'][0]['ball_type']);
+                // A historical filter cannot replace the player's current saved level.
+                $this->assertSame('standard', $result['ball_stage']); $this->assertSame(1, $result['evidence']['matches']);
+                $this->assertSame('standard', $result['evidence']['rows'][0]['ball_type']);
+                $this->assertNotEmpty($result['ball_series'][$cohort]);
                 $this->assertNotNull($result['pathway_metrics']['stage_ratings'][$stage]['score']);
+                $ownEvidence = array_values(array_filter($saved['evidence'], fn ($row) => $row['cohort'] === $cohort));
+                $this->assertCount(1, $ownEvidence);
+                $this->assertSame($stage, $ownEvidence[0]['ball_type']);
             }
             $this->assertSame('standard', $history->forPlayer($players[0])['ball_stage']);
             $registry = $saved['evidence'];
@@ -247,12 +252,25 @@ class BallRatingPipelineTest extends TestCase
     {
         $player = Player::factory()->create();
         DB::table('player_pathway_profiles')->insert(['player_id' => $player->id, 'stage' => 'red', 'recorded_by_user_id' => auth()->id(), 'created_at' => now(), 'updated_at' => now()]);
-        $summary = app(PlayerPathwayService::class)->summary($player, ['pathway_metrics' => ['player_id' => $player->id,
+        $metrics = ['player_id' => $player->id,
             'available' => true, 'score' => 99, 'comparable' => true, 'stale' => false, 'stage_events' => ['red' => 3, 'orange' => 3, 'standard' => 3],
-            'stage_ratings' => ['orange' => ['score' => 99, 'comparable' => true]]]]);
+            'stage_ratings' => []];
+        $service = app(PlayerPathwayService::class);
+        $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
         $this->assertNull($summary['score']); $this->assertFalse($summary['ready']);
         $this->assertFalse($summary['stageProgress']['red']['met']); $this->assertNull($summary['stageProgress']['red']['score']);
+
+        $metrics['stage_ratings']['orange'] = ['score' => 50, 'comparable' => true];
+        $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
+        $this->assertSame('orange', $summary['current_stage']); $this->assertSame(50.0, $summary['score']);
+        $this->assertFalse($summary['ready']); $this->assertFalse($summary['stageProgress']['orange']['met']);
+        $this->assertFalse($summary['stageProgress']['red']['met']); $this->assertNull($summary['stageProgress']['red']['score']);
+
+        $metrics['stage_ratings']['orange']['score'] = 99;
+        $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
+        $this->assertSame(99.0, $summary['score']); $this->assertTrue($summary['ready']);
         $this->assertTrue($summary['stageProgress']['orange']['met']);
+        $this->assertFalse($summary['stageProgress']['red']['met']);
     }
 
     public function test_invalid_import_ball_metadata_cannot_partially_change_staged_results(): void
@@ -299,8 +317,12 @@ class BallRatingPipelineTest extends TestCase
             $store->replace($saved, $ability->fingerprint()); $this->actingAs(User::factory()->create());
             foreach (['red' => 1, 'orange' => 1, 'standard' => 2] as $ball => $count) {
                 $result = $history->forPlayer($players[0], ['cohort' => BallRatingModel::COHORTS[$ball], 'scope' => 'all']);
+                $this->assertSame('standard', $result['ball_stage']);
                 $this->assertNotEmpty($result['points']); $this->assertSame([], $result['evidence']['rows']);
-                $this->assertSame($count, $result['evidence']['restricted']); $this->assertSame($count, $result['evidence']['matches']);
+                $this->assertSame(2, $result['evidence']['restricted']); $this->assertSame(2, $result['evidence']['matches']);
+                $ownEvidence = array_values(array_filter($saved['evidence'], fn ($row) => $row['cohort'] === BallRatingModel::COHORTS[$ball]));
+                $this->assertCount($count, $ownEvidence);
+                foreach ($ownEvidence as $row) $this->assertSame($ball, $row['ball_type']);
                 $this->assertSame(0, $result['pathway_metrics']['stage_events'][$ball], 'Private external competitions do not become published Cape events.');
             }
         } finally { File::delete($path); }
