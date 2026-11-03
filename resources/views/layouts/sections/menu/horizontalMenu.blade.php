@@ -52,9 +52,11 @@ $configData = Helper::appClasses();
       @if($menu->menuLevel == 'super' || $menu->menuLevel == 'all')
       <li class="menu-item {{$activeClass}}">
         <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if($activeClass && !isset($menu->submenu)) aria-current="page" @endif @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
-          @isset($menu->icon)
+          @if(($menu->slug ?? null) === 'ctr.index')
+          <x-ctr-mark class="me-2" />
+          @elseif(isset($menu->icon))
           <i class="{{ $menu->icon }}"></i>
-          @endisset
+          @endif
           <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
         @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         </a>
@@ -69,9 +71,11 @@ $configData = Helper::appClasses();
       @if($menu->menuLevel == 'all')
       <li class="menu-item {{$activeClass}}">
         <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if($activeClass && !isset($menu->submenu)) aria-current="page" @endif @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
-          @isset($menu->icon)
+          @if(($menu->slug ?? null) === 'ctr.index')
+          <x-ctr-mark class="me-2" />
+          @elseif(isset($menu->icon))
           <i class="{{ $menu->icon }}"></i>
-          @endisset
+          @endif
           <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
         @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         </a>

@@ -1,4 +1,4 @@
-@props(['title', 'eyebrow' => 'Cape Tennis · Player Plus', 'subtitle' => null, 'heading' => 'h1', 'headingId' => null])
+@props(['title', 'eyebrow' => 'Cape Tennis · Player Plus', 'subtitle' => null, 'heading' => 'h1', 'headingId' => null, 'workspace' => null])
 @once
   <link rel="stylesheet" href="{{ asset('assets/css/player-workspace.css') }}?v={{ filemtime(public_path('assets/css/player-workspace.css')) }}">
 @endonce
@@ -11,8 +11,22 @@
       @if($subtitle)<p class="ct-workspace-subtitle">{{ $subtitle }}</p>@endif
       {{ $slot }}
     </div>
-    @isset($summary)<div class="ct-workspace-header-summary">{{ $summary }}</div>@endisset
-    @isset($actions)<div class="ct-workspace-header-actions">{{ $actions }}</div>@endisset
+    @if(isset($summary) || ($workspace['player'] ?? null))<div class="ct-workspace-header-summary">
+      @if($workspace['canViewRating'] ?? false)@include('frontend.my-tennis.rating-snapshot', ['ratingSnapshot' => $workspace['snapshot']])
+      @elseif(($workspace['related'] ?? false))@include('frontend.my-tennis.locked-rating-snapshot', ['ratingPlayer' => $workspace['player']])@endif
+      @isset($summary){{ $summary }}@endisset
+    </div>@endif
+    @if(isset($actions) || $workspace)<div class="ct-workspace-header-actions">
+      @if($workspace)@include('frontend.my-tennis.workspace-selector')@endif
+      @isset($actions){{ $actions }}@endisset
+    </div>@endif
   </div>
+  @if($workspace['player'] ?? null)
+    <div class="ct-workspace-header-navigation">
+      @if(($workspace['related'] ?? false) || ($workspace['canViewRating'] ?? false))
+        @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $workspace['player'], 'locked' => !$workspace['canViewRating']])
+      @endif
+    </div>
+  @endif
   @isset($navigation)<div class="ct-workspace-header-navigation">{{ $navigation }}</div>@endisset
 </header>

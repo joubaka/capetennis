@@ -16,7 +16,7 @@
   <p class="small text-muted mb-3">Eligible results are needed for a rating; purchasing Plus does not guarantee one.</p>
     <ul class="small ps-3 mb-2">
       <li><strong class="plus-benefit-title"><i class="ti ti-chart-line" aria-hidden="true"></i>How am I progressing?</strong>Follow 12 months of saved rating history and explore the recorded singles results behind changes in playing strength.</li>
-      <li><strong class="plus-benefit-title"><i class="ti ti-list-details" aria-hidden="true"></i>What is my rating?</strong>Understand your Cape Tennis Rating (CTR), an estimate of singles playing strength, with evidence and confidence labels. See your age-group Top 10 and rating position where available.</li>
+      <li><strong class="plus-benefit-title"><x-ctr-mark class="me-1" />What is my rating?</strong>Understand your Cape Tennis Rating (CTR), an estimate of singles playing strength, with evidence and confidence labels. See your age-group Top 10 and rating position where available.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>How strong is tomorrow’s opponent?</strong>Search by name and choose one eligible published player to check their available rating and confidence. Compare playing strength where ratings share a comparable scale.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>What is my next tournament?</strong>Explore event types for your ball level, development benchmarks and suggested next steps towards Wilson and TSA events. Use the guidance to discuss a suitable next event with your coach, then check its dates and entry rules.</li>
     </ul>

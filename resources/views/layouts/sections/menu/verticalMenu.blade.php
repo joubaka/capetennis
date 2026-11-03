@@ -3,6 +3,10 @@ $configData = Helper::appClasses();
 @endphp
 
 <aside id="layout-menu" class="layout-menu menu-vertical menu bg-menu-theme">
+  <style>
+    .menu-vertical .menu-link [data-player-plus-coming-soon] { font-size:.65rem!important;padding:.3rem .45rem!important;white-space:nowrap!important; }
+    .menu-vertical .menu-link:has([data-ctr-mark]) > div { min-width:0; }
+  </style>
 
   <!-- ! Hide app brand if navbar-full -->
   @if(!isset($navbarFull))
@@ -79,9 +83,11 @@ $configData = Helper::appClasses();
     @if(!isset($menu->menuLevel) || $menu->menuLevel === 'super' || $menu->menuLevel === 'all')
     <li class="menu-item {{$activeClass}}">
       <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
-        @isset($menu->icon)
-        <i class="{{ $menu->icon }}"></i>
-        @endisset
+        @if(($menu->slug ?? null) === 'ctr.index')
+          <x-ctr-mark class="me-2" />
+          @elseif(isset($menu->icon))
+          <i class="{{ $menu->icon }}"></i>
+          @endif
         <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
         @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         @isset($menu->badge)
@@ -99,9 +105,11 @@ $configData = Helper::appClasses();
     @if(!isset($menu->menuLevel) || $menu->menuLevel === 'all')
     <li class="menu-item {{$activeClass}}">
       <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
-        @isset($menu->icon)
-        <i class="{{ $menu->icon }}"></i>
-        @endisset
+        @if(($menu->slug ?? null) === 'ctr.index')
+          <x-ctr-mark class="me-2" />
+          @elseif(isset($menu->icon))
+          <i class="{{ $menu->icon }}"></i>
+          @endif
         <div>{{ isset($menu->name) ? __($menu->name) : '' }}</div>
         @if($menu->playerPlusMarketing ?? false)<x-player-plus-coming-soon class="ms-2" />@endif
         @isset($menu->badge)

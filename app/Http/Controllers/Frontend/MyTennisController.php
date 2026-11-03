@@ -42,6 +42,17 @@ class MyTennisController extends Controller
         return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
     }
 
+    public function featurePreview(Request $request, \App\Models\Player $player, string $feature)
+    {
+        abort_unless(in_array($feature, ['record', 'opponents', 'pathway', 'events', 'rating'], true), 404);
+        abort_unless($request->user()->hasRole('super-user') || app(\App\Services\PlayerRelationshipAccess::class)->related($request->user(), $player), 403);
+
+        // Marketing only: do not load private rating, match or pathway evidence.
+        return response()->view('frontend.my-tennis.feature-preview-page', [
+            'ratingPlayer' => $player, 'previewFeature' => $feature,
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     public function rating(Request $request, \App\Models\Player $player)
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
@@ -67,6 +78,7 @@ class MyTennisController extends Controller
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
         return response()->view('frontend.my-tennis.pathway-page', [
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, $history),
             'ratingPlayer' => $player,
             'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');
@@ -79,6 +91,7 @@ class MyTennisController extends Controller
             'compare_second' => 'nullable|integer|min:1900|max:2100', 'opponent' => 'nullable|integer|min:1',
             'page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
             'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
             ->header('Cache-Control', 'private, no-store');
     }

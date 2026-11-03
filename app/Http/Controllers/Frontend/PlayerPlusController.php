@@ -15,17 +15,18 @@ class PlayerPlusController extends Controller
 {
     public const TERMS_VERSION = '2026-11-03-wallet';
 
-    public function terms()
+    public function terms(Request $request)
     {
-        return response()->view('frontend.player-plus.terms', ['version' => self::TERMS_VERSION])->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.terms', ['version' => self::TERMS_VERSION,
+            'workspace' => $request->user() ? app(\App\Services\PlayerWorkspaceContext::class)->fromRequest($request->user(), $request->integer('player') ?: null) : null])->header('Cache-Control', 'private, no-store');
     }
 
     public function orders(Request $request)
     {
         $orders = PlayerPlusService::ready()
-            ? PlayerPlusOrder::where('user_id', $request->user()->id)->with('player')->latest('id')->paginate(20)
+            ? PlayerPlusOrder::where('user_id', $request->user()->id)->with('player')->latest('id')->paginate(20)->withQueryString()
             : new LengthAwarePaginator([], 0, 20, 1, ['path' => route('player-plus.orders.index')]);
-        return response()->view('frontend.player-plus.orders', compact('orders'))->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.orders', compact('orders') + ['workspace' => app(\App\Services\PlayerWorkspaceContext::class)->fromRequest($request->user(), $request->integer('player') ?: null)])->header('Cache-Control', 'private, no-store');
     }
     public function index(Request $request, PlayerPlusEntitlement $entitlements)
     {
@@ -36,7 +37,7 @@ class PlayerPlusController extends Controller
         });
         $players = $players->orderBy('surname')->orderBy('name')->paginate(20)->withQueryString();
         $enabled = PlayerPlusService::salesEnabled();
-        return response()->view('frontend.player-plus.index', compact('players', 'search', 'enabled'))->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.index', compact('players', 'search', 'enabled') + ['workspace' => app(\App\Services\PlayerWorkspaceContext::class)->fromRequest($request->user(), $request->integer('player') ?: null)])->header('Cache-Control', 'private, no-store');
     }
 
     public function player(Request $request, Player $player, PlayerPlusEntitlement $entitlements)
@@ -55,8 +56,10 @@ class PlayerPlusController extends Controller
             || ($managementReady && $player->plusOverride()->where(fn ($q) => $q->where('mode', 'suspended')->orWhere(fn ($grant) => $grant->where('mode', 'grant')->where('starts_at', '<=', now())->where('ends_at', '>', now())))->exists()));
         $canViewRating = app(PlayerRatingAccess::class)->allows($request->user(), $player);
         $enabled = PlayerPlusService::salesEnabled();
-        $readiness = app(PlayerPlusReadiness::class)->forPlayer($request->user(), $player);
+        $workspaceHistory = $canViewRating ? app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player) : null;
+        $readiness = app(PlayerPlusReadiness::class)->forPlayer($request->user(), $player, $workspaceHistory);
         return response()->view('frontend.player-plus.player', [
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, $workspaceHistory),
             'player' => $player, 'membership' => $membership, 'canViewRating' => $canViewRating,
             'linked' => $linked, 'enabled' => $enabled, 'token' => (string) Str::uuid(),
             'adminAccess' => $adminAccess, 'purchaseBlocked' => $purchaseBlocked,
@@ -122,7 +125,7 @@ class PlayerPlusController extends Controller
         $order->load('player');
         $subscription = PlayerPlusService::monthlyReady() ? ($order->subscription_order_id ? $order->subscriptionOrder?->subscription : $order->subscription) : null;
         $form = null;
-        return response()->view('frontend.player-plus.order', compact('order', 'form', 'subscription'))->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.order', compact('order', 'form', 'subscription') + ['workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $order->player)])->header('Cache-Control', 'private, no-store');
     }
 
     public function pay(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)
@@ -142,7 +145,8 @@ class PlayerPlusController extends Controller
         $status = $this->returnStatus($request, $order);
         if ($status['state'] !== 'pending') return redirect()->to($status['destination'])->header('Cache-Control', 'private, no-store');
         $order->load('player');
-        return response()->view('frontend.player-plus.order', ['order' => $order, 'form' => null, 'returnFlow' => true])
+        return response()->view('frontend.player-plus.order', ['order' => $order, 'form' => null, 'returnFlow' => true,
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $order->player)])
             ->header('Cache-Control', 'private, no-store');
     }
 

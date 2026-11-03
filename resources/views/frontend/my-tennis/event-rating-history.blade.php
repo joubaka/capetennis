@@ -2,8 +2,7 @@
 @section('title', 'Past-event player ratings')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-event-rating-history="v1">
-    <x-player-workspace-header :title="$ratingPlayer->full_name.' · Past-event ratings'" eyebrow="Player Plus · Match by match">
-      <x-slot:navigation>@include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])</x-slot:navigation>
+    <x-player-workspace-header :workspace="$workspace ?? null" :title="$ratingPlayer->full_name.' · Past-event ratings'" eyebrow="Player Plus · Match by match">
     </x-player-workspace-header>
     <div class="card"><div class="card-body">
         <p>Reconstructed as of each event’s completion date, using only eligible results dated on or before that date. These are retrospective estimates, not ratings originally published at the time.</p>

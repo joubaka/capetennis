@@ -161,7 +161,7 @@
       </x-slot:summary>
       <x-slot:actions>
         @include('frontend.my-tennis.player-selector')
-        <a class="btn btn-outline-light" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : ($headerPlayer ? route('player-plus.player', $headerPlayer) : route('player-plus.index')) }}">Player Plus <span aria-hidden="true">↗</span></a>
+        <a class="btn btn-outline-light" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : ($headerPlayer ? route('player-plus.player', $headerPlayer) : route('player-plus.index')) }}">Player Plus <span aria-hidden="true">↗</span></a>
       </x-slot:actions>
       <x-slot:navigation>
         @include('frontend.my-tennis.dashboard-tabs')
@@ -204,7 +204,7 @@
       </div>
     </div>
   @else
-    @unless($canViewRating ?? false)<section class="card mb-4"><div class="card-body"><h2 class="h5">Your dashboard and Player Plus</h2><p>Entries, published results, official rankings and upcoming matches are included with your account. Player Plus adds personal CTR history, pathway insights, Playing Record, season comparison and Opponent Insights for this player.</p><a class="btn btn-outline-primary" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $selectedPlayer) }}">Explore Player Plus</a></div></section>@endunless
+    @unless($canViewRating ?? false)<section class="card mb-4"><div class="card-body"><h2 class="h5">Your dashboard and Player Plus</h2><p>Entries, published results, official rankings and upcoming matches are included with your account. Player Plus adds personal CTR history, pathway insights, Playing Record, season comparison and Opponent Insights for this player.</p><a class="btn btn-outline-primary" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : route('player-plus.player', $selectedPlayer) }}">Explore Player Plus</a></div></section>@endunless
     @include('frontend.my-tennis.teamsheet-connection')
     @if(($playerCount ?? 0) > \App\Services\MyTennisService::DEFAULT_PLAYER_SCAN_LIMIT)<p class="small text-muted">The player selector shows the first {{ \App\Services\MyTennisService::PLAYER_LIMIT }} profiles and your selected player. Automatic match selection checks the first {{ \App\Services\MyTennisService::DEFAULT_PLAYER_SCAN_LIMIT }}; use Manage players to open any other linked profile.</p>@endif
     @if($matchReadLimited ?? false)<p class="small text-muted" role="status">This dashboard checks the earliest {{ \App\Services\MyTennisService::MATCH_CANDIDATE_LIMIT }} scheduled fixtures per match type. Counts below cover the matches shown; use the event programme for the full schedule.</p>@endif
@@ -244,7 +244,7 @@
         </div>
         <div class="my-tennis-plus-offer">
           <x-player-plus-pricing class="my-tennis-plus-price" />
-          <a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
+          <a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
           <p class="my-tennis-plus-terms">Eligible results required for a rating.</p>
         </div>
       </aside>

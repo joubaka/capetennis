@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const bind = require('../../public/assets/js/my-tennis-player-switch.js');
 
-function harness(loader = true) {
+function harness(loader = true, options = {}) {
   let submitted = 0, shown = 0, closed = 0, callback, fail = false;
   const events = {}, attrs = {}, listeners = {};
   const form = {getAttribute: name => attrs[name] ?? null, setAttribute(name, value) {attrs[name] = value;}, removeAttribute(name) {delete attrs[name];},
@@ -12,7 +12,7 @@ function harness(loader = true) {
   const window = {setTimeout(fn, delay) {assert.equal(delay, 30000); callback = fn; return 1;}, clearTimeout() {callback = null;},
     addEventListener(name, fn) {events[name] = fn;}, removeEventListener(name) {delete events[name];}};
   if (loader) window.CapeLoading = {show(options) {shown++; assert.equal(options.title, 'Changing player'); return {close() {closed++;}};}};
-  const controller = bind(window, select);
+  const controller = bind(window, select, options);
   return {window, select, attrs, events, listeners, controller, submitted: () => submitted, shown: () => shown, closed: () => closed,
     expire() {callback();}, fail() {fail = true;}};
 }
@@ -37,4 +37,11 @@ test('binding is idempotent and disposal restores the previous handler', () => {
   const h = harness(); assert.equal(bind(h.window, h.select), h.controller);
   h.controller.destroy(); assert.equal(h.select.onchange, undefined); assert.equal(h.events.pageshow, undefined);
   assert.equal(bind(h.window, null), null);
+});
+
+test('dedicated workspace selector waits for View submit and shares loading recovery', () => {
+  const h = harness(true, {submitOnChange: false});
+  assert.equal(h.select.onchange, undefined); assert.equal(h.submitted(), 0); assert.equal(h.shown(), 0);
+  h.listeners.submit(); assert.equal(h.shown(), 1); assert.equal(h.select.disabled, false);
+  h.events.pageshow(); assert.equal(h.closed(), 1); assert.equal(h.attrs['aria-busy'], undefined);
 });

@@ -8,6 +8,9 @@
 .ctr-intro .ctr-eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin:0 0 1rem}
 .ctr-intro-hero{display:grid;grid-template-columns:1.05fr 1fr;gap:2.5rem;align-items:center;background:#172e45;border-radius:24px;padding:clamp(1.5rem,4vw,3.25rem);color:#fff;overflow:hidden}
 .ctr-intro .ctr-intro-hero h1{font-size:clamp(2.5rem,4.2vw,3.8rem);line-height:1.04;letter-spacing:-.055em;color:#fff!important;max-width:10ch;margin:0 0 1.25rem}
+.ctr-intro .ctr-intro-hero h1{display:flex;align-items:flex-start;gap:.65rem;max-width:100%}
+.ctr-intro-hero h1 .ctr-mark{margin-top:.15em;width:.85em!important;height:.85em!important}
+.ctr-intro-hero h1 span{min-width:0;max-width:10ch}
 .ctr-intro-hero .ctr-eyebrow{color:#b8d8f5}
 .ctr-hero-description{font-size:1.05rem;line-height:1.75;color:#e0ebf5;max-width:34rem;margin-bottom:1.6rem}
 .ctr-intro-actions{display:flex;flex-wrap:wrap;gap:.75rem}
@@ -103,7 +106,7 @@
     <div>
       <p class="ctr-eyebrow">Cape Tennis · Player Plus</p>
       <x-player-plus-coming-soon class="mb-3" />
-      <h1 id="ctr-title">Discover CTR Ratings</h1>
+      <h1 id="ctr-title"><x-ctr-mark size="heading" /><span>Discover CTR Ratings</span></h1>
       <p class="ctr-hero-description">What should I play next? How am I progressing? Player Plus helps primary-school players, beginners and their families understand playing strength and explore the journey from Red Ball through Orange, Green and Yellow Ball to TSA events.</p>
       <div class="ctr-intro-actions">
         <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
@@ -137,7 +140,7 @@
       <div class="ctr-feature-details"><p>Your history follows the ball level of your latest saved rating across the available monthly snapshots. Select a month to review its estimate and the eligible evidence behind it. Months without enough evidence may have no rating.</p><p>Read the curve alongside confidence, result dates and comparison-group context. A change in opponents or comparison group can affect an estimate; a higher number alone does not prove improvement, and ratings from different ball levels are not interchangeable.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-line" aria-hidden="true"></i></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><x-ctr-mark /></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
       <div class="ctr-feature-details"><p>CTR is an estimate of playing strength from eligible recorded evidence. Check the saved update date and confidence label together with the number: sparse or older evidence needs more care, and confidence is not a guarantee of accuracy.</p><p>A provisional within-group estimate is not calibrated against other groups. Missing or non-comparable evidence may leave a rating or position unavailable. Buying Player Plus does not create results, guarantee a rating, or change tournament rankings or selection.</p></div>
     </details>
     <details class="ctr-intro-feature">

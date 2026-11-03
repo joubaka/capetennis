@@ -1,5 +1,5 @@
 <details {{ $attributes->class(['mb-3']) }}>
-  <summary class="py-2" style="min-height:44px;cursor:pointer">How your rating works</summary>
+  <summary class="py-2" style="min-height:44px;cursor:pointer"><x-ctr-mark class="me-2" />How your rating works</summary>
   <div class="mt-2" style="overflow-wrap:anywhere">
     <p>Your Cape Tennis rating estimates your playing strength on a <strong>0–100 scale: higher means stronger</strong>. It is separate from your tournament position or ranking.</p>
     <ul class="ps-3">

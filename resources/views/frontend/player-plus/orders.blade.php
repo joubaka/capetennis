@@ -3,8 +3,8 @@
 @section('content')
 <div class="container-xxl container-p-y pp-journey ct-player-workspace" style="max-width:900px">
   @include('frontend.player-plus.styles')
-  <x-player-workspace-header title="My Player Plus orders" eyebrow="Player Plus · Your memberships" subtitle="Your purchases and payment attempts appear here. Sponsoring a player does not grant access to their private ratings.">
-    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis') }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.index') }}">Player memberships</a></nav></x-slot:navigation>
+  <x-player-workspace-header :workspace="$workspace ?? null" title="My Player Plus orders" eyebrow="Player Plus · Your memberships" subtitle="Your purchases and payment attempts appear here. Sponsoring a player does not grant access to their private ratings.">
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis', ['player' => $workspace['player']->id ?? null]) }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">Player memberships</a></nav></x-slot:navigation>
   </x-player-workspace-header>
   <div class="list-group pp-order-list">
     @forelse($orders as $order)

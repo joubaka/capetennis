@@ -1,5 +1,5 @@
 <section class="p-3 border-bottom" aria-labelledby="ctr-top-ten-title" data-ctr-top-ten>
-  <h2 class="h5" id="ctr-top-ten-title">Top 10 CTR</h2>
+  <h2 class="h5" id="ctr-top-ten-title"><x-ctr-mark class="me-2" />Top 10 CTR</h2>
   <p class="small text-muted">Cape Tennis Rating among this series' published players, per age group and gender. Birth years run from 1 January to 31 December. Provisional ratings do not change the official ranking.</p>
   @forelse($ctr['groups'] as $group)
     <details class="mb-2 border rounded p-2">

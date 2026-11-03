@@ -7,11 +7,11 @@ use App\Models\{Player, User};
 /** A linked account may see availability before purchase, never another player's estimates. */
 class PlayerPlusReadiness
 {
-    public function forPlayer(User $user, Player $player): ?array
+    public function forPlayer(User $user, Player $player, ?array $history = null): ?array
     {
         if (! app(PlayerPlusEntitlement::class)->linkedPlayers($user)->whereKey($player->id)->exists()) return null;
         try {
-            $history = app(PlayerRatingHistoryService::class)->forPlayer($player);
+            $history ??= app(PlayerRatingHistoryService::class)->forPlayer($player);
             if (($history['reason'] ?? null) !== null || ($history['stale'] ?? false)) {
                 return ['state' => 'pending', 'label' => 'Awaiting a saved rating update',
                     'description' => 'Current progress data is not ready. Updates run nightly; purchasing does not create or accelerate a rating.'];

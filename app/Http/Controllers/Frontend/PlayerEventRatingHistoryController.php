@@ -15,6 +15,7 @@ class PlayerEventRatingHistoryController extends Controller
         abort_unless($access->allows($request->user(), $player), 403);
         $request->validate(['page' => 'nullable|integer|min:1|max:20']);
         return response()->view('frontend.my-tennis.event-rating-history', ['ratingPlayer' => $player,
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
             'timeline' => $history->forPlayer($player, $request->integer('page', 1)), 'refreshStatus' => $refresh->status((int) $player->id)])
             ->header('Cache-Control', 'private, no-store');
     }

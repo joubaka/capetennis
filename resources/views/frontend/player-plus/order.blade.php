@@ -18,7 +18,7 @@
     @media(max-width:575.98px){.pp-checkout .pp-checkout-hero{border-radius:16px;padding:1.4rem}.pp-checkout .pp-payment-card,.pp-checkout .pp-checkout-benefits{padding:1.2rem!important}.pp-checkout .pp-checkout-grid{gap:1rem}.pp-checkout .pp-checkout-benefits>ul{grid-template-columns:1fr}.pp-checkout .pp-checkout-benefits>ul>li{padding:1rem 1rem 1rem 3.7rem}.pp-checkout .pp-payment-heading{flex-wrap:wrap}.pp-checkout .pp-checkout-footer{align-items:flex-start;flex-direction:column;gap:.2rem}}
   </style>
   @include('frontend.player-plus.styles')
-  <x-player-workspace-header :title="'Player Plus for '.($order->player?->full_name ?? 'Player profile unavailable')" eyebrow="Cape Tennis · Optional Player Plus" subtitle="Understand their playing strength. Follow their progress and explore the results behind their tennis.">
+  <x-player-workspace-header :workspace="$workspace ?? null" :title="'Player Plus for '.($order->player?->full_name ?? 'Player profile unavailable')" eyebrow="Cape Tennis · Optional Player Plus" subtitle="Understand their playing strength. Follow their progress and explore the results behind their tennis.">
     <x-slot:summary>
     <div class="pp-checkout-meta">
       <span class="pp-order-chip"><i class="ti ti-receipt" aria-hidden="true"></i> Order <strong>P{{ $order->id }}</strong></span>
@@ -26,7 +26,7 @@
       <span>{{ str_replace('_', ' ', ucfirst($order->status)) }}</span>
     </div>
     </x-slot:summary>
-    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Checkout navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index') }}">← Your orders</a><a class="btn btn-outline-primary" href="{{ route('player-plus.index') }}">Player Plus checkout</a></nav></x-slot:navigation>
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Checkout navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">← Your orders</a><a class="btn btn-outline-primary" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">Player Plus checkout</a></nav></x-slot:navigation>
   </x-player-workspace-header>
   @if(session('success'))<p class="alert alert-success">{{ session('success') }}</p>@endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
@@ -91,7 +91,7 @@
   </div>
   <footer class="pp-checkout-footer">
     @if($order->player)<a href="{{ route('player-plus.player', $order->player) }}">Player membership and benefits</a>@endif
-    <a href="{{ route('player-plus.orders.index') }}">My Plus orders</a>
+    <a href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">My Plus orders</a>
     <a href="mailto:support@capetennis.co.za?subject=Player%20Plus%20order%20P{{ $order->id }}">Contact payment support · P{{ $order->id }}</a>
   </footer>
 </div>

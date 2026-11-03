@@ -16,8 +16,8 @@
     @media(max-width:575.98px) { #player-plus-page .plus-player-choice form .form-control { max-width:none !important; } }
   </style>
   @include('frontend.player-plus.styles')
-  <x-player-workspace-header title="Who is Player Plus for?" eyebrow="Player Plus · Step 2 of 4" subtitle="Choose one player, then review the available plans. Already covered? Open their membership to view their progress.">
-    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis') }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index') }}">My Plus orders</a></nav></x-slot:navigation>
+  <x-player-workspace-header :workspace="$workspace ?? null" title="Who is Player Plus for?" eyebrow="Player Plus · Step 2 of 4" subtitle="Choose one player, then review the available plans. Already covered? Open their membership to view their progress.">
+    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis', ['player' => $workspace['player']->id ?? null]) }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">My Plus orders</a></nav></x-slot:navigation>
   </x-player-workspace-header>
   <x-player-plus-stepper :current="2" />
   @unless($enabled)<p class="alert alert-info">New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p>@endunless
@@ -25,10 +25,11 @@
   <h2 id="choose-plus-player" class="h4" style="scroll-margin-top:6rem">Choose a player</h2>
   <p>Your linked players appear below. You can also sponsor another player without gaining access to their private information.</p>
   <form method="get" class="d-flex flex-wrap gap-2 mb-3">
+    @if($workspace['player'] ?? null)<input type="hidden" name="player" value="{{ $workspace['player']->id }}">@endif
     <label class="visually-hidden" for="plus-search">Search by player name</label>
     <input id="plus-search" class="form-control" style="max-width:24rem;min-height:44px" name="search" value="{{ $search }}" placeholder="Search by name (at least 3 characters)" minlength="3" maxlength="100">
     <button class="btn btn-primary" style="min-height:44px">Search players</button>
-    @if($search)<a class="btn btn-outline-secondary" href="{{ route('player-plus.index') }}">My linked players</a>@endif
+    @if($search)<a class="btn btn-outline-secondary" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">My linked players</a>@endif
   </form>
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
   <div class="list-group mb-3">

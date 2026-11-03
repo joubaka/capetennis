@@ -1,7 +1,7 @@
 (function (root) {
   'use strict';
 
-  function bindPlayerSwitch(window, select) {
+  function bindPlayerSwitch(window, select, options = {}) {
     if (!select || !select.form) return null;
     if (select.capePlayerSwitch) return select.capePlayerSwitch;
     const form = select.form;
@@ -38,7 +38,7 @@
     }
 
     // Select2 triggers the onchange property as well as native select changes.
-    select.onchange = change;
+    if (options.submitOnChange !== false) select.onchange = change;
     form.addEventListener('submit', show);
     window.addEventListener('pageshow', close);
     select.capePlayerSwitch = {close, destroy() {
@@ -54,5 +54,6 @@
   if (typeof module !== 'undefined' && module.exports) module.exports = bindPlayerSwitch;
   if (root.document) root.document.addEventListener('DOMContentLoaded', function () {
     bindPlayerSwitch(root, root.document.getElementById('my-tennis-player'));
+    bindPlayerSwitch(root, root.document.getElementById('workspace-player'), {submitOnChange: false});
   });
 })(typeof window === 'undefined' ? globalThis : window);

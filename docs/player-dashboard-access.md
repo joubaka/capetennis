@@ -47,6 +47,10 @@ player's active entitlement and relationship. Super-user previews do not create
 ownership. Private navigation targets require that access gate. Standard accounts
 use the same header and navigation positions with labelled marketing targets and
 an illustrative locked snapshot; real private data is never rendered under blur.
+The four locked player-view buttons open dedicated feature marketing pages,
+with navigation back to the dashboard and membership availability. Those pages
+check the existing relationship (or super-user preview authority) and never read
+private history, records or pathway evidence; paid endpoints retain their gates.
 
 My Tennis opens directly with one persistent blue header containing the player
 selector, dashboard tabs, player-view links and a compact rating snapshot.
@@ -60,6 +64,22 @@ The compact snapshot uses at most 12 whitelisted saved points, on a fixed 0–10
 scale, with missing months and changed comparison groups preserved. It reuses
 the authorised history read rather than calculating ratings or revealing source
 evidence. Non-Plus requests do not read that history for their illustration.
+
+Dedicated player views and Plus offer/order/history/details pages use
+`PlayerWorkspaceContext` for the same header. Its selector contains at most 100
+existing related profiles, retaining an explicitly selected related player.
+The selector's labelled View action opens My Tennis; it never changes an order,
+checkout player or payer. Route-bound players and the payer's order player remain
+authoritative over query parameters. Generic billing pages accept a `player`
+navigation query only for an existing relationship. Unrelated sponsors receive
+neither a private snapshot nor private player-view links. Pathway and entitled
+offer headers reuse the history already read for their page content/readiness.
+
+Locked navigation carries an allowlisted feature key (`record`, `opponents`,
+`pathway`, `events`, `rating`) and the selected player to My Tennis. Each click,
+including repeats while the tab is active, reveals and focuses its specific
+marketing explanation. These panels contain explanatory text only. Membership
+availability links retain the named player even while new purchases are paused.
 
 Playing Record is a curated saved-evidence view, not a complete career archive.
 Past-event ratings reconstruct eligible Cape Tennis events. TeamSheet evidence
@@ -111,4 +131,5 @@ timeout or submission failure. Native and Select2 changes use one handler.
 - `tests/Frontend/my-tennis-player-switch.test.cjs`
 - `tests/Frontend/my-tennis-workspace.test.cjs`
 - `tests/Feature/PlayerWorkspaceHeaderTest.php`
+- `tests/Feature/PlayerWorkspaceContextTest.php`
 - `tests/Feature/PlayerRatingHeaderPresentationTest.php`

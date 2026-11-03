@@ -2318,6 +2318,7 @@ Route::get('/admin/draws/format-options/{id}', function ($id) {
 });
 Route::middleware('auth')->group(function () {
   Route::get('/my-tennis', [MyTennisController::class, 'index'])->name('my.tennis');
+  Route::get('/my-tennis/players/{player}/preview/{feature}', [MyTennisController::class, 'featurePreview'])->where('feature', 'record|opponents|pathway|events|rating')->middleware('throttle:60,1')->name('my.tennis.feature-preview');
   Route::post('/my-tennis/rating-history/refresh', [\App\Http\Controllers\Frontend\PlayerRatingHistoryRefreshController::class, 'store'])->middleware(['role:super-user', 'throttle:5,1,history-refresh:'])->name('my.tennis.rating.refresh');
   Route::post('/my-tennis/players/{player}/pathway/stage', [\App\Http\Controllers\Frontend\PlayerPathwayController::class, 'stage'])->middleware(['role:super-user', 'throttle:30,1'])->name('my.tennis.pathway.stage');
   Route::post('/my-tennis/players/{player}/pathway/milestones', [\App\Http\Controllers\Frontend\PlayerPathwayController::class, 'milestones'])->middleware(['role:super-user', 'throttle:30,1'])->name('my.tennis.pathway.milestones');

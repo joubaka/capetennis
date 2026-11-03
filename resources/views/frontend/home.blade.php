@@ -109,6 +109,11 @@
   .home-ctr h2 span { color: #ffb45b; }
   .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
   .home-ctr-copy { min-width: 0; }
+  .home-ctr-badges { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+  .home-ctr-badge-preview { align-items: center; display: flex; flex-direction: column; gap: .35rem; }
+  .home-ctr-badge-preview > .small { display: none; }
+  .home-ctr-badge-label { color: #e4efff; font-size: .75rem; font-weight: 700; }
+  .home-ctr-example-note { color: #c4d5eb; font-size: .7rem; margin-top: .5rem; }
   .home-ctr [data-player-plus-coming-soon] { align-items: center; background: rgba(255,180,91,.12) !important; border: 1px solid rgba(255,180,91,.65); color: #ffbd70 !important; display: inline-flex; font-size: .7rem !important; font-weight: 800; gap: .45rem; letter-spacing: .08em; padding: .4rem .7rem !important; text-transform: uppercase; }
   .home-ctr [data-player-plus-coming-soon]::before { background: currentColor; border-radius: 50%; content: ''; height: .35rem; width: .35rem; }
   .home-layout .home-ctr .btn { align-items: center; background: #ffab45 !important; border: 1px solid #ffbd70 !important; border-radius: .6rem; box-shadow: 0 .3rem .8rem rgba(8,30,59,.2); color: #102a4a !important; display: inline-flex; font-weight: 800 !important; gap: .15rem; justify-content: center; min-height: 48px !important; padding: .8rem 1.1rem; transition: background-color .2s ease, box-shadow .2s ease; white-space: normal; }
@@ -127,6 +132,7 @@
   @media (max-width: 767.98px) {
     .home-ctr { gap: 1.1rem; grid-template-columns: minmax(0, 1fr); padding: 1.4rem; }
     .home-ctr::after { right: -2rem; }
+    .home-ctr-badge-preview--extra { display: none; }
     .home-layout .home-ctr .btn { justify-self: start; }
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
@@ -161,6 +167,21 @@
         <x-player-plus-coming-soon class="mb-2" />
         <h2 class="h4 mb-1" id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
         <p>Player Plus · What should I play next? Follow your rating and progress, check an eligible opponent’s rating, and explore the pathway from Red Ball to Yellow Ball and TSA events.</p>
+        <div class="home-ctr-badges" role="group" aria-label="Example CTR badges">
+          <div class="home-ctr-badge-preview home-ctr-badge-preview--extra">
+            <x-ctr-badge :score="35.6" stage="red" title="Example Red Ball CTR badge; illustrative score only." />
+            <span class="home-ctr-badge-label">Red Ball</span>
+          </div>
+          <div class="home-ctr-badge-preview home-ctr-badge-preview--extra">
+            <x-ctr-badge :score="48.2" stage="orange" title="Example Orange Ball CTR badge; illustrative score only." />
+            <span class="home-ctr-badge-label">Orange Ball</span>
+          </div>
+          <div class="home-ctr-badge-preview">
+            <x-ctr-badge :score="62.4" :overall="true" title="Example Overall CTR badge; illustrative score only." />
+            <span class="home-ctr-badge-label">Overall CTR</span>
+          </div>
+        </div>
+        <div class="home-ctr-example-note">Example badges · illustrative scores</div>
       </div>
       <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Ratings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
     </section>
