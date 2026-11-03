@@ -108,6 +108,7 @@
   .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.2vw, 2rem); font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-bottom: .65rem !important; }
   .home-ctr h2 span { color: #ffb45b; }
   .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
+  .home-ctr { row-gap: 0; }
   .home-ctr-copy { min-width: 0; }
   .home-ctr-examples { grid-column: 1; }
   .home-ctr > .btn { grid-column: 2; grid-row: 1 / 3; }
