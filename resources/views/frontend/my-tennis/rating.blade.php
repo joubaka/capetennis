@@ -50,6 +50,7 @@
     </div>
     @if(auth()->user()?->hasRole('super-user'))<span class="badge bg-label-primary">Super Admin preview</span>@endif
   </div>
+  @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])
   @php
     $summaryPoints = $ratingHistory['points'] ?? [];
     $currentRating = $summaryPoints ? end($summaryPoints) : null;

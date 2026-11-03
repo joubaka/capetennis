@@ -83,6 +83,7 @@
       Swal.fire({
         title:            title || 'Please wait…',
         html:             text || '',
+        customClass:      {popup: 'ct-loading-popup'},
         allowOutsideClick: false,
         didOpen: function () { Swal.showLoading(); }
       });

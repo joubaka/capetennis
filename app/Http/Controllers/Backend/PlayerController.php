@@ -44,6 +44,7 @@ class PlayerController extends Controller
      */
     public function index(Request $request)
     {
+        abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->staff($request->user()), 403);
         // Keep existing AJAX callers working while the management table uses
         // the dedicated, server-side endpoint below.
         if ($request->ajax() || $request->wantsJson()) {
@@ -59,6 +60,7 @@ class PlayerController extends Controller
      */
     public function data(Request $request)
     {
+        abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->staff($request->user()), 403);
         $draw = max(0, $request->integer('draw'));
         $start = max(0, $request->integer('start'));
         $length = min(100, max(10, $request->integer('length', 25)));
@@ -221,6 +223,12 @@ class PlayerController extends Controller
         ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
       ]);
 
+      if ($result['created']) $request->user()->players()->syncWithoutDetaching([$result['player']->id]);
+
+      if (!$claimContext && !$result['created'] && !app(\App\Services\PlayerRelationshipAccess::class)->canView($request->user(), $result['player'])) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['player_name' => 'An existing player profile matches these details. Ask Cape Tennis support to review the relationship; no account link was created.']);
+      }
+
       if ($claimContext) {
         $this->externalRosters->claim(
           $request->user(),
@@ -290,11 +298,7 @@ class PlayerController extends Controller
     public function edit($id)
     {
         $data['player'] = Player::findOrFail($id);
-        abort_unless(
-          (int) $data['player']->userId === (int) auth()->id()
-          || auth()->user()->hasAnyRole(['super-user', 'admin', 'convenor']),
-          403
-        );
+        abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->canView(auth()->user(), $data['player']), 403);
         return view('backend.player.edit-player', $data);
     }
 
@@ -309,11 +313,7 @@ class PlayerController extends Controller
   {
     $player = Player::findOrFail($id);
 
-    abort_unless(
-      (int) $player->userId === (int) auth()->id()
-      || auth()->user()->hasAnyRole(['super-user', 'admin', 'convenor']),
-      403
-    );
+    abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->canView(auth()->user(), $player), 403);
 
     // ✅ AJAX update from modal
     if ($request->ajax()) {
@@ -425,6 +425,7 @@ class PlayerController extends Controller
     public function profile($id)
     {
         $player = Player::findOrFail($id);
+        abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->canView(Auth::user(), $player), 403);
         $performance = Auth::user()?->hasRole('super-user')
             ? app(\App\Services\Performance\PlayerPerformancePilotService::class)->forPlayer($player) : null;
         $ability = Auth::user()?->hasRole('super-user')
@@ -495,52 +496,55 @@ class PlayerController extends Controller
 
     function removeProfileFromUser($id)
     {
-        UserPlayer::where('id', $id)->delete();
-        return 'Profile Removed';
+        abort(410, 'This legacy link endpoint is retired. Use the authenticated account player-management actions.');
     }
 
     function addToProfile(Request $request)
     {
-        $user = User::find($request->user_id);
-        $user->players()->syncWithoutDetaching($request->player_id);
-        return $user;
+        abort(410, 'This legacy link endpoint is retired. Ask Cape Tennis support to review a player relationship.');
     }
 
     public function playerEventResults($id)
     {
-
-      
-        $teamFixtures = TeamFixturePlayer::where('team1_id', $id)
-            ->orWhere('team2_id', $id)
-            ->with('fixture')
-            ->whereHas('fixture.teamResults')
-            ->get();
-      
-       $t = $teamFixtures->filter(function ($item) {
-         
-            if( isset($item->fixture->fixture_type)){
-               
-                 return $item->fixture->fixture_type == 1 ||  $item->fixture->fixture_type == 4 ;
-            }
-            
-        }); 
-
-        $data = [];
-        foreach ($t->all() as $key => $value) {
-            if (isset($value->fixture)) {
-                if (isset($value->fixture->draw)) {
-                    $data['event'][] = $value->fixture->draw->events->name;
-                    $data['matchup'][] = $value->team1->getFullNameAttribute() . ' vs ' . $value->team2->getFullNameAttribute();
-                    // $data['data'][] = $value->fixture->teamResults;
-                    $data['data'][$key][] = $value->fixture->id . ' ' . $value->team1->getFullNameAttribute() . ' vs ' . $value->team2->getFullNameAttribute() . ' :' . $value->fixture->draw->events->name . ' ' . $value->fixture->draw->events->start_date;
-                    $data['data'][$key]['results'] = $value->fixture->teamResults;
-                    $data['fixture'][] = $value;
-        
+        $player = Player::findOrFail($id);
+        $access = app(\App\Services\PlayerRelationshipAccess::class);
+        abort_unless($access->canView(Auth::user(), $player), 403);
+        $staff = $access->staff(Auth::user());
+        $rows = TeamFixturePlayer::query()
+            ->where(fn ($players) => $players->where('team1_id', $id)->orWhere('team2_id', $id))
+            ->whereHas('fixture', function ($fixtures) use ($staff): void {
+                $fixtures->whereIn('fixture_type', [1, 4])->whereHas('teamResults')
+                    ->whereHas('draw.event');
+                if (!$staff) {
+                    $fixtures->publishedTeamTies()->whereHas('draw', fn ($draws) => $draws->where('published', true)
+                        ->whereHas('event', fn ($events) => $events->visibleTo(Auth::user())->where('published', true)->where('results_published', true)));
                 }
+            })
+            ->with(['player1:id,name,surname', 'player2:id,name,surname', 'fixture.draw.event'])
+            ->latest('id')->limit(101)->get();
+        $data = ['event' => [], 'matchup' => [], 'data' => [], 'fixture' => [],
+            'limit' => 100, 'has_more' => $rows->count() > 100];
+        foreach ($rows->take(100) as $key => $row) {
+            $fixture = $row->fixture; $draw = $fixture->draw; $event = $draw->event;
+            // Retain the legacy view shape using the actual player relations.
+            $row->setRelation('team1', $row->player1); $row->setRelation('team2', $row->player2);
+            $draw->setRelation('events', $event);
+            $matchup = ($row->player1?->full_name ?? 'Unknown player').' vs '.($row->player2?->full_name ?? 'Unknown player');
+            if (!$staff) {
+                // A published score permits names and scores, never an opponent's
+                // contacts, date of birth, event settings or full draw payload.
+                $row->setVisible(['id', 'created_at', 'fixture', 'team1', 'team2']);
+                $row->player1?->setVisible(['id', 'name', 'surname']); $row->player2?->setVisible(['id', 'name', 'surname']);
+                $fixture->setVisible(['id', 'match_status', 'fixture_type', 'draw', 'teamResults']);
+                $draw->setVisible(['id', 'drawName', 'event', 'events']);
+                $event->setVisible(['id', 'name', 'start_date']);
+                foreach ($fixture->teamResults as $result) $result->setVisible(['id', 'set_nr', 'team1_score', 'team2_score']);
             }
+            $data['event'][] = $event->name; $data['matchup'][] = $matchup;
+            $data['data'][$key] = [$fixture->id.' '.$matchup.' :'.$event->name.' '.$event->start_date, 'results' => $fixture->teamResults];
+            $data['fixture'][] = $row;
         }
-
-       return $data;
+        return $data;
     }
 
   public function search(Request $request)
@@ -553,7 +557,8 @@ class PlayerController extends Controller
     ]);
     $q = trim((string) ($validated['q'] ?? ''));
     $page = (int) ($validated['page'] ?? 1);
-    $isPrivateSafeSearch = ($validated['format'] ?? null) === 'select2';
+    $showContactHint = app(\App\Services\PlayerRelationshipAccess::class)->staff($request->user());
+    $isPrivateSafeSearch = !$showContactHint || ($validated['format'] ?? null) === 'select2';
 
     $players = Player::query()
       ->when(($validated['scope'] ?? null) === 'owned', function ($query) use ($request) {
@@ -583,10 +588,12 @@ class PlayerController extends Controller
 
     if (($validated['format'] ?? null) === 'select2') {
       $pageSize = 20;
-      $results = $players->simplePaginate($pageSize, ['id', 'name', 'surname', 'email'], 'page', $page);
+      $columns = $showContactHint ? ['id', 'name', 'surname', 'email'] : ['id', 'name', 'surname'];
+      $results = $players->simplePaginate($pageSize, $columns, 'page', $page);
 
       return response()->json([
-        'results' => collect($results->items())->map(function (Player $player): array {
+        'results' => collect($results->items())->map(function (Player $player) use ($showContactHint): array {
+          if (!$showContactHint) return ['id' => $player->id, 'text' => trim($player->name.' '.$player->surname).' · profile #'.$player->id];
           $maskedEmail = $this->maskedEmail($player->email);
 
           return [
@@ -610,34 +617,15 @@ class PlayerController extends Controller
 
   public function attach(Request $request, User $user)
   {
-    $request->validate([
-      'player_id' => 'required|exists:players,id',
-    ]);
-
-    // prevent duplicates
-    if ($user->players()->where('player_id', $request->player_id)->exists()) {
-      return response()->json([
-        'success' => false,
-        'message' => 'Player already linked'
-      ], 422);
-    }
-
-    $user->players()->attach($request->player_id);
-
-    return response()->json([
-      'success' => true,
-      'message' => 'Player linked successfully'
-    ]);
+    // The legacy URL has no {user} binding; always resolve the explicit target,
+    // then apply the same relationship checks as canonical account management.
+    $target = $request->filled('user_id') ? User::findOrFail($request->integer('user_id')) : $request->user();
+    return app(UserPlayerController::class)->store($request, $target);
   }
 
   public function detach($pivotId)
   {
-    UserPlayer::where('id', $pivotId)->delete();
-
-    return response()->json([
-      'success' => true,
-      'message' => 'Player unlinked'
-    ]);
+    abort(410, 'This legacy link endpoint is retired. Use the authenticated account player-management actions.');
   }
 
   public function attachNoProfile(Request $request)
@@ -677,6 +665,7 @@ class PlayerController extends Controller
       'player' => $claim['player'],
       'team' => $claim['team'],
       'event' => $claim['event'],
+      'canManageProfile' => app(\App\Services\PlayerRelationshipAccess::class)->related($request->user(), $claim['player']),
     ]);
   }
 
@@ -685,6 +674,14 @@ class PlayerController extends Controller
     $claim = $this->pendingTeamProfileClaim($request);
     /** @var Player $player */
     $player = $claim['player'];
+
+    if (!app(\App\Services\PlayerRelationshipAccess::class)->related($request->user(), $player)) {
+      $request->validate(['confirmed_details' => 'accepted']);
+      $this->externalRosters->claim($request->user(), $claim['event'], $claim['team'], $claim['slot'], $player);
+      $request->session()->forget('team_profile_claim');
+      return redirect()->route('team.payment.payfast', [$claim['team']->id, $player->id, $claim['event']->id])
+        ->with('message', 'Roster profile confirmed. You can sponsor registration; private player access is unchanged.');
+    }
 
     $validated = $request->validate([
       'dateOfBirth' => 'required|date|before:today',
@@ -722,9 +719,8 @@ class PlayerController extends Controller
       ]);
       $player->markProfileUpdated();
 
-      // Keep the ownership hand-off inside the transaction so a failed claim
-      // cannot leave the selected profile linked to this account.
-      $request->user()->players()->syncWithoutDetaching([$player->id]);
+      // The existing relationship authorizes these private profile updates;
+      // roster sponsorship never creates an additional ownership link.
       $this->externalRosters->claim(
         $request->user(),
         $claim['event'],

@@ -30,6 +30,16 @@ each ball level, while checking that the displayed evidence stays in the current
 level and private sources remain redacted. Progression uses each level's own
 score; an Overall score cannot fill a missing ball-level score.
 
+## Directory-to-detail navigation
+
+The Super Admin rating directory must carry its resolved `ball_type` when
+opening a player detail. Red, Orange and Green/Yellow details use the selected
+saved ball rating; a missing rating must not fall back to Overall. Explicit
+comparison-group links retain that group and withhold a mismatched estimate.
+Reload and comparison-evidence links retain the same context. This is a
+display/navigation rule, not a classification change or a reason to recalculate
+saved ratings. Existing Super Admin authorization remains required.
+
 Regression references: `tests/Unit/BallRatingModelTest.php` and
 `tests/Feature/BallRatingPipelineTest.php`, with current-group selection in
 `tests/Feature/PlayerRatingCurrentGroupTest.php` and pathway rules in

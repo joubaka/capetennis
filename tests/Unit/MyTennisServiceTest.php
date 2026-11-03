@@ -22,6 +22,93 @@ class MyTennisServiceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_schedule_candidates_are_bounded_in_published_time_order_and_the_dashboard_reports_the_limit(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-03 08:00:00'));
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $registration = Registration::factory()->create();
+        $registration->players()->attach($player);
+        $other = Registration::factory()->create();
+        $event = Event::factory()->create(['published' => true, 'end_date' => now()->addDays(2)->toDateString()]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => true]);
+        $fixtures = Fixture::factory()->count(MyTennisService::MATCH_CANDIDATE_LIMIT + 1)->create([
+            'draw_id' => $draw->id, 'registration1_id' => $registration->id, 'registration2_id' => $other->id]);
+        DB::table('published_schedule_assignments')->insert($fixtures->values()->map(fn ($fixture, $index) => [
+            'event_id' => $event->id, 'draw_id' => $draw->id, 'fixture_kind' => 'individual', 'fixture_id' => $fixture->id,
+            'scheduled_at' => now()->addMinutes($fixtures->count() - $index), 'published_at' => now(),
+        ])->all());
+        $captured = [];
+        $projection = \Mockery::mock(app(SchedulePublicationService::class));
+        $projection->shouldReceive('projectFixtures')->twice()
+            ->andReturnUsing(function ($rows) use (&$captured) { $captured[] = $rows->pluck('id')->all(); return $rows; });
+        $this->app->instance(SchedulePublicationService::class, $projection);
+        $this->actingAs($user);
+        $dashboard = app(MyTennisService::class)->dashboard($user, $player->id);
+        $this->assertCount(MyTennisService::MATCH_CANDIDATE_LIMIT, $captured[0]);
+        $this->assertSame($fixtures->last()->id, $captured[0][0]);
+        $this->assertNotContains($fixtures->first()->id, $captured[0]);
+        $this->assertTrue($dashboard['matchReadLimited']);
+    }
+
+    public function test_dashboard_entries_are_paginated_and_do_not_include_another_players_records(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $field = \App\Models\CategoryEvent::factory()->create();
+        foreach (range(1, 26) as $index) {
+            $registration = Registration::factory()->create();
+            $registration->players()->attach($player);
+            \App\Models\CategoryEventRegistration::factory()->create(['user_id' => $user->id,
+                'category_event_id' => $field->id, 'registration_id' => $registration->id]);
+        }
+        \App\Models\CategoryEventRegistration::factory()->create();
+        $this->actingAs($user);
+        $dashboard = app(MyTennisService::class)->dashboard($user, $player->id);
+        $this->assertSame(26, $dashboard['entries']->total());
+        $this->assertCount(25, $dashboard['entries']);
+        $this->assertStringContainsString('entries_page=2', $dashboard['entries']->nextPageUrl());
+        $this->assertStringContainsString('player='.$player->id, $dashboard['entries']->nextPageUrl());
+        $this->assertTrue($dashboard['history']['entries']->isEmpty());
+        $this->assertTrue($dashboard['history']['rankingScores']->isEmpty());
+        $this->assertTrue($dashboard['history']['teamAppearances']->isEmpty());
+    }
+
+    public function test_bounded_selector_can_still_open_an_authorised_player_outside_its_first_page(): void
+    {
+        $user = User::factory()->create();
+        Player::factory()->count(MyTennisService::PLAYER_LIMIT)->create(['userId' => $user->id, 'name' => 'A']);
+        $last = Player::factory()->create(['userId' => $user->id, 'name' => 'Z']);
+        $this->actingAs($user);
+        $service = app(MyTennisService::class);
+        $this->assertCount(MyTennisService::PLAYER_LIMIT, $service->playersFor($user));
+        $dashboard = $service->dashboard($user, $last->id);
+        $this->assertSame($last->id, $dashboard['selectedPlayer']->id);
+        $this->assertSame(101, $dashboard['playerCount']);
+        $this->assertTrue($dashboard['players']->contains('id', $last->id));
+    }
+
+    public function test_current_rankings_exclude_archived_hidden_and_superseded_runs_but_keep_published_legacy(): void
+    {
+        $player = Player::factory()->create();
+        $category = \App\Models\Category::factory()->create();
+        $series = \App\Models\Series::factory()->create(['leaderboard_published' => true]);
+        $make = fn ($seriesId, $run, $status, $date) => \App\Models\SeriesRanking::create([
+            'series_id' => $seriesId, 'category_id' => $category->id, 'player_id' => $player->id,
+            'run_id' => $run, 'status' => $status, 'published_at' => $date, 'rank_position' => 1, 'total_points' => 20]);
+        $make($series->id, 'archived', 'archived', '2026-10-01');
+        $make($series->id, 'old', 'published', '2026-10-02');
+        $current = $make($series->id, 'latest', 'published', '2026-11-01');
+        $make($series->id, null, 'published', '2026-11-02');
+        $hidden = \App\Models\Series::factory()->create(['leaderboard_published' => false]);
+        $make($hidden->id, 'hidden', 'published', '2026-11-01');
+        $legacySeries = \App\Models\Series::factory()->create(['leaderboard_published' => true]);
+        $legacy = $make($legacySeries->id, null, 'published', '2026-10-01');
+        $make($legacySeries->id, null, 'draft', '2026-11-02');
+        $rows = app(\App\Services\PlayerCompetitionTimelineService::class)->for($player, 20, true)['seriesRankings'];
+        $this->assertEqualsCanonicalizing([$current->id, $legacy->id], $rows->pluck('id')->all());
+    }
+
     public function test_dashboard_defaults_to_linked_player_with_published_upcoming_matches(): void
     {
         [$player, $event, $draw, $fixture] = $this->scheduledTeamMatch();

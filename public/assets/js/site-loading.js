@@ -3,6 +3,12 @@
   function createLoading(document) {
     const requests = new Map();
     let dialog, title, message, cancel, previousFocus;
+    function spinner(options = {}) {
+      const node = document.createElement('span');
+      node.className = 'ct-loading-spinner' + (options.small ? ' ct-loading-spinner--small' : '');
+      node.setAttribute('aria-hidden', 'true');
+      return node;
+    }
     function ensureDialog() {
       if (dialog) return;
       dialog = document.createElement('dialog');
@@ -10,9 +16,7 @@
       dialog.setAttribute('aria-labelledby', 'ct-loading-title');
       dialog.setAttribute('aria-describedby', 'ct-loading-message');
       dialog.setAttribute('aria-busy', 'true');
-      const spinner = document.createElement('span');
-      spinner.className = 'ct-loading-spinner';
-      spinner.setAttribute('aria-hidden', 'true');
+      const indicator = spinner();
       title = document.createElement('h2'); title.id = 'ct-loading-title';
       title.tabIndex = -1;
       message = document.createElement('p'); message.id = 'ct-loading-message';
@@ -26,7 +30,7 @@
       }
       cancel.addEventListener('click', cancelLatest);
       dialog.addEventListener('cancel', cancelLatest);
-      dialog.append(spinner, title, message, cancel);
+      dialog.append(indicator, title, message, cancel);
       document.body.append(dialog);
     }
     function render() {
@@ -49,7 +53,7 @@
         title.focus({preventScroll: true});
       }
     }
-    return { show(options = {}) {
+    return { spinner, show(options = {}) {
       const key = Symbol('loading');
       requests.set(key, options); render();
       return { close() { if (requests.delete(key)) render(); } };

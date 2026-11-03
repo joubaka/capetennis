@@ -1,7 +1,7 @@
         <li class="list-group-item ctr-ranking-row" data-ctr-ranking-row>
         <div class="ctr-place">@if(!$snapshot['reason'] && $player['position'] !== null && (!$unified || $player['rating']))<strong {{ $diagnosticOrder ? 'data-score-list-position' : 'data-rating-position' }}="{{ $player['position'] }}" @if($diagnosticOrder)aria-label="List number {{ $player['position'] }} in diagnostic score order{{ $ageOrder ? ' for '.$player['age_group'] : '' }}"@endif>{{ $player['position'] }}.</strong>@else<span aria-label="No overall position">—</span>@endif</div>
         <div class="ctr-player">
-            <a href="{{ route('backend.player-performance.show', $player['id']) }}">{{ $player['name'] }}@if($player['birth_year'] ?? null) ({{ $player['birth_year'] }})@endif</a>
+            <a href="{{ route('backend.player-performance.show', ['player' => $player['id'], 'ball_type' => $ballType ?? 'overall', 'comparison_group' => ($comparisonGroup ?? '') !== '' ? $comparisonGroup : null]) }}">{{ $player['name'] }}@if($player['birth_year'] ?? null) ({{ $player['birth_year'] }})@endif</a>
             <span class="small text-muted" title="Recorded regional team affiliations; may include past seasons"> · {{ implode(' · ', $player['region_affiliations']['names'] ?? []) ?: 'Region not recorded' }}@if(($player['region_affiliations']['additional'] ?? 0) > 0) · +{{ $player['region_affiliations']['additional'] }} more @endif</span>
             <p>@unless($allAgesBall ?? false){{ $player['age_group'] }} · @endunless{{ $player['gender'] }}</p>
         </div>

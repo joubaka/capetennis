@@ -11,9 +11,15 @@ class PlayerManagementDataTableTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function administrator(): User
+    {
+        \Spatie\Permission\Models\Role::findOrCreate('admin', 'web');
+        return User::factory()->create()->assignRole('admin');
+    }
+
     public function test_player_data_is_paginated_and_reports_record_counts(): void
     {
-        $user = User::factory()->create();
+        $user = $this->administrator();
 
         Player::factory()->count(30)->create();
 
@@ -34,7 +40,7 @@ class PlayerManagementDataTableTest extends TestCase
 
     public function test_player_data_searches_server_side_and_returns_renderable_status_fields(): void
     {
-        $user = User::factory()->create();
+        $user = $this->administrator();
         Player::factory()->create([
             'name' => 'UniqueSearchName',
             'surname' => 'Needle',
@@ -64,7 +70,7 @@ class PlayerManagementDataTableTest extends TestCase
 
     public function test_player_data_route_is_registered_before_the_resource_show_route(): void
     {
-        $user = User::factory()->create();
+        $user = $this->administrator();
 
         $this->actingAs($user)
             ->getJson('/backend/player/data?draw=1&start=0&length=25')
@@ -84,7 +90,9 @@ class PlayerManagementDataTableTest extends TestCase
         foreach ([null, 'admin', 'convenor'] as $role) {
             $user = User::factory()->create();
             if ($role) { \Spatie\Permission\Models\Role::findOrCreate($role, 'web'); $user->assignRole($role); }
-            $response = $this->actingAs($user)->getJson(route('player.data'))->assertOk();
+            $response = $this->actingAs($user)->getJson(route('player.data'));
+            if ($role !== 'admin') { $response->assertForbidden(); continue; }
+            $response->assertOk();
             $this->assertArrayNotHasKey('ability_badge_html', $response->json('data.0'));
             $this->assertStringNotContainsString('player-rating-badge', $response->getContent());
             $this->assertStringNotContainsString('confidence_index', $response->getContent());

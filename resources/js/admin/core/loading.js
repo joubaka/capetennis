@@ -13,6 +13,14 @@
 (function (root) {
   'use strict';
 
+  function indicator() {
+    if (root.CapeLoading) return root.CapeLoading.spinner({small: true});
+    var node = root.document.createElement('span');
+    node.className = 'ct-loading-spinner ct-loading-spinner--small';
+    node.setAttribute('aria-hidden', 'true');
+    return node;
+  }
+
   /**
    * Put a button into loading state. Returns a restore function.
    * @param {jQuery} $btn
@@ -21,10 +29,13 @@
    */
   function button($btn, label) {
     var original = $btn.html();
-    $btn.prop('disabled', true)
-        .html('<span class="spinner-border spinner-border-sm me-1"></span>' + (label || 'Loading…'));
+    var disabled = $btn.prop('disabled');
+    var busy = $btn.attr('aria-busy');
+    $btn.prop('disabled', true).attr('aria-busy', 'true').empty()
+        .append(indicator()).append(root.document.createTextNode(' ' + (label || 'Loading…')));
     return function () {
-      $btn.prop('disabled', false).html(original);
+      $btn.prop('disabled', disabled).html(original);
+      if (busy === undefined) $btn.removeAttr('aria-busy'); else $btn.attr('aria-busy', busy);
     };
   }
 
@@ -34,12 +45,13 @@
    * @param {string} [label='Loading…']
    */
   function spinner($el, label) {
-    $el.html(
-      '<div class="text-center text-muted py-4">' +
-      '<div class="spinner-border spinner-border-sm"></div>' +
-      '<div class="mt-2">' + (label || 'Loading…') + '</div>' +
-      '</div>'
-    );
+    var status = root.document.createElement('div');
+    status.className = 'ct-loading-inline';
+    status.setAttribute('role', 'status');
+    var text = root.document.createElement('p');
+    text.textContent = label || 'Loading…';
+    status.append(indicator(), text);
+    $el.attr('aria-busy', 'true').empty().append(status);
   }
 
   /**
@@ -47,7 +59,7 @@
    * @param {jQuery} $el
    */
   function clear($el) {
-    $el.empty();
+    $el.empty().removeAttr('aria-busy');
   }
 
   root.AdminLoading = {

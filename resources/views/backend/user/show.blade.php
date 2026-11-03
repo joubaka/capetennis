@@ -246,6 +246,8 @@
             <option value="{{ $p->id }}">{{ $p->name }} {{ $p->surname }}</option>
           @endforeach
         </select>
+        <label for="link-player-reason" class="form-label mt-3">Verified relationship and reason</label>
+        <textarea id="link-player-reason" class="form-control" minlength="5" maxlength="500" rows="3" placeholder="Explain the relationship checked before granting private player access."></textarea>
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" id="linkPlayerBtn">Link Player</button>
@@ -380,7 +382,7 @@ $(function () {
 
     Swal.fire({ title: 'Linking player...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-    $.post(APP_URL + '/backend/user/' + userId + '/players', { player_id: playerId })
+    $.post(APP_URL + '/backend/user/' + userId + '/players', { player_id: playerId, reason: $('#link-player-reason').val() })
       .done(res => { Swal.close(); toastr.success(res.message); location.reload(); })
       .fail(xhr => { Swal.close(); toastr.error(xhr.responseJSON?.message || 'Failed'); });
   });

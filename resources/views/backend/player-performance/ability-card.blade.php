@@ -2,9 +2,12 @@
     @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
         @php($ratingStatus = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status())
         <p class="small" data-rating-status>Saved ratings last updated: {{ $ratingStatus['last_updated'] ?? 'Not yet updated' }} · {{ $ratingStatus['failed'] ? 'Update failed; retry pending.' : ($ratingStatus['pending'] ? 'Update pending.' : 'Up to date.') }}</p>
-        <p class="small"><a href="{{ url()->current() }}" data-rating-detail-version="{{ $ratingStatus['version'] }}" hidden>Reload this page for the latest detailed rating and evidence.</a></p>
+        <p class="small"><a href="{{ request()->fullUrl() }}" data-rating-detail-version="{{ $ratingStatus['version'] }}" hidden>Reload this page for the latest detailed rating and evidence.</a></p>
     @endif
     @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the background refresh.</p>@endif
+    @if(($ballType ?? 'overall') !== 'overall' || ($comparisonGroup ?? '') !== '')
+        @include('backend.player-performance.selected-rating')
+    @else
     <h2 class="h4">Cape Tennis all-age singles rating</h2>
     @if($ability['reason'])
         <p class="alert alert-warning text-dark">{{ $ability['reason'] }}</p>
@@ -32,5 +35,6 @@
         <p class="h3">Unrated</p><p>No eligible singles evidence for a shared rating. Verified played results must connect the player to the shared reference group.</p>
     @endif
     <p class="alert alert-info text-dark">The shared rating uses one scale across ages within the connected singles reference group. This provisional 0–100 index is not a win probability or an official selection ranking. Disconnected groups and separate age-specific performance scores cannot be compared.</p>
-    <p>Calculated {{ $ability['built_at'] }} · <a href="{{ route('backend.player-performance.show', $player->id) }}">View shared comparison evidence</a></p>
+    @endif
+    <p>Calculated {{ $ability['built_at'] }} · <a href="{{ route('backend.player-performance.show', ['player' => $player->id, 'ball_type' => $ballType ?? 'overall', 'comparison_group' => ($comparisonGroup ?? '') !== '' ? $comparisonGroup : null]) }}">View comparison evidence</a></p>
 </div></div>

@@ -8,6 +8,33 @@
   const rounds = draw => Object.keys(details(draw)).map(Number).sort((a,b) => a-b);
   const courtLabels = venue => (venue.court_labels || (venue.court_list || []).map(court => court.label)).map(String);
   const matchTitle = match => `Match ${Number(match.number)}${match.participants?.length ? ' · '+match.participants.join(' v ') : ''}`;
+  const html = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  function miniature(draw, match) {
+    if (!match.bracket || draw.is_team) return '';
+    const all = rounds(draw).flatMap(round => details(draw)[round].flatMap(group => (group.matches || []).map(row => ({...row, round}))));
+    const section = all.filter(row => row.bracket?.section === match.bracket.section);
+    const feeders = new Set(section.flatMap(row => row.bracket.sources));
+    const nodes = all.filter(row => row.bracket && (row.bracket.section === match.bracket.section || feeders.has(row.bracket.node)));
+    const columns = [...new Set(nodes.map(row => row.round))].sort((a,b) => a-b);
+    const positions = new Map();
+    columns.forEach((round, column) => {
+      const rows = nodes.filter(row => row.round === round);
+      rows.forEach((row, index) => positions.set(row.bracket.node, {x:8 + column * (144 / Math.max(1, columns.length - 1)), y:8 + (index + .5) * (56 / rows.length)}));
+    });
+    const paths = nodes.flatMap(row => row.bracket.sources.map(source => {
+      const from = positions.get(source), to = positions.get(row.bracket.node);
+      return from && to ? `<path d="M${from.x+5},${from.y} H${(from.x+to.x)/2} V${to.y} H${to.x-5}"/>` : '';
+    })).join('');
+    const marks = nodes.map(row => {
+      const at = positions.get(row.bracket.node), active = row.key === match.key;
+      return `<rect x="${at.x-5}" y="${at.y-3}" width="10" height="6" rx="1.5" class="${active ? 'is-current' : row.bracket.section !== match.bracket.section ? 'is-feeder' : ''}"/>`;
+    }).join('');
+    return `<svg class="day-match-miniature" viewBox="0 0 160 72" role="img" aria-label="${html(matchTitle(match)+' · '+match.bracket.section)}"><g class="day-match-links">${paths}</g>${marks}</svg>`;
+  }
+  function matchCard(draw, round, match, selected, eligible) {
+    const kept = match.played ? 'Played · kept' : match.scheduled_at ? `${match.scheduled_at.slice(0,16)} · ${eligible ? 'kept unless replanning' : 'another day, kept'}` : '';
+    return `<label class="day-match-card ${selected ? 'is-selected' : ''} ${eligible ? '' : 'is-unavailable'}"><input type="checkbox" class="form-check-input day-batch-fixture" data-draw="${Number(draw.id)}" data-round="${Number(round)}" value="${html(match.key)}" ${selected ? 'checked' : ''} ${eligible ? '' : 'disabled'}><span class="day-match-copy"><span class="day-match-number">Match ${Number(match.number)}</span>${(match.participants || []).map(name => `<span class="day-match-player">${html(name)}</span>`).join('')}${kept ? `<span class="day-match-state">${html(kept)}</span>` : ''}</span>${miniature(draw, match)}</label>`;
+  }
   function createState(draws, venues, dates) {
     const state = {draws, venues, dates, day:dates[0] || '', selectedDrawIds:[], selectedRounds:new Map(), selectedFixtures:new Map(), courts:new Map()};
     state.ready = draw => !draw.locked && rounds(draw).length > 0;
@@ -161,7 +188,7 @@
         const draw=state.draws.find(draw=>Number(draw.id)===id);
         return `<section class="mb-3"><h6>${escape(draw.name)}</h6>${rounds(draw).map(round=>{
           const checked=state.selectedRounds.get(id)?.has(round),groups=details(draw)[round];
-          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>${escape(groups.map(group=>group.label).join(' / '))} <span class="small text-muted">(Round ${round})</span></label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details data-day-round-panel="${id}:${round}" ${opened.has(id+':'+round)?'open':''}><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="d-flex flex-wrap gap-3 mt-1">${(group.matches||[]).map(match=>`<label class="small"><input type="checkbox" class="form-check-input me-1 day-batch-fixture" data-draw="${id}" data-round="${round}" value="${escape(match.key)}" ${selected.has(match.key)?'checked':''} ${state.eligible(match)?'':'disabled'}>${escape(matchTitle(match))}${match.played?' (Played · kept)':match.scheduled_at?` (${escape(match.scheduled_at.slice(0,16))}${state.eligible(match)?' · kept unless replanning':' · another day, kept'})`:''}</label>`).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
+          return `<div class="border rounded p-2 mb-2"><label class="fw-semibold"><input type="checkbox" class="form-check-input me-2 day-batch-round" data-draw="${id}" value="${round}" ${checked?'checked':''}>${escape(groups.map(group=>group.label).join(' / '))} <span class="small text-muted">(Round ${round})</span></label><ul class="small mb-1">${groups.map(group=>`<li>${escape(group.label)}: ${Number(group.count)} ${Number(group.count)===1?'match':'matches'}</li>`).join('')}</ul>${checked?`<details data-day-round-panel="${id}:${round}" ${opened.has(id+':'+round)?'open':''}><summary class="small">Choose position groups or specific matches</summary>${groups.map((group,index)=>{const eligible=(group.matches||[]).filter(state.eligible),selected=state.selectedFixtures.get(id+':'+round)||new Set();return `<div class="border-top mt-2 pt-2"><label class="small fw-semibold"><input type="checkbox" class="form-check-input me-1 day-batch-group" data-draw="${id}" data-round="${round}" value="${index}" ${eligible.length&&eligible.every(match=>selected.has(match.key))?'checked':''} ${eligible.length?'':'disabled'}>${escape(group.label)}</label><div class="day-match-grid">${(group.matches||[]).map(match=>matchCard(draw,round,match,selected.has(match.key),state.eligible(match))).join('')}</div></div>`;}).join('')}</details>`:''}</div>`;
         }).join('')}</section>`;
       }).join('');
       if(focus?.kind) [...container.querySelectorAll('.day-batch-'+focus.kind)].find(input=>input.dataset.draw===focus.draw && input.dataset.round===focus.round && input.value===focus.value)?.focus({preventScroll:true});
@@ -234,5 +261,5 @@
     get('day-batch-save-timing').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await options.onSaveTiming?.(readOptions());status('Timing settings saved. Existing match times are unchanged.');}catch(error){status(error.message,true);}finally{button.disabled=false;}});
     return state;
   }
-  return {createState,buildPayload,mount};
+  return {createState,buildPayload,mount,miniature,matchCard};
 });

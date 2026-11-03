@@ -19,33 +19,40 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
  */
 class MyTennisService
 {
+    public const PLAYER_LIMIT = 100;
+    public const DEFAULT_PLAYER_SCAN_LIMIT = 25;
+    public const MATCH_CANDIDATE_LIMIT = 500;
+    private bool $matchReadLimited = false;
     public function __construct(private readonly PlayerCompetitionTimelineService $timeline)
     {
     }
 
     public function playersFor(User $user): Collection
     {
-        $pivotPlayers = $user->players()->get();
-        $legacyPlayers = Player::query()->where('userId', $user->id)->get();
+        return $this->linkedPlayers($user)->orderByRaw("LOWER(COALESCE(name, ''))")->orderByRaw("LOWER(COALESCE(surname, ''))")->orderBy('id')->limit(self::PLAYER_LIMIT)->get();
+    }
 
-        return $pivotPlayers->concat($legacyPlayers)
-            ->unique('id')
-            ->sortBy(fn (Player $player) => mb_strtolower($player->full_name))
-            ->values();
+    private function linkedPlayers(User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        return Player::query()->where(fn ($query) => $query->where('userId', $user->id)
+            ->orWhereHas('users', fn ($users) => $users->whereKey($user->id)));
     }
 
     public function dashboard(User $user, ?int $playerId = null): array
     {
         $players = $this->playersFor($user);
         $linkedPlayerPage = $this->playerPage($user);
-        $linkedPlayerIds = $user->players()->pluck('players.id')->map(fn ($id) => (int) $id)->all();
+        $playerCount = $this->linkedPlayers($user)->count();
+        $linkedPlayerIds = $user->players()->whereIn('players.id', $players->pluck('id')->merge(collect($linkedPlayerPage->items())->pluck('id')))
+            ->pluck('players.id')->map(fn ($id) => (int) $id)->all();
         $matches = null;
         $player = $playerId
-            ? $players->firstWhere('id', $playerId)
+            ? $this->linkedPlayers($user)->whereKey($playerId)->first()
             : $players->first();
+        if ($player && !$players->contains('id', $player->id)) $players->push($player);
 
         if ($playerId === null) {
-            foreach ($players as $candidate) {
+            foreach ($players->take(self::DEFAULT_PLAYER_SCAN_LIMIT) as $candidate) {
                 $candidateMatches = $this->upcomingScheduledMatchesFor($candidate);
                 if ($candidateMatches->isNotEmpty()) {
                     $player = $candidate;
@@ -56,11 +63,13 @@ class MyTennisService
                     $matches = $candidateMatches;
                 }
             }
+            if ($matches?->isEmpty()) $matches = null;
         }
 
         if (! $player) {
             return [
                 'players' => $players,
+                'playerCount' => $playerCount,
                 'linkedPlayerIds' => $linkedPlayerIds,
                 'linkedPlayerPage' => $linkedPlayerPage,
                 'accountUser' => $user,
@@ -82,8 +91,7 @@ class MyTennisService
             ->with(['categoryEvent.event', 'categoryEvent.category', 'registration.players'])
             ->whereHas('players', fn ($query) => $query->whereKey($player->id))
             ->latest('id')
-            ->limit(100)
-            ->get();
+            ->paginate(25, ['*'], 'entries_page')->appends(['player' => $player->id]);
 
         $matches ??= $this->upcomingScheduledMatchesFor($player);
         $page = max(1, (int) request()->query('matches_page', 1));
@@ -94,6 +102,7 @@ class MyTennisService
 
         return [
             'players' => $players,
+            'playerCount' => $playerCount,
             'linkedPlayerIds' => $linkedPlayerIds,
             'linkedPlayerPage' => $linkedPlayerPage,
             'accountUser' => $user,
@@ -102,7 +111,8 @@ class MyTennisService
             'entries' => $entries,
             'upcomingMatches' => $upcomingMatchPage->getCollection(),
             'upcomingMatchPage' => $upcomingMatchPage,
-            'history' => $this->timeline->for($player, 20),
+            'matchReadLimited' => $this->matchReadLimited,
+            'history' => $this->timeline->for($player, 20, true),
         ];
     }
 
@@ -113,7 +123,8 @@ class MyTennisService
 
     public function upcomingScheduledMatchesFor(Player $player): Collection
     {
-        $registrationIds = $player->registrations()->pluck('registrations.id');
+        $this->matchReadLimited = false;
+        $registrationIds = $player->registrations()->select('registrations.id');
 
         $matches = Fixture::query()
             ->with(['draw.event', 'orderOfPlay.venue', 'fixtureResults', 'registration1.players', 'registration2.players',
@@ -136,7 +147,11 @@ class MyTennisService
                 ->where(fn ($dates) => $dates->whereNull('end_date')
                     ->orWhereDate('end_date', '>=', today())))
             ->where('match_status', 0)
-            ->get();
+            ->orderBy(\Illuminate\Support\Facades\DB::table('published_schedule_assignments')->select('scheduled_at')
+                ->where('fixture_kind', 'individual')->whereColumn('fixture_id', 'fixtures.id')->orderBy('scheduled_at')->limit(1))
+            ->orderBy('fixtures.id')->limit(self::MATCH_CANDIDATE_LIMIT + 1)->get();
+        if ($matches->count() > self::MATCH_CANDIDATE_LIMIT) $this->matchReadLimited = true;
+        $matches = $matches->take(self::MATCH_CANDIDATE_LIMIT);
 
         app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
         $matches = $matches->filter(fn (Fixture $fixture) => $fixture->orderOfPlay?->time)->sortBy(fn (Fixture $fixture) => sprintf(
@@ -173,7 +188,7 @@ class MyTennisService
                 ->orWhereHas('competitionSubstitutions', fn ($substitutions) => $substitutions
                     ->where('details->new_type', 'profile')->where('details->new_identity_id', $player->id)))
             ->join('category_events as roster_category', 'roster_category.id', '=', 'teams.category_event_id')
-            ->distinct()->pluck('roster_category.event_id');
+            ->distinct()->select('roster_category.event_id');
 
         $fixtures = TeamFixture::query()->publicDrawFixtures()
             ->where(fn ($query) => $query
@@ -196,8 +211,9 @@ class MyTennisService
             })
             ->where('published_slot.scheduled_at', '>=', now())
             ->orderBy('published_slot.scheduled_at')->orderBy('team_fixtures.id')
-            ->select('team_fixtures.*')->lazy(100)
-            ->filter(function (TeamFixture $fixture) use ($player): bool {
+            ->select('team_fixtures.*')->limit(self::MATCH_CANDIDATE_LIMIT + 1)->get();
+        if ($fixtures->count() > self::MATCH_CANDIDATE_LIMIT) $this->matchReadLimited = true;
+        $fixtures = $fixtures->take(self::MATCH_CANDIDATE_LIMIT)->filter(function (TeamFixture $fixture) use ($player): bool {
                 if (! $fixture->teamTie) {
                     return $fixture->team1->contains('id', $player->id) || $fixture->team2->contains('id', $player->id);
                 }
@@ -215,7 +231,7 @@ class MyTennisService
                 return false;
             });
 
-        $matches = $fixtures->collect();
+        $matches = $fixtures;
         app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($matches);
         $matches = $matches->filter(fn (TeamFixture $fixture) => $fixture->scheduled_at
             && Carbon::parse($fixture->scheduled_at)->greaterThanOrEqualTo(now()))->values();

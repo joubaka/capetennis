@@ -26,6 +26,7 @@
 <div class="card">
     <div class="card-header"><h3>{{$player->getFullNameAttribute()}}</h3></div>
     <div class="card-body">
+      <p class="small text-muted">Showing up to {{ $results['limit'] ?? 100 }} recent team result records.@if($results['has_more'] ?? false) Older records are available through the event results pages.@endif</p>
       @forelse($results['fixture'] as $key => $result)
 
 @php [$homeClass, $awayClass] = \App\Support\ResultPresentation::classes($result->fixture); @endphp

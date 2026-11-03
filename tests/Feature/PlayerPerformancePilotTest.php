@@ -268,7 +268,9 @@ class PlayerPerformancePilotTest extends TestCase
         $player = Player::factory()->create();
         $this->mock(PlayerPerformancePilotService::class)->shouldNotReceive('forPlayer');
         $this->mock(\App\Services\Performance\PlayerSharedAbilityService::class)->shouldNotReceive('forPlayer');
-        $this->actingAs(User::factory()->create());
+        $profileOwner = User::factory()->create();
+        $profileOwner->players()->attach($player);
+        $this->actingAs($profileOwner);
         $this->get(route('backend.player.profile', $player->id))->assertOk()->assertViewHas('performance', null)->assertViewHas('ability', null)->assertDontSee('Cape Tennis Performance Score')->assertDontSee('Cape Tennis Shared Ability');
         Role::findOrCreate('super-user', 'web');
         $this->actingAs(User::factory()->create()->assignRole('super-user'));

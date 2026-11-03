@@ -2,6 +2,45 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-017",
+      "title": "Player dashboard shows archived rankings as current",
+      "scope": "PlayerCompetitionTimelineService current series rankings on player dashboards and related private history views.",
+      "symptoms": "A normal ranking republish leaves old and new positions together under Current rankings, or hidden series remain visible there.",
+      "cause": "The read accepted status published OR any publication timestamp. Canonical archiving preserves the old timestamp, so it remained eligible.",
+      "fix": "Require the series publication flag and latest published modern run, then apply canonical public-ranking eligibility. Preserve legacy null-run records only when no modern published run exists and they have published status or a null status plus publication evidence. Never admit archived rows by timestamp alone. See docs/player-dashboard-access.md.",
+      "verification": "On 2026-11-03 the local isolated SQLite dashboard service suite passed 15 tests and 86 assertions, including archived, superseded, hidden, draft and safe legacy ranking cases, entry pagination, selector access and scheduled-candidate bounds.",
+      "limits": "This changes the read model only. It does not republish rankings, modify snapshots, change official eligibility, migrate data or authorize production actions.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/PlayerCompetitionTimelineService.php", "docs/player-dashboard-access.md"],
+      "tests": ["tests/Unit/MyTennisServiceTest.php", "tests/Feature/MyTennisDashboardIntegrationTest.php"]
+    },
+    {
+      "id": "RK-016",
+      "title": "Existing-player linking bypasses private dashboard access",
+      "scope": "Local player relationships, private profile/archive reads and sponsored roster claims; existing family links and per-player Plus entitlements remain independent.",
+      "symptoms": "An authenticated account can attach an unrelated existing player, read their private profile directly, or gain an account-player link after sponsored roster completion.",
+      "cause": "Account management authorization and identity matching were incorrectly treated as authority over the selected player; legacy association endpoints and private reads lacked relationship checks.",
+      "fix": "Use PlayerRelationshipAccess for established relation or narrowly privileged staff access. Deny new unrelated self-claims, require a reason and transactional audit for staff additions, retire legacy GET mutations, and authorize private profile/contact/archive responses. Preserve sponsorship through canonical roster/payment workflows without granting ownership or unrelated contact edits. Redact sponsor membership metadata. See docs/player-dashboard-access.md.",
+      "verification": "On 2026-11-03 local isolated SQLite focused checks passed 46 tests and 347 assertions across relationship/privacy, duplicate profiles, sponsored rosters and private result archives. Existing relationships, staff audit rollback, private-read denial, sponsor separation, publication and opponent-field redaction are covered. No production verification.",
+      "limits": "Historical links are preserved, not retroactively verified. Additional guardians use staff review; there is no new invitation or outbound-review workflow. This guide does not revoke memberships, mutate production, send messages or authorize deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/PlayerRelationshipAccess.php", "app/Domain/Teams/Services/ExternalTeamRosterService.php", "docs/player-dashboard-access.md"],
+      "tests": ["tests/Feature/Authorization/UserPlayerLinkAuthorizationTest.php", "tests/Feature/Authorization/PlayerRelationshipPrivacyTest.php", "tests/Feature/Authorization/PlayerPrivateResultArchiveTest.php", "tests/Feature/PlayerIdentityDeduplicationTest.php", "tests/Feature/ExternalTeamRosterWorkflowTest.php"]
+    },
+    {
+      "id": "RK-015",
+      "title": "Ball-rating player link opens a different rating context",
+      "scope": "Super Admin rating directory to player detail navigation; Red, Orange, Green/Yellow and Overall.",
+      "symptoms": "Selecting a player in a ball-level directory opens an Overall headline with a different score or an unavailable message.",
+      "cause": "The directory link omitted ball_type and the detail controller/view always selected the default Overall rating.",
+      "fix": "Carry the directory's resolved ball_type and explicit comparison_group into the detail request. Validate context, display the matching saved rating and its existing comparability qualifiers, and retain context in reload/back/evidence links. Withhold missing stages or mismatched groups instead of substituting another rating. See docs/performance/ball-level-classification.md.",
+      "verification": "On 2026-11-03 four focused local regressions passed with 57 assertions, covering link/request context, selected scores, missing and withheld ratings, local/group qualification, invalid context and unchanged route restrictions. No production verification.",
+      "limits": "This display fix does not change classification, rebuild ratings, establish player ownership, broaden private access, or authorize deployment. The detail route remains restricted to Super Admin.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/PlayerPerformancePilotController.php", "docs/performance/ball-level-classification.md"],
+      "tests": ["tests/Feature/PlayerRatingDetailContextTest.php"]
+    },
+    {
       "id": "RK-014",
       "title": "Regional junior results appear under the wrong ball-level rating",
       "scope": "Named competition and B-division ball-level fallback classification; boys and girls.",

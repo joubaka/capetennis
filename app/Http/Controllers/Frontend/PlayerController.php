@@ -22,7 +22,8 @@ class PlayerController extends Controller
     function player_profile($id)
     {
    
-        $player = Player::find($id);
+        $player = Player::findOrFail($id);
+        abort_unless(app(\App\Services\PlayerRelationshipAccess::class)->canView(Auth::user(), $player), 403);
         $exersize_types = ExerciseType::all();
         $practice_types = PracticeType::all();
         $physical_exersizes  = ExerciseName::where('exersize_type_id', 1)->get();

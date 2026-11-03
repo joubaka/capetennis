@@ -121,10 +121,10 @@ class TeamDrawReadinessService
                     ];
                 }
                 $tieCount++;
-                $ties[] = ['pair_key' => $this->generator->pairKey($home, $away), 'home_team' => ['id' => $home->id, 'name' => $home->name],
-                    'away_team' => ['id' => $away->id, 'name' => $away->name], 'rubbers' => $rubbers];
+                $ties[] = ['pair_key' => $this->generator->pairKey($home, $away), 'home_team' => ['id' => $home->id, 'name' => $home->name, 'region_id' => $home->region_id],
+                    'away_team' => ['id' => $away->id, 'name' => $away->name, 'region_id' => $away->region_id], 'rubbers' => $rubbers];
             }
-            $byes = $teams->whereNotIn('id', $playing)->map(fn ($team) => ['id' => $team->id, 'name' => $team->name])->values()->all();
+            $byes = $teams->whereNotIn('id', $playing)->map(fn ($team) => ['id' => $team->id, 'name' => $team->name, 'region_id' => $team->region_id])->values()->all();
             $byeCount += count($byes);
             $rounds[] = ['round_nr' => $roundNumber, 'source_round' => ($roundNumber + $openingRound - 2) % count($schedule) + 1, 'ties' => $ties, 'byes' => $byes];
         }

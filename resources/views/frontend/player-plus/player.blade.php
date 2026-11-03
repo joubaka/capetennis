@@ -15,7 +15,7 @@
   </style>
   <nav class="pp-nav" aria-label="Player Plus navigation"><a href="{{ route('player-plus.index') }}">← Choose another player</a><a href="{{ route('player-plus.orders.index') }}">My Plus orders →</a></nav>
   @php
-    $membershipStatusOnly = ($adminAccess ?? null)?->mode === 'suspended'
+    $membershipStatusOnly = ($purchaseBlocked ?? false) || ($adminAccess ?? null)?->mode === 'suspended'
       || (($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
       || ($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture());
   @endphp
@@ -32,7 +32,9 @@
   <div class="pp-layout">
     <section class="pp-checkout" aria-label="Player Plus membership and checkout">
       @unless($linked)<p class="pp-sponsor-note"><strong>You are sponsoring {{ $player->name }}.</strong> Only the player and accounts already linked to them can use their private Player Plus benefits. Payment does not link the player to your account.</p>@endunless
-      @if(($adminAccess ?? null)?->mode === 'suspended')
+      @if($purchaseBlocked ?? false)
+        <p class="alert alert-info">A new purchase for this player is not currently available. The linked account holder or existing payer can review their own access and orders, or contact Cape Tennis support.</p>
+      @elseif(($adminAccess ?? null)?->mode === 'suspended')
         <p class="alert alert-warning">Player Plus access is deactivated. Contact Cape Tennis support. Deactivation does not stop automatic renewal; the payer can manage billing in My Plus orders.</p>
       @elseif(($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
         <p class="alert alert-success">This player has admin-granted access until {{ $adminAccess->ends_at->format('j M Y H:i') }}. This grant does not record a payment or change existing subscription billing.</p>
@@ -124,6 +126,9 @@
     <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
       <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
       <a class="btn btn-outline-primary" data-pathway-navigation href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
+      <a class="btn btn-outline-primary" href="{{ route('my.tennis.record', $player) }}">Playing Record</a>
+      <a class="btn btn-outline-primary" href="{{ route('my.tennis.record', ['player' => $player, 'section' => 'opponents']) }}">Opponent Insights</a>
+      <a class="btn btn-outline-primary" href="{{ route('my.tennis.event-history', $player) }}">Past-event ratings</a>
     </div></section>
   @endif
   <script src="{{ asset('assets/js/player-plus-stepper.js') }}" defer></script>

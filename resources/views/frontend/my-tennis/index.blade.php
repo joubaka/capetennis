@@ -146,6 +146,7 @@
         @if($previewNonPlus ?? false)<input type="hidden" name="preview_non_plus" value="1">@endif
         <label for="my-tennis-player" class="visually-hidden">Player</label>
         <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select" onchange="this.form.submit()">
+          @if(($ratingPreviewPlayer ?? null) && !$selectedPlayer)<option value="{{ $ratingPreviewPlayer->id }}" selected>{{ $ratingPreviewPlayer->full_name }} · Admin preview</option>@endif
           @foreach($players as $playerOption)
             <option value="{{ $playerOption->id }}" @selected($selectedPlayer?->id === $playerOption->id)>{{ $playerOption->full_name }}</option>
           @endforeach
@@ -163,19 +164,20 @@
       <div class="my-tennis-player-details">
         <h2>{{ $headerPlayer->full_name }}</h2>
         @if($selectedPlayer)<p class="small text-muted mb-0">{{ $profile['message'] }}</p>@endif
+        <p class="small mb-0">{{ ($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional' }}</p>
       </div>
       <div class="my-tennis-header-actions">
         @if($selectedPlayer)
         <button class="btn my-tennis-reminder" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
         @endif
-        <a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
+        <a class="btn my-tennis-plus-link" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
       </div>
     </header>
   @else
     <p><a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
   @endif
 
-  <x-player-plus-coming-soon class="mb-3" />
+  @unless($canViewRating ?? false)<x-player-plus-coming-soon class="mb-3" />@endunless
   <x-player-plus-renewal-help />
 
   @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
@@ -192,7 +194,7 @@
     @if($ratingPlayer ?? null)
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-rating-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-rating" type="button" role="tab" aria-controls="my-tennis-rating" aria-selected="false">Player rating</button></li>
     @endif
-    <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>
+    @if($selectedPlayer)<li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>@endif
     <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-manage-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-manage" type="button" role="tab" aria-controls="my-tennis-manage" aria-selected="false"><i class="ti ti-users me-1" aria-hidden="true"></i>Manage players</button></li>
   </ul>
 
@@ -208,19 +210,22 @@
   @endif
   <div class="tab-pane fade show active" id="my-tennis-overview" role="tabpanel" aria-labelledby="my-tennis-overview-tab">
   @if($canViewRating ?? false)
-    <section class="card mb-4 border-start border-primary border-3"><div class="card-body"><span class="small text-primary fw-semibold">PLAYER PLUS</span><h2 class="h5 mt-2">Put your results in perspective</h2><p class="text-muted">Explore your available match record by season, or revisit the results against familiar opponents.</p><div class="d-flex flex-wrap gap-2"><a class="btn btn-primary" href="{{ route('my.tennis.record', $ratingPlayer) }}">Playing Record</a><a class="btn btn-outline-primary" href="{{ route('my.tennis.record', ['player' => $ratingPlayer, 'section' => 'opponents']) }}">Opponent Insights</a></div></div></section>
+    <section class="card mb-4 border-start border-primary border-3"><div class="card-body"><span class="small text-primary fw-semibold">PLAYER PLUS</span><h2 class="h5 mt-2">Put your results in perspective</h2><p class="text-muted">Explore your available results and player insights. Each view explains which records it covers.</p>@include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])</div></section>
   @endif
   @if(!$selectedPlayer)
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body py-5 text-center">
         <div class="avatar avatar-lg mx-auto mb-3"><span class="avatar-initial rounded bg-label-primary"><i class="ti ti-user-plus fs-3"></i></span></div>
         <h5 class="mb-2">Your tennis dashboard is ready</h5>
-        <p class="text-muted mb-3">Link a player profile to see entries, matches, results and rankings here.</p>
-        <button class="btn btn-primary" type="button" data-my-tennis-open-manage><i class="ti ti-user-plus me-1" aria-hidden="true"></i>Link a player</button>
+        <p class="text-muted mb-3">A player relationship is needed to see their dashboard. Existing-player access and additional guardians are reviewed by Cape Tennis support.</p>
+        <button class="btn btn-primary" type="button" data-my-tennis-open-manage><i class="ti ti-user-plus me-1" aria-hidden="true"></i>Manage player access</button>
       </div>
     </div>
   @else
+    @unless($canViewRating ?? false)<section class="card mb-4"><div class="card-body"><h2 class="h5">Your dashboard and Player Plus</h2><p>Entries, published results, official rankings and upcoming matches are included with your account. Player Plus adds personal CTR history, pathway insights, Playing Record, season comparison and Opponent Insights for this player.</p><a class="btn btn-outline-primary" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $selectedPlayer) }}">Explore Player Plus</a></div></section>@endunless
     @include('frontend.my-tennis.teamsheet-connection')
+    @if(($playerCount ?? 0) > \App\Services\MyTennisService::DEFAULT_PLAYER_SCAN_LIMIT)<p class="small text-muted">The player selector shows the first {{ \App\Services\MyTennisService::PLAYER_LIMIT }} profiles and your selected player. Automatic match selection checks the first {{ \App\Services\MyTennisService::DEFAULT_PLAYER_SCAN_LIMIT }}; use Manage players to open any other linked profile.</p>@endif
+    @if($matchReadLimited ?? false)<p class="small text-muted" role="status">This dashboard checks the earliest {{ \App\Services\MyTennisService::MATCH_CANDIDATE_LIMIT }} scheduled fixtures per match type. Counts below cover the matches shown; use the event programme for the full schedule.</p>@endif
     <div class="my-tennis-player-summary">
       <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-1">Your tennis at a glance</h2><p class="small text-muted mb-0">Published matches and your player rating.</p></div>
       @include('frontend.my-tennis.overview-badge')
@@ -332,6 +337,7 @@
             <tr><td colspan="4" class="text-muted">No entries found for this player.</td></tr>
           @endforelse
           </tbody></table></div>
+          @if($entries instanceof \Illuminate\Contracts\Pagination\Paginator)<div class="mt-3">{{ $entries->fragment('my-tennis-history')->links() }}</div><p class="small text-muted mb-0">Entries are paginated. Published results and current rankings below show the latest 20 records.</p>@endif
         </div></div>
       </div>
       <div class="col-12 col-lg-6">
@@ -358,19 +364,19 @@
         </div>
         <div class="d-flex flex-wrap gap-2">
           <button id="my-tennis-bulk-unlink" class="btn btn-outline-danger" type="button" hidden disabled><i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink selected</button>
-          <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#link-player-panel" aria-expanded="false" aria-controls="link-player-panel"><i class="ti ti-user-plus me-1" aria-hidden="true"></i>Link a player</button>
+          <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#link-player-panel" aria-expanded="false" aria-controls="link-player-panel"><i class="ti ti-user-plus me-1" aria-hidden="true"></i>Player access</button>
         </div>
       </div>
       <div class="mb-3" id="my-tennis-link-feedback" role="status" aria-live="polite"></div>
       <div class="collapse" id="link-player-panel">
         <div class="border rounded p-3 mb-3">
-          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Search for and link the player you manage. A player may be linked to more than one account.</span></div></div>
+          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Existing family links remain available. To add an existing player or another guardian, contact Cape Tennis support for relationship review. Finding or paying for a player does not grant private access.</span></div></div>
           <label for="my-tennis-player-search" class="form-label">Find the player profile</label>
           <select id="my-tennis-player-search" class="form-select" aria-describedby="my-tennis-player-search-help my-tennis-player-search-status"><option></option></select>
           <p id="my-tennis-player-search-help" class="form-text mt-2">Type at least two characters of the player's name, then choose their profile. Selecting a profile does not link it.</p>
           <p id="my-tennis-player-search-status" class="small text-muted" role="status" aria-live="polite"></p>
-          <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Link selected player</button>
-          <p class="form-text mb-0 mt-2">Linking does not remove the player from any other account.</p>
+          <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Restore existing access</button>
+          <p class="form-text mb-0 mt-2">This can restore an existing relationship. New relationships require staff review.</p>
         </div>
       </div>
       <div id="my-tennis-linked-players">
@@ -378,7 +384,7 @@
           <div class="player-chip" data-player-row="{{ $playerOption->id }}">
             <div>
               <input class="form-check-input my-tennis-player-check me-2" type="checkbox" value="{{ $playerOption->id }}" aria-label="Select {{ $playerOption->full_name }} for bulk unlink">
-              <div class="fw-semibold">{{ $playerOption->full_name }}</div>
+              <a class="fw-semibold" href="{{ route('my.tennis', ['player' => $playerOption->id]) }}">{{ $playerOption->full_name }}</a>
               @if(in_array((int) $playerOption->id, $linkedPlayerIds, true))
                 <small class="text-muted">Linked to this account</small>
               @else
@@ -392,7 +398,7 @@
             </details>
           </div>
         @empty
-          <p class="text-muted mb-0">No linked players yet. Search above to link a player profile.</p>
+          <p class="text-muted mb-0">No linked players yet. Contact support to review access to an existing player, or create your own new profile from My Profile.</p>
         @endforelse
       </div>
       @if($linkedPlayerPage->hasMorePages())
@@ -532,6 +538,11 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <script>
 (() => {
+  document.addEventListener('DOMContentLoaded', () => {
+    const tabId = {'#my-tennis-history': 'my-tennis-history-tab', '#manage': 'my-tennis-manage-tab'}[window.location.hash];
+    const tab = tabId ? document.getElementById(tabId) : null;
+    if (tab) bootstrap.Tab.getOrCreateInstance(tab).show();
+  });
   const playerSelect = document.getElementById('my-tennis-player');
   if (playerSelect && window.jQuery?.fn?.select2) {
     window.jQuery(playerSelect).select2({ width: '100%', minimumResultsForSearch: 0, placeholder: 'Choose a player' });
@@ -585,7 +596,8 @@ document.addEventListener('DOMContentLoaded', () => {
       checkbox.className = 'form-check-input my-tennis-player-check me-2';
       checkbox.type = 'checkbox'; checkbox.value = player.id;
       checkbox.setAttribute('aria-label', `Select ${player.name} for bulk unlink`);
-      const name = document.createElement('div'); name.className = 'fw-semibold'; name.textContent = player.name;
+      const name = document.createElement('a'); name.className = 'fw-semibold'; name.textContent = player.name;
+      const playerUrl = new URL({{ Illuminate\Support\Js::from(route('my.tennis', [], false)) }}, window.location.origin); playerUrl.searchParams.set('player', player.id); name.href = playerUrl.href;
       const source = document.createElement('small'); source.className = 'text-muted'; source.textContent = player.linked ? 'Linked to this account' : 'Legacy account link';
       details.append(checkbox, name, source);
       const unlink = document.createElement('button');
@@ -602,7 +614,7 @@ document.addEventListener('DOMContentLoaded', () => {
     button.disabled = true;
     try {
       await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id });
-      showFeedback(`${player.name} ${player.surname || ''} is now linked to your account.`, 'success');
+      showFeedback(`Existing access to ${player.name} ${player.surname || ''} has been restored.`, 'success');
       window.location.reload();
     } catch (error) { button.disabled = false; showFeedback(error.message, 'danger'); }
   };

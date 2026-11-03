@@ -89,10 +89,11 @@
 <div id="loading-overlay" 
      class="position-fixed top-0 start-0 w-100 h-100 bg-dark bg-opacity-50 justify-content-center align-items-center d-none"
      style="z-index: 2000;">
-  <div class="spinner-border text-light" role="status" style="width: 4rem; height: 4rem;">
-    <span class="visually-hidden">Generating fixtures...</span>
+  <div class="ct-loading-panel" role="status" aria-live="polite">
+    <span class="ct-loading-spinner" aria-hidden="true"></span>
+    <h2>Generating fixtures</h2>
+    <p>Please wait while we prepare the fixtures.</p>
   </div>
-  <span class="ms-3 text-white fw-bold fs-5">Generating fixtures...Please wait...</span>
 </div>
 
 

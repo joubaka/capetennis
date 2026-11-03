@@ -1649,7 +1649,9 @@ final class EventVenueScheduleService
             $round = $rounds[$match['id']];
             $details[$round][$label] ??= ['label' => $label, 'count' => 0, 'matches' => []];
             $details[$round][$label]['count']++;
-            $details[$round][$label]['matches'][] = ['fixture_id' => (int) $match['id'], 'number' => (int) $match['number']];
+            $details[$round][$label]['matches'][] = ['fixture_id' => (int) $match['id'], 'number' => (int) $match['number'],
+                'bracket' => ['node' => (string) $key, 'section' => $section,
+                    'sources' => array_values(array_map(fn ($source) => (string) $source['match'], array_filter($match['sources'] ?? [], fn ($source) => isset($source['match']))))]];
         }
         ksort($details);
         return array_map(fn ($groups) => array_values($groups), $details);
@@ -1670,7 +1672,7 @@ final class EventVenueScheduleService
         }
         if (! $draw->isTeamDraw() && $draw->usesFlexibleMonrad()) {
             $groups = $this->programmeRoundDetails($draw);
-            foreach ($groups as &$round) foreach ($round as &$group) $group['matches'] = array_values(array_filter(array_map(fn ($match) => $byKey['individual:'.$match['fixture_id']] ?? null, $group['matches'])));
+            foreach ($groups as &$round) foreach ($round as &$group) $group['matches'] = array_values(array_filter(array_map(fn ($match) => isset($byKey['individual:'.$match['fixture_id']]) ? $byKey['individual:'.$match['fixture_id']] + ['bracket' => $match['bracket']] : null, $group['matches'])));
             unset($round, $group);
             return $groups;
         }

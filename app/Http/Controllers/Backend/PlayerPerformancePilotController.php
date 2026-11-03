@@ -27,11 +27,18 @@ class PlayerPerformancePilotController extends Controller
         return view('backend.player-performance.directory', compact('players', 'search'));
     }
 
-    public function show(Player $player, PlayerPerformancePilotService $service)
+    public function show(Request $request, Player $player, PlayerPerformancePilotService $service)
     {
+        $settings = $request->validate(['ball_type' => ['nullable', Rule::in(['overall', 'red', 'orange', 'standard'])],
+            'comparison_group' => ['nullable', 'string', 'max:64']]);
+        $ballType = $settings['ball_type'] ?? 'overall';
+        $comparisonGroup = $settings['comparison_group'] ?? '';
         $performance = $service->forPlayer($player);
         $ability = app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player);
-        return view('backend.player-performance.show', compact('player', 'performance', 'ability'));
+        $selectedRating = $ballType === 'overall' ? ($ability['all_age'] ?? null) : ($ability['ball_ratings'][$ballType] ?? null);
+        // A list's explicit local group never selects another group's estimate.
+        if ($comparisonGroup !== '' && ($selectedRating['component'] ?? null) !== $comparisonGroup) $selectedRating = null;
+        return view('backend.player-performance.show', compact('player', 'performance', 'ability', 'ballType', 'comparisonGroup', 'selectedRating'));
     }
 
     public function index(Request $request, PlayerPerformancePilotService $service)

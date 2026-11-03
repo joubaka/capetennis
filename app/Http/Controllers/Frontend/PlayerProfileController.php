@@ -77,7 +77,7 @@ class PlayerProfileController extends Controller
         $result = DB::transaction(function () use ($user, $name, $surname, $dob, $gender, $validated) {
             User::where('id', $user->id)->lockForUpdate()->first();
 
-            return $this->playerIdentity->findOrCreate([
+            $result = $this->playerIdentity->findOrCreate([
                 'name'        => $name,
                 'surname'     => $surname,
                 'dateOfBirth' => $dob,
@@ -87,11 +87,14 @@ class PlayerProfileController extends Controller
                 ...array_intersect_key($validated, array_flip(['email_2', 'email_3'])),
                 'userId'      => $user->id,
             ]);
+            if (!$result['created'] && !app(\App\Services\PlayerRelationshipAccess::class)->related($user, $result['player'])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['name' => 'An existing player profile matches these details. Ask Cape Tennis support to review the relationship; it has not been linked to your account.']);
+            }
+            $user->players()->syncWithoutDetaching($result['player']->id);
+            return $result;
         });
 
         $player = $result['player'];
-
-        $user->players()->syncWithoutDetaching($player->id);
 
         return redirect()->route('backend.dashboard')
             ->with('success', $result['created']
@@ -158,7 +161,7 @@ class PlayerProfileController extends Controller
     {
         // Ensure user owns this player
         $user = auth()->user();
-        if (!$user->players->contains($player->id)) {
+        if (!app(\App\Services\PlayerRelationshipAccess::class)->related($user, $player)) {
             abort(403, 'You do not have permission to edit this player.');
         }
 
@@ -174,7 +177,7 @@ class PlayerProfileController extends Controller
     {
         // Ensure user owns this player
         $user = auth()->user();
-        if (!$user->players->contains($player->id)) {
+        if (!app(\App\Services\PlayerRelationshipAccess::class)->related($user, $player)) {
             abort(403, 'You do not have permission to edit this player.');
         }
 
@@ -240,7 +243,7 @@ class PlayerProfileController extends Controller
     public function status(Player $player)
     {
         $user = auth()->user();
-        if (!$user->players->contains($player->id)) {
+        if (!app(\App\Services\PlayerRelationshipAccess::class)->related($user, $player)) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -259,7 +262,7 @@ class PlayerProfileController extends Controller
     public function confirm(Request $request, Player $player)
     {
         $user = auth()->user();
-        if (!$user->players->contains($player->id)) {
+        if (!app(\App\Services\PlayerRelationshipAccess::class)->related($user, $player)) {
             abort(403);
         }
 
@@ -307,14 +310,14 @@ class PlayerProfileController extends Controller
         $user = auth()->user();
 
         // Ensure user owns this player
-        if (!$user->players->contains($player->id)) {
+        if (!app(\App\Services\PlayerRelationshipAccess::class)->related($user, $player)) {
             abort(403, 'You do not have permission to remove this player.');
         }
 
         $playerName = $player->name . ' ' . $player->surname;
 
         // Detach player from user (doesn't delete the player record)
-        $user->players()->detach($player->id);
+        app(\App\Http\Controllers\Backend\UserPlayerController::class)->destroy($user, $player);
 
         if ($request->expectsJson()) {
             return response()->json([

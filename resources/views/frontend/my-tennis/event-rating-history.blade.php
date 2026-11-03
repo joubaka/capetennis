@@ -6,7 +6,7 @@
         <header class="event-history-hero"><span><i class="ti ti-history me-1" aria-hidden="true"></i>Player Plus · Match by match</span><h1 class="h4 mt-2 mb-0">{{ $ratingPlayer->full_name }} · Past-event ratings</h1></header>
         <p>Reconstructed as of each event’s completion date, using only eligible results dated on or before that date. These are retrospective estimates, not ratings originally published at the time.</p>
         <p>Red, Orange and Green/Yellow are independent. Each date uses the normal {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day evidence window looking backwards from that date. Valid published final placings provide weaker evidence than scored matches. Results dated after the cutoff are excluded.</p>
-        <p><a href="{{ route('my.tennis', ['player' => $ratingPlayer->id]) }}">Back to My Tennis</a></p>
+        @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])
         @if(session('event_history_status'))
             <p class="alert alert-info" role="status">{{ session('event_history_status') }}</p>
         @endif

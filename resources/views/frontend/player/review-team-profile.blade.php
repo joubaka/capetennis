@@ -23,8 +23,16 @@
           <p class="text-muted mb-0">{{ $player->full_name }} · profile #{{ $player->id }}</p>
         </div>
         <div class="card-body">
+          @if(!($canManageProfile ?? false))
+            <p>Confirm this player for {{ $team->name }}. You can sponsor their registration without gaining access to private player details or linking the player to your account.</p>
+            <form method="POST" action="{{ route('player.claim.complete') }}">
+              @csrf @method('PUT')
+              <label class="d-flex gap-2 mb-3"><input type="checkbox" name="confirmed_details" value="1" required><span>I have selected the intended player for this roster position.</span></label>
+              <button class="btn btn-primary" type="submit">Continue to registration</button>
+            </form>
+          @else
           <div class="alert alert-info">
-            Confirm that these details are current and correct. The player will only be linked to your account and roster position after this form is saved.
+            Confirm that these details are current and correct. Your existing account relationship allows you to update the player profile before confirming the roster position.
           </div>
 
           <form method="POST" action="{{ route('player.claim.complete') }}">
@@ -72,6 +80,7 @@
               <button type="submit" class="btn btn-success">Save Profile and Continue to Payment</button>
             </div>
           </form>
+          @endif
         </div>
       </div>
     </div>

@@ -41,7 +41,7 @@ function scenario() {
     programmeRoundDescription:()=>'',programmeMatchControls:()=>'',
     Sortable:class {constructor(lane, options){sortables.push({lane, options});} destroy(){}},
     programmeDayLabel:day => `Day ${day}`, dirtyCalls:0, markProgrammeDirty:() => { context.dirtyCalls++; }, refreshProgrammeStageSummaries:() => {}, escapeHtml:String, allocationsDirty:false, programmePayload:null, payload:null, revision:null,
-    previewGeneration:0, previewUrl:'/preview', csrf:'test', programmeStatus:() => {}, showWorkflowStep:() => {}, setStatus:() => {}, lastScheduleResult:null,
+    previewGeneration:0, timelineState:{reset(){}}, previewUrl:'/preview', csrf:'test', programmeStatus:() => {}, showWorkflowStep:() => {}, setStatus:() => {}, lastScheduleResult:null,
     buildPayload:() => ({...context.programmePayload}),
     render:result => {rendered.push(result); get('apply-preview').disabled = false;},
     fetch:(url, options) => new Promise(resolve => requests.push({url, body:JSON.parse(options.body), finish:() => resolve({ok:true,json:async()=>({matches:[],unscheduled:[]})})}))
@@ -100,4 +100,16 @@ test('an older AJAX drag response cannot render or enable Save while the latest 
   assert.equal(app.rendered.length, 1);
   assert.equal(app.get('apply-preview').disabled, false);
   assert.equal(app.get('programme-create').disabled, false);
+});
+
+test('optional day-box mode arranges rounds without requesting times until explicit generation',async()=>{
+ const app=scenario();vm.runInContext('programmeDayBoxMode = true;',app.context);
+ app.lanes[0].cards=[app.singlesTwo];app.lanes[1].cards=[app.reverse,app.singlesOne];
+ app.sortables[0].options.onEnd();
+ assert.equal(app.requests.length,0);assert.equal(app.get('apply-preview').disabled,true);
+ assert.deepEqual(app.rows.slice(0,2).map(row=>row.querySelector('.programme-day').value),['2','2']);
+ const pending=vm.runInContext('refreshProgrammePreview()',app.context);
+ assert.equal(app.requests.length,1);assert.equal(app.requests[0].body.programme.rounds[0].day,2);
+ app.requests[0].finish();await pending;assert.equal(app.rendered.length,1);
+ assert.equal(app.get('programme-create').innerHTML,'Generate suggested schedule');
 });

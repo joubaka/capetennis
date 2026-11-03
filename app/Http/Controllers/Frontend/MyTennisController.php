@@ -93,7 +93,8 @@ class MyTennisController extends Controller
     public function players(Request $request)
     {
         $page = $this->myTennis->playerPage($request->user(), $request->integer('page', 1));
-        $linkedIds = $request->user()->players()->pluck('players.id')->map(fn ($id) => (int) $id)->all();
+        $linkedIds = $request->user()->players()->whereIn('players.id', collect($page->items())->pluck('id'))
+            ->pluck('players.id')->map(fn ($id) => (int) $id)->all();
 
         return response()->json([
             'data' => collect($page->items())->map(fn ($player) => [

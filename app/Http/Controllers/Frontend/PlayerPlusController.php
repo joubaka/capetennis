@@ -41,17 +41,25 @@ class PlayerPlusController extends Controller
 
     public function player(Request $request, Player $player, PlayerPlusEntitlement $entitlements)
     {
-        $membership = PlayerPlusService::ready() ? PlayerPlusMembership::where('player_id', $player->id)
-            ->whereHas('order', fn ($query) => $query->verifiedSettlement()
-                ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id'))->first() : null;
-        $canViewRating = app(PlayerRatingAccess::class)->allows($request->user(), $player);
         $linked = $entitlements->linkedPlayers($request->user())->whereKey($player->id)->exists();
+        $canInspectMembership = $linked || $request->user()->hasRole('super-user');
+        $membershipQuery = PlayerPlusService::ready() ? PlayerPlusMembership::where('player_id', $player->id)
+            ->whereHas('order', fn ($query) => $query->verifiedSettlement()
+                ->whereColumn('player_plus_orders.player_id', 'player_plus_memberships.player_id')) : null;
+        $membership = $canInspectMembership ? $membershipQuery?->first() : null;
+        $managementReady = \App\Services\Performance\PlayerPlusManagement::ready();
+        $adminAccess = $canInspectMembership && $managementReady ? $player->plusOverride()->first() : null;
+        // Sponsors can learn whether another purchase is possible, never private
+        // expiry, billing, suspension or staff-grant details from this offer page.
+        $purchaseBlocked = !$canInspectMembership && (($membershipQuery && (clone $membershipQuery)->where('starts_at', '<=', now())->where('ends_at', '>', now())->exists())
+            || ($managementReady && $player->plusOverride()->where(fn ($q) => $q->where('mode', 'suspended')->orWhere(fn ($grant) => $grant->where('mode', 'grant')->where('starts_at', '<=', now())->where('ends_at', '>', now())))->exists()));
+        $canViewRating = app(PlayerRatingAccess::class)->allows($request->user(), $player);
         $enabled = PlayerPlusService::salesEnabled();
         $readiness = app(PlayerPlusReadiness::class)->forPlayer($request->user(), $player);
         return response()->view('frontend.player-plus.player', [
             'player' => $player, 'membership' => $membership, 'canViewRating' => $canViewRating,
             'linked' => $linked, 'enabled' => $enabled, 'token' => (string) Str::uuid(),
-            'adminAccess' => \App\Services\Performance\PlayerPlusManagement::ready() ? $player->plusOverride()->first() : null,
+            'adminAccess' => $adminAccess, 'purchaseBlocked' => $purchaseBlocked,
             'readiness' => $readiness, 'termsVersion' => self::TERMS_VERSION, 'priceCents' => PlayerPlusService::priceCents(),
             'monthlyEnabled' => PlayerPlusService::monthlyEnabled(), 'monthlyPriceCents' => PlayerPlusService::monthlyPriceCents(),
             'walletAvailableCents' => app(PlayerPlusService::class)->walletAvailableCents($request->user()),

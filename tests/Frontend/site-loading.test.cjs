@@ -30,3 +30,9 @@ test('Escape only cancels the currently displayed request and labels remain plai
   assert.equal(dialog.children[3].hidden, false);
   dialog.listeners.cancel({preventDefault() {}}); assert.equal(cancelled, 1); first.close();
 });
+
+test('shared compact indicators are decorative and do not open a modal', () => {
+  const h = harness(); const spinner = h.loader.spinner({small: true});
+  assert.equal(spinner.className, 'ct-loading-spinner ct-loading-spinner--small');
+  assert.equal(h.nodes.length, 0);
+});

@@ -1,0 +1,83 @@
+# Player dashboard access and integration
+
+## Relationships and sponsorship
+
+Existing pivot and legacy owner relationships remain usable. They have not been
+retroactively verified. `PlayerRelationshipAccess` denies new claims of unrelated
+existing profiles by ordinary accounts. Staff-reviewed additions require an
+admin or super-user actor, an explanation and a successful transactional audit.
+Existing legacy owners may restore their pivot link. A failed audit rolls back
+the addition. Existing self-unlink and other family accounts remain independent.
+
+Creating a genuinely new own profile differs from finding an existing profile
+with matching identity fields. A duplicate match does not prove ownership.
+Additional guardians need staff review through existing user management; the
+application does not currently provide guardian invitations or send review mail.
+Legacy GET association mutations are retired. Private profiles, contact lists
+and personal result archives require an established relationship or appropriate
+staff access; event-scoped staff workflows retain their own authorization.
+
+Registration and Plus sponsorship remain independent of ownership. Completing
+a sponsored roster claim does not grant a player link or permission to edit an
+unrelated player's contacts. Public event results remain available through their
+existing publication gates. Only the payer controls their orders and billing.
+Sponsor offers expose purchase availability rather than private membership
+expiry, billing type, suspension or staff-grant metadata.
+
+The legacy personal team-results archive applies the same relationship check.
+Ordinary related accounts receive only published, visible event/draw results,
+with explicit name/score/event field allowlists rather than serialized opponent
+profiles. Its response is limited to 100 recent rows and identifies truncation;
+older published records remain available through event results.
+
+## Standard and Plus views
+
+Standard linked accounts can see their dashboard entries, published matches,
+results and official rankings, manage existing access and connect TeamSheet
+when configured. Personal ratings, pathway, Playing Record, season comparison,
+Opponent Insights and past-event rating reconstruction require the selected
+player's active entitlement and relationship. Super-user previews do not create
+ownership. New shared player navigation is rendered only after that access gate.
+
+Playing Record is a curated saved-evidence view, not a complete career archive.
+Past-event ratings reconstruct eligible Cape Tennis events. TeamSheet evidence
+may contribute to a rating while its match details remain restricted. See
+[Player Plus records](player-plus-records.md) for those source boundaries.
+
+## Publication and bounds
+
+Current rankings require a published series and its latest published modern
+run. Archived rows never qualify merely because they retain a timestamp.
+Legacy null-run rows are retained only without a modern published run, with
+published status or a null status plus a publication timestamp. Public ranking
+eligibility is also applied.
+
+Entries use database pagination of 25. Other dashboard history cards are labelled
+as the latest 20. The selector reads the first 100 linked profiles and retains an
+explicitly selected authorised player outside that set; Manage players pages can
+open every linked profile. Automatic selection scans at most 25 linked players.
+Upcoming matches inspect the earliest 500 published scheduled candidates per
+type before canonical participation/visibility filtering, with a visible notice
+when that limit is reached. Counts then describe the matches shown. Canonical
+schedule publication validation still reads event-wide context as needed; this
+limit is not a global query or event-size guarantee.
+
+## Loading presentation
+
+Use the shared CapeLoading indicator factory and layout loading styles for new
+loading states. Native, Bootstrap and SweetAlert indicators share ring styling;
+filled action buttons retain contrasting white indicators. Programmatic heading
+focus does not show a keyboard outline, while actionable keyboard focus remains
+visible. Preserve cancellation, timeouts, retries and focus restoration.
+
+## Regression pointers
+
+- `tests/Feature/Authorization/UserPlayerLinkAuthorizationTest.php`
+- `tests/Feature/Authorization/PlayerRelationshipPrivacyTest.php`
+- `tests/Feature/Authorization/PlayerPrivateResultArchiveTest.php`
+- `tests/Feature/PlayerIdentityDeduplicationTest.php`
+- `tests/Feature/ExternalTeamRosterWorkflowTest.php`
+- `tests/Feature/MyTennisDashboardIntegrationTest.php`
+- `tests/Unit/MyTennisServiceTest.php`
+- `tests/Frontend/site-loading.test.cjs`
+- `tests/Frontend/admin-loading.test.cjs`

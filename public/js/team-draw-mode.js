@@ -85,6 +85,38 @@
   var previewPending = false;
   var openingRounds = {};
   var tieOrders = {};
+  var applyAllDraws = false;
+  var previewDraws = [];
+  var bulkPreferenceMessage = '';
+  function regionalPair(tie) {
+    var ids = [tie.home_team.region_id, tie.away_team.region_id];
+    return ids.every(function (id) { return Number(id) > 0; }) ? ids.map(String).sort().join('-') : null;
+  }
+  function roundSignature(round) {
+    var pairs = round.ties.map(regionalPair);
+    var byes = (round.byes || []).map(function (team) { return Number(team.region_id) > 0 ? String(team.region_id) : null; });
+    var regions = [].concat.apply([], round.ties.map(function (tie) { return [String(tie.home_team.region_id), String(tie.away_team.region_id)]; })).concat(byes);
+    if (pairs.indexOf(null) !== -1 || byes.indexOf(null) !== -1 || new Set(regions).size !== regions.length) return null;
+    return pairs.sort().join(',') + '|byes:' + byes.sort().join(',');
+  }
+  function copyRoundPreference(item, round, order, opening) {
+    if (!applyAllDraws) return;
+    var signature = roundSignature(round), updated = 0, skipped = 0;
+    previewDraws.forEach(function (entry) {
+      if (pairingKey(entry.item) === pairingKey(item)) return;
+      var matches = signature === null ? [] : (entry.readiness.rounds || []).filter(function (candidate) { return roundSignature(candidate) === signature; });
+      if (matches.length !== 1) { skipped++; return; }
+      var match = matches[0], key = pairingKey(entry.item);
+      if (opening) openingRounds[key] = Number(match.source_round);
+      if (order) {
+        var sourcePairs = order.map(function (pair) { return regionalPair(round.ties.find(function (tie) { return tie.pair_key === pair; })); });
+        if (!tieOrders[key]) tieOrders[key] = {};
+        tieOrders[key][match.source_round] = sourcePairs.map(function (pair) { return match.ties.find(function (tie) { return regionalPair(tie) === pair; }).pair_key; });
+      }
+      updated++;
+    });
+    bulkPreferenceMessage = 'Applied to ' + updated + ' other draws in this selection.' + (skipped ? ' Skipped ' + skipped + ' draws with different or ambiguous regional pairings.' : '');
+  }
   function pairingKey(item) {
     return [item.draw_type_id, item.category_ids.slice().map(String).sort().join(','), item.format_id || '', item.players_per_team || ''].join('|');
   }
@@ -450,6 +482,8 @@
       select.addEventListener('change', function (event) {
         event.stopPropagation();
         openingRounds[pairingKey(item)] = Number(select.value);
+        var firstRound = (readiness.rounds || []).find(function (round) { return Number(round.source_round) === Number(select.value); });
+        if (firstRound) copyRoundPreference(item, firstRound, null, true);
         batchKey = null;
         previewRevision++;
         $('#previewTeamDrawButton').trigger('click');
@@ -464,7 +498,7 @@
     (readiness.warnings || []).forEach(function (warning) { previewLine(container, warning, 'text-warning mb-1'); });
     if (readiness.ready) previewLine(container, 'All required player slots are assigned. Review before publication.', 'text-success mb-2');
     if (item && (readiness.rounds || []).some(function (round) { return round.ties.length > 1; })) {
-      previewLine(container, 'Open a round below to move its ties earlier or later for scheduling.', 'small text-muted mb-2');
+      previewLine(container, 'Open a round below to drag its ties into scheduling order, or use Move earlier / Move later.', 'small text-muted mb-2');
     }
     (readiness.rounds || []).forEach(function (round) {
       var detail = document.createElement('details');
@@ -474,11 +508,35 @@
       detail.className = 'border rounded p-2 mt-2';
       if (item && tieOrders[pairingKey(item)] && tieOrders[pairingKey(item)][round.source_round]) detail.open = true;
       (round.byes || []).forEach(function (bye) { previewLine(detail, bye.name + ' — bye', 'text-muted small'); });
+      var draggedIndex = null;
+      function moveTie(from, to) {
+        if (creationPending || previewPending || from === to) return;
+        var key = pairingKey(item);
+        var order = round.ties.map(function (entry) { return entry.pair_key; });
+        order.splice(to, 0, order.splice(from, 1)[0]);
+        if (!tieOrders[key]) tieOrders[key] = {};
+        tieOrders[key][round.source_round] = order;
+        copyRoundPreference(item, round, order, false);
+        batchKey = null; previewRevision++;
+        $('#previewTeamDrawButton').trigger('click');
+      }
       (round.ties || []).forEach(function (tie, index) {
         var heading = document.createElement('div');
         heading.className = 'd-flex flex-wrap align-items-center gap-2 mt-2';
         previewLine(heading, (index + 1) + '. ' + tie.home_team.name + ' vs ' + tie.away_team.name, 'fw-semibold');
         if (item && round.ties.length > 1) {
+          heading.draggable = true;
+          heading.addEventListener('dragstart', function (event) {
+            draggedIndex = index;
+            if (event.dataTransfer) { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', tie.pair_key); }
+          });
+          heading.addEventListener('dragend', function () { draggedIndex = null; });
+          heading.addEventListener('dragover', function (event) { if (draggedIndex !== null) event.preventDefault(); });
+          heading.addEventListener('drop', function (event) {
+            if (draggedIndex === null) return;
+            event.preventDefault(); event.stopPropagation();
+            var from = draggedIndex; draggedIndex = null; moveTie(from, index);
+          });
           [-1, 1].forEach(function (direction) {
             var button = document.createElement('button');
             button.type = 'button';
@@ -490,13 +548,7 @@
             button.addEventListener('click', function (event) {
               event.preventDefault(); event.stopPropagation();
               if (creationPending || previewPending || button.disabled) return;
-              var key = pairingKey(item);
-              var order = round.ties.map(function (entry) { return entry.pair_key; });
-              var swap = order[index]; order[index] = order[index + direction]; order[index + direction] = swap;
-              if (!tieOrders[key]) tieOrders[key] = {};
-              tieOrders[key][round.source_round] = order;
-              batchKey = null; previewRevision++;
-              $('#previewTeamDrawButton').trigger('click');
+              moveTie(index, index + direction);
             });
             heading.appendChild(button);
           });
@@ -526,8 +578,17 @@
     button.disabled = true;
     $.post(data.previewUrl, payload).done(function (response) {
       if (revision !== previewRevision || selectedMode() !== 'team') return;
+      previewDraws = response.draws && response.draws.length > 1 ? response.draws.map(function (draw, index) { return { item: payload.draws[index], readiness: draw.readiness }; }) : [];
       if (response.draws && response.draws.length > 1) {
         var container = document.getElementById('teamDrawPreview'); container.replaceChildren(); container.classList.remove('d-none');
+        var bulkLabel = document.createElement('label'); bulkLabel.className = 'form-check d-block mb-2';
+        var bulkInput = document.createElement('input'); bulkInput.type = 'checkbox'; bulkInput.className = 'form-check-input'; bulkInput.checked = applyAllDraws;
+        bulkInput.setAttribute('data-apply-all-draws', '');
+        bulkInput.addEventListener('change', function (event) { event.stopPropagation(); applyAllDraws = bulkInput.checked; bulkPreferenceMessage = ''; });
+        bulkLabel.appendChild(bulkInput); bulkLabel.appendChild(document.createTextNode(' Apply pairing and scheduling changes to all formats and draws'));
+        container.appendChild(bulkLabel);
+        previewLine(container, 'Applies to compatible regional pairings in the draws selected above. Existing saved draws are unchanged.', 'small text-muted mb-2');
+        if (bulkPreferenceMessage) previewLine(container, bulkPreferenceMessage, 'small mb-2');
         response.draws.forEach(function (draw, index) {
           var section = document.createElement('details'); section.className = 'border rounded p-2 mt-2';
           var summary = document.createElement('summary'); summary.textContent = draw.drawName + (draw.readiness.can_create === false ? ' — needs attention' : '');
@@ -540,7 +601,7 @@
   });
   form.addEventListener('change', function () { batchKey = null; previewRevision++; $('#teamDrawPreview').empty().addClass('d-none'); });
   form.addEventListener('input', function (event) {
-    if (event.target && event.target.hasAttribute && event.target.hasAttribute('data-opening-round')) return;
+    if (event.target && event.target.hasAttribute && (event.target.hasAttribute('data-opening-round') || event.target.hasAttribute('data-apply-all-draws'))) return;
     if (event.target && event.target.id === 'drawName' && selectedMode() === 'individual') {
       individualNameDraft = event.target.value;
       individualNameCustomized = !!event.target.value.trim();

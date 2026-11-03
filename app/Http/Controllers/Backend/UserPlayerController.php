@@ -16,18 +16,14 @@ class UserPlayerController extends Controller
 
     $data = $request->validate([
       'player_id' => ['required', 'exists:players,id'],
+      'reason' => ['nullable', 'string', 'max:500'],
     ]);
 
-    if ($user->players()->where('player_id', $data['player_id'])->exists()) {
-      return response()->json([
-        'message' => 'Player already linked',
-      ], 422);
-    }
-
-    $user->players()->attach($data['player_id']);
+    $changed = app(\App\Services\PlayerRelationshipAccess::class)->link($request->user(), $user,
+      Player::findOrFail($data['player_id']), $data['reason'] ?? null);
 
     return response()->json([
-      'message' => 'Player linked successfully',
+      'message' => $changed ? 'Player linked successfully' : 'Player already linked',
     ]);
   }
 

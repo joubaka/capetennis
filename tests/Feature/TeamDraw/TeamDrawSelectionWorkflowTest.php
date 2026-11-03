@@ -72,6 +72,19 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         return $this->item('Singles', [$this->categories['Boys']]) + ['players_per_team' => 1];
     }
 
+    public function test_preview_exposes_region_identity_across_category_and_mixed_sides(): void
+    {
+        $items = [$this->item('Singles', [$this->categories['Girls']]), $this->item()];
+        $draws = $this->request($items, true)->assertOk()->json('draws');
+        foreach ($draws as $draw) {
+            $tie = $draw['readiness']['rounds'][0]['ties'][0];
+            $this->assertSame($this->teams['East']['Girls']->region_id, $tie['home_team']['region_id']);
+            $this->assertSame($this->teams['West']['Girls']->region_id, $tie['away_team']['region_id']);
+        }
+        $this->assertNotSame($draws[0]['readiness']['rounds'][0]['ties'][0]['pair_key'], $draws[1]['readiness']['rounds'][0]['ties'][0]['pair_key']);
+        $this->assertSame(0, Draw::where('event_id', $this->event->id)->count());
+    }
+
     public function test_tie_order_survives_opening_rotation_deferred_generation_and_scheduling(): void
     {
         $item = $this->fourBoysTeams();

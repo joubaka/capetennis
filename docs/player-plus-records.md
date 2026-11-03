@@ -5,6 +5,10 @@ saved match evidence. `MyTennisController::playingRecord()` enforces
 `PlayerRatingAccess` before reading results; purchasing Plus or sponsoring an
 entry does not establish a player relationship.
 
+See [dashboard access and integration](player-dashboard-access.md) for reviewed
+new-link rules, retained historical relationships, shared navigation and
+standard-versus-Plus visibility.
+
 ## Evidence scope
 
 `PlayerRatingHistoryService::recordSource()` applies the existing saved-history

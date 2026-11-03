@@ -23,12 +23,13 @@ class UserPlayerLinkAuthorizationTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_user_can_manage_own_link_and_admin_can_manage_another_user(): void
+    public function test_legacy_owner_can_restore_link_and_staff_link_requires_reason_and_audit(): void
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $user = User::factory()->create();
         $target = User::factory()->create();
         $player = Player::factory()->create([
+            'userId' => $user->id,
             'email' => $user->email,
             'dateOfBirth' => '2012-05-17',
         ]);
@@ -47,10 +48,15 @@ class UserPlayerLinkAuthorizationTest extends TestCase
 
         $this->actingAs($admin)
             ->postJson(route('backend.user.players.store', $target), ['player_id' => $otherPlayer->id])
+            ->assertUnprocessable()->assertJsonValidationErrors('reason');
+        $this->assertDatabaseMissing('user_players', ['user_id' => $target->id, 'player_id' => $otherPlayer->id]);
+        $this->actingAs($admin)
+            ->postJson(route('backend.user.players.store', $target), ['player_id' => $otherPlayer->id, 'reason' => 'Guardian relationship reviewed'])
             ->assertOk();
+        $this->assertDatabaseHas('audit_events', ['action' => 'player.account-linked', 'actor_id' => $admin->id, 'subject_id' => (string) $otherPlayer->id]);
     }
 
-    public function test_player_can_be_linked_to_more_than_one_account_without_identity_verification(): void
+    public function test_unrelated_self_claim_is_denied_without_changing_legacy_or_existing_family_links(): void
     {
         $owner = User::factory()->create();
         $claimant = User::factory()->create();
@@ -64,13 +70,46 @@ class UserPlayerLinkAuthorizationTest extends TestCase
             ->postJson(route('backend.user.players.store', $claimant), [
                 'player_id' => $player->id,
             ])
-            ->assertOk();
+            ->assertForbidden();
 
-        $this->assertDatabaseHas('user_players', [
+        $this->assertDatabaseMissing('user_players', [
             'user_id' => $claimant->id,
             'player_id' => $player->id,
         ]);
         $this->assertSame($owner->id, $player->fresh()->userId);
+    }
+
+    public function test_existing_pivot_link_is_idempotent_and_legacy_get_mutations_are_retired(): void
+    {
+        $user = User::factory()->create(); $player = Player::factory()->create();
+        $user->players()->attach($player);
+        $this->actingAs($user)->postJson(route('backend.user.players.store', $user), ['player_id' => $player->id])->assertOk();
+        $this->actingAs($user)->getJson(route('player.add.profile', ['user_id' => $user->id, 'player_id' => $player->id]))->assertGone();
+        $pivot = \Illuminate\Support\Facades\DB::table('user_players')->first();
+        $this->actingAs($user)->getJson(route('player.remove.profile', $pivot->id))->assertGone();
+        $this->assertDatabaseCount('user_players', 1);
+    }
+
+    public function test_ambiguous_legacy_post_cannot_bypass_canonical_link_authorization(): void
+    {
+        $user = User::factory()->create(); $other = User::factory()->create(); $player = Player::factory()->create();
+        $this->actingAs($user)->postJson(route('backend.user.player.attach'), ['player_id' => $player->id])->assertForbidden();
+        $this->actingAs($user)->postJson(route('backend.user.player.attach'), ['player_id' => $player->id, 'user_id' => $other->id])->assertForbidden();
+        $this->assertDatabaseCount('user_players', 0);
+    }
+
+    public function test_staff_link_rolls_back_when_required_audit_cannot_be_written(): void
+    {
+        Role::findOrCreate('admin', 'web');
+        $actor = User::factory()->create()->assignRole('admin'); $target = User::factory()->create(); $player = Player::factory()->create();
+        $this->mock(\App\Support\Audit\AuditWriter::class)->shouldReceive('record')->once()->andReturn(null);
+        try {
+            app(\App\Services\PlayerRelationshipAccess::class)->link($actor, $target, $player, 'Guardian relationship reviewed');
+            $this->fail('An unaudited relationship was retained');
+        } catch (\RuntimeException $error) {
+            $this->assertStringContainsString('audit could not be saved', $error->getMessage());
+        }
+        $this->assertDatabaseMissing('user_players', ['user_id' => $target->id, 'player_id' => $player->id]);
     }
 
     public function test_user_can_unlink_a_legacy_direct_player_link_without_deleting_the_player(): void

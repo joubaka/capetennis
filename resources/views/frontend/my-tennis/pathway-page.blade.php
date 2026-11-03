@@ -10,6 +10,7 @@
     [data-player-pathway-page] .pathway-page-hero h1 { color:#fff; }
     [data-player-pathway-page] .pathway-page-hero > span { color:#ff9f43;font-size:.75rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase; }
   </style>
+  @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer])
   @include('frontend.my-tennis.pathway', ['hidePathwayAdmin' => true])
 </div>
 @endsection

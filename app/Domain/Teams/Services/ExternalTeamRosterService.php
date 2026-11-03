@@ -182,7 +182,8 @@ class ExternalTeamRosterService
                 'claimed_at' => now(),
             ])->save();
 
-            $user->players()->syncWithoutDetaching([$player->id]);
+            // Claiming a roster position records its sponsor; it does not prove
+            // a private account/player relationship. Existing links are retained.
 
             activity('team-roster')->performedOn($team)->causedBy($user)
                 ->withProperties(['event_id' => $event->id, 'slot_id' => $lockedSlot->id, 'rank' => $lockedSlot->rank, 'player_id' => $player->id])

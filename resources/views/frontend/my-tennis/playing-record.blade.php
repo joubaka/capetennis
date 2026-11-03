@@ -11,11 +11,7 @@
     <h1>{{ $recordSection === 'opponents' ? 'Opponent Insights' : 'Playing Record' }}</h1>
     <p>{{ $recordPlayer->full_name }} · {{ $recordSection === 'opponents' ? 'The results behind your repeat encounters.' : 'Your recorded tennis, organised by season.' }}</p>
   </header>
-  <nav class="record-nav" aria-label="Player Plus records">
-    <a href="{{ route('my.tennis.record', ['player' => $recordPlayer->id]) }}" @if($recordSection === 'record') aria-current="page" @endif>Playing Record</a>
-    <a href="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => 'opponents']) }}" @if($recordSection === 'opponents') aria-current="page" @endif>Opponent Insights</a>
-    <a href="{{ route('my.tennis', ['player' => $recordPlayer->id]) }}#rating">Player rating</a>
-  </nav>
+  @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $recordPlayer])
   @if($record['reason'])
     <div class="record-sheet" role="status">{{ $record['reason'] }}</div>
   @else

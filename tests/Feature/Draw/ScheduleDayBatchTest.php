@@ -262,6 +262,12 @@ class ScheduleDayBatchTest extends TestCase
         $compiler->save($draw,['size'=>8,'slots'=>$slots],0);$compiler->generate($draw,1);
         $draw=$draw->fresh();$service=app(EventVenueScheduleService::class);
         $metadata=$service->dayRoundDetails($draw);
+        $graph=$draw->flexibleMonrad->graph;
+        foreach ($metadata as $groups) foreach ($groups as $group) foreach ($group['matches'] as $match) {
+            $node=$graph['nodes'][$match['bracket']['node']];
+            $this->assertSame($node['section'],$match['bracket']['section']);
+            $this->assertSame(array_values(array_map(fn ($source)=>(string) $source['match'],array_filter($node['sources'],fn ($source)=>isset($source['match'])))),$match['bracket']['sources']);
+        }
         $rounds=array_map('intval',array_keys($metadata));
         $keys=collect($metadata)->flatten(1)->flatMap(fn ($group)=>array_column($group['matches'],'key'))->all();
         $options=array_replace($options,['draw_ids'=>[$draw->id],'draw_order'=>[$draw->id],

@@ -17,11 +17,11 @@ use App\Domain\Ranking\Enums\RankingStatus;
  */
 class PlayerCompetitionTimelineService
 {
-    public function for(Player $player, int $limit = 50): array
+    public function for(Player $player, int $limit = 50, bool $dashboardOnly = false): array
     {
         $limit = max(1, min(100, $limit));
 
-        $entries = CategoryEventRegistration::query()
+        $entries = $dashboardOnly ? collect() : CategoryEventRegistration::query()
             ->with(['categoryEvent.event', 'categoryEvent.category', 'registration.players'])
             ->whereHas('players', fn ($query) => $query->whereKey($player->id))
             ->latest('id')->limit($limit)->get();
@@ -32,7 +32,7 @@ class PlayerCompetitionTimelineService
             ->whereHas('categoryEvent.event', fn ($query) => $query->where('published', true)->where('results_published', true))
             ->latest('id')->limit($limit)->get();
 
-        $rankingScores = RankingScores::query()
+        $rankingScores = $dashboardOnly ? collect() : RankingScores::query()
             ->with(['rankingList'])
             ->where('player_id', $player->id)
             ->latest('updated_at')->limit($limit)->get();
@@ -40,16 +40,29 @@ class PlayerCompetitionTimelineService
         $seriesRankings = SeriesRanking::query()
             ->with(['series', 'category', 'rankingList'])
             ->where('player_id', $player->id)
-            // The canonical publication workflow records status=published.
-            // Keep the timestamp fallback for older rows created before the
-            // lifecycle column was introduced.
-            ->where(function ($query): void {
-                $query->where('status', RankingStatus::Published->value)
-                    ->orWhereNotNull('published_at');
+            ->whereHas('series', fn ($query) => $query->where('leaderboard_published', true))
+            ->where(function ($scope) {
+                $scope->where('status', RankingStatus::Published->value)->whereNotNull('run_id')->where('run_id', function ($query) {
+                $query->from('series_rankings as latest')->select('latest.run_id')
+                    ->whereColumn('latest.series_id', 'series_rankings.series_id')
+                    ->where('latest.status', RankingStatus::Published->value)->whereNotNull('latest.run_id')
+                    ->orderByDesc('latest.published_at')->orderByDesc('latest.updated_at')->limit(1);
+                });
+                $scope->orWhere(function ($legacy) {
+                    $legacy->whereNull('run_id')->where(fn ($state) => $state->where('status', RankingStatus::Published->value)
+                        ->orWhere(fn ($old) => $old->whereNull('status')->whereNotNull('published_at')))
+                        ->whereNotExists(function ($current) {
+                            $current->selectRaw('1')->from('series_rankings as modern')
+                                ->whereColumn('modern.series_id', 'series_rankings.series_id')
+                                ->where('modern.status', RankingStatus::Published->value)->whereNotNull('modern.run_id');
+                        });
+                });
             })
             ->latest('published_at')->limit($limit)->get();
+        $seriesRankings = $seriesRankings->filter(fn ($ranking) => app(\App\Domain\Ranking\Services\RankingTeamEligibilityService::class)
+            ->publiclyRanked(collect([$ranking]), $ranking->series)->isNotEmpty())->values();
 
-        $teamAppearances = TeamFixturePlayer::query()
+        $teamAppearances = $dashboardOnly ? collect() : TeamFixturePlayer::query()
             ->with(['fixture.draw.event', 'fixture.venue', 'fixture.teamResults'])
             ->where(function ($query) use ($player): void {
                 $query->where('team1_id', $player->id)->orWhere('team2_id', $player->id);

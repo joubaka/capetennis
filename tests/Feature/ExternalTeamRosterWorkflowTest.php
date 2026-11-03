@@ -169,7 +169,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_user_can_correct_stale_identity_details_then_link_the_confirmed_profile(): void
+    public function test_unrelated_sponsor_can_register_without_private_contact_updates_or_account_link(): void
     {
         $user = User::factory()->create();
         $existingOwner = User::factory()->create();
@@ -208,6 +208,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $this->assertNull($slot->fresh()->player_profile);
 
+        $this->actingAs($user)->get(route('player.claim.review'))->assertOk()->assertDontSee('ana@example.test')->assertDontSee('name="dateOfBirth"', false);
         $this->actingAs($user)->put(route('player.claim.complete'), [
             'dateOfBirth' => '2013-02-03',
             'gender' => 'Female',
@@ -216,13 +217,13 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'confirmed_details' => 1,
         ])->assertRedirect(route('team.payment.payfast', [$this->team, $player, $this->event]));
 
-        $this->assertDatabaseHas('user_players', ['user_id' => $user->id, 'player_id' => $player->id]);
+        $this->assertDatabaseMissing('user_players', ['user_id' => $user->id, 'player_id' => $player->id]);
         $this->assertSame($player->id, (int) $slot->fresh()->player_profile);
-        $this->assertSame('2013-02-03', substr((string) $player->fresh()->dateOfBirth, 0, 10));
-        $this->assertSame('corrected@example.test', $player->fresh()->email);
+        $this->assertSame('2013-01-02', substr((string) $player->fresh()->dateOfBirth, 0, 10));
+        $this->assertSame('ana@example.test', $player->fresh()->email);
     }
 
-    public function test_any_user_can_link_an_eligible_profile_that_does_not_match_the_roster_identity(): void
+    public function test_sponsoring_an_eligible_roster_profile_never_creates_a_private_account_link(): void
     {
         $user = User::factory()->create();
         $existingOwner = User::factory()->create();
@@ -269,7 +270,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             'player_id' => $player->id,
             'pay_status' => 0,
         ]);
-        $this->assertDatabaseHas('user_players', [
+        $this->assertDatabaseMissing('user_players', [
             'user_id' => $user->id,
             'player_id' => $player->id,
         ]);
@@ -555,7 +556,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
             $service->claim($user, $this->event, $this->team, $slot, $player);
             $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => $rank, 'player_id' => $player->id, 'pay_status' => 0]);
             $this->assertSame($user->id, (int) $slot->fresh()->claimed_by_user_id);
-            $this->assertTrue($user->players()->whereKey($player->id)->exists());
+            $this->assertFalse($user->players()->whereKey($player->id)->exists());
             Log::shouldNotHaveReceived('warning', fn ($message) => $message === 'FINANCE LOCKDOWN: direct financial state mutation detected');
         }
         $this->assertDatabaseCount('team_players', 2);
@@ -883,7 +884,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $this->assertSame($before, Player::count());
         $this->assertSame($existing->id, (int) $slot->fresh()->player_profile);
-        $this->assertDatabaseHas('user_players', ['user_id' => $user->id, 'player_id' => $existing->id]);
+        $this->assertDatabaseMissing('user_players', ['user_id' => $user->id, 'player_id' => $existing->id]);
     }
 
     public function test_no_profile_search_is_system_wide_paginated_and_does_not_disclose_private_fields(): void
@@ -912,7 +913,8 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $payload = json_encode([$firstPage->json(), $secondPage->json()]);
         $this->assertStringNotContainsString('dateOfBirth', $payload);
         $this->assertStringNotContainsString('private0@example.test', $payload);
-        $this->assertStringContainsString('p***@example.test', $payload);
+        $this->assertStringNotContainsString('p***@example.test', $payload);
+        $this->assertStringNotContainsString('masked_email', $payload);
 
         $this->actingAs($user)->getJson(route('player.search', [
             'q' => 'private0@example.test',

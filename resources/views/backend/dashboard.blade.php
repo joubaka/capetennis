@@ -326,6 +326,12 @@
         <select id="player-select" class="form-select">
           <option></option>
         </select>
+        @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
+        <label for="dashboard-link-reason" class="form-label mt-3">Verified relationship and reason</label>
+        <textarea id="dashboard-link-reason" class="form-control" minlength="5" maxlength="500" rows="3" placeholder="Describe the relationship verified before granting private player access."></textarea>
+        @else
+        <p class="small text-muted mt-3">Existing relationships are retained. Ask Cape Tennis support to review a new player relationship.</p>
+        @endif
       </div>
 
       <div class="modal-footer">
@@ -753,7 +759,7 @@ $('#linkPlayerBtn').on('click', function () {
 
   $.post(
     APP_URL + '/backend/user/' + $('#user').val() + '/players',
-    { player_id: playerId }
+    { player_id: playerId, reason: $('#dashboard-link-reason').val() }
   )
   .done(res => {
     Swal.close();
@@ -793,7 +799,7 @@ $('#linkPlayerBtn').on('click', function () {
 
     $.post(
       APP_URL + '/backend/user/' + userId + '/players',
-      { player_id: playerId }
+      { player_id: playerId, reason: $('#dashboard-link-reason').val() }
     )
     .done(res => {
       Swal.close();

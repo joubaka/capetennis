@@ -97,14 +97,16 @@ class PlayerIdentityDeduplicationTest extends TestCase
 
     public function test_create_normalizes_date_before_reusing_an_existing_identity(): void
     {
+        $user = User::factory()->create();
         $existing = Player::factory()->create([
+            'userId' => $user->id,
             'name' => 'Amy Lee',
             'surname' => 'Van Wyk',
             'dateOfBirth' => '2012-04-03',
             'cellNr' => '0820000000',
         ]);
 
-        $this->actingAs(User::factory()->create())->postJson(route('player.store'), [
+        $this->actingAs($user)->postJson(route('player.store'), [
             'player_name' => ' amy   lee ',
             'player_surname' => 'VAN WYK',
             'dob' => 'April 3, 2012',
@@ -120,7 +122,7 @@ class PlayerIdentityDeduplicationTest extends TestCase
         ]);
     }
 
-    public function test_self_service_reuses_same_normalized_name_and_birth_date_across_accounts(): void
+    public function test_matching_name_and_birth_date_does_not_claim_an_unrelated_existing_profile(): void
     {
         $existing = Player::factory()->create([
             'name' => 'Amy Lee',
@@ -130,15 +132,15 @@ class PlayerIdentityDeduplicationTest extends TestCase
         ]);
         $user = User::factory()->create();
 
-        $this->actingAs($user)->post(route('player.profile.store'), [
+        $this->actingAs($user)->postJson(route('player.profile.store'), [
             'name' => '  amy   lee ',
             'surname' => ' VAN WYK ',
             'dateOfBirth' => '2012-04-03',
             'gender' => 2,
-        ])->assertRedirect(route('backend.dashboard'));
+        ])->assertUnprocessable()->assertJsonValidationErrors('name');
 
         $this->assertDatabaseCount('players', 1);
-        $this->assertDatabaseHas('user_players', [
+        $this->assertDatabaseMissing('user_players', [
             'user_id' => $user->id,
             'player_id' => $existing->id,
         ]);

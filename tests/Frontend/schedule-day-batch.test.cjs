@@ -139,9 +139,10 @@ test('match chooser shows escaped player and conditional names and keeps played 
   {key:'individual:3',number:17,participants:['Current position 3','Current position 4']},
  )]}}]});
  const html=app.get('day-batch-rounds').innerHTML;
- assert.match(html,/Match 15 · Player &lt;A&gt; v Player B/);
- assert.match(html,/Match 17 · Current position 3 v Current position 4/);
- assert.match(html,/value="individual:2"[^>]*disabled[^>]*>Match 16 · Played A v Played B \(Played · kept\)/);
+ assert.match(html,/Match 15<\/span><span class="day-match-player">Player &lt;A&gt;<\/span><span class="day-match-player">Player B/);
+ assert.match(html,/Current position 3<\/span><span class="day-match-player">Current position 4/);
+ assert.match(html,/value="individual:2"[^>]*disabled/);
+ assert.match(html,/day-match-state">Played · kept/);
  assert.deepEqual([...app.s.selectedFixtures.get('1:1')],['individual:1','individual:3']);
  assert.equal(app.s.selectionCounts()[0].count,2);
 });
@@ -229,4 +230,21 @@ test('saving a day stays disabled until every selected match fits while legacy p
  vm.runInNewContext(assignment,context);assert.equal(context.applyPreview.disabled,true);
  context.result.unscheduled=[];vm.runInNewContext(assignment,context);assert.equal(context.applyPreview.disabled,false);
  context.result={input:{allow_partial:true},unscheduled:[{}]};vm.runInNewContext(assignment,context);assert.equal(context.applyPreview.disabled,false);
+});
+
+test('miniature uses actual branch edges and highlights only the exact match',()=>{
+ const {miniature,matchCard}=require('../../public/js/schedule-day-batch.js');
+ const match=(key,node,section,sources=[])=>({key,number:1,participants:['Player <A>','Winner of Match 2'],bracket:{node,section,sources}});
+ const a=match('individual:1','a','Main draw'), b=match('individual:2','b','Main draw'), c=match('individual:3','c','Main draw',['a','b']), d=match('individual:4','d','Positions 5–8',['a','b']);
+ const draw={day_round_details:{1:[group('Main',a,b)],2:[group('Final',c),group('Placement',d)]}};
+ const svg=miniature(draw,c);
+ assert.equal((svg.match(/class="is-current"/g)||[]).length,1);
+ assert.equal((svg.match(/<path /g)||[]).length,2);
+ assert.equal((svg.match(/<rect /g)||[]).length,3);
+ assert.doesNotMatch(svg,/<text/);
+ const feed=miniature(draw,d);assert.equal((feed.match(/class="is-feeder"/g)||[]).length,2);
+ assert.equal((feed.match(/<path /g)||[]).length,2);
+ assert.equal(miniature({...draw,is_team:true},c),'');
+ assert.equal(miniature(draw,{key:'individual:9'}),'');
+ const card=matchCard(draw,2,c,true,false);assert.match(card,/is-selected is-unavailable/);assert.match(card,/disabled/);assert.match(card,/Player &lt;A&gt;/);assert.doesNotMatch(card,/<A>/);
 });

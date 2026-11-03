@@ -13,6 +13,22 @@
 
 @section('page-style')
 <style>
+  .day-match-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,310px),1fr)); gap:10px; margin-top:10px; }
+  .day-match-card { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid #dbe3ed; border-radius:10px; background:#fff; cursor:pointer; min-width:0; }
+  .day-match-card.is-selected { border-color:#729ac7; background:#f3f8ff; box-shadow:inset 3px 0 #245c98; }
+  .day-match-card:focus-within { outline:2px solid #245c98; outline-offset:2px; }
+  .day-match-card.is-unavailable { background:#f5f6f8; cursor:default; }
+  .day-match-card > input { flex-shrink:0; margin:0; }
+  .day-match-copy { display:flex; flex:1; flex-direction:column; min-width:0; gap:3px; }
+  .day-match-number { font-size:.72rem; font-weight:700; color:#55718f; }
+  .day-match-player { font-size:.82rem; line-height:1.35; overflow-wrap:anywhere; color:#203b5d; }
+  .day-match-state { font-size:.7rem; color:#68758a; margin-top:3px; }
+  .day-match-miniature { width:112px; height:58px; flex-shrink:0; overflow:visible; }
+  .day-match-links { stroke:#b9c9da; stroke-width:1; fill:none; }
+  .day-match-miniature rect { fill:#d6e2ef; stroke:#93abc5; stroke-width:.8; }
+  .day-match-miniature rect.is-feeder { fill:#edf0f4; stroke:#c9d0db; }
+  .day-match-miniature rect.is-current { fill:#ff9d42; stroke:#204e83; stroke-width:2; }
+  @media (max-width:575px) { .day-match-card { padding:10px; gap:8px; } .day-match-miniature { width:88px; } }
   .programme-day-lane { min-height:6rem; padding:.75rem; background:var(--schedule-soft); border:1px dashed var(--schedule-border); border-radius:.5rem; }
   .programme-stage { background:var(--bs-body-bg); border:1px solid var(--schedule-border); border-radius:.5rem; padding:.65rem; margin-bottom:.6rem; }
   .programme-stage-handle { cursor:grab; touch-action:none; min-width:2.5rem; min-height:2.5rem; }
@@ -275,7 +291,13 @@
       @endif
       </div>
     </div>
-    <div class="d-flex flex-wrap gap-2"><a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a></div>
+    <div class="d-flex flex-wrap gap-2">
+      @if($planningDate)
+        <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id] + ($guideSelection->isNotEmpty() ? ['draw_ids'=>$guideSelection->pluck('id')->values()->all()] : [])) }}#round-days">Plan rounds across days</a>
+      @else
+        <button type="button" class="btn btn-outline-primary" id="toggle-day-box-planner" aria-pressed="false">Plan rounds across days</button>
+      @endif
+      <a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a></div>
   </div>
 
   @if(($adaptationNotices ?? collect())->isNotEmpty())
@@ -459,7 +481,7 @@
       <p class="small">{{ $teamPlanning ? 'Choose an age group to load its saved days and venue bands.' : 'Your selected draws define this programme.' }} Move each round to its playing day, assign venues and courts, then preview and save. Review and publication remain separate.</p>
       <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">{{ $teamPlanning ? "Choose an age group." : "Select draws to set up the schedule." }}</div>
       <div class="row g-3 mb-3">@foreach($programmeDates as $day => $programmeDate)<div class="{{ $programmeDayCount === 1 ? 'col-12' : ($programmeDayCount === 2 ? 'col-md-6' : 'col-md-4') }}"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T08:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T18:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $programmeDate]) }}">Review &amp; publish this day</a></div>@endforeach</div>
-      <p class="small mb-2">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
+      <p class="small mb-2" id="programme-drag-instructions">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
       <details class="mb-3"><summary>Advanced: round, position-group and individual match days</summary><p class="small mt-2">Rounds set the default day and order. Expand a round to move a position group or specific match. Exceptions stay in place when you move the round; choose Follow round to reset them. For an exact time or court, save the schedule and use Reschedule.</p><div id="programme-rounds" class="table-responsive mt-2"></div></details>
       <div class="d-flex flex-wrap gap-3 align-items-center mb-3" data-timing-settings>
@@ -2606,6 +2628,7 @@
   const programmeGroup = () => programmeDraws.filter(draw => String(document.getElementById('programme-age').value).startsWith('individual:') ? document.getElementById('programme-age').value.slice(11).split(',').map(Number).includes(Number(draw.id)) && !draw.is_team : String(draw.programme_age) === String(document.getElementById('programme-age').value));
   const programmeStatus = (message, tone = 'secondary') => setStatus(document.getElementById('programme-status'), message, tone);
   let programmeSortables = [];
+  let programmeDayBoxMode = false;
   let programmeRefreshVersion = 0;
   const programmeCreateLabel = document.getElementById('programme-create').innerHTML;
   const programmeRows = () => [...document.querySelectorAll('[data-programme-draw]')];
@@ -2871,7 +2894,8 @@
     });
     programmePayload = null; invalidatePreview();
     markProgrammeDirty();
-    refreshProgrammePreview(false);
+    if (programmeDayBoxMode) programmeStatus('Rounds arranged. Choose Generate suggested schedule when ready to allocate times and courts.');
+    else refreshProgrammePreview(false);
   };
   const renderProgrammeStages = () => {
     programmeSortables.forEach(sortable => sortable.destroy()); programmeSortables = [];
@@ -3060,7 +3084,7 @@
     programmeStatus('Checking every round, court, player rest and daily window. Your saved schedule stays in place while the preview is created.');
     try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `${programmeDayLabel(index + 1)}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. Review before saving.`, result.unscheduled.length ? 'warning' : 'success'); }
     catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
-    finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = programmeCreateLabel; } }
+    finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = typeof programmeDayBoxMode !== 'undefined' && programmeDayBoxMode ? 'Generate suggested schedule' : programmeCreateLabel; } }
   };
   // Refresh only card details so allocation edits cannot reset the user's daily order.
   document.addEventListener('change', event => {
@@ -3093,7 +3117,7 @@
     select.addEventListener('change', () => {
       programmePayload = null;
       invalidatePreview();
-      if (programmeGroup().length) refreshProgrammePreview(false);
+      if (programmeGroup().length && !programmeDayBoxMode) refreshProgrammePreview(false);
     });
   });
   document.getElementById('programme-create').addEventListener('click', () => refreshProgrammePreview());
@@ -3114,7 +3138,7 @@
       wizard.hidden = true; advanced.hidden = true;
       programmePayload = null; ++programmeRefreshVersion; invalidatePreview();
       const previewButton = document.getElementById("programme-create");
-      previewButton.disabled = false; previewButton.innerHTML = programmeCreateLabel;
+      previewButton.disabled = false; previewButton.innerHTML = typeof programmeDayBoxMode !== 'undefined' && programmeDayBoxMode ? 'Generate suggested schedule' : programmeCreateLabel;
       document.querySelectorAll('.draw-choice').forEach(input => { input.checked = false; });
       document.getElementById('individual-selection-status').textContent = configure.disabled ? 'Select the draws to schedule.' : `${selectedIndividualDraws().length} draws selected. Continue to schedule setup.`;
     };
@@ -3174,12 +3198,35 @@
     },
   });
   document.getElementById('toggle-advanced-scheduling').addEventListener('click', event => {
+    if (programmeDayBoxMode) { setDayBoxPlanner(false); return; }
     const normal = workspace.classList.toggle('day-batch-mode');
     document.getElementById('day-batch-workflow').hidden = !normal;
     event.currentTarget.textContent = normal ? 'Advanced: complete programmes and draw defaults' : 'Back to scheduling selected rounds for one day';
     dayBatchPayload = null; payload = null; programmePayload = null; invalidatePreview();
     if (!normal) { document.getElementById('advanced-scheduling').hidden = false; document.getElementById('advanced-scheduling').open = true; showWorkflowStep(1); }
   });
+  const setDayBoxPlanner = enabled => {
+    programmeDayBoxMode = enabled;
+    workspace.classList.toggle('day-batch-mode', !enabled);
+    workspace.classList.remove('day-batch-review');
+    document.getElementById('day-batch-workflow').hidden = enabled;
+    const toggle = document.getElementById('toggle-day-box-planner');
+    toggle?.setAttribute('aria-pressed', String(enabled));
+    if (toggle) toggle.textContent = enabled ? 'Back to scheduling one day' : 'Plan rounds across days';
+    document.getElementById('programme-create').textContent = enabled ? 'Generate suggested schedule' : programmeCreateLabel;
+    const instructions = document.getElementById('programme-drag-instructions');
+    if (!instructions.dataset.original) instructions.dataset.original = instructions.textContent;
+    instructions.textContent = enabled ? 'Drag rounds into the day boxes and arrange their order. Assign venues and courts, then choose Generate suggested schedule. Use Up/Down or the day selector with a keyboard. Times remain private until you save and publish separately.' : instructions.dataset.original;
+    dayBatchPayload = null; payload = null; programmePayload = null; ++programmeRefreshVersion; invalidatePreview();
+    document.getElementById('programme-create').disabled = false;
+    if (enabled) {
+      if (!individualSelection) document.getElementById('programme-wizard').hidden = false;
+      document.getElementById('programme-wizard').open = true;
+      showWorkflowStep(1);
+    }
+  };
+  document.getElementById('toggle-day-box-planner')?.addEventListener('click', () => setDayBoxPlanner(!programmeDayBoxMode));
+  if (window.location.hash === '#round-days' && document.getElementById('toggle-day-box-planner')) setDayBoxPlanner(true);
   showWorkflowStep(1);
   if (!document.getElementById('programme-wizard').hidden) document.getElementById('advanced-scheduling').open = false;
 })();
