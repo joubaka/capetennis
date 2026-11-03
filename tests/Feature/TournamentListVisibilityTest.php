@@ -53,6 +53,27 @@ class TournamentListVisibilityTest extends TestCase
         $this->assertArrayNotHasKey('admin_status', $response->json('data.0'));
     }
 
+    public function test_legacy_home_event_route_returns_the_public_paginated_feed(): void
+    {
+        Event::factory()->count(21)->create(['name' => 'Matching Tournament']);
+        $draft = Event::factory()->unpublished()->create(['name' => 'Matching Private Draft']);
+        $other = Event::factory()->create(['name' => 'Unrelated Tournament']);
+        $query = ['period' => 'all', 'search' => 'Matching', 'page' => 2];
+
+        $this->assertSame('/events/ajax/home', route('events.ajax.home', [], false));
+        $canonical = $this->getJson(route('home.events.get', $query))->assertOk();
+
+        $this->getJson(route('events.ajax.home', $query))
+            ->assertOk()
+            ->assertExactJson($canonical->json())
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.total', 21)
+            ->assertJsonMissing(['id' => $draft->id])
+            ->assertJsonMissing(['id' => $other->id])
+            ->assertJsonMissingPath('data.0.admin_status');
+    }
+
     public function test_event_feed_is_paginated_and_reports_exact_totals(): void
     {
         Event::factory()->count(25)->create();

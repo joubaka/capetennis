@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-012",
+      "title": "Legacy home event feed throws a missing controller method exception",
+      "scope": "GET /events/ajax/home compatibility endpoint for the public home event feed.",
+      "symptoms": "The legacy event feed raises BadMethodCallException during controller dispatch.",
+      "cause": "The events.ajax.home route referenced HomeController::homeEvents, which does not exist.",
+      "fix": "Point the legacy route to HomeController::get_events, also used by home.events.get. Retain the route name and URL and share the canonical visibility, search, period and pagination logic instead of duplicating it.",
+      "verification": "On 2026-11-03 the local MySQL legacy-route regression passed 1 test with 10 assertions, covering guest response parity, search, second-page pagination, exact totals and draft exclusion. Route registration, PHP lint and Blade compilation passed. No production or browser verification is claimed.",
+      "limits": "This guide executes no repair or deployment. Confirm current route registration and rerun the focused regression; local route changes do not establish production behavior.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Frontend/HomeController.php"],
+      "tests": ["tests/Feature/TournamentListVisibilityTest.php"]
+    },
+    {
       "id": "RK-001",
       "title": "Round-robin groups finish one at a time instead of rotating",
       "scope": "Individual round-robin schedule planning; not team ties or a repair of played schedules.",

@@ -145,7 +145,7 @@ Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superad
 Route::get('/page-2', $controller_path . '\pages\Page2@index')->name('pages-page-2');
 Route::get(
   '/events/ajax/home',
-  [HomeController::class, 'homeEvents']
+  [HomeController::class, 'get_events']
 )->name('events.ajax.home');
 
 Route::post('audit/interactions', [\App\Http\Controllers\AuditInteractionController::class, 'store'])
