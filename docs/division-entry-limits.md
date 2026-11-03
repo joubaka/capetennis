@@ -2,7 +2,7 @@
 
 Caps apply to individual entry events, including the individual Masters and Trials workflows. Team roster limits retain their own configuration. The cap counts registration entries; the court helper is intended for singles divisions where one entry is one player.
 
-Event managers can set an optional maximum on each division under **Event → Categories → Division entry cap**. Blank means unlimited. The helper calculates eight entries per normal court for Red and four for Orange, Green or Yellow. Allocate shared courts across divisions yourself; the helper does not reserve courts. Save each cap to apply it. Venue changes never change saved caps.
+Event managers can set an optional maximum on each division under **Event → Categories → Division entry cap**. Blank means unlimited. Select **Allocate courts** to open the calculator for that division, choose Red, Orange, Green or Yellow, and enter the number of normal courts. Red uses four mini-courts per normal court with four players on each: **16 players per normal court**. Orange, Green and Yellow use **four players per normal court**. The popup shows the calculation as you edit it. **Use cap** fills that division's maximum entries; **Save cap** then saves it. Allocate shared courts across divisions yourself; the helper does not reserve courts. Venue changes never change saved caps.
 
 The public event Information section lists configured caps. Registration choices show remaining places and mark full divisions. These numbers are advisory; the server checks again under a category lock when starting a checkout or adding/moving an entry.
 
