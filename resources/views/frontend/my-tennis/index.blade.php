@@ -14,7 +14,13 @@
 <div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y ct-player-workspace">
   <style>
     #my-tennis-page { min-width: 0; overflow-x: clip; }
-    #my-tennis-page:has(#my-tennis-rating.active [data-rating-hero]) [data-player-profile-header]{display:none}
+    #my-tennis-page [data-rating-hero][data-embedded-rating-hero]{display:none}
+    #my-tennis-page .ct-workspace-header #my-tennis-tabs{border:0;gap:.4rem;margin:0}
+    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link{color:#fff;border:1px solid #ffffff75;border-radius:.5rem;background:#ffffff0d}
+    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link.active{color:#fff;border-color:#fff;background:#ffffff25}
+    #my-tennis-page .ct-workspace-header .ct-player-navigation{margin-top:.65rem!important}
+    #my-tennis-page .ct-workspace-player-selector{width:min(100%,18rem)}
+    #my-tennis-page .ct-workspace-player-selector label{color:#fff}
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }
     #my-tennis-page .table-responsive { max-width: 100%; }
     #my-tennis-page .my-tennis-heading { padding: .5rem 0 1.25rem; gap: 1rem; }
@@ -137,45 +143,33 @@
       #my-tennis-page .my-tennis-profile-header { padding: 1rem; }
     }
   </style>
-  <div class="my-tennis-heading d-flex flex-wrap justify-content-between align-items-center mb-3">
-    <div>
-      <h1 class="mb-1">My Tennis</h1>
-      <p class="text-muted mb-0">Your players, entries and published match information.</p>
-    </div>
-    @if($players->isNotEmpty())
-      <form method="get" action="{{ route('my.tennis') }}" class="d-flex align-items-center gap-2">
-        @if($previewNonPlus ?? false)<input type="hidden" name="preview_non_plus" value="1">@endif
-        <label for="my-tennis-player" class="visually-hidden">Player</label>
-        <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select">
-          @if(($ratingPreviewPlayer ?? null) && !$selectedPlayer)<option value="{{ $ratingPreviewPlayer->id }}" selected>{{ $ratingPreviewPlayer->full_name }} · Admin preview</option>@endif
-          @foreach($players as $playerOption)
-            <option value="{{ $playerOption->id }}" @selected($selectedPlayer?->id === $playerOption->id)>{{ $playerOption->full_name }}</option>
-          @endforeach
-        </select>
-      </form>
-    @endif
-  </div>
-
   @php
     $headerPlayer = $selectedPlayer ?? ($ratingPlayer ?? null);
+    $headerSubtitle = $headerPlayer
+      ? ($selectedPlayer ? $profile['message'].' · ' : 'Admin preview · ').(($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional')
+      : 'Your players, entries and published match information.';
   @endphp
-  @if($headerPlayer)
-    <x-player-workspace-header :title="$headerPlayer->full_name" eyebrow="Cape Tennis · My Tennis" heading="h2" heading-id="my-tennis-player-heading" :subtitle="($selectedPlayer ? $profile['message'].' · ' : 'Admin preview · ').(($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional')" data-player-profile-header>
+    <x-player-workspace-header :title="$headerPlayer?->full_name ?? 'My Tennis'" eyebrow="Cape Tennis · My Tennis" heading="h1" heading-id="my-tennis-player-heading" :subtitle="$headerSubtitle" data-player-profile-header>
+      <x-slot:summary>
+        <div data-rating-header-snapshot-host>
+          @if($canViewRating ?? false)
+            @include('frontend.my-tennis.rating-snapshot', ['ratingSnapshot' => $ratingSnapshot ?? null])
+          @else
+            @include('frontend.my-tennis.locked-rating-snapshot')
+          @endif
+        </div>
+      </x-slot:summary>
       <x-slot:actions>
-        @if($selectedPlayer)
-        <button class="btn btn-outline-light" type="button" data-open-match-reminder aria-controls="match-reminder"><i class="ti ti-bell me-1" aria-hidden="true"></i>Upcoming matches</button>
-        @endif
-        <a class="btn btn-outline-light" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.player', $headerPlayer) }}">Player Plus <span aria-hidden="true">↗</span></a>
+        @include('frontend.my-tennis.player-selector')
+        <a class="btn btn-outline-light" href="{{ !($canViewRating ?? false) && app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : ($headerPlayer ? route('player-plus.player', $headerPlayer) : route('player-plus.index')) }}">Player Plus <span aria-hidden="true">↗</span></a>
       </x-slot:actions>
-      @if($canViewRating ?? false)
-        <x-slot:navigation>
-          @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true])
-        </x-slot:navigation>
-      @endif
+      <x-slot:navigation>
+        @include('frontend.my-tennis.dashboard-tabs')
+        @if($ratingPlayer ?? null)
+          @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true, 'locked' => !($canViewRating ?? false)])
+        @endif
+      </x-slot:navigation>
     </x-player-workspace-header>
-  @else
-    <p><a class="btn my-tennis-plus-link" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index') : route('player-plus.index') }}">Explore Player Plus <span aria-hidden="true">→</span></a></p>
-  @endif
 
   @unless($canViewRating ?? false)<x-player-plus-coming-soon class="mb-3" />@endunless
   <x-player-plus-renewal-help />
@@ -188,15 +182,6 @@
       @endif
     </div>
   @endif
-
-  <ul class="nav nav-pills nav-fill mb-4" id="my-tennis-tabs" role="tablist">
-    <li class="nav-item" role="presentation"><button class="nav-link active" id="my-tennis-overview-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-overview" type="button" role="tab" aria-controls="my-tennis-overview" aria-selected="true"><i class="ti ti-dashboard me-1" aria-hidden="true"></i>Overview</button></li>
-    @if($ratingPlayer ?? null)
-    <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-rating-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-rating" type="button" role="tab" aria-controls="my-tennis-rating" aria-selected="false">Player rating</button></li>
-    @endif
-    @if($selectedPlayer)<li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-history-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-history" type="button" role="tab" aria-controls="my-tennis-history" aria-selected="false"><i class="ti ti-clipboard-list me-1" aria-hidden="true"></i>Entries & history</button></li>@endif
-    <li class="nav-item" role="presentation"><button class="nav-link" id="my-tennis-manage-tab" data-bs-toggle="pill" data-bs-target="#my-tennis-manage" type="button" role="tab" aria-controls="my-tennis-manage" aria-selected="false"><i class="ti ti-users me-1" aria-hidden="true"></i>Manage players</button></li>
-  </ul>
 
   <div class="tab-content" id="my-tennis-tab-content">
   @if($ratingPlayer ?? null)
@@ -225,7 +210,7 @@
     @if($matchReadLimited ?? false)<p class="small text-muted" role="status">This dashboard checks the earliest {{ \App\Services\MyTennisService::MATCH_CANDIDATE_LIMIT }} scheduled fixtures per match type. Counts below cover the matches shown; use the event programme for the full schedule.</p>@endif
     <div class="my-tennis-player-summary">
       <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-1">Your tennis at a glance</h2><p class="small text-muted mb-0">Published matches and your player rating.</p></div>
-      @include('frontend.my-tennis.overview-badge')
+      <button class="btn btn-outline-light" type="button" data-open-match-reminder aria-controls="match-reminder">Upcoming matches</button>
       <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Upcoming matches</span></div>
     </div>
     @if(($canViewRating ?? false) && ($overviewPathway ?? null))
@@ -414,6 +399,7 @@
 <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
 <script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
 <script src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>
+<script src="{{ asset('assets/js/my-tennis-workspace.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-workspace.js')) }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   const button = document.getElementById('my-tennis-rating-tab');
@@ -475,6 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (pendingUrl) return;
       const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
       panel.innerHTML = html;
+      window.MyTennisWorkspace?.integrateRating(panel);
       syncAgeFilter();
       const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
       if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();

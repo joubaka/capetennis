@@ -7,7 +7,7 @@
   <div class="ct-workspace-header-main">
     <div class="ct-workspace-header-copy">
       <span class="ct-workspace-eyebrow">{{ $eyebrow }}</span>
-      <{{ $headingTag }} @if($headingId) id="{{ $headingId }}" @endif>{{ $title }}</{{ $headingTag }}>
+      <{{ $headingTag }} class="ct-workspace-title" @if($headingId) id="{{ $headingId }}" @endif>{{ $title }}</{{ $headingTag }}>
       @if($subtitle)<p class="ct-workspace-subtitle">{{ $subtitle }}</p>@endif
       {{ $slot }}
     </div>

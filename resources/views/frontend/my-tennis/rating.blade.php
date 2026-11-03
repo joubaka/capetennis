@@ -2,9 +2,6 @@
   <style>
     .ctr-history { border:1px solid #dbe4ef;border-radius:18px;overflow:hidden; }
     .ctr-history > .card-body { padding:clamp(1rem,3vw,2rem); }
-    .ctr-history .ctr-header-rating { flex:0 1 18rem;min-width:0;max-width:100%;padding:1rem;background:#ffffff12;border:1px solid #ffffff35;border-radius:12px; }
-    .ctr-history .ctr-header-rating h3 { font-size:.9rem;color:#fff;margin:0 0 .75rem; }
-    .ctr-history .ctr-header-rating .ctr-badge + .small { color:#fff!important; }
     .ctr-history .ct-workspace-header .badge { background:#ffffff18;color:#fff;border:1px solid #ffffff40; }
     .ctr-history h3.h5 { color:#172e45;font-weight:600; }
     .ctr-history a:focus-visible,.ctr-history button:focus-visible,.ctr-history select:focus-visible,.ctr-history summary:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
@@ -41,24 +38,10 @@
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
-  @php
-    $summaryPoints = $ratingHistory['points'] ?? [];
-    $currentRating = empty($ratingHistory['reason']) && $summaryPoints ? end($summaryPoints) : null;
-  @endphp
   <x-player-workspace-header :title="$ratingPlayer->full_name.' · Player rating'" eyebrow="Player Plus · Your game in focus" subtitle="Follow 12 months of progress. Explore the results behind your rating and find your next development step." heading="h2" heading-id="player-rating-heading" data-rating-hero>
       @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
     <x-slot:summary>
-    <section class="ctr-header-rating" aria-label="Latest saved rating summary" data-current-rating-summary>
-    <h3>Latest saved estimate</h3>
-    @if($currentRating)
-      <x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$currentRating['score']" :local="($currentRating['connection_status'] ?? '') === 'disconnected'" />
-      <p class="small mt-2 mb-0">{{ $ratingHistory['current_group_label'] ?? 'Current rating' }} · {{ $currentRating['confidence_label'] ?? 'Not recorded' }} confidence · {{ $currentRating['date'] }}</p>
-      @if(($currentRating['evidence_basis'] ?? null) === 'finish_only')<p class="small mb-0">Low confidence · final placings only</p>@endif
-      @if(($currentRating['connection_status'] ?? '') === 'disconnected')<p class="small mb-0">Provisional within-group estimate; not calibrated against other groups.</p>@endif
-      @if(!empty($currentRating['historical_connection']))<p class="small mb-0">Low confidence — historical connection. Link dated {{ $currentRating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
-    @else<p class="mb-0">Not rated yet. Suitable eligible results are needed to estimate playing strength.</p>@endif
-    <p class="small mt-2 mb-0">Provisional ability estimate, not an official ranking.@if($ratingHistory['as_of'] ?? null) Updated through {{ $ratingHistory['as_of'] }}.@endif</p>
-    </section>
+      @include('frontend.my-tennis.rating-snapshot')
     </x-slot:summary>
     <x-slot:navigation>
     @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true])

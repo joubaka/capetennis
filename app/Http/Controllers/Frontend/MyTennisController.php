@@ -30,10 +30,14 @@ class MyTennisController extends Controller
         $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
         $data['overviewBadge'] = null;
         $data['overviewPathway'] = null;
-        if ($data['selectedPlayer'] && $data['canViewRating']) {
-            $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($data['selectedPlayer']);
-            $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
-            $data['overviewBadge'] = $data['overviewPathway']['badge'];
+        $data['ratingSnapshot'] = null;
+        if ($ratingPlayer && $data['canViewRating']) {
+            $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($ratingPlayer);
+            $data['ratingSnapshot'] = \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($history);
+            if ($data['selectedPlayer']) {
+                $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
+                $data['overviewBadge'] = $data['overviewPathway']['badge'];
+            }
         }
         return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
     }

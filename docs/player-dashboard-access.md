@@ -44,13 +44,22 @@ results and official rankings, manage existing access and connect TeamSheet
 when configured. Personal ratings, pathway, Playing Record, season comparison,
 Opponent Insights and past-event rating reconstruction require the selected
 player's active entitlement and relationship. Super-user previews do not create
-ownership. New shared player navigation is rendered only after that access gate.
+ownership. Private navigation targets require that access gate. Standard accounts
+use the same header and navigation positions with labelled marketing targets and
+an illustrative locked snapshot; real private data is never rendered under blur.
 
-The rating panel keeps its player-view links and one latest saved rating inside
-the blue header. Embedded navigation omits Overview and Player rating because
-the dashboard already supplies those tabs. Historical month selection can show
-a separate badge when it differs from the latest month; identical current-month
-badges should not be repeated below the header.
+My Tennis opens directly with one persistent blue header containing the player
+selector, dashboard tabs, player-view links and a compact rating snapshot.
+Embedded navigation omits Overview and Player rating because the dashboard
+already supplies those tabs. On AJAX rating loads, the fragment's snapshot
+updates that header and its repeated chrome is hidden. Historical month
+selection can show a separate badge when it differs from the latest month;
+identical current-month badges should not be repeated below the header.
+
+The compact snapshot uses at most 12 whitelisted saved points, on a fixed 0–100
+scale, with missing months and changed comparison groups preserved. It reuses
+the authorised history read rather than calculating ratings or revealing source
+evidence. Non-Plus requests do not read that history for their illustration.
 
 Playing Record is a curated saved-evidence view, not a complete career archive.
 Past-event ratings reconstruct eligible Cape Tennis events. TeamSheet evidence
@@ -94,9 +103,12 @@ timeout or submission failure. Native and Select2 changes use one handler.
 - `tests/Feature/PlayerIdentityDeduplicationTest.php`
 - `tests/Feature/ExternalTeamRosterWorkflowTest.php`
 - `tests/Feature/MyTennisDashboardIntegrationTest.php`
+- `tests/Feature/MyTennisRatingSnapshotTest.php`
 - `tests/Unit/MyTennisServiceTest.php`
+- `tests/Unit/PlayerRatingSnapshotTest.php`
 - `tests/Frontend/site-loading.test.cjs`
 - `tests/Frontend/admin-loading.test.cjs`
 - `tests/Frontend/my-tennis-player-switch.test.cjs`
+- `tests/Frontend/my-tennis-workspace.test.cjs`
 - `tests/Feature/PlayerWorkspaceHeaderTest.php`
 - `tests/Feature/PlayerRatingHeaderPresentationTest.php`

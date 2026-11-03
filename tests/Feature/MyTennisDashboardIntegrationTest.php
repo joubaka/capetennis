@@ -49,13 +49,19 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $player = Player::factory()->create(['userId' => $user->id, 'name' => 'Example', 'surname' => 'Player']);
         $this->actingAs($user);
         $standard = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()
-            ->assertSee('Your dashboard and Player Plus')->assertSee('Standard dashboard')->assertDontSee('aria-label="Player Plus views"', false);
+            ->assertSee('Your dashboard and Player Plus')->assertSee('Standard dashboard')->assertSee('data-plus-locked-navigation', false)
+            ->assertSee('data-locked-rating-snapshot', false)->assertDontSee('data-rating-mini-trend', false)
+            ->assertDontSee(route('my.tennis.record', $player), false);
         $this->assertTabTargets($standard->getContent());
+        $dom = new \DOMDocument; @$dom->loadHTML($standard->getContent()); $xpath = new \DOMXPath($dom);
+        $this->assertSame(1, $xpath->query('//*[@data-player-profile-header]//select[@id="my-tennis-player"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-player-profile-header]//*[@id="my-tennis-tabs"]')->length);
         $this->export('standard', $standard);
         $this->get(route('my.tennis.record', $player))->assertForbidden();
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $plus = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()->assertSee('aria-label="Player Plus views"', false)
-            ->assertDontSee('Coming Soon')->assertSee('Player Plus views available')->assertSee(route('player-plus.player', $player), false);
+            ->assertDontSee('Coming Soon')->assertSee('Player Plus views available')->assertSee(route('player-plus.player', $player), false)
+            ->assertDontSee('data-plus-locked-navigation', false)->assertDontSee('data-locked-rating-snapshot', false);
         foreach (['my.tennis.record', 'my.tennis.pathway', 'my.tennis.event-history'] as $route) $plus->assertSee(route($route, $player), false);
         $this->assertTabTargets($plus->getContent());
         $this->export('plus', $plus);
