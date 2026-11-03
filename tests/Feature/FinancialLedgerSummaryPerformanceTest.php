@@ -32,10 +32,12 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
         $this->team = Team::factory()->create(['category_event_id' => $this->category->id]);
     }
 
-    private function individual(float $wallet, float $provider, int $items = 1): RegistrationOrder
+    private function individual(float $wallet, float $provider, int $items = 1, ?int $id = null): RegistrationOrder
     {
-        $order = RegistrationOrder::create(['user_id' => $this->payer->id, 'wallet_reserved' => $wallet,
+        $order = new RegistrationOrder(['user_id' => $this->payer->id, 'wallet_reserved' => $wallet,
             'wallet_debited' => $wallet > 0, 'payfast_amount_due' => $provider, 'pay_status' => true, 'status' => 'completed']);
+        if ($id !== null) $order->id = $id;
+        $order->save();
         for ($i = 0; $i < $items; $i++) {
             DB::table('registration_order_items')->insert(['order_id' => $order->id, 'category_event_id' => $this->category->id,
                 'player_id' => $this->player->id, 'item_price' => round(($wallet + $provider) / $items, 2)]);
@@ -46,11 +48,13 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
         return $order;
     }
 
-    private function teamOrder(float $wallet, float $provider): TeamPaymentOrder
+    private function teamOrder(float $wallet, float $provider, ?int $id = null): TeamPaymentOrder
     {
-        $order = TeamPaymentOrder::create(['event_id' => $this->event->id, 'team_id' => $this->team->id,
+        $order = new TeamPaymentOrder(['event_id' => $this->event->id, 'team_id' => $this->team->id,
             'player_id' => Player::factory()->create()->id, 'user_id' => $this->payer->id, 'total_amount' => $wallet + $provider,
             'wallet_reserved' => $wallet, 'wallet_debited' => $wallet > 0, 'payfast_amount_due' => $provider, 'pay_status' => 1]);
+        if ($id !== null) $order->id = $id;
+        $order->save();
         if ($provider > 0) $this->receipt($order->id, 'TeamOrder', $provider);
         if ($wallet > 0) WalletTransaction::create(['wallet_id' => $this->wallet->id, 'type' => 'debit', 'amount' => $wallet,
             'source_type' => 'team_registration_wallet_payment', 'source_id' => $order->id, 'meta' => ['event_id' => $this->event->id]]);
@@ -126,8 +130,11 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
     {
         $other = Event::factory()->create(['cape_tennis_fee' => 25]);
         $foreignCategory = CategoryEvent::factory()->create(['event_id' => $other->id]);
-        $individual = $this->individual(71.21, 200);
-        $team = $this->teamOrder(15.29, 170);
+        // MySQL auto-increment counters do not rewind on transaction rollback.
+        // Deliberately construct the collision instead of depending on previous tests' IDs.
+        $sharedId = max((int) RegistrationOrder::max('id'), (int) TeamPaymentOrder::max('id')) + 1;
+        $individual = $this->individual(71.21, 200, id: $sharedId);
+        $team = $this->teamOrder(15.29, 170, id: $sharedId);
         // Independent ID spaces overlap; both must retain their own wallet amount.
         $this->assertSame($individual->id, $team->id);
         $this->receipt($individual->id, null, 19, ['custom_int4' => User::factory()->create()->id]);

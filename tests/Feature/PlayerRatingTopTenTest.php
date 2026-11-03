@@ -50,7 +50,7 @@ class PlayerRatingTopTenTest extends TestCase
         return app(PlayerRatingTopTen::class)->build($user, $selected, $filters);
     }
 
-    public function test_plus_receives_only_own_positions_without_other_player_lists(): void
+    public function test_plus_receives_own_positions_and_age_top_ten_without_full_browsing(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
         foreach (range(1, 3) as $id) {
@@ -66,7 +66,9 @@ class PlayerRatingTopTenTest extends TestCase
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($this->snapshot([1 => 90, 2 => 80, 3 => 70]));
         $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_page' => 2, 'rating_gender' => 'girls']);
         $this->assertFalse($result['can_browse']);
-        $this->assertSame([], $result['lists']);
+        $this->assertSame([1, 2, 3], array_column($result['lists']['overall']['players'], 'id'));
+        $this->assertSame('boys', $result['filters']['rating_gender']);
+        $this->assertArrayNotHasKey('pagination', $result['lists']['overall']);
         foreach (['age', 'overall'] as $scope) {
             $this->assertSame(2, $result['summary'][$scope]['player']['id']);
             $this->assertSame(2, $result['summary'][$scope]['player']['position']);
@@ -74,7 +76,8 @@ class PlayerRatingTopTenTest extends TestCase
         }
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertStringContainsString('Rating position #2 of 3', $html);
-        foreach (['Explore ratings', 'rating_per_page', 'Private peer 1', 'Private peer 3', 'Next players'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
+        $this->assertStringContainsString('Your age-group Top 10', $html);
+        foreach (['Explore ratings', 'rating_per_page', 'name="rating_age"', 'name="rating_gender"', 'Next players'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
     }
 
     public function test_discovery_entitlement_cannot_read_an_unlinked_players_position(): void
@@ -101,9 +104,9 @@ class PlayerRatingTopTenTest extends TestCase
         $user = \Mockery::mock(User::class)->makePartial();
         $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
         $access = $this->mock(PlayerRatingAccess::class);
-        $access->shouldReceive('allowsDiscovery')->times(4)->andReturnTrue();
-        $access->shouldReceive('allows')->times(4)->with($user, $selected)->andReturnTrue();
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
+        $access->shouldReceive('allowsDiscovery')->times(10)->andReturnTrue();
+        $access->shouldReceive('allows')->times(10)->with($user, $selected)->andReturnTrue();
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(10)->andReturn($snapshot);
         foreach (['', 'S'] as $query) {
             $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => $query]);
             $this->assertSame([], $result['search']['players']);
@@ -111,8 +114,9 @@ class PlayerRatingTopTenTest extends TestCase
         $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'search']);
         $this->assertCount(10, $result['search']['players']);
         $this->assertSame(array_map(fn ($id) => sprintf('Search %02d Example', $id), range(1, 10)), array_column($result['search']['players'], 'name'));
-        foreach ($result['search']['players'] as $match) $this->assertSame(['name', 'score', 'confidence'], array_keys($match));
-        $this->assertSame([], $result['lists']);
+        foreach ($result['search']['players'] as $match) $this->assertSame(['id', 'name'], array_keys($match));
+        $this->assertNull($result['search']['selected']);
+        $this->assertSame([], $result['lists']['overall']['players']);
         $excluded = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'Search 1']);
         $this->assertSame(['Search 10 Example', 'Search 11 Example', 'Search 12 Example', 'Search 13 Example'], array_column($excluded['search']['players'], 'name'));
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
@@ -120,6 +124,53 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertStringNotContainsString('data-top-ten-cohort', $html);
         $this->assertStringNotContainsString('Search 14', $html);
         $this->assertStringNotContainsString('Search 15', $html);
+        $this->assertStringNotContainsString('data-rating-search-result', $html);
+        $chosen = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'search', 'rating_search_player' => 2]);
+        $this->assertSame(['id' => 2, 'name' => 'Search 02 Example', 'score' => 51.0, 'confidence' => 'Moderate'], $chosen['search']['selected']);
+        $chosenHtml = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $chosen, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertSame(1, substr_count($chosenHtml, 'data-rating-search-result'));
+        $this->assertStringContainsString('51.0 Overall CTR', $chosenHtml);
+        foreach ([['rating_search' => 'Search 01', 'rating_search_player' => 2], ['rating_search' => 'Search 14', 'rating_search_player' => 14], ['rating_search_player' => 2], ['rating_search' => 'search', 'rating_search_player' => 13], ['rating_search' => 'Search 15', 'rating_search_player' => 15]] as $invalidSelection) {
+            $this->assertNull(app(PlayerRatingTopTen::class)->build($user, $selected, $invalidSelection)['search']['selected']);
+        }
+    }
+
+    public function test_plus_top_ten_is_server_scoped_bounded_and_publication_is_rechecked(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        foreach (range(1, 18) as $id) {
+            $this->player($id, sprintf('Peer %02d', $id), status: $id === 18 ? 'draft' : 'published');
+            DB::table('players')->where('id', $id)->update(['dateOfBirth' => $id === 16 ? '2014-01-01' : ($id === 17 ? '2016-01-01' : '2015-01-01'), 'gender' => $id === 15 ? '2' : '1']);
+        }
+        $selected = \App\Models\Player::find(14);
+        $user = \Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allowsDiscovery')->times(4)->andReturnTrue();
+        $access->shouldReceive('allows')->times(4)->with($user, $selected)->andReturnTrue();
+        $snapshot = $this->snapshot(array_combine(range(1, 18), range(90, 73)));
+        $snapshot['all_age']['ratings'][1]['comparable'] = false;
+        $snapshot['all_age']['ratings'][17]['score'] = 99;
+        $snapshot['all_age']['ratings'][11]['score'] = $snapshot['all_age']['ratings'][10]['score'];
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
+        $normal = app(PlayerRatingTopTen::class)->build($user, $selected);
+        $tampered = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_age' => '', 'rating_gender' => 'girls', 'rating_level' => 'red', 'rating_page' => 200, 'rating_per_page' => 500]);
+        $this->assertSame($normal['lists'], $tampered['lists']);
+        $this->assertSame(['overall'], array_keys($tampered['lists']));
+        $this->assertSame(['rating_age' => 'u11', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_per_page' => 10], $tampered['filters']);
+        $this->assertSame([17, 2, 3, 4, 5, 6, 7, 8, 9, 10], array_column($tampered['lists']['overall']['players'], 'id'));
+        $this->assertCount(10, $tampered['lists']['overall']['players']);
+        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        $revoked = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'Peer', 'rating_search_player' => 2]);
+        $this->assertSame([], $revoked['lists']['overall']['players']);
+        $this->assertSame([], $revoked['search']['players']);
+        $this->assertNull($revoked['search']['selected']);
+        DB::table('series')->where('id', 1)->update(['leaderboard_published' => true]);
+        DB::table('players')->where('id', $selected->id)->update(['dateOfBirth' => null]);
+        $selected->dateOfBirth = null;
+        $unknown = app(PlayerRatingTopTen::class)->build($user, $selected);
+        $this->assertSame('unknown', $unknown['selected_age']);
+        $this->assertSame([], $unknown['lists']['overall']['players']);
     }
 
     public function test_selected_player_defaults_to_age_group_and_keeps_overall_summary_when_filters_change(): void

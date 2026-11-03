@@ -125,7 +125,7 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor());
         $history = ['reason' => null, 'pathway_metrics' => $this->metrics(40), 'series' => [], 'points' => []];
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
-        $overview = $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('More info')->assertDontSee('data-pathway-stage-details=', false);
+        $overview = $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('More info')->assertSee('through 75')->assertDontSee('through 85')->assertDontSee('data-pathway-stage-details=', false);
         $this->assertSame(5, substr_count($overview->getContent(), 'data-pathway-info="'));
         foreach (['red', 'orange', 'wilson-b', 'wilson-a', 'tsa'] as $stage) {
             $response = $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => $stage]))->assertOk()
@@ -137,7 +137,7 @@ class PlayerPathwayTest extends TestCase
                 foreach (PlayerPathwayService::EVENT_OPTIONS[$stage] as $option) $response->assertSee($option);
                 $response->assertSee($stage === 'red' ? '50 CTR and 3 published Red ball events' : '60 CTR and 3 published Orange ball events');
             } elseif ($stage === 'tsa') {
-                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('A CTR of exactly 85');
+                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('A CTR of exactly 75');
             } else {
                 $response->assertSee('There is no event-count target for choosing between them.')->assertDontSee('Red ball · Fictional');
             }
@@ -182,12 +182,12 @@ class PlayerPathwayTest extends TestCase
     {
         $service = app(PlayerPathwayService::class);
         $player = Player::findOrFail(1);
-        foreach ([49.9, 50.0, 50.1, 85.0, 85.1] as $score) {
+        foreach ([49.9, 50.0, 50.1, 75.0, 75.1] as $score) {
             foreach ([1, 3] as $count) {
                 $metrics = $this->metrics($score, ['red' => 0, 'orange' => 0, 'standard' => $count]);
                 $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
                 $this->assertSame($score > 50 ? 'A' : 'B', $summary['suggestedDivision']);
-                $this->assertSame($score > 85 ? 'TSA tournaments' : ($score > 50 ? 'Wilson A' : 'Wilson B'), $summary['suggestedCompetition']);
+                $this->assertSame($score > 75 ? 'TSA tournaments' : ($score > 50 ? 'Wilson A' : 'Wilson B'), $summary['suggestedCompetition']);
                 $this->assertNull($summary['target']);
                 $this->assertNull($summary['benchmark_division']);
                 $this->assertSame('standard', $summary['current_stage']);
@@ -311,7 +311,7 @@ class PlayerPathwayTest extends TestCase
         $metrics['stale'] = true;
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('When your current comparable rating is ready')
             ->assertDontSee('2.1 points to the benchmark')->assertDontSee('Aim for');
-        $metrics = $this->metrics(85, ['red' => 0, 'orange' => 0, 'standard' => 3]);
+        $metrics = $this->metrics(75, ['red' => 0, 'orange' => 0, 'standard' => 3]);
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
             ->assertDontSee('Benchmark achieved:')->assertDontSee('points to the benchmark');
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()

@@ -1141,8 +1141,7 @@ class EventAdminController extends Controller
     $pendingApproval    = $operationalExpenses->whereNull('approved_at')->count();
     $pendingReimbursement = $operationalExpenses->whereNotNull('approved_at')->whereNull('reimbursed_at')->count();
 
-    $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
-      ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->orderByDesc('id')->get();
+    $reimbursementPayments = \App\Domain\Finance\Services\EventDirectorReconciliation::paymentsForEvent($event);
     $recon = \App\Domain\Finance\Services\EventDirectorReconciliation::build($convenors, $operationalExpenses, $reimbursementPayments, $grandTotalIncome - $totalExpenses);
 
     $budgetCapWarning = $event->budget_cap

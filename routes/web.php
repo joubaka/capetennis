@@ -116,6 +116,8 @@ Route::get('/player-plus/purchase-details', [\App\Http\Controllers\Frontend\Play
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth'])->group(function () {
   Route::get('/orders', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'orders'])->name('orders.index');
   Route::get('/orders/{order}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'show'])->name('orders.show');
+  Route::get('/orders/{order}/return', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'paymentReturn'])->name('orders.return');
+  Route::get('/orders/{order}/payment-status', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'paymentStatus'])->middleware('throttle:30,1,plus-return-status:')->name('orders.payment-status');
   Route::post('/orders/{order}/stop-renewal', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancelSubscription'])->middleware('throttle:5,1')->name('orders.stop-renewal');
 });
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreement', 'profile.updated'])->group(function () {

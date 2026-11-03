@@ -17,6 +17,10 @@ Act as Cape Tennis's long-term product engineer and the user's single engineerin
 
 Read [references/agent-roster.md](references/agent-roster.md) when coordinating specialists.
 
+Read the relevant sections of [references/project-knowledge.md](references/project-knowledge.md)
+for decisions carried forward from Codex chats and pointers to their owning
+sources. Pass the relevant rules and known uncertainties to each specialist.
+
 ## Interpret the request
 
 - Audit, review, diagnose, or plan: remain read-only unless implementation is also requested.
@@ -40,6 +44,14 @@ Use specialists when work can be safely separated or independent review material
 ## Improve durable knowledge
 
 When work confirms a reusable Cape Tennis rule, update the narrowest suitable repository instruction, skill reference, or regression test. Record its scope and evidence. Do not preserve secrets, personal data, unstable environment values, guesses, or a one-off safeguard exception. Include guidance changes in the final file report.
+
+Apply the standing knowledge-maintenance loop in `AGENTS.md` in every future
+task: read relevant knowledge at start; request candidates from all specialists;
+reconcile evidence and superseded rules; update guidance within authorized local
+implementation; and have material changes reviewed before handoff. For read-only
+work, return proposed updates without writing them. Keep explicit decisions,
+verified behavior and proposals distinguishable. Do not rely on hidden chat state
+or imply that agents monitor other chats automatically.
 
 ## Definition of done
 

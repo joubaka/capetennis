@@ -121,7 +121,7 @@ class SuperAdminFinanceController extends Controller
         $walletRefundNet        = (float) $event->entryFee - $handlingFeeExample;
 
         // ── Payout models for the form
-        $payoutModels = EventPayout::with(['convenor.user', 'paidByUser'])
+        $payoutModels = EventPayout::with(['convenor.user', 'paidByUser', 'reversal'])
             ->where('event_id', $event->id)
             ->orderByDesc('paid_at')
             ->get();
@@ -209,44 +209,23 @@ class SuperAdminFinanceController extends Controller
 
     public function storePayout(Request $request, Event $event)
     {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
         $validated = $request->validate([
+            'idempotency_key' => ['required', 'uuid'],
+            'recipient_user_id' => ['nullable', 'integer', 'required_without:convenor_id'],
             'convenor_id'    => [
                 'nullable',
                 Rule::exists('event_convenors', 'id')->where('event_id', $event->id),
             ],
             'recipient_name' => 'nullable|string|max:150',
-            'amount'         => 'required|numeric|min:0.01',
+            'amount'         => ['required', 'regex:/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?$/D'],
             'description'    => 'nullable|string|max:255',
-            'payment_method' => 'required|string|max:50',
+            'payment_method' => 'required|in:bank_transfer,cash,eft,other',
             'reference'      => 'nullable|string|max:150',
-            'paid_at'        => 'nullable|date',
+            'paid_at'        => 'required|date_format:Y-m-d|before_or_equal:today',
         ]);
 
-        $payout = EventPayout::create([
-            'event_id'       => $event->id,
-            'convenor_id'    => $validated['convenor_id'] ?? null,
-            'recipient_name' => $validated['recipient_name'] ?? null,
-            'amount'         => $validated['amount'],
-            'description'    => $validated['description'] ?? null,
-            'payment_method' => $validated['payment_method'],
-            'reference'      => $validated['reference'] ?? null,
-            'paid_by'        => Auth::id(),
-            'paid_at'        => $validated['paid_at'] ?? now(),
-        ]);
-
-        activity('payout')
-            ->performedOn($payout)
-            ->causedBy(Auth::user())
-            ->withProperties([
-                'event_id'       => $event->id,
-                'event_name'     => $event->name,
-                'amount'         => $payout->amount,
-                'recipient'      => $payout->recipient_name,
-                'payment_method' => $payout->payment_method,
-                'reference'      => $payout->reference,
-                'paid_at'        => $payout->paid_at,
-            ])
-            ->log("Payout created: R{$payout->amount} for event '{$event->name}'");
+        $this->ledger->recordRegistrationPayout($event, $request->user(), $validated);
 
         return back()->with('success', 'Payout recorded successfully.');
     }
@@ -255,31 +234,15 @@ class SuperAdminFinanceController extends Controller
     /*  DESTROY PAYOUT                                                     */
     /* ------------------------------------------------------------------ */
 
-    public function destroyPayout(EventPayout $payout)
+    public function destroyPayout(Request $request, EventPayout $payout)
     {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
         $event = $payout->event;
-
-        $snapshot = [
-            'payout_id'      => $payout->id,
-            'event_id'       => $event->id,
-            'event_name'     => $event->name,
-            'amount'         => $payout->amount,
-            'recipient'      => $payout->recipient_name,
-            'payment_method' => $payout->payment_method,
-            'reference'      => $payout->reference,
-            'paid_at'        => $payout->paid_at,
-        ];
-
-        $payout->delete();
-
-        activity('payout')
-            ->causedBy(Auth::user())
-            ->withProperties(array_merge($snapshot, ['action' => 'deleted']))
-            ->log("Payout deleted: R{$snapshot['amount']} for event '{$snapshot['event_name']}'");
+        $this->ledger->reverseRegistrationPayout($payout, $request->user(), $request->only('reason', 'confirm'));
 
         return redirect()
             ->route('superadmin.finances.event', $event)
-            ->with('success', 'Payout deleted.');
+            ->with('success', 'Accounting correction recorded. The original payout is retained; no funds were transferred or refunded.');
     }
 
     /* ------------------------------------------------------------------ */

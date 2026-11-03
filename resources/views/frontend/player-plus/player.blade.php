@@ -2,70 +2,89 @@
 @section('title', 'Player Plus registration')
 @section('content')
 <div class="container-xxl container-p-y pp-player pp-journey" data-plus-player-page>
-  <style>
-    .pp-player{max-width:1080px;color:#243e50}.pp-player .pp-nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;justify-content:space-between;margin-bottom:1rem}.pp-player .pp-nav a{min-height:44px;display:inline-flex;align-items:center;font-size:.875rem}
-    .pp-player .pp-hero{display:flex;justify-content:space-between;gap:2rem;align-items:center;background:#172e45;color:#fff;border-radius:22px;padding:2.25rem;margin-bottom:1.5rem;position:relative;overflow:hidden}.pp-player .pp-hero:after{content:'';position:absolute;width:240px;height:240px;border:1px solid #ffffff18;border-radius:50%;right:-90px;top:-100px;pointer-events:none}.pp-player .pp-eyebrow{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:#ffd3aa;font-weight:700;margin:0 0 .8rem}.pp-player .pp-hero h1{color:#fff;font-size:clamp(1.7rem,4vw,2.4rem);letter-spacing:-.035em;line-height:1.15;margin:0 0 .75rem;max-width:650px}.pp-player .pp-intro{color:#dce8f5;max-width:540px;line-height:1.65;margin:0}.pp-player .pp-profile{color:#bfd3e9;font-size:.78rem;margin:1rem 0 0}.pp-player .pp-price{flex-shrink:0;border-left:1px solid #ffffff30;padding-left:2rem;position:relative;z-index:1}.pp-player .pp-price strong{font-size:2.25rem;display:block;letter-spacing:-.04em}.pp-player .pp-price span{display:block;font-size:.8rem;color:#dce8f5}.pp-player .pp-price small{display:block;max-width:175px;margin-top:.8rem;color:#ffd3aa;line-height:1.5}
-    .pp-player .pp-benefits{padding:1.5rem!important;border-radius:18px!important;box-shadow:0 4px 20px #172e4505}.pp-player .pp-benefits>div:first-child{display:none!important}.pp-player .pp-benefits>p:first-of-type{color:#526c78;line-height:1.7}.pp-player .pp-benefits>p.fw-semibold{font-size:1.2rem;color:#172e45;margin-top:1.25rem}.pp-player .pp-benefits>ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;list-style:none;padding:0!important;margin:1.25rem 0!important}.pp-player .pp-benefits>ul>li{position:relative;padding:1.2rem 1.2rem 1.2rem 3.8rem;background:#f2f6fb;border:1px solid #dce5ef;border-radius:12px;line-height:1.7;color:#38516e}.pp-player .pp-benefits>ul>li:before{content:'↗';position:absolute;left:1rem;top:1.2rem;display:grid;place-items:center;width:1.9rem;height:1.9rem;border-radius:8px;background:#e3edf7;color:#004177;font-size:1.15rem;font-weight:700}.pp-player .pp-benefits>ul>li:nth-child(2):before{content:'≡'}.pp-player .pp-benefits>ul>li:nth-child(3):before{content:'★'}.pp-player .pp-benefits>ul>li:nth-child(4):before{content:'→'}.pp-player .pp-benefits details{border-top:1px solid #dce5ef;padding-top:.5rem}.pp-player .pp-benefits summary{font-weight:600;color:#264d73}
-    .pp-player .pp-status{border:1px solid #dce5ef;border-left:4px solid #004177;background:#eef4fa;border-radius:12px;padding:1.2rem 1.4rem;margin-top:1.25rem;line-height:1.65}.pp-player .pp-status strong{color:#264d73}.pp-player .pp-status p{color:#536a83}.pp-player .pp-status[data-plus-readiness="available"]{border-left-color:#258164;background:#eef7f2}.pp-player .pp-purchase{border-radius:16px;border:1px solid #dce5ef;padding:1.5rem;line-height:1.7}.pp-player .pp-actions{margin-top:1.5rem;padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-actions h2{font-size:1.1rem;color:#172e45;margin:0 0 .5rem}.pp-player .pp-actions p{font-size:.875rem;color:#607681;margin-bottom:1rem}.pp-player .pp-action-links{display:flex;gap:.75rem;flex-wrap:wrap}.pp-player .pp-action-links .btn{min-height:46px;display:inline-flex;align-items:center;justify-content:center;white-space:normal}.pp-player .btn-primary{background:#004177;border-color:#004177}.pp-player .btn-primary:hover{background:#00345f;border-color:#00345f}.pp-player .btn-outline-primary{color:#004177;border-color:#9ab4cf}.pp-player .btn-outline-primary:hover{background:#eef4fa;border-color:#004177;color:#00345f}.pp-player a:not(.btn){color:#004177}.pp-player .pp-footer{border-top:1px solid #dce5ef;margin-top:1.75rem;padding-top:1rem;font-size:.875rem}.pp-player a:focus-visible,.pp-player button:focus-visible,.pp-player summary:focus-visible{outline:3px solid #ff9f43;outline-offset:3px}
-    @media(max-width:767.98px){.pp-player .pp-hero{padding:1.5rem;align-items:flex-start;flex-direction:column;gap:1.25rem}.pp-player .pp-price{border-left:0;border-top:1px solid #ffffff30;padding:1rem 0 0;width:100%}.pp-player .pp-price small{max-width:none}.pp-player .pp-price strong{font-size:1.9rem}.pp-player .pp-benefits>ul{grid-template-columns:1fr}.pp-player .pp-benefits{padding:1.2rem!important}.pp-player .pp-actions{padding:1.2rem}.pp-player .pp-action-links{flex-direction:column}.pp-player .pp-action-links .btn{width:100%}}
-  </style>
   @include('frontend.player-plus.styles')
+  <style>
+    .pp-player{max-width:1120px;color:#243e50;font-size:1rem;line-height:1.65}.pp-player .small,.pp-player small{font-size:.875rem}.pp-player .pp-nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;justify-content:space-between;margin-bottom:1rem}.pp-player .pp-nav a{min-height:44px;display:inline-flex;align-items:center}
+    .pp-player .pp-hero{background:linear-gradient(115deg,#172e45,#004177);color:#fff;border-radius:18px;padding:clamp(1.5rem,4vw,2.5rem);margin-bottom:1.5rem}.pp-player .pp-eyebrow{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}.pp-player .pp-hero h1{color:#fff;font-size:clamp(1.8rem,4vw,2.5rem);line-height:1.2;letter-spacing:-.025em;margin:0 0 .75rem}.pp-player .pp-intro{color:#dee9f5;max-width:65ch;margin:0}.pp-player .pp-profile{color:#dee9f5;margin:1rem 0 0;font-size:.875rem}
+    .pp-player .pp-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1.5rem;align-items:start}.pp-player .pp-layout>*{min-width:0}.pp-player .pp-benefits{margin:0}.pp-player .pp-status{border:1px solid #dce5ef;border-left:4px solid #004177;background:#eef4fa;border-radius:12px;padding:1.1rem 1.25rem;line-height:1.65;margin-bottom:1.25rem}.pp-player .pp-status p{margin:.35rem 0 0;color:#38516e}.pp-player .pp-status[data-plus-readiness="available"]{border-left-color:#258164;background:#eef7f2}.pp-player .pp-status h2{font-size:1rem;color:#172e45;margin:0}
+    .pp-player .pp-purchase{border:1px solid #c8d8e4;border-radius:16px;padding:1.5rem;background:#fff;margin-bottom:1rem}.pp-player .pp-purchase h2{font-size:1.25rem;color:#172e45;margin:0}.pp-player .pp-plan-price{font-size:2rem;font-weight:700;color:#172e45;margin:.5rem 0 0;line-height:1.3}.pp-player .pp-plan-price span{font-size:1rem;font-weight:400}.pp-player .pp-plan-note{color:#526c78;margin:.65rem 0 1.25rem}.pp-player .pp-consents{border:0;padding:0;margin:1.25rem 0 0;min-width:0}.pp-player .pp-consents legend{font-size:1rem;font-weight:600;color:#172e45;margin-bottom:.75rem}.pp-player .pp-consent{display:flex;gap:.75rem;align-items:flex-start;padding:.65rem 0;margin:0;cursor:pointer;font-size:.9375rem;line-height:1.6}.pp-player .pp-consent input{flex:0 0 20px;width:20px;height:20px;margin-top:.25rem;accent-color:#004177}.pp-player .pp-purchase .btn{width:100%;margin-top:1.25rem;min-height:48px}.pp-player .pp-sponsor-note{background:#fff6eb;border:1px solid #f2d6b8;border-radius:10px;padding:1rem;margin-bottom:1rem;color:#62401d}.pp-player .pp-plan-availability{font-size:.9375rem;color:#526c78;margin:0 0 1rem}.pp-player .pp-actions{margin-top:1.25rem;padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-actions h2{font-size:1.2rem;color:#172e45}.pp-player .pp-action-links{display:flex;gap:.75rem;flex-wrap:wrap}.pp-player .pp-footer{border-top:1px solid #dce5ef;margin-top:1.5rem;padding-top:1rem}.pp-player .pp-error-summary{margin-bottom:1.5rem}.pp-player .pp-field-error{color:#a12222;font-size:.875rem;margin:.25rem 0}
+    @media(min-width:992px){.pp-player .pp-details{grid-column:1;grid-row:1}.pp-player .pp-checkout{grid-column:2;grid-row:1}}@media(max-width:991.98px){.pp-player .pp-layout{grid-template-columns:1fr}.pp-player .pp-benefits>ul{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:575.98px){.pp-player .pp-purchase,.pp-player .pp-actions{padding:1.2rem}.pp-player .pp-benefits>ul{grid-template-columns:1fr}.pp-player .pp-action-links{flex-direction:column}.pp-player .pp-action-links .btn{width:100%}}
+  </style>
   <nav class="pp-nav" aria-label="Player Plus navigation"><a href="{{ route('player-plus.index') }}">← Choose another player</a><a href="{{ route('player-plus.orders.index') }}">My Plus orders →</a></nav>
   <header class="pp-hero">
-    <div><p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">A clearer picture of their tennis. Understand playing strength, follow progress and explore the next step.</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p></div>
-    <x-player-plus-pricing class="pp-price" />
+    <p class="pp-eyebrow">Cape Tennis · Optional Player Plus</p><h1>Player Plus for {{ $player->full_name }}</h1><p class="pp-intro">A clearer picture of their tennis. Understand playing strength, follow progress and explore the next step.</p><p class="pp-profile">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
   </header>
-  <x-player-plus-benefits :price-cents="$priceCents" class="pp-benefits" />
+  @if($errors->any())
+    <section class="alert alert-danger pp-error-summary" role="alert" aria-labelledby="pp-error-heading"><h2 class="h6" id="pp-error-heading">Please review your checkout details</h2><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></section>
+  @endif
   @if($readiness)
-    <section class="pp-status text-body" aria-label="Rating availability" data-plus-readiness="{{ $readiness['state'] }}">
-      <strong>{{ $readiness['label'] }}</strong><p class="mb-0 mt-1">{{ $readiness['description'] }}</p>
+    <section class="pp-status text-body" aria-label="Rating availability" data-plus-readiness="{{ $readiness['state'] }}"><h2>{{ $readiness['label'] }}</h2><p>{{ $readiness['description'] }}</p></section>
+  @endif
+  <div class="pp-layout">
+    <section class="pp-checkout" aria-label="Player Plus membership and checkout">
+      @unless($linked)<p class="pp-sponsor-note"><strong>You are sponsoring {{ $player->name }}.</strong> Only the player and accounts already linked to them can use their private Player Plus benefits. Payment does not link the player to your account.</p>@endunless
+      @if(($adminAccess ?? null)?->mode === 'suspended')
+        <p class="alert alert-warning">Player Plus access is deactivated. Contact Cape Tennis support. Deactivation does not stop automatic renewal; the payer can manage billing in My Plus orders.</p>
+      @elseif(($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
+        <p class="alert alert-success">This player has admin-granted access until {{ $adminAccess->ends_at->format('j M Y H:i') }}. This grant does not record a payment or change existing subscription billing.</p>
+      @elseif($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture())
+        <p class="alert alert-success">This player is covered until {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer can manage automatic renewal in My Plus orders.@else This existing once-off term has no automatic renewal or charge.@endif</p>
+      @else
+        @if($membership && $linked)<p class="alert alert-secondary">Membership expired on {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer should check payment and renewal status in My Plus orders.@else No renewal payment has been taken automatically.@endif</p>@endif
+        @if($enabled && \App\Services\Performance\PlayerPlusService::monthlyReady())
+          <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" aria-labelledby="pp-annual-heading">
+            @csrf
+            <input type="hidden" name="request_token" value="{{ $token }}">
+            <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
+            <input type="hidden" name="quoted_price_cents" value="{{ $priceCents }}">
+            <input type="hidden" name="plan" value="annual_recurring">
+            <h2 id="pp-annual-heading">Annual Player Plus</h2>
+            <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} <span>/ player / year</span></p>
+            <p class="pp-plan-note">Pay now, then renew automatically each year through PayFast until cancelled. Stop future renewals from My Plus orders; paid access continues until the paid period ends.</p>
+            <fieldset class="pp-consents"><legend>Confirm your purchase</legend>
+              <label class="pp-consent" for="pp-annual-confirm"><input id="pp-annual-confirm" type="checkbox" name="confirm" value="1" required @error('confirm') aria-invalid="true" aria-describedby="pp-annual-confirm-error" @enderror><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a> and am buying Player Plus for {{ $player->full_name }}. Ratings or pathway assessments may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
+              @error('confirm')<p class="pp-field-error" id="pp-annual-confirm-error">{{ $message }}</p>@enderror
+              <label class="pp-consent" for="pp-annual-recurring"><input id="pp-annual-recurring" type="checkbox" name="recurring_consent" value="1" required @error('recurring_consent') aria-invalid="true" aria-describedby="pp-annual-recurring-error" @enderror><span>I authorise R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} now and automatic annual payments of R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} through PayFast until I cancel.</span></label>
+              @error('recurring_consent')<p class="pp-field-error" id="pp-annual-recurring-error">{{ $message }}</p>@enderror
+            </fieldset>
+            <button class="btn btn-primary">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</button>
+          </form>
+          @if($monthlyEnabled)
+            <form method="post" action="{{ route('player-plus.store', $player) }}" class="pp-purchase" data-plus-monthly-purchase aria-labelledby="pp-monthly-heading">
+              @csrf
+              <h2 id="pp-monthly-heading">Monthly Player Plus</h2>
+              <p class="pp-plan-price">R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} <span>/ player / month</span></p>
+              <p class="pp-plan-note">Pay the first month now. PayFast charges the same agreed price each month until you cancel. Stop future renewals from My Plus orders; verified paid access remains until the end of the paid period.</p>
+              <input type="hidden" name="request_token" value="{{ $token }}">
+              <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
+              <input type="hidden" name="plan" value="monthly">
+              <input type="hidden" name="quoted_price_cents" value="{{ $monthlyPriceCents }}">
+              <fieldset class="pp-consents"><legend>Confirm your purchase</legend>
+                <label class="pp-consent" for="pp-monthly-confirm"><input id="pp-monthly-confirm" type="checkbox" name="confirm" value="1" required @error('confirm') aria-invalid="true" aria-describedby="pp-monthly-confirm-error" @enderror><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a> and am buying Player Plus for {{ $player->full_name }}. Ratings or pathway assessments may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
+                @error('confirm')<p class="pp-field-error" id="pp-monthly-confirm-error">{{ $message }}</p>@enderror
+                <label class="pp-consent" for="pp-monthly-recurring"><input id="pp-monthly-recurring" type="checkbox" name="recurring_consent" value="1" required @error('recurring_consent') aria-invalid="true" aria-describedby="pp-monthly-recurring-error" @enderror><span>I authorise a payment of R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} now and automatic monthly payments of R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} through PayFast until I cancel.</span></label>
+                @error('recurring_consent')<p class="pp-field-error" id="pp-monthly-recurring-error">{{ $message }}</p>@enderror
+              </fieldset>
+              <button class="btn btn-primary">Continue to PayFast · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }}</button>
+            </form>
+          @else
+            <p class="pp-plan-availability">Monthly purchases are currently unavailable. The annual plan is available above.</p>
+          @endif
+        @else
+          <section class="pp-status" aria-label="Purchases paused"><h2>Purchases are paused</h2><p>New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p></section>
+        @endif
+      @endif
     </section>
-  @endif
-  @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
-  @if(($adminAccess ?? null)?->mode === 'suspended')
-    <p class="alert alert-warning">Player Plus access is deactivated. Contact Cape Tennis support. Deactivation does not stop automatic renewal; the payer can manage billing in My Plus orders.</p>
-  @elseif(($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
-    <p class="alert alert-success">This player has admin-granted access until {{ $adminAccess->ends_at->format('j M Y H:i') }}. This grant does not record a payment or change existing subscription billing.</p>
-  @elseif($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture())
-    <p class="alert alert-success">This player is covered until {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer can manage automatic renewal in My Plus orders.@else This existing once-off term has no automatic renewal or charge.@endif</p>
-  @else
-    @if($membership && $linked)<p class="alert alert-secondary mt-3">Membership expired on {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer should check payment and renewal status in My Plus orders.@else No renewal payment has been taken automatically.@endif</p>@endif
-    @if($enabled && \App\Services\Performance\PlayerPlusService::monthlyReady())
-    <form method="post" action="{{ route('player-plus.store', $player) }}" class="card card-body mt-3 pp-purchase">
-      @csrf
-      <input type="hidden" name="request_token" value="{{ $token }}">
-      <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
-      <input type="hidden" name="quoted_price_cents" value="{{ $priceCents }}">
-      <input type="hidden" name="plan" value="annual_recurring">
-      <h2 class="h5">Annual automatic renewal · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} / year</h2>
-      <label class="d-flex gap-2 align-items-start"><input type="checkbox" name="confirm" value="1" required class="mt-1"><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a> and am buying Player Plus for {{ $player->full_name }}. Ratings or pathway assessments may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
-      <label class="d-flex gap-2 align-items-start mt-3"><input type="checkbox" name="recurring_consent" value="1" required class="mt-1"><span>I authorise R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} now and automatic annual payments of R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }} through PayFast until I cancel. Stop future renewals from My Plus orders; verified paid access remains until the paid period ends.</span></label>
-      <button class="btn btn-primary mt-3 align-self-start" style="min-height:44px">Start annual checkout · R{{ \App\Services\Performance\PlayerPlusService::amount($priceCents) }}</button>
-    </form>
-    @if($monthlyEnabled)
-    <form method="post" action="{{ route('player-plus.store', $player) }}" class="card card-body mt-3 pp-purchase" data-plus-monthly-purchase>
-      @csrf
-      <h2 class="h5">Monthly automatic renewal · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} / month</h2>
-      <p>Pay the first month now. PayFast charges the same agreed price each month until you cancel. Stop future renewals from My Plus orders; verified paid access remains until the end of the paid period.</p>
-      <input type="hidden" name="request_token" value="{{ $token }}">
-      <input type="hidden" name="terms_version" value="{{ $termsVersion }}">
-      <input type="hidden" name="plan" value="monthly">
-      <input type="hidden" name="quoted_price_cents" value="{{ $monthlyPriceCents }}">
-      <label class="d-flex gap-2 align-items-start"><input type="checkbox" name="confirm" value="1" required class="mt-1"><span>I have read the <a href="{{ route('player-plus.terms') }}">purchase details</a>. I am buying Player Plus for {{ $player->full_name }}. Ratings may be unavailable. Paying does not link this player to my account or give me private access.</span></label>
-      <label class="d-flex gap-2 align-items-start mt-3"><input type="checkbox" name="recurring_consent" value="1" required class="mt-1"><span>I authorise a payment of R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} now and automatic monthly payments of R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }} through PayFast until I cancel.</span></label>
-      <button class="btn btn-primary mt-3 align-self-start" style="min-height:44px">Start monthly checkout · R{{ \App\Services\Performance\PlayerPlusService::amount($monthlyPriceCents) }}</button>
-    </form>
-    @endif
-    @else<section class="pp-status" aria-label="Purchases paused"><strong>Purchases are paused</strong><p class="mb-0 mt-1">New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p></section>@endif
-  @endif
+    <div class="pp-details">
+      <x-player-plus-benefits :price-cents="$priceCents" :show-pricing="false" class="pp-benefits" />
+    </div>
+  </div>
   @if($canViewRating)
     <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
-    <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
-    <a class="btn btn-outline-primary" href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
-    <a class="btn btn-outline-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">Explore CTR ratings</a>
+      <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
+      <a class="btn btn-outline-primary" href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
     </div></section>
   @endif
-  @unless($linked)<p class="mt-3">You are sponsoring this player. Only the player and accounts already linked to them can use their private Player Plus benefits.</p>@endunless
   <p class="pp-footer"><a href="{{ route('my.tennis') }}">← Back to My Tennis</a></p>
 </div>
 @endsection

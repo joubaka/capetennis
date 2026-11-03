@@ -6,7 +6,7 @@ use App\Models\{Category, CategoryEvent, CategoryEventRegistration, CategoryResu
 use App\Services\Performance\{BallRatingModel, PlayerEventRatingHistory, PlayerEventRatingHistoryLauncher, PlayerEventRatingHistoryRefresh, PlayerEventRatingHistoryStore, PlayerRatingAccess, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\{Artisan, Cache, File, Gate};
+use Illuminate\Support\Facades\{Artisan, Cache, File, Gate, Route};
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -200,6 +200,60 @@ class PlayerEventRatingHistoryTest extends TestCase
         $this->assertSame('pending', $refresh->request(42)['state']);
         $this->assertSame('pending', $refresh->request(42)['state']);
         $this->assertStringContainsString('requested', $refresh->status(42)['message']);
+    }
+
+    public function test_unrelated_numeric_throttles_do_not_use_history_refresh_allowance_and_html_limit_returns_to_history(): void
+    {
+        $actor = User::factory()->create();
+        $player = Player::factory()->create();
+        $this->actingAs($actor);
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->andReturnTrue();
+        $this->mock(PlayerEventRatingHistoryRefresh::class)->shouldReceive('request')->times(3)->with($player->id)
+            ->andReturn(['state' => 'pending', 'message' => 'Background request accepted.']);
+        Route::middleware(['web', 'auth', 'throttle:30,1'])->get('/testing/history-unrelated-throttle', fn () => response('Rating tab'));
+        for ($visit = 0; $visit < 3; $visit++) $this->get('/testing/history-unrelated-throttle')->assertOk();
+
+        $url = route('my.tennis.event-history.refresh', $player);
+        $history = route('my.tennis.event-history', $player);
+        $this->post($url)->assertRedirect($history)->assertSessionHas('event_history_status', 'Background request accepted.');
+        $this->post($url)->assertRedirect($history);
+        $this->post($url)->assertRedirect($history)->assertHeader('Retry-After', '60')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSessionHas('event_history_status', 'Please wait 60 seconds before requesting another history update. Your saved history is unchanged.');
+        $this->travel(61)->seconds();
+        $this->post($url)->assertRedirect($history)->assertSessionHas('event_history_status', 'Background request accepted.');
+    }
+
+    public function test_refresh_limit_is_actor_wide_across_players_and_json_receives_retry_details(): void
+    {
+        $actors = User::factory()->count(2)->create();
+        $players = Player::factory()->count(2)->create();
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->andReturnTrue();
+        $refresh = $this->mock(PlayerEventRatingHistoryRefresh::class);
+        $refresh->shouldReceive('request')->twice()->with($players[0]->id)->andReturn(['state' => 'pending', 'message' => 'Accepted.']);
+        $refresh->shouldReceive('request')->once()->with($players[1]->id)->andReturn(['state' => 'pending', 'message' => 'Accepted.']);
+        $this->actingAs($actors[0]);
+        $this->postJson(route('my.tennis.event-history.refresh', $players[0]))->assertRedirect();
+        $this->postJson(route('my.tennis.event-history.refresh', $players[0]))->assertRedirect();
+        $this->postJson(route('my.tennis.event-history.refresh', $players[1]))->assertTooManyRequests()
+            ->assertHeader('Retry-After', '60')->assertJsonPath('retry_after', 60)
+            ->assertJsonPath('message', 'Please wait 60 seconds before requesting another history update. Your saved history is unchanged.');
+        $this->actingAs($actors[1])->postJson(route('my.tennis.event-history.refresh', $players[1]))->assertRedirect();
+    }
+
+    public function test_unauthorized_refreshes_are_denied_before_rate_limiting_and_do_not_consume_allowance(): void
+    {
+        $actor = User::factory()->create();
+        $allowed = Player::factory()->create();
+        $private = Player::factory()->create();
+        $this->actingAs($actor);
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->andReturnUsing(fn ($user, $player) => $player->id === $allowed->id);
+        $this->mock(PlayerEventRatingHistoryRefresh::class)->shouldReceive('request')->twice()->with($allowed->id)
+            ->andReturn(['state' => 'pending', 'message' => 'Accepted.']);
+        for ($attempt = 0; $attempt < 3; $attempt++) $this->postJson(route('my.tennis.event-history.refresh', $private))->assertForbidden();
+        $this->post(route('my.tennis.event-history.refresh', $allowed))->assertRedirect();
+        $this->post(route('my.tennis.event-history.refresh', $allowed))->assertRedirect();
+        $this->postJson(route('my.tennis.event-history.refresh', $private))->assertForbidden()->assertJsonMissingPath('retry_after');
     }
 
     public function test_requested_runner_requires_a_live_matching_one_use_lease(): void

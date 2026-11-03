@@ -44,7 +44,7 @@ class RecordAuditRequest
                     'metadata' => [
                         'route_action' => $request->route()?->getActionName(),
                         'route_parameters' => $request->route()?->parameters() ?? [],
-                        'input' => $request->except(['_token']),
+                        'input' => $this->auditInput($request),
                     ],
                 ], true);
             }
@@ -110,10 +110,19 @@ class RecordAuditRequest
             'metadata' => [
                 'route_action' => $request->route()?->getActionName(),
                 'route_parameters' => $request->route()?->parameters() ?? [],
-                'input' => $isPage ? null : $request->except(['_token']),
+                'input' => $isPage ? null : $this->auditInput($request),
                 'ajax' => $request->ajax(),
             ],
         ]);
+    }
+
+    private function auditInput(Request $request): array
+    {
+        if (Str::startsWith((string) $request->route()?->getActionName(), \App\Http\Controllers\Backend\SettingsController::class.'@')) {
+            // SettingsMutationService records safe committed values. Request attempts must not duplicate raw templates or contacts.
+            return ['submitted_fields' => array_slice(array_keys($request->except(['_token'])), 0, 100)];
+        }
+        return $request->except(['_token']);
     }
 
     private function excluded(Request $request): bool

@@ -33,6 +33,15 @@ use Illuminate\Support\Collection;
  */
 class FinancialLedgerService
 {
+    public function recordRegistrationPayout(Event $event, \App\Models\User $actor, array $data): EventPayout
+    {
+        return app(EventPayoutRecordingService::class)->record($event, $actor, $data);
+    }
+
+    public function reverseRegistrationPayout(EventPayout $payout, \App\Models\User $actor, array $data): EventPayout
+    {
+        return app(EventPayoutRecordingService::class)->reverse($payout, $actor, $data);
+    }
     /** Confirm an event-only financial recipient identity; moves no money. */
     public function recordRegionalFinancialRecipientLink(Event $event, \App\Models\User $actor, array $data, bool $apply = false): array
     {
@@ -428,7 +437,7 @@ class FinancialLedgerService
                 'payment_method'    => $p->payment_method,
                 'refund_status'     => null,
                 'withdrawal_status' => null,
-                'status_label'      => $p->settlement_details ? 'Registration settlement (including withholding)' : 'Payout',
+                'status_label'      => $p->purpose === 'payout_reversal' ? 'Accounting correction' : ($p->settlement_details ? 'Registration settlement (including withholding)' : 'Payout'),
                 'status_colour'     => 'dark',
                 'source_tx_id'      => null,
                 'source_order_id'   => null,
@@ -509,7 +518,9 @@ class FinancialLedgerService
             fn ($row) => (float) ($row->gross ?? 0) + (float) ($row->fee ?? 0) + (float) ($row->capeFee ?? 0)
         ) + $completedRefunds->where('subtype', 'clothing_refund')->sum('net'), 2);
 
-        $totalPaidOut = round($payoutRows->sum(fn($r) => abs($r->net ?? 0)), 2);
+        // Ordinary payouts are negative ledger rows; linked opposite entries
+        // correct an incorrect record without deleting its original evidence.
+        $totalPaidOut = round($payoutRows->sum(fn($r) => -($r->net ?? 0)), 2);
         $registrationBalance = round($registrationNet - $totalPaidOut, 2);
         $clothingPaidOut = round((float) ($clothingSettlements['payout'] ?? 0), 2);
         $clothingRecoveries = round((float) ($clothingSettlements['recovery'] ?? 0), 2);

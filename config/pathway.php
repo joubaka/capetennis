@@ -8,5 +8,5 @@ return [
         'orange' => ['ctr' => 60, 'events' => 3],
     ],
     'wilson_a_above' => 50,
-    'tsa_above' => 85,
+    'tsa_above' => 75,
 ];

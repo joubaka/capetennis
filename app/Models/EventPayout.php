@@ -24,6 +24,8 @@ class EventPayout extends Model
         'recipient_user_id',
         'recorded_by_name',
         'settlement_details',
+        'reversal_of_id',
+        'reversal_reason',
     ];
 
     protected $casts = [
@@ -40,15 +42,16 @@ class EventPayout extends Model
     protected static function booted(): void
     {
         static::updating(function (self $payout) {
-            if (in_array($payout->getRawOriginal('purpose'), ['expense_reimbursement', 'director_payment'], true)) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded director payments are immutable.']);
-            }
+            throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded payouts are immutable. Append an accounting correction for an incorrect record.']);
         });
         static::deleting(function (self $payout) {
-            if (in_array($payout->purpose, ['expense_reimbursement', 'director_payment'], true)) {
-                throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded director payments cannot be deleted.']);
-            }
+            throw \Illuminate\Validation\ValidationException::withMessages(['payout' => 'Recorded payouts cannot be deleted.']);
         });
+    }
+
+    public function reversal()
+    {
+        return $this->hasOne(self::class, 'reversal_of_id');
     }
 
     public function convenor()

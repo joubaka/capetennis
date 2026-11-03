@@ -11,6 +11,18 @@ Temporary specialists may cover draws, rankings, payments, imports, database des
 
 Durable guidance belongs in the narrowest suitable place:
 
+Every role reads relevant sections of [project-knowledge.md](project-knowledge.md)
+and follows its source pointers. Capester supplies the task's exact authority,
+owned boundary, concurrent edits and unresolved evidence; historical chat context
+does not replace that brief. Feature Developers inherit this through `$capester`.
+
+Every specialist brief and final report includes the standing knowledge loop from
+`AGENTS.md`: identify reusable verified lessons or superseded guidance and return
+their scope and evidence, or report none. Capester alone coordinates shared
+knowledge edits; reviewers check material changes. Read-only assignments return
+candidates without edits. This applies to temporary specialists as well as the
+standing roles and does not expand any role's authority.
+
 - Broad product and safety rules: `AGENTS.md`.
 - Agent behavior: the relevant skill.
 - Conditional technical procedure: a skill reference.

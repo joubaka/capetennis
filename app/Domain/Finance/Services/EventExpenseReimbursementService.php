@@ -38,8 +38,10 @@ class EventExpenseReimbursementService
             $expenses = EventExpense::where('event_id', $event->id)
                 ->whereNotIn('expense_type', ['payfast', 'cape_tennis_fee'])->lockForUpdate()->get();
             $directors = EventConvenor::where('event_id', $event->id)->lockForUpdate()->get();
-            $payments = EventPayout::where('event_id', $event->id)
-                ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->get();
+            $payments = EventDirectorReconciliation::paymentsForEvent($event);
+            if (EventDirectorReconciliation::hasUnresolvedPayments($directors, $payments, $director)) {
+                throw ValidationException::withMessages(['amount' => 'Resolve the unidentified or ambiguous recorded payout recipient before recording another director payment.']);
+            }
             $income = app(FinancialLedgerService::class)->buildForEvent($event)['totals']['registration_net'];
             $profit = $income - $expenses->sum(fn ($expense) => self::expenseCents($expense)) / 100;
             $balance = EventDirectorReconciliation::build($directors, $expenses, $payments, $profit)
@@ -65,8 +67,16 @@ class EventExpenseReimbursementService
 
     public static function recordedCents(int $eventId, int $directorId): int
     {
-        return EventPayout::where('event_id', $eventId)->where('convenor_id', $directorId)
-            ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->get(['amount'])->sum(fn ($payout) => EventExpenseAmounts::cents($payout->amount));
+        $event = Event::findOrFail($eventId);
+        $directors = $event->convenors()->get();
+        $director = $directors->firstWhere('id', $directorId);
+        if (! $director) return 0;
+        $payments = EventDirectorReconciliation::paymentsForEvent($event);
+        if (EventDirectorReconciliation::hasUnresolvedPayments($directors, $payments, $director)) {
+            throw ValidationException::withMessages(['expense' => 'Resolve the recorded payout recipient before reimbursing an expense.']);
+        }
+        $row = EventDirectorReconciliation::build($directors, collect(), $payments, 0)->firstWhere('convenor.id', $directorId);
+        return (int) round(($row['reimbursed'] + $row['director_paid']) * 100);
     }
 
     public function reimburseWholeExpense(EventExpense $expense, User $actor): void

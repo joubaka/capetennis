@@ -31,6 +31,14 @@
   </header>
   @if(session('success'))<p class="alert alert-success">{{ session('success') }}</p>@endif
   @foreach($errors->all() as $error)<p class="alert alert-danger">{{ $error }}</p>@endforeach
+  @if(session('plus_checkout_review'))<p class="alert alert-info" role="status">{{ session('plus_checkout_review') }}</p>@endif
+  @if($returnFlow ?? false)
+    <section class="alert alert-info" role="status" data-plus-payment-return data-status-url="{{ route('player-plus.orders.payment-status', $order) }}">
+      <span data-plus-return-message>Checking for verified PayFast confirmation. Your ratings will open when payment and access are confirmed.</span>
+      <a class="d-block mt-2" href="{{ route('player-plus.orders.return', $order) }}">Check payment status</a>
+    </section>
+    <script src="{{ asset('assets/js/player-plus-checkout.js') }}" defer></script>
+  @endif
   <div class="pp-checkout-grid">
     <div class="pp-checkout-summary">
     <section class="pp-payment-card" aria-labelledby="pp-payment-heading">
@@ -54,7 +62,7 @@
       @else<p class="alert alert-info">Purchases are paused. This order cannot begin payment.</p>@endif
     @else
       <p class="alert alert-info">Awaiting verified PayFast confirmation. Returning to this page does not activate membership.</p>
-      <a href="{{ route('player-plus.orders.show', $order) }}" class="btn btn-outline-primary">Check payment status</a>
+      @unless($returnFlow ?? false)<a href="{{ route('player-plus.orders.show', $order) }}" class="btn btn-outline-primary">Check payment status</a>@endunless
     @endif
   @else<p>This checkout is closed or expired. A delayed payment will be held for reconciliation with the original payer.</p>@endif
   @if($order->status === 'pending' && (!$order->payfast_handed_off_at || !$order->expires_at->isFuture()))

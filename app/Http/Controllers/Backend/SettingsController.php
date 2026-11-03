@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\SiteSetting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Services\SettingsMutationService;
 
 class SettingsController extends Controller
 {
+    public function __construct(private readonly SettingsMutationService $settings) {}
+
     /**
      * Display the settings page.
      */
@@ -49,58 +51,60 @@ class SettingsController extends Controller
         }
 
         $request->validate($rules);
-        if ($request->has('player_plus_annual_price')) $this->savePlusPrice($request);
+        $this->mutate($request, function (callable $set) use ($request): void {
+            if ($request->has('player_plus_annual_price')) $this->savePlusPrice($request, $set);
 
-        // PayFast
-        SiteSetting::set('payfast_fee_percentage', $request->input('payfast_fee_percentage'), SiteSetting::GROUP_PAYFAST);
-        SiteSetting::set('payfast_fee_flat', $request->input('payfast_fee_flat'), SiteSetting::GROUP_PAYFAST);
-        SiteSetting::set('payfast_vat_rate', $request->input('payfast_vat_rate'), SiteSetting::GROUP_PAYFAST);
+            // PayFast
+            $set('payfast_fee_percentage', $request->input('payfast_fee_percentage'), SiteSetting::GROUP_PAYFAST);
+            $set('payfast_fee_flat', $request->input('payfast_fee_flat'), SiteSetting::GROUP_PAYFAST);
+            $set('payfast_vat_rate', $request->input('payfast_vat_rate'), SiteSetting::GROUP_PAYFAST);
 
-        foreach (array_keys(SiteSetting::PAYMENT_METHOD_LABELS) as $method) {
-            SiteSetting::set("payfast_fee_pct_{$method}", $request->input("payfast_fee_pct_{$method}"), SiteSetting::GROUP_PAYFAST);
-        }
+            foreach (array_keys(SiteSetting::PAYMENT_METHOD_LABELS) as $method) {
+                $set("payfast_fee_pct_{$method}", $request->input("payfast_fee_pct_{$method}"), SiteSetting::GROUP_PAYFAST);
+            }
 
-        // General / Code of Conduct & Terms
-        SiteSetting::set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0', SiteSetting::GROUP_GENERAL);
-        SiteSetting::set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
-        SiteSetting::set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
-        if ($request->has(\App\Services\Performance\PlayerRatingAccess::SETTING)) {
-            SiteSetting::set(\App\Services\Performance\PlayerRatingAccess::SETTING, $request->boolean(\App\Services\Performance\PlayerRatingAccess::SETTING) ? '1' : '0', SiteSetting::GROUP_GENERAL);
-        }
-        SiteSetting::set(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED, $request->boolean(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED) ? '1' : '0', SiteSetting::GROUP_GENERAL);
-        SiteSetting::set('brand_logo_url', trim((string) $request->input('brand_logo_url', '')), SiteSetting::GROUP_GENERAL);
+            // General / Code of Conduct & Terms
+            $set('require_code_of_conduct', $request->boolean('require_code_of_conduct') ? '1' : '0', SiteSetting::GROUP_GENERAL);
+            $set('require_terms', $request->boolean('require_terms') ? '1' : '0', SiteSetting::GROUP_GENERAL);
+            $set('require_profile_update', $request->boolean('require_profile_update') ? '1' : '0', SiteSetting::GROUP_GENERAL);
+            if ($request->has(\App\Services\Performance\PlayerRatingAccess::SETTING)) {
+                $set(\App\Services\Performance\PlayerRatingAccess::SETTING, $request->boolean(\App\Services\Performance\PlayerRatingAccess::SETTING) ? '1' : '0', SiteSetting::GROUP_GENERAL);
+            }
+            $set(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED, $request->boolean(SiteSetting::DISCIPLINARY_SYSTEM_ENABLED) ? '1' : '0', SiteSetting::GROUP_GENERAL);
+            $set('brand_logo_url', trim((string) $request->input('brand_logo_url', '')), SiteSetting::GROUP_GENERAL);
 
-        if ($request->filled('code_of_conduct_content')) {
-            SiteSetting::set('code_of_conduct_content', $request->input('code_of_conduct_content'), SiteSetting::GROUP_GENERAL);
-        }
-        if ($request->filled('terms_conditions_content')) {
-            SiteSetting::set('terms_conditions_content', $request->input('terms_conditions_content'), SiteSetting::GROUP_GENERAL);
-        }
+            if ($request->filled('code_of_conduct_content')) {
+                $set('code_of_conduct_content', $request->input('code_of_conduct_content'), SiteSetting::GROUP_GENERAL);
+            }
+            if ($request->filled('terms_conditions_content')) {
+                $set('terms_conditions_content', $request->input('terms_conditions_content'), SiteSetting::GROUP_GENERAL);
+            }
 
-        // Email notifications (admin)
-        SiteSetting::set('email_on_registration', $request->boolean('email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('email_on_withdrawal', $request->boolean('email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('email_on_team_withdrawal', $request->boolean('email_on_team_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('email_on_wallet_topup', $request->boolean('email_on_wallet_topup') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('email_on_bank_refund_request', $request->boolean('email_on_bank_refund_request') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('email_on_violation', $request->boolean('email_on_violation') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('admin_notification_email', $request->input('admin_notification_email') ?? 'support@capetennis.co.za', SiteSetting::GROUP_EMAIL);
+            // Email notifications (admin)
+            $set('email_on_registration', $request->boolean('email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('email_on_withdrawal', $request->boolean('email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('email_on_team_withdrawal', $request->boolean('email_on_team_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('email_on_wallet_topup', $request->boolean('email_on_wallet_topup') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('email_on_bank_refund_request', $request->boolean('email_on_bank_refund_request') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('email_on_violation', $request->boolean('email_on_violation') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('admin_notification_email', $request->input('admin_notification_email') ?? 'support@capetennis.co.za', SiteSetting::GROUP_EMAIL);
 
-        // Player confirmation emails
-        SiteSetting::set('player_email_on_registration', $request->boolean('player_email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('player_email_on_withdrawal', $request->boolean('player_email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        SiteSetting::set('player_email_on_move', $request->boolean('player_email_on_move') ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $key) {
-            SiteSetting::set($key, $request->boolean($key) ? '1' : '0', SiteSetting::GROUP_EMAIL);
-        }
+            // Player confirmation emails
+            $set('player_email_on_registration', $request->boolean('player_email_on_registration') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('player_email_on_withdrawal', $request->boolean('player_email_on_withdrawal') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            $set('player_email_on_move', $request->boolean('player_email_on_move') ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            foreach (SiteSetting::AUTOMATED_EMAIL_TOGGLES as $key) {
+                $set($key, $request->boolean($key) ? '1' : '0', SiteSetting::GROUP_EMAIL);
+            }
 
-        // Registration & withdrawal behaviour
-        SiteSetting::set('registration_open', $request->boolean('registration_open') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
-        SiteSetting::set('withdrawal_allowed', $request->boolean('withdrawal_allowed') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
-        SiteSetting::set('withdrawal_deadline_days', (string) max(0, (int) $request->input('withdrawal_deadline_days', 7)), SiteSetting::GROUP_REGISTRATION);
-        SiteSetting::set('profile_required_for_registration', $request->boolean('profile_required_for_registration') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
+            // Registration & withdrawal behaviour
+            $set('registration_open', $request->boolean('registration_open') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
+            $set('withdrawal_allowed', $request->boolean('withdrawal_allowed') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
+            $set('withdrawal_deadline_days', (string) max(0, (int) $request->input('withdrawal_deadline_days', 7)), SiteSetting::GROUP_REGISTRATION);
+            $set('profile_required_for_registration', $request->boolean('profile_required_for_registration') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
+        });
 
-        if ($request->ajax()) {
+        if ($request->ajax() || $request->expectsJson()) {
             return response()->json(['success' => true, 'message' => 'Settings saved successfully.']);
         }
 
@@ -152,7 +156,7 @@ class SettingsController extends Controller
 
         [$group] = $allowedKeys[$key];
 
-        SiteSetting::set($key, $request->input('value'), $group);
+        $this->mutate($request, fn (callable $set) => $set($key, $request->input('value'), $group));
 
         return response()->json(['success' => true, 'message' => 'Setting saved.']);
     }
@@ -161,11 +165,11 @@ class SettingsController extends Controller
     {
         abort_unless($request->user()->hasRole('super-user'), 403);
         $request->validate(['player_plus_annual_price' => ['required', 'string', 'regex:/^(0|[1-9][0-9]{0,4})(?:\.[0-9]{1,2})?$/D']]);
-        $this->savePlusPrice($request);
+        $this->mutate($request, fn (callable $set) => $this->savePlusPrice($request, $set));
         return response()->json(['success' => true, 'message' => 'Annual price saved for new checkouts. Existing checkout prices are unchanged.']);
     }
 
-    private function savePlusPrice(Request $request): void
+    private function savePlusPrice(Request $request, callable $set): void
     {
         abort_unless($request->user()->hasRole('super-user'), 403);
         $cents = \App\Services\Performance\PlayerPlusService::parseAmount($request->input('player_plus_annual_price'));
@@ -174,7 +178,7 @@ class SettingsController extends Controller
                 .\App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS).' to R'
                 .number_format(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS / 100, 2).' with at most two decimal places.']);
         }
-        SiteSetting::set(\App\Services\Performance\PlayerPlusService::PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
+        $set(\App\Services\Performance\PlayerPlusService::PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
     }
 
     public function storePlusMonthly(Request $request)
@@ -187,9 +191,9 @@ class SettingsController extends Controller
             throw \Illuminate\Validation\ValidationException::withMessages(['player_plus_monthly_price' => 'Enter a monthly price from R5.00 to R99,999.99 with at most two decimal places.']);
         }
         abort_unless(\App\Services\Performance\PlayerPlusService::monthlyReady(), 422, 'Monthly subscriptions need the reviewed database migration before they can be enabled.');
-        DB::transaction(function () use ($cents, $data) {
-            SiteSetting::set(\App\Services\Performance\PlayerPlusService::MONTHLY_PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
-            SiteSetting::set(\App\Services\Performance\PlayerPlusService::MONTHLY_ENABLED_SETTING, $data['player_plus_monthly_enabled'] ? '1' : '0', SiteSetting::GROUP_GENERAL);
+        $this->mutate($request, function (callable $set) use ($cents, $data): void {
+            $set(\App\Services\Performance\PlayerPlusService::MONTHLY_PRICE_SETTING, (string) $cents, SiteSetting::GROUP_GENERAL);
+            $set(\App\Services\Performance\PlayerPlusService::MONTHLY_ENABLED_SETTING, $data['player_plus_monthly_enabled'] ? '1' : '0', SiteSetting::GROUP_GENERAL);
         });
         return response()->json(['success' => true, 'message' => 'Monthly settings saved for new subscriptions. Existing subscription prices and paid terms are unchanged.']);
     }
@@ -207,8 +211,10 @@ class SettingsController extends Controller
 
         $type = $request->input('type');
 
-        SiteSetting::set("player_email_subject_{$type}", $request->input('subject'), SiteSetting::GROUP_EMAIL);
-        SiteSetting::set("player_email_body_{$type}",    $request->input('body'),    SiteSetting::GROUP_EMAIL);
+        $this->mutate($request, function (callable $set) use ($request, $type): void {
+            $set("player_email_subject_{$type}", $request->input('subject'), SiteSetting::GROUP_EMAIL);
+            $set("player_email_body_{$type}",    $request->input('body'),    SiteSetting::GROUP_EMAIL);
+        });
 
         return response()->json(['success' => true, 'message' => 'Email template saved.']);
     }
@@ -223,9 +229,18 @@ class SettingsController extends Controller
             'content' => 'required|string|max:65535',
         ]);
 
-        SiteSetting::set($request->input('key'), $request->input('content'), SiteSetting::GROUP_GENERAL);
+        $this->mutate($request, fn (callable $set) => $set($request->input('key'), $request->input('content'), SiteSetting::GROUP_GENERAL));
 
         return response()->json(['success' => true, 'message' => 'Content saved successfully.']);
+    }
+
+    private function mutate(Request $request, callable $collect): void
+    {
+        $changes = [];
+        $collect(function (string $key, mixed $value, string $group) use (&$changes): void {
+            $changes[$key] = ['value' => $value, 'group' => $group];
+        });
+        $this->settings->apply($request->user(), $changes);
     }
 
     public function create() {}

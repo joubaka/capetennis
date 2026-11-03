@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Wallet\ManualWalletAdjustmentService;
+use App\Services\Wallet\Exceptions\InsufficientFundsException;
 use Illuminate\Http\Request;
 
 class SuperAdminWalletController extends Controller
@@ -16,9 +17,10 @@ class SuperAdminWalletController extends Controller
      */
     public function storeTransaction(Request $request, User $user)
     {
+        abort_unless($request->user()?->hasRole('super-user'), 403);
         $request->validate([
             'type'      => 'required|in:credit,debit',
-            'amount'    => 'required|numeric|min:0.01',
+            'amount'    => ['required', 'numeric', 'min:0.01', 'regex:/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?$/D'],
             'reference' => 'nullable|string|max:255',
             'idempotency_key' => 'required|uuid',
         ]);
@@ -26,23 +28,20 @@ class SuperAdminWalletController extends Controller
         $wallet = $user->wallet ?? $user->wallet()->create();
         $amount = (float) $request->amount;
 
-        if ($request->type === 'debit' && $wallet->balance < $amount) {
-            return back()->withErrors(['amount' => 'Insufficient wallet balance for debit.']);
-        }
-
         $meta = [
             'admin' => auth()->user()->name,
             'reference' => $request->reference,
             'initiated_by' => 'super_admin_wallet_controller',
         ];
 
-        $transaction = app(ManualWalletAdjustmentService::class)->apply(
-            $wallet,
-            $request->type,
-            $amount,
-            $request->string('idempotency_key')->toString(),
-            $meta
-        );
+        try {
+            $transaction = app(ManualWalletAdjustmentService::class)->apply(
+                $wallet, $request->type, $amount,
+                $request->string('idempotency_key')->toString(), $meta
+            );
+        } catch (InsufficientFundsException) {
+            return back()->withErrors(['amount' => 'Insufficient wallet balance for debit.']);
+        }
 
         if ($transaction->wasRecentlyCreated) {
             activity('wallet')

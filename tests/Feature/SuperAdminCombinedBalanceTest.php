@@ -40,7 +40,7 @@ class SuperAdminCombinedBalanceTest extends TestCase
             'evidence' => 'Synthetic saved payout', 'request_token' => Str::uuid(),
             'request_fingerprint' => str_repeat('b', 64)]);
 
-        $this->actingAs($admin)->get(route('backend.superadmin.workspace', ['finance_year' => '2026']))
+        $this->actingAs($admin)->get(route('backend.superadmin.workspace', ['tab' => 'finance', 'finance_year' => '2026']))
             ->assertOk()
             ->assertViewHas('financeSummary', fn ($summary) =>
                 $summary['total_paid_out'] === 130.0 && $summary['balance'] === -30.0)

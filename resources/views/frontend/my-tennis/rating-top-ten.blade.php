@@ -17,8 +17,21 @@
   @if($ratingTopTen['as_of'])<p class="small text-muted">Saved through {{ $ratingTopTen['as_of'] }}.@if($ratingTopTen['stale']) Latest saved estimates; an update is pending.@endif</p>@endif
   @if($ratingTopTen['reason'])<p role="status">{{ $ratingTopTen['reason'] }}</p>@endif
   @if(!($ratingTopTen['can_browse'] ?? false))
+    <h4 class="h6">Your age-group Top 10</h4>
+    <p class="small text-muted">Overall CTR · {{ $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable' }} · {{ \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable' }}. Only comparable ratings from published standings are included.</p>
+    @if($ratingTopTen['selected_age'] === 'unknown')
+      <p class="small text-muted">A valid birth date is needed to show your player's age-group Top 10.</p>
+    @else
+      <ol class="list-group list-group-flush mb-4" aria-label="Your age-group Top 10 ratings" data-plus-age-top-ten>
+        @forelse($ratingTopTen['lists']['overall']['players'] ?? [] as $member)
+          <li class="list-group-item d-flex align-items-start gap-2" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif>
+            <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif</span><strong class="text-nowrap">{{ number_format($member['score'], 1) }} CTR</strong>
+          </li>
+        @empty<li class="list-group-item text-muted">No comparable published-player ratings available for this age group.</li>@endforelse
+      </ol>
+    @endif
     <h4 class="h6">Check a player's rating</h4>
-    <p class="small text-muted">Search by name for an eligible published player's Overall CTR. Results appear alphabetically, with up to 10 matches.</p>
+    <p class="small text-muted">Search by name, then choose one player to view their Overall CTR. Up to 10 matching names appear alphabetically.</p>
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="d-flex flex-wrap gap-2 mb-3">
       @foreach(['month', 'scope', 'scale'] as $historyFilter)<input type="hidden" name="{{ $historyFilter }}" value="{{ $ratingHistory[$historyFilter] ?? '' }}">@endforeach
       <label class="visually-hidden" for="ctr-player-search">Player name</label>
@@ -28,9 +41,15 @@
     @if(mb_strlen($ratingTopTen['search']['query']) >= 2)
       <ul class="list-unstyled" aria-label="Player rating search results">
         @forelse($ratingTopTen['search']['players'] as $match)
-          <li class="border-top py-2"><strong>{{ $match['name'] }}</strong> · {{ number_format($match['score'], 1) }} CTR <span class="small text-muted">· {{ $match['confidence'] }} confidence</span></li>
+          @php
+            $searchQuery = array_intersect_key($ratingHistory, array_flip(['month', 'scope', 'scale'])) + ['rating_search' => $ratingTopTen['search']['query'], 'rating_search_player' => $match['id']];
+          @endphp
+          <li class="border-top py-2 d-flex flex-wrap align-items-center gap-2"><strong class="text-break">{{ $match['name'] }}</strong><a class="btn btn-sm btn-outline-primary" style="min-height:44px" href="{{ route('my.tennis.rating', ['player' => $ratingPlayer->id] + $searchQuery) }}" data-rating-link>View rating<span class="visually-hidden"> for {{ $match['name'] }}</span></a></li>
         @empty<li class="small text-muted">No comparable published-player rating found. Try a different name.</li>@endforelse
       </ul>
+    @endif
+    @if($match = $ratingTopTen['search']['selected'] ?? null)
+      <p class="alert alert-info" role="status" data-rating-search-result><strong>{{ $match['name'] }}</strong> · {{ number_format($match['score'], 1) }} Overall CTR <span class="small">· {{ $match['confidence'] }} confidence</span></p>
     @endif
   @else
   <h4 class="h6">Explore ratings · Full list</h4>

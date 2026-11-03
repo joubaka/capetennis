@@ -219,7 +219,7 @@ class PlayerPlusMembershipTest extends TestCase
         $this->assertSame((string) $order->player_id, $fields['custom_int2']);
         $this->assertSame((string) $order->user_id, $fields['custom_int4']);
         $this->assertSame((string) $order->id, $fields['custom_int5']);
-        $this->assertSame(route('player-plus.orders.show', $order), $fields['return_url']);
+        $this->assertSame(route('player-plus.orders.return', $order), $fields['return_url']);
         $this->assertArrayNotHasKey('custom_int1', $fields);
         $this->assertArrayNotHasKey('custom_int3', $fields);
         $signature = $fields['signature'];

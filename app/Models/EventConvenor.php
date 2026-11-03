@@ -13,7 +13,7 @@ class EventConvenor extends Model
     protected static function booted(): void
     {
         $guard = function (self $director) {
-            if (EventPayout::where('convenor_id', $director->id)->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->exists()) {
+            if (EventPayout::where('convenor_id', $director->id)->exists()) {
                 throw \Illuminate\Validation\ValidationException::withMessages(['convenor' => 'This director has recorded payments and must remain attached to the event.']);
             }
         };

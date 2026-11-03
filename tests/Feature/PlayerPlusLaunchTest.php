@@ -188,6 +188,8 @@ class PlayerPlusLaunchTest extends TestCase
 
     public function test_purchase_requires_current_disclosure_and_rejects_changed_quote_without_creating_order(): void
     {
+        config(['services.payfast.sandbox' => true, 'services.payfast.sandbox_id' => 'synthetic-plus-merchant',
+            'services.payfast.sandbox_key' => 'synthetic-plus-key', 'services.payfast.passphrase_sandbox' => 'synthetic-plus-passphrase']);
         $payer = User::factory()->create(); $player = Player::factory()->create();
         $url = route('player-plus.store', $player);
         $this->actingAs($payer)->post($url, ['request_token' => (string) Str::uuid(), 'confirm' => '1'])->assertSessionHasErrors(['terms_version', 'quoted_price_cents']);
@@ -196,7 +198,7 @@ class PlayerPlusLaunchTest extends TestCase
         $this->post($url, $this->purchaseData())->assertSessionHasErrors('membership');
         $this->assertDatabaseCount('player_plus_orders', 0);
         $data = $this->purchaseData(59900);
-        $this->post($url, $data)->assertRedirect();
+        $this->post($url, $data)->assertOk()->assertViewIs('frontend.player-plus.launch');
         $order = PlayerPlusOrder::sole();
         $this->assertSame(59900, $order->price_cents);
         $event = AuditEvent::where('action', 'player-plus.purchase-details-accepted')->sole();
@@ -234,6 +236,50 @@ class PlayerPlusLaunchTest extends TestCase
         $this->get(route('player-plus.orders.index'))->assertOk()->assertSee('no Player Plus orders');
         $this->get(route('player-plus.orders.show', 123))->assertNotFound();
         $this->post(route('player-plus.store', $player), $this->purchaseData())->assertNotFound();
+    }
+
+    public function test_purchase_page_prioritises_available_plan_and_keeps_explicit_unchecked_consents(): void
+    {
+        $payer = User::factory()->create();
+        $player = Player::factory()->create(['name' => 'Purchase QA', 'surname' => 'Player']);
+        SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '0');
+        $response = $this->actingAs($payer)->get(route('player-plus.player', $player))->assertOk()
+            ->assertSee('Annual Player Plus')->assertSee('Monthly purchases are currently unavailable')
+            ->assertSee('age-group Top 10')->assertSee('choose one eligible published player')
+            ->assertDontSee('R69.00')->assertDontSee('data-player-plus-pricing', false);
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $forms = $xpath->query('//*[@data-plus-player-page]//form');
+        $this->assertSame(1, $forms->length);
+        $form = $forms->item(0);
+        foreach (['confirm', 'recurring_consent'] as $name) {
+            $inputs = $xpath->query('.//input[@name="'.$name.'"]', $form);
+            $this->assertSame(1, $inputs->length);
+            $this->assertTrue($inputs->item(0)->hasAttribute('required'));
+            $this->assertFalse($inputs->item(0)->hasAttribute('checked'));
+            $this->assertSame(1, $xpath->query('.//label[@for="'.$inputs->item(0)->getAttribute('id').'"]', $form)->length);
+        }
+        foreach (['request_token', 'terms_version', '_token'] as $name) $this->assertSame(1, $xpath->query('.//input[@name="'.$name.'"]', $form)->length);
+        $this->assertSame('annual_recurring', $xpath->query('.//input[@name="plan"]', $form)->item(0)->getAttribute('value'));
+        $this->assertSame('49900', $xpath->query('.//input[@name="quoted_price_cents"]', $form)->item(0)->getAttribute('value'));
+        $this->assertLessThan(strpos($response->getContent(), 'class="pp-purchase"'), strpos($response->getContent(), 'class="pp-sponsor-note"'));
+        $this->assertDatabaseCount('player_plus_orders', 0);
+    }
+
+    public function test_purchase_page_validation_errors_are_visible_and_do_not_preselect_consent(): void
+    {
+        $payer = User::factory()->create(); $player = Player::factory()->create(['userId' => $payer->id]);
+        $this->history(['reason' => null, 'stale' => false, 'series' => []]);
+        $response = $this->actingAs($payer)->withSession(['errors' => (new \Illuminate\Support\ViewErrorBag)->put('default', new \Illuminate\Support\MessageBag([
+            'confirm' => 'Confirm the purchase details.', 'recurring_consent' => 'Authorise recurring payments.',
+        ]))])->get(route('player-plus.player', $player))->assertOk()->assertSee('Please review your checkout details')
+            ->assertSee('aria-describedby="pp-annual-confirm-error"', false)->assertSee('aria-describedby="pp-annual-recurring-error"', false);
+        $document = new \DOMDocument;
+        $document->loadHTML($response->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(0, $xpath->query('//*[@data-plus-player-page]//input[@type="checkbox"][@checked]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-plus-readiness]/following::form[contains(@class, "pp-purchase")]')->length);
     }
 
     public function test_readiness_exposes_only_availability_to_currently_linked_accounts(): void

@@ -7,17 +7,25 @@
 @section('title', 'Super Admin Dashboard')
 
 @section('vendor-style')
+@if($selectedTab === 'audit')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-bs5/datatables.bootstrap5.css') }}">
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.css') }}">
+@endif
+@if($selectedTab === 'settings')
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/typography.css') }}" />
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/katex.css') }}" />
 <link rel="stylesheet" href="{{ asset('assets/vendor/libs/quill/editor.css') }}" />
+@endif
 @endsection
 
 @section('vendor-script')
+@if($selectedTab === 'audit')
 <script src="{{ asset('assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js') }}"></script>
+@endif
+@if($selectedTab === 'settings')
 <script src="{{ asset('assets/vendor/libs/quill/katex.js') }}"></script>
 <script src="{{ asset('assets/vendor/libs/quill/quill.js') }}"></script>
+@endif
 @endsection
 
 @section('page-style')
@@ -47,7 +55,12 @@
   @media (max-width: 1199.98px) { .sa-kpi-grid { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 991.98px) { .sa-tabs-wrap { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; } #sa-main-tabs { flex-wrap: nowrap !important; min-width: max-content; } }
   @media (max-width: 767.98px) { .sa-kpi-grid, .sa-status-grid { grid-template-columns: repeat(2, 1fr); } .sa-action-grid { grid-template-columns: 1fr; } }
-  @media (max-width: 419.98px) { .sa-kpi-grid, .sa-status-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 767.98px) {
+    .sa-main-card > .tab-content, #sa-settings-form > .tab-content { padding: 0; }
+    #sa-settings-form .card-body { padding: 0 .75rem .75rem; }
+    #sa-settings-form .card-header { padding: .75rem; }
+  }
+  @media (max-width: 419.98px) { .sa-kpi { padding: .75rem; } .sa-kpi-meta { position: static; display: block; width: fit-content; margin-bottom: .4rem; } }
 </style>
 @endsection
 
@@ -56,14 +69,14 @@
 @include('backend.partials.operational-controls')
 
 {{-- ═══════════════ PAGE HEADER ═══════════════ --}}
-@php $totalPending = $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count(); @endphp
+@php $totalPending = $pendingWithdrawals; @endphp
 <div class="sa-shell">
 <x-backend.page-header title="Super Admin Control Centre" eyebrow="Administration" subtitle="Operations, finance, access and platform health." icon="ti-shield-check">
   <x-slot:actions>
       @if($totalPending > 0)
-        <button class="btn btn-danger btn-sm" type="button" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()">
+        <a class="btn btn-danger btn-sm"  href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals']) }}">
           <i class="ti ti-alert-circle me-1"></i>{{ $totalPending }} refund{{ $totalPending === 1 ? '' : 's' }} need attention
-        </button>
+        </a>
       @else
         <span class="badge bg-label-success px-3 py-2"><i class="ti ti-circle-check me-1"></i>No urgent refunds</span>
       @endif
@@ -77,91 +90,94 @@
   <a href="{{ url('backend/player') }}" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-success"><i class="ti ti-user-check"></i></span><span class="badge bg-label-success sa-kpi-meta">+{{ $newPlayersThisWeek }} wk</span><div class="sa-kpi-value">{{ number_format($totalPlayers) }}</div><div class="sa-kpi-label">Player profiles</div></a>
   <a href="{{ route('backend.dashboard') }}#tab-events" class="sa-kpi text-decoration-none"><span class="sa-kpi-icon bg-label-info"><i class="ti ti-calendar-event"></i></span><span class="badge bg-label-secondary sa-kpi-meta">{{ number_format($totalEvents) }} total</span><div class="sa-kpi-value">{{ number_format($activeEvents) }}</div><div class="sa-kpi-label">Active events</div></a>
   <div class="sa-kpi"><span class="sa-kpi-icon bg-label-warning"><i class="ti ti-ticket"></i></span><span class="badge bg-label-info sa-kpi-meta">+{{ $recentRegistrations }} 30d</span><div class="sa-kpi-value">{{ number_format($totalRegistrations) }}</div><div class="sa-kpi-label">Registrations</div></div>
-  <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-withdrawals')).show()"><span class="sa-kpi-icon {{ $totalPending > 0 ? 'bg-label-danger' : 'bg-label-success' }}"><i class="ti ti-cash-banknote"></i></span><div class="sa-kpi-value {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div><div class="sa-kpi-label">Pending refunds</div></button>
-  <button type="button" class="sa-kpi text-start" onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-agreements')).show()"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-file-certificate"></i></span>@if($agreementStats['pending_players'] > 0)<span class="badge bg-label-warning sa-kpi-meta">{{ number_format($agreementStats['pending_players']) }} pending</span>@endif<div class="sa-kpi-value">{{ number_format($agreementStats['total_acceptances']) }}</div><div class="sa-kpi-label">Conduct accepted</div></button>
+  <a class="sa-kpi text-start"  href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals']) }}"><span class="sa-kpi-icon {{ $totalPending > 0 ? 'bg-label-danger' : 'bg-label-success' }}"><i class="ti ti-cash-banknote"></i></span><div class="sa-kpi-value {{ $totalPending > 0 ? 'text-danger' : '' }}">{{ $totalPending }}</div><div class="sa-kpi-label">Pending refunds</div></a>
+  <a class="sa-kpi text-start"  href="{{ route('backend.superadmin.workspace', ['tab' => 'agreements']) }}"><span class="sa-kpi-icon bg-label-primary"><i class="ti ti-file-certificate"></i></span>@if($agreementStats['pending_players'] > 0)<span class="badge bg-label-warning sa-kpi-meta">{{ number_format($agreementStats['pending_players']) }} pending</span>@endif<div class="sa-kpi-value">{{ number_format($agreementStats['total_acceptances']) }}</div><div class="sa-kpi-label">Conduct accepted</div></a>
 </div>
 
 
 {{-- ═══════════════ MAIN TABS ═══════════════ --}}
 <div class="card sa-main-card">
   <div class="card-header p-0 border-bottom-0 sa-tabs-wrap">
-    <ul class="nav nav-tabs card-header-tabs px-3 pt-2 flex-wrap" id="sa-main-tabs" role="tablist">
+    <ul class="nav nav-tabs card-header-tabs px-3 pt-2 flex-wrap" id="sa-main-tabs" aria-label="Administration workspaces">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="sa-tab-overview" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-overview" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'overview' ? 'active' : '' }}" id="sa-tab-overview"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'overview']) }}" @if($selectedTab === 'overview') aria-current="page" @endif>
           <i class="ti ti-layout-dashboard me-1 text-primary"></i>Overview
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-finance" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-finance" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'finance' ? 'active' : '' }}" id="sa-tab-finance"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'finance']) }}" @if($selectedTab === 'finance') aria-current="page" @endif>
           <i class="ti ti-report-money me-1 text-warning"></i>Finance
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-withdrawals" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-withdrawals" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'withdrawals' ? 'active' : '' }}" id="sa-tab-withdrawals"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals']) }}" @if($selectedTab === 'withdrawals') aria-current="page" @endif>
           <i class="ti ti-cash-banknote me-1 text-danger"></i>Withdrawals
           @if($totalPending > 0)
             <span class="badge bg-danger ms-1">{{ $totalPending }}</span>
           @endif
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-agreements" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-agreements" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'agreements' ? 'active' : '' }}" id="sa-tab-agreements"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'agreements']) }}" @if($selectedTab === 'agreements') aria-current="page" @endif>
           <i class="ti ti-file-certificate me-1 text-primary"></i>Agreements
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-players" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-players" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'players' ? 'active' : '' }}" id="sa-tab-players"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'players']) }}" @if($selectedTab === 'players') aria-current="page" @endif>
           <i class="ti ti-alert-triangle me-1 text-warning"></i>Players
-          @if($playersNeedingAttention->count() > 0)
-            <span class="badge bg-warning text-dark ms-1">{{ $playersNeedingAttention->count() }}</span>
+          @if($playersAttentionCount > 0)
+            <span class="badge bg-warning text-dark ms-1">{{ number_format($playersAttentionCount) }}</span>
           @endif
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-audit" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-audit" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'audit' ? 'active' : '' }}" id="sa-tab-audit"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'audit']) }}" @if($selectedTab === 'audit') aria-current="page" @endif>
           <i class="ti ti-history me-1 text-secondary"></i>Audit &amp; Activity
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-mails" data-bs-toggle="tab" data-bs-target="#sa-pane-mails" type="button" role="tab"><i class="ti ti-mail me-1"></i>Mail history</button>
+        <a class="nav-link {{ $selectedTab === 'mails' ? 'active' : '' }}" id="sa-tab-mails" href="{{ route('backend.superadmin.workspace', ['tab' => 'mails']) }}" @if($selectedTab === 'mails') aria-current="page" @endif><i class="ti ti-mail me-1"></i>Mail history</a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-settings" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-settings" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'settings' ? 'active' : '' }}" id="sa-tab-settings"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'settings']) }}" @if($selectedTab === 'settings') aria-current="page" @endif>
           <i class="ti ti-settings me-1 text-secondary"></i>Settings
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-wallets" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-wallets" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'wallets' ? 'active' : '' }}" id="sa-tab-wallets"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'wallets']) }}" @if($selectedTab === 'wallets') aria-current="page" @endif>
           <i class="ti ti-wallet me-1 text-success"></i>Wallets
-        </button>
+        </a>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="sa-tab-disciplinary" data-bs-toggle="tab"
-                data-bs-target="#sa-pane-disciplinary" type="button" role="tab">
+        <a class="nav-link {{ $selectedTab === 'disciplinary' ? 'active' : '' }}" id="sa-tab-disciplinary"
+                href="{{ route('backend.superadmin.workspace', ['tab' => 'disciplinary']) }}" @if($selectedTab === 'disciplinary') aria-current="page" @endif>
           <i class="ti ti-gavel me-1 text-danger"></i>Disciplinary
-          @if($disciplinaryStats['active_suspensions'] > 0)
-            <span class="badge bg-danger ms-1">{{ $disciplinaryStats['active_suspensions'] }}</span>
+          @if($activeSuspensionCount > 0)
+            <span class="badge bg-danger ms-1">{{ $activeSuspensionCount }}</span>
           @endif
-        </button>
+        </a>
       </li>
     </ul>
   </div>
 
   <div class="tab-content">
-    <div class="tab-pane fade p-3" id="sa-pane-mails" role="tabpanel">
+    @if($selectedTab === 'mails')
+    <div class="tab-pane show active p-3" id="sa-pane-mails" role="region" aria-labelledby="sa-tab-mails">
       @include('backend.superadmin.partials.mail-history')
     </div>
+    @endif
 
     {{-- ══ TAB: OVERVIEW ══ --}}
-    <div class="tab-pane fade show active p-3" id="sa-pane-overview" role="tabpanel">
+    @if($selectedTab === 'overview')
+    <div class="tab-pane show active p-3" id="sa-pane-overview" role="region" aria-labelledby="sa-tab-overview">
 
       {{-- Profile Status compact strip --}}
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -202,10 +218,10 @@
                 <a href="{{ url('backend/league') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-trophy me-1"></i>League
                 </a>
-                <button type="button" class="sa-action"
-                        onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-settings')).show()">
+                <a class="sa-action"
+                         href="{{ route('backend.superadmin.workspace', ['tab' => 'settings']) }}">
                   <i class="ti ti-settings me-1"></i>Site Settings
-                </button>
+                </a>
                 <a href="{{ url('backend/eventPhoto') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-photo me-1"></i>Photos
                 </a>
@@ -221,13 +237,13 @@
                 <a href="{{ route('superadmin.api-integrations.index') }}" class="sa-action text-decoration-none">
                   <i class="ti ti-plug-connected me-1"></i>API Connections
                 </a>
-                <button type="button" class="sa-action"
-                        onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('sa-tab-disciplinary')).show()">
+                <a class="sa-action"
+                         href="{{ route('backend.superadmin.workspace', ['tab' => 'disciplinary']) }}">
                   <i class="ti ti-gavel me-1"></i>Disciplinary
-                  @if($disciplinaryStats['active_suspensions'] > 0)
-                    <span class="badge bg-danger ms-1">{{ $disciplinaryStats['active_suspensions'] }}</span>
+                  @if($activeSuspensionCount > 0)
+                    <span class="badge bg-danger ms-1">{{ $activeSuspensionCount }}</span>
                   @endif
-                </button>
+                </a>
               </div>
               </div>
             <div class="card-footer">
@@ -265,14 +281,16 @@
       </div>
 
     </div>{{-- /overview --}}
+    @endif
 
 
     {{-- ══ TAB: FINANCE ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-finance" role="tabpanel">
+    @if($selectedTab === 'finance')
+    <div class="tab-pane show active p-3" id="sa-pane-finance" role="region" aria-labelledby="sa-tab-finance">
       <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
         <span class="text-muted small"><i class="ti ti-filter me-1"></i>Year:</span>
         @foreach($financeYears as $yr)
-          <a href="{{ request()->fullUrlWithQuery(['finance_year' => $yr, 'tab' => 'finance']) }}"
+          <a href="{{ route('backend.superadmin.workspace', ['tab' => 'finance', 'finance_year' => $yr]) }}"
              class="btn btn-sm {{ $yr == $financeYear ? 'btn-warning' : 'btn-outline-secondary' }}">
             {{ $yr }}
           </a>
@@ -376,11 +394,16 @@
           </table>
         </div>
       </div>
+      <p class="small text-muted mt-3">Totals cover the full selected year; the table shows one page of events.</p>
+      {{ $financeEvents->links() }}
     </div>{{-- /finance --}}
+    @endif
 
 
     {{-- ══ TAB: WITHDRAWALS ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-withdrawals" role="tabpanel">
+    @if($selectedTab === 'withdrawals')
+    <div class="tab-pane show active p-3" id="sa-pane-withdrawals" role="region" aria-labelledby="sa-tab-withdrawals">
+      <p class="small text-muted">Review one refund queue at a time. Individual and team records have separate pagination; totals cover the complete queue.</p>
 
       @if(session('success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -398,15 +421,15 @@
       <div class="d-flex gap-2 flex-wrap mb-4">
         <span class="badge bg-danger fs-6 px-3 py-2">
           <i class="ti ti-clock me-1"></i>
-          {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }} Pending Bank Refunds
+          {{ $pendingWithdrawals }} Pending Bank Refunds
         </span>
         <span class="badge bg-success fs-6 px-3 py-2">
           <i class="ti ti-check me-1"></i>
-          {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }} Completed Bank Refunds
+          {{ $completedRefundCount }} Completed Bank Refunds
         </span>
         <span class="badge bg-info fs-6 px-3 py-2">
           <i class="ti ti-wallet me-1"></i>
-          {{ $withdrawalWalletRefunds->count() }} Wallet Withdrawals
+          {{ $walletRefundCount }} Wallet Withdrawals
         </span>
         <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-sm btn-outline-secondary ms-auto">
           <i class="ti ti-external-link me-1"></i>Full Refunds Page
@@ -416,40 +439,41 @@
         </a>
       </div>
 
-      <ul class="nav nav-pills mb-3" id="sa-withdrawal-tabs" role="tablist">
+      <ul class="nav nav-pills mb-3" id="sa-withdrawal-tabs" aria-label="Refund queues">
         <li class="nav-item" role="presentation">
-          <button class="nav-link active" id="sa-wtab-pending" data-bs-toggle="pill"
-                  data-bs-target="#sa-wpane-pending" type="button" role="tab">
+          <a class="nav-link {{ $withdrawalTab === 'pending' ? 'active' : '' }}" id="sa-wtab-pending"
+                  href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals', 'withdrawal_tab' => 'pending']) }}">
             <i class="ti ti-clock me-1"></i>Pending Bank Refunds
-            @if($withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() > 0)
+            @if($pendingWithdrawals > 0)
               <span class="badge bg-danger ms-1">
-                {{ $withdrawalPendingRefunds->count() + $withdrawalPendingTeamRefunds->count() }}
+                {{ $pendingWithdrawals }}
               </span>
             @endif
-          </button>
+          </a>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="sa-wtab-completed" data-bs-toggle="pill"
-                  data-bs-target="#sa-wpane-completed" type="button" role="tab">
+          <a class="nav-link {{ $withdrawalTab === 'completed' ? 'active' : '' }}" id="sa-wtab-completed"
+                  href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals', 'withdrawal_tab' => 'completed']) }}">
             <i class="ti ti-check me-1"></i>Completed Bank
             <span class="badge bg-label-success ms-1">
-              {{ $withdrawalCompletedRefunds->count() + $withdrawalCompletedTeamRefunds->count() }}
+              {{ $completedRefundCount }}
             </span>
-          </button>
+          </a>
         </li>
         <li class="nav-item" role="presentation">
-          <button class="nav-link" id="sa-wtab-wallet" data-bs-toggle="pill"
-                  data-bs-target="#sa-wpane-wallet" type="button" role="tab">
+          <a class="nav-link {{ $withdrawalTab === 'wallet' ? 'active' : '' }}" id="sa-wtab-wallet"
+                  href="{{ route('backend.superadmin.workspace', ['tab' => 'withdrawals', 'withdrawal_tab' => 'wallet']) }}">
             <i class="ti ti-wallet me-1"></i>Wallet Withdrawals
-            <span class="badge bg-label-info ms-1">{{ $withdrawalWalletRefunds->count() }}</span>
-          </button>
+            <span class="badge bg-label-info ms-1">{{ $walletRefundCount }}</span>
+          </a>
         </li>
       </ul>
 
       <div class="tab-content">
 
-        <div class="tab-pane fade show active" id="sa-wpane-pending" role="tabpanel">
-          @if($withdrawalPendingRefunds->isEmpty() && $withdrawalPendingTeamRefunds->isEmpty())
+        @if($withdrawalTab === 'pending')
+        <div class="tab-pane show active" id="sa-wpane-pending" role="region">
+          @if($pendingWithdrawals === 0)
             <div class="alert alert-success border-0 rounded-0 mb-0" role="status">
               <i class="ti ti-check-circle me-1"></i> All clear — no pending bank refunds.
             </div>
@@ -506,9 +530,13 @@
               </tbody>
             </table>
           </div>
+          <div class="mt-3"><p class="small text-muted">Individual bank refunds: {{ $withdrawalPendingRefunds->total() }}</p>{{ $withdrawalPendingRefunds->links() }}</div>
+          <div class="mt-3"><p class="small text-muted">Team bank refunds: {{ $withdrawalPendingTeamRefunds->total() }}</p>{{ $withdrawalPendingTeamRefunds->links() }}</div>
         </div>
+        @endif
 
-        <div class="tab-pane fade" id="sa-wpane-completed" role="tabpanel">
+        @if($withdrawalTab === 'completed')
+        <div class="tab-pane show active" id="sa-wpane-completed" role="region">
           <div class="table-responsive">
             <table class="table table-hover mb-0" id="dt-w-completed">
               <thead class="table-light">
@@ -547,9 +575,13 @@
               </tbody>
             </table>
           </div>
+          <div class="mt-3"><p class="small text-muted">Individual completed refunds: {{ $withdrawalCompletedRefunds->total() }}</p>{{ $withdrawalCompletedRefunds->links() }}</div>
+          <div class="mt-3"><p class="small text-muted">Team completed refunds: {{ $withdrawalCompletedTeamRefunds->total() }}</p>{{ $withdrawalCompletedTeamRefunds->links() }}</div>
         </div>
+        @endif
 
-        <div class="tab-pane fade" id="sa-wpane-wallet" role="tabpanel">
+        @if($withdrawalTab === 'wallet')
+        <div class="tab-pane show active" id="sa-wpane-wallet" role="region">
           <div class="table-responsive">
             <table class="table table-hover mb-0" id="dt-w-wallet">
               <thead class="table-light">
@@ -604,14 +636,18 @@
               </tbody>
             </table>
           </div>
+          <div class="mt-3">{{ $withdrawalWalletRefunds->links() }}</div>
         </div>
+        @endif
 
       </div>
     </div>{{-- /withdrawals --}}
+    @endif
 
 
     {{-- ══ TAB: AGREEMENTS ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-agreements" role="tabpanel">
+    @if($selectedTab === 'agreements')
+    <div class="tab-pane show active p-3" id="sa-pane-agreements" role="region" aria-labelledby="sa-tab-agreements">
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h5 class="mb-0"><i class="ti ti-file-certificate me-2 text-primary"></i>Code of Conduct Agreements</h5>
         <a href="{{ route('backend.agreements.create') }}" class="btn btn-primary btn-sm">
@@ -703,11 +739,14 @@
           </tbody>
         </table>
       </div>
+      <div class="mt-3">{{ $agreements->links() }}</div>
     </div>{{-- /agreements --}}
+    @endif
 
 
     {{-- ══ TAB: PLAYERS ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-players" role="tabpanel">
+    @if($selectedTab === 'players')
+    <div class="tab-pane show active p-3" id="sa-pane-players" role="region" aria-labelledby="sa-tab-players">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="mb-0"><i class="ti ti-alert-triangle me-2 text-warning"></i>Players Needing Profile Update</h5>
         <a href="{{ url('backend/player') }}" class="btn btn-sm btn-outline-warning">View All</a>
@@ -769,17 +808,14 @@
           </tbody>
         </table>
       </div>
-      @if($playersNeedingAttention->count() >= 15)
-        <div class="text-center mt-2">
-          <a href="{{ url('backend/player') }}" class="text-warning">
-            <i class="ti ti-alert-triangle me-1"></i>More players may need attention — View All
-          </a>
-        </div>
-      @endif
+      <p class="small text-muted mt-3">{{ number_format($playersAttentionCount) }} profiles need attention.</p>
+      {{ $playersNeedingAttention->links() }}
     </div>{{-- /players --}}
+    @endif
 
     {{-- ══ TAB: AUDIT & ACTIVITY ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-audit" role="tabpanel">
+    @if($selectedTab === 'audit')
+    <div class="tab-pane show active p-3" id="sa-pane-audit" role="region" aria-labelledby="sa-tab-audit">
       <div class="d-flex justify-content-end px-3 pt-3">
         <a href="{{ route('superadmin.audit.index') }}" class="btn btn-primary btn-sm">
           <i class="ti ti-shield-search me-1"></i>Open full Audit Centre
@@ -920,14 +956,17 @@
         </div>
       </div>
     </div>{{-- /audit --}}
+    @endif
 
 
     {{-- ══ TAB: SETTINGS ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-settings" role="tabpanel">
+    @if($selectedTab === 'settings')
+    <div class="tab-pane show active p-3" id="sa-pane-settings" role="region" aria-labelledby="sa-tab-settings">
+      <div class="d-flex justify-content-end mb-3"><a class="btn btn-outline-secondary btn-sm" href="{{ route('superadmin.audit.index', ['category' => 'business', 'action' => 'settings.updated']) }}"><i class="ti ti-history me-1"></i>Settings change history</a></div>
 
       <div id="sa-settings-toast" class="alert alert-dismissible fade d-none mb-3" role="alert">
         <span id="sa-settings-toast-msg"></span>
-        <button type="button" class="btn-close" aria-label="Close" data-bs-dismiss="alert"></button>
+        <button type="button" class="btn-close" id="sa-settings-toast-close" aria-label="Close"></button>
       </div>
 
       <form action="{{ route('settings.store') }}" method="POST" id="sa-settings-form">
@@ -1245,10 +1284,10 @@
                   </div>
 
                   <div class="col-md-6">
-                    <div class="d-flex align-items-center justify-content-between border rounded p-3 h-100">
+                    <div class="d-flex align-items-center justify-content-between border rounded p-3">
                       <div>
                         <label class="form-label mb-0" for="sa-disciplinary-system-enabled">Disciplinary Case System</label>
-                        <br><small class="text-muted">Allow incident reporting, responses, panel actions, decisions and appeals. Disabling preserves all records and active sanctions.</small>
+                        <br><small class="text-muted">Manage disciplinary cases. Turning off preserves all records and active sanctions.</small>
                       </div>
                       <div class="form-check form-switch ms-3">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
@@ -1259,8 +1298,9 @@
                     </div>
                   </div>
 
-                  <div class="col-md-6">
-                    <div class="border rounded p-3 h-100">
+                  <div class="col-12">
+                    <section class="border rounded p-3" aria-labelledby="sa-plus-settings-heading">
+                      <h6 id="sa-plus-settings-heading">Player Plus purchases &amp; pricing</h6>
                       <label class="form-check form-switch">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch" name="player_rating_membership_enabled" value="1" data-setting-key="player_rating_membership_enabled" @checked(($generalSettings['player_rating_membership_enabled'] ?? '0') === '1')>
                         <span class="form-check-label">Player Plus · accept new purchases</span>
@@ -1275,7 +1315,7 @@
                       <p id="sa-plus-price-status" class="small mt-2" role="status"></p>
                       @include('backend.settings.partials.player-plus-monthly')
                       <a class="d-inline-block py-2" href="{{ route('superadmin.player-plus.index') }}">Review Plus payment issues</a>
-                    </div>
+                    </section>
                   </div>
 
                 </div>
@@ -1487,6 +1527,7 @@
         </div>{{-- /settings tab-content --}}
 
         <div class="mb-4 pt-2">
+          <p class="small text-muted">Switches save immediately. Save All Settings saves the remaining form fields; monthly renewal settings use their own Save monthly settings button.</p>
           <button type="submit" class="btn btn-primary">
             <i class="ti ti-device-floppy me-1"></i> Save All Settings
           </button>
@@ -1495,9 +1536,11 @@
       </form>
 
     </div>{{-- /settings --}}
+    @endif
 
     {{-- ══ TAB: WALLETS ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-wallets" role="tabpanel">
+    @if($selectedTab === 'wallets')
+    <div class="tab-pane show active p-3" id="sa-pane-wallets" role="region" aria-labelledby="sa-tab-wallets">
 
       @if(session('wallet_success'))
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -1507,7 +1550,7 @@
       @endif
 
       <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-3">
-        <h5 class="mb-0"><i class="ti ti-wallet me-2 text-success"></i>All User Wallets</h5>
+        <h5 class="mb-0"><i class="ti ti-wallet me-2 text-success"></i>User Wallets</h5>
         <form method="GET" action="{{ route('backend.superadmin.workspace') }}" class="d-flex flex-column flex-sm-row gap-2" role="search">
           <input type="hidden" name="tab" value="wallets">
           <label for="wallet-search" class="visually-hidden">Search user wallets</label>
@@ -1523,9 +1566,10 @@
         </form>
       </div>
 
+      <p class="small text-muted">Wallets are ordered by balance. Search by name or email to narrow the results.</p>
       @if($walletSearch !== '')
         <p class="text-muted small mb-3">
-          {{ $wallets->count() }} {{ \Illuminate\Support\Str::plural('wallet', $wallets->count()) }} found for
+          {{ $wallets->total() }} {{ \Illuminate\Support\Str::plural('wallet', $wallets->total()) }} found for
           <strong>&ldquo;{{ $walletSearch }}&rdquo;</strong>
         </p>
       @endif
@@ -1588,10 +1632,14 @@
         </table>
       </div>
 
+      <p class="small text-muted mt-3">{{ number_format($wallets->total()) }} matching wallets.</p>
+      {{ $wallets->links() }}
     </div>{{-- /wallets --}}
+    @endif
 
     {{-- ══ TAB: DISCIPLINARY ══ --}}
-    <div class="tab-pane fade p-3" id="sa-pane-disciplinary" role="tabpanel">
+    @if($selectedTab === 'disciplinary')
+    <div class="tab-pane show active p-3" id="sa-pane-disciplinary" role="region" aria-labelledby="sa-tab-disciplinary">
 
       <div class="d-flex align-items-center justify-content-between mb-3">
         <h5 class="mb-0"><i class="ti ti-gavel me-2 text-danger"></i>Disciplinary Overview</h5>
@@ -1617,7 +1665,7 @@
                 <i class="ti ti-ban" style="font-size:1.3rem;color:#ea5455;"></i>
               </span>
               <div>
-                <h4 class="mb-0">{{ number_format($disciplinaryStats['active_suspensions']) }}</h4>
+                <h4 class="mb-0">{{ number_format($activeSuspensionCount) }}</h4>
                 <small class="text-muted">Active Suspensions</small>
               </div>
             </div>
@@ -1787,13 +1835,16 @@
         </div>
       </div>
 
+      <div class="mt-3">{{ $activeSuspensions->links() }}</div>
     </div>{{-- /disciplinary --}}
+    @endif
 
   </div>{{-- /tab-content --}}
 </div>{{-- /main tabs card --}}
 </div>{{-- /.sa-shell --}}
 
 {{-- ── Withdrawal / Refund Detail Modal ───────────────────────────── --}}
+@if($selectedTab === 'audit')
 <div class="modal fade" id="modal-activity-detail" tabindex="-1" aria-labelledby="modal-activity-detail-label" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -1812,8 +1863,10 @@
     </div>
   </div>
 </div>{{-- /#modal-activity-detail --}}
+@endif
 
 {{-- ── Wallet Add Transaction Modal ──────────────────────────────── --}}
+@if($selectedTab === 'wallets')
 <div class="modal fade" id="modal-wallet-add-tx" tabindex="-1" aria-labelledby="modal-wallet-add-tx-label" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -1863,6 +1916,7 @@
     </div>
   </div>
 </div>{{-- /#modal-wallet-add-tx --}}
+@endif
 
 
 </div>
@@ -1872,35 +1926,15 @@
 <script>
 $(function () {
 
-  // ── Withdrawal DataTables (lazy init on tab show) ──────────────
-  var dtWPending = null, dtWCompleted = null, dtWWallet = null;
-
-  $('#sa-tab-withdrawals').on('shown.bs.tab', function () {
-    if (!dtWPending) {
-      dtWPending = $('#dt-w-pending').DataTable({ ordering: true, order: [[6,'asc']], pageLength: 25, language: { emptyTable: '<i class="ti ti-check-circle text-success me-1"></i> No pending bank refunds.' } });
-    }
-  });
-  $('#sa-wtab-completed').on('shown.bs.tab', function () {
-    if (!dtWCompleted) {
-      dtWCompleted = $('#dt-w-completed').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No completed bank refunds.' } });
-    } else { dtWCompleted.columns.adjust().draw(false); }
-  });
-  $('#sa-wtab-wallet').on('shown.bs.tab', function () {
-    if (!dtWWallet) {
-      dtWWallet = $('#dt-w-wallet').DataTable({ ordering: true, order: [[5,'desc']], pageLength: 25, language: { emptyTable: 'No wallet withdrawals found.' } });
-    } else { dtWWallet.columns.adjust().draw(false); }
-  });
-
   // ── Login Audit DataTable (lazy init) ──────────────────────────
-  var dtLoginInit = false;
+  var dtLogin = null;
   function initLoginAudit() {
-    if (!dtLoginInit && !$.fn.DataTable.isDataTable('#dt-login-audit')) {
-      $('#dt-login-audit').DataTable({
+    if (!dtLogin) {
+      dtLogin = $('#dt-login-audit').DataTable({
         ordering: true, order: [[0,'desc']], pageLength: 25,
         columnDefs: [{ targets: 6, orderable: false }]
       });
-      dtLoginInit = true;
-    }
+    } else { dtLogin.columns.adjust().draw(false); }
   }
 
   // ── Activity Log DataTables ────────────────────────────────────
@@ -1925,8 +1959,24 @@ $(function () {
     } else { dtRaw.columns.adjust().draw(false); }
   }
 
+  function initVisibleAudit() {
+    if ($('#sa-pane-login').hasClass('active')) initLoginAudit();
+    if ($('#sa-pane-activity').hasClass('active')) {
+      if ($('#sa-activity-toggle').is(':checked')) {
+        $('#sa-activity-raw-wrap').addClass('d-none');
+        $('#sa-activity-grouped-wrap').removeClass('d-none');
+        initGrouped();
+      } else {
+        $('#sa-activity-grouped-wrap').addClass('d-none');
+        $('#sa-activity-raw-wrap').removeClass('d-none');
+        initRaw();
+      }
+    }
+  }
+
   // ── Activity Detail Modal ───────────────────────────────────────
-  var $detailModal = new bootstrap.Modal(document.getElementById('modal-activity-detail'));
+  var detailElement = document.getElementById('modal-activity-detail');
+  var $detailModal = detailElement ? new bootstrap.Modal(detailElement) : null;
   $(document).on('click', '.btn-activity-detail', function () {
     var log   = $(this).data('log');
     var desc  = $(this).data('desc');
@@ -1980,19 +2030,14 @@ $(function () {
     $detailModal.show();
   });
 
-  $('#sa-tab-audit').on('shown.bs.tab', function () {
-    if ($('#sa-pane-login').hasClass('active')) initLoginAudit();
-    if ($('#sa-pane-activity').hasClass('active')) initGrouped();
-  });
-  $('#sa-tab-login').on('shown.bs.tab', function () { initLoginAudit(); });
-  $('#sa-tab-activity').on('shown.bs.tab', function () { initGrouped(); });
+  $('#sa-tab-login, #sa-tab-activity').on('shown.bs.tab', initVisibleAudit);
 
   // ── Grouped / Raw toggle ────────────────────────────────────────
   $('#sa-activity-toggle').on('change', function () {
     if ($(this).is(':checked')) {
       $('#sa-activity-raw-wrap').addClass('d-none');
       $('#sa-activity-grouped-wrap').removeClass('d-none');
-      if (dtGrouped) dtGrouped.columns.adjust().draw(false);
+      initGrouped();
     } else {
       $('#sa-activity-grouped-wrap').addClass('d-none');
       $('#sa-activity-raw-wrap').removeClass('d-none');
@@ -2036,15 +2081,17 @@ $(function () {
                    || $('input[name="_token"]').first().val();
 
   $('#sa-plus-price-save').on('click', function () {
+    if (saSavingAll) return;
     var button = $(this);
     var input = document.getElementById('sa-plus-price');
     if (!input.reportValidity()) return;
+    saPendingSettingsSaves++;
     button.prop('disabled', true);
     $.ajax({url: '{{ route('settings.player-plus-price') }}', method: 'POST',
       data: {_token: saToggleToken, player_plus_annual_price: input.value},
       success: function (response) { $('#sa-plus-price-status').text(response.message); },
       error: function (xhr) { $('#sa-plus-price-status').text(xhr.responseJSON?.errors?.player_plus_annual_price?.[0] || 'The annual price could not be saved.'); },
-      complete: function () { button.prop('disabled', false); }
+      complete: function () { saPendingSettingsSaves--; button.prop('disabled', false); }
     });
   });
 
@@ -2062,11 +2109,19 @@ $(function () {
     }
   }
 
+  $('#sa-settings-toast-close').on('click', function () {
+    $('#sa-settings-toast').removeClass('show').addClass('d-none');
+  });
+
+  var saPendingSettingsSaves = 0;
+  var saSavingAll = false;
   $(document).on('change', '.sa-toggle-setting', function () {
     var key   = $(this).data('setting-key');
     var value = $(this).is(':checked') ? '1' : '0';
     var $el   = $(this);
 
+    if (saSavingAll) return;
+    saPendingSettingsSaves++;
     $el.prop('disabled', true);
 
     $.ajax({
@@ -2083,6 +2138,7 @@ $(function () {
         $el.prop('checked', value === '0');
       },
       complete: function () {
+        saPendingSettingsSaves--;
         $el.prop('disabled', false);
       }
     });
@@ -2092,6 +2148,8 @@ $(function () {
   var saTemplateUrl = '{{ route('settings.store.template') }}';
 
   $(document).on('click', '.sa-save-template', function () {
+    if (saSavingAll) return;
+    saPendingSettingsSaves++;
     var $btn       = $(this);
     var type       = $btn.data('type');
     var subjectId  = $btn.data('subject-id');
@@ -2114,6 +2172,7 @@ $(function () {
         saShowToast(msg, true);
       },
       complete: function () {
+        saPendingSettingsSaves--;
         $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save Template');
       }
     });
@@ -2152,22 +2211,27 @@ $(function () {
   // ── Settings form — AJAX save ─────────────────────────────────
   $('#sa-settings-form').on('submit', function (e) {
     e.preventDefault();
+    if (saSavingAll) return;
+    if (saPendingSettingsSaves > 0) {
+      saShowToast('Wait for the pending settings changes to finish saving, then save the form.', true);
+      return;
+    }
     var $form   = $(this);
     var $btn    = $form.find('button[type="submit"]');
-    var $toast  = $('#sa-settings-toast');
-    var $msg    = $('#sa-settings-toast-msg');
 
-    $btn.prop('disabled', true).html('<i class="ti ti-loader ti-spin me-1"></i> Saving…');
+    var payload = $form.serialize();
+    var $controls = $form.find(':input:enabled');
+    saSavingAll = true;
+    $controls.prop('disabled', true);
+    $btn.html('<i class="ti ti-loader ti-spin me-1"></i> Saving…');
 
     $.ajax({
       url:     $form.attr('action'),
       method:  'POST',
-      data:    $form.serialize(),
+      data:    payload,
       headers: { 'X-Requested-With': 'XMLHttpRequest' },
       success: function (res) {
-        $toast.removeClass('d-none alert-danger').addClass('alert-success show');
-        $msg.text(res.message || 'Settings saved successfully.');
-        setTimeout(function () { $toast.removeClass('show').addClass('d-none'); }, 4000);
+        saShowToast(res.message || 'Settings saved successfully.', false);
       },
       error: function (xhr) {
         var errs = '';
@@ -2176,47 +2240,41 @@ $(function () {
         } else {
           errs = (xhr.responseJSON && xhr.responseJSON.message) || 'An error occurred. Please try again.';
         }
-        $toast.removeClass('d-none alert-success').addClass('alert-danger show');
-        $msg.text(errs);
+        saShowToast(errs, true);
       },
       complete: function () {
+        saSavingAll = false;
+        $controls.prop('disabled', false);
         $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save All Settings');
       }
     });
   });
 
-  // Open Settings tab if URL hash is #settings
-  if (window.location.hash === '#settings') {
-    var el = document.getElementById('sa-tab-settings');
-    if (el) bootstrap.Tab.getOrCreateInstance(el).show();
+  // Preserve local subtab context without loading another workspace's records.
+  function saLocalTabs(group, prefix, parameter, allowed) {
+    if (!document.getElementById(group)) return;
+    $('#' + group + ' [data-bs-toggle]').on('shown.bs.tab', function (event) {
+      var name = event.target.id.slice(prefix.length);
+      if (!allowed.includes(name)) return;
+      var url = new URL(window.location.href);
+      url.searchParams.set(parameter, name);
+      window.history.replaceState(null, '', url);
+    });
+    var requested = new URLSearchParams(window.location.search).get(parameter);
+    if (allowed.includes(requested)) {
+      var button = document.getElementById(prefix + requested);
+      if (button) bootstrap.Tab.getOrCreateInstance(button).show();
+    }
   }
+  saLocalTabs('sa-settings-tabs', 'sa-stab-', 'settings_tab', ['email', 'registration', 'payfast', 'access']);
+  saLocalTabs('sa-audit-tabs', 'sa-tab-', 'audit_tab', ['login', 'activity']);
 
-  // Open a requested legacy workspace tab from the URL.
-  (function () {
-    var params = new URLSearchParams(window.location.search);
-    var allowedTabs = ['overview', 'finance', 'withdrawals', 'agreements', 'players', 'audit', 'settings', 'wallets', 'disciplinary', 'mails'];
-    var requestedTab = params.get('tab');
-    if (!allowedTabs.includes(requestedTab)) return;
-    var el = document.getElementById('sa-tab-' + requestedTab);
-    if (el) bootstrap.Tab.getOrCreateInstance(el).show();
-  })();
-
-  // ── Wallets DataTable (lazy init on tab show) ─────────────────
-  var dtWallets = null;
-  $('#sa-tab-wallets').on('shown.bs.tab', function () {
-    if (!dtWallets) {
-      dtWallets = $('#dt-wallets').DataTable({
-        ordering:    true,
-        order:       [[2, 'desc']],
-        pageLength:  25,
-        columnDefs:  [{ targets: 4, orderable: false, searchable: false }],
-        language:    { emptyTable: 'No wallets found.' }
-      });
-    } else { dtWallets.columns.adjust().draw(false); }
-  });
+  // Server-selected lists use server pagination; do not search only one page in DataTables.
+  initVisibleAudit();
 
   // ── Add Transaction Modal ──────────────────────────────────────
-  var addTxModal = new bootstrap.Modal(document.getElementById('modal-wallet-add-tx'));
+  var walletModalElement = document.getElementById('modal-wallet-add-tx');
+  var addTxModal = walletModalElement ? new bootstrap.Modal(walletModalElement) : null;
 
   $(document).on('click', '.btn-wallet-add-tx', function () {
     var userId  = $(this).data('user-id');
@@ -2238,10 +2296,9 @@ $(function () {
   // ── Wallet delete confirmation ──────────────────────────────────
 
 
-});
-
 // ── Quill content editors (Code of Conduct & Terms) ──────────────
 (function () {
+  if (!document.getElementById('sa-coc-editor')) return;
   var quillToolbar = [
     [{ 'header': [1, 2, 3, false] }],
     ['bold', 'italic', 'underline'],
@@ -2266,6 +2323,8 @@ $(function () {
                      || $('input[name="_token"]').first().val();
 
   $(document).on('click', '.sa-save-content-btn', function () {
+    if (saSavingAll) return;
+    saPendingSettingsSaves++;
     var $btn     = $(this);
     var key      = $btn.data('key');
     var textarea = document.getElementById($btn.data('textarea'));
@@ -2280,16 +2339,21 @@ $(function () {
       headers:     { 'X-CSRF-TOKEN': saContentToken, 'X-Requested-With': 'XMLHttpRequest' },
       success: function (res) {
         saShowToast(res.message || 'Content saved.', false);
-        $btn.prop('disabled', false).html('<i class="ti ti-check me-1"></i> Saved');
+        $btn.html('<i class="ti ti-check me-1"></i> Saved');
         setTimeout(function () { $btn.html('<i class="ti ti-device-floppy me-1"></i> Save'); }, 2000);
       },
       error: function (xhr) {
         var msg = (xhr.responseJSON && xhr.responseJSON.message) || 'Save failed. Please try again.';
         saShowToast(msg, true);
-        $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save');
+        $btn.html('<i class="ti ti-device-floppy me-1"></i> Save');
+      },
+      complete: function () {
+        saPendingSettingsSaves--;
+        $btn.prop('disabled', false);
       }
     });
   });
 }());
+});
 </script>
 @endsection

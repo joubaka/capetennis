@@ -24,6 +24,10 @@
   #txTable td.text-end { font-variant-numeric: tabular-nums; }
   #txTable { table-layout: fixed; width: 100%; }
   #txTable th, #txTable td { white-space: nowrap; }
+  #registration-payout-table { min-width: 72rem; }
+  #registration-payout-table td { vertical-align: top; }
+  #registration-payout-table td:first-child, #registration-payout-table td.text-end { white-space: nowrap; }
+  #registration-payout-table .payout-correction { min-width: 18rem; max-width: 22rem; white-space: normal; }
 
   /* The horizontal Super Admin submenu is positioned over the page. Keep it
      above the content, but move this page down while it is open so long event
@@ -471,6 +475,8 @@
       <div class="card-body border-bottom bg-light">
         <form method="POST" action="{{ route('superadmin.finances.payout.store', $event) }}">
           @csrf
+          <input type="hidden" name="idempotency_key" value="{{ old('idempotency_key', (string) \Illuminate\Support\Str::uuid()) }}">
+          <p class="small text-muted">Record a payout already made. Saving this evidence does not transfer money.</p>
           <div class="row g-3">
             <div class="col-md-6">
               <label for="payoutRecipient" class="form-label">Recipient</label>
@@ -479,6 +485,7 @@
                 @foreach($convenors as $c)
                   <option value="convenor:{{ $c->id }}"
                           data-convenor-id="{{ $c->id }}"
+                          data-recipient-user-id="{{ $c->user_id }}"
                           data-recipient-name=""
                           @selected((string) old('convenor_id', $defaultConvenor?->id) === (string) $c->id)>
                     {{ $c->user->name ?? 'Unknown' }} (Convenor{{ $c->role ? ' · '.ucfirst($c->role) : '' }})
@@ -487,6 +494,7 @@
                 @foreach($eventAdmins->reject(fn ($admin) => $convenors->contains('user_id', $admin->id)) as $admin)
                   <option value="admin:{{ $admin->id }}"
                           data-convenor-id=""
+                          data-recipient-user-id="{{ $admin->id }}"
                           data-recipient-name="{{ $admin->name }}"
                           @selected(!$defaultConvenor && (string) $defaultAdmin?->id === (string) $admin->id)>
                     {{ $admin->name }} (Event admin)
@@ -495,10 +503,11 @@
               </select>
               <input type="hidden" id="payoutConvenorId" name="convenor_id" value="{{ old('convenor_id', $defaultConvenor?->id) }}">
               <input type="hidden" id="payoutRecipientName" name="recipient_name" value="{{ old('recipient_name', $defaultAdmin?->name) }}">
+              <input type="hidden" id="payoutRecipientUserId" name="recipient_user_id" value="{{ old('recipient_user_id', $defaultConvenor?->user_id ?? $defaultAdmin?->id) }}">
             </div>
             <div class="col-md-2">
               <label for="admin-field-1" class="form-label">Amount (R) <span class="text-danger">*</span></label>
-              <input id="admin-field-1" type="number" name="amount" step="0.01" min="0.01" class="form-control"
+              <input id="admin-field-1" type="number" name="amount" step="0.01" min="0.01" max="99999999.99" class="form-control"
                      value="{{ old('amount', $defaultPayoutAmount > 0 ? number_format($defaultPayoutAmount, 2, '.', '') : '') }}" required>
             </div>
             <div class="col-md-2">
@@ -512,7 +521,7 @@
             </div>
             <div class="col-md-2">
               <label for="admin-field-3" class="form-label">Date</label>
-              <input id="admin-field-3" type="date" name="paid_at" class="form-control" value="{{ old('paid_at', now()->format('Y-m-d')) }}">
+              <input id="admin-field-3" type="date" name="paid_at" class="form-control" value="{{ old('paid_at', now()->format('Y-m-d')) }}" required>
             </div>
             <div class="col-md-4">
               <label for="admin-field-4" class="form-label">Description</label>
@@ -534,7 +543,7 @@
 
     {{-- PAYOUTS TABLE --}}
     <div class="table-responsive">
-      <table class="table table-sm mb-0">
+      <table class="table table-sm mb-0" id="registration-payout-table">
         <thead class="table-light">
           <tr>
             <th>Date</th>
@@ -551,20 +560,34 @@
           @forelse($payoutModels as $payout)
             <tr>
               <td>{{ optional($payout->paid_at)->format('Y-m-d') ?? '—' }}</td>
-              <td class="fw-semibold">{{ $payout->display_name }}</td>
+              <td class="fw-semibold">{{ $payout->recipient_name ?? $payout->convenor?->user?->name ?? '—' }}</td>
               <td>{{ ucfirst(str_replace('_', ' ', $payout->payment_method)) }}</td>
               <td><code>{{ $payout->reference ?? '—' }}</code></td>
-              <td>{{ $payout->description ?? '—' }}</td>
+              <td>{{ $payout->description ?? '—' }}
+                @if($payout->reversal_of_id)
+                  <small class="d-block text-muted">{{ $payout->reversal_reason }}</small>
+                @endif
+              </td>
               <td class="text-end text-danger fw-bold">R {{ number_format($payout->amount, 2) }}</td>
               <td>{{ optional($payout->paidByUser)->name ?? '—' }}</td>
               <td>
-                <form method="POST" action="{{ route('superadmin.finances.payout.destroy', $payout) }}"
-                      onsubmit="return confirm('Delete this payout?')">
-                  @csrf @method('DELETE')
-                  <button type="submit" class="btn btn-icon btn-sm btn-outline-danger" title="Delete" aria-label="Delete">
-                    <i class="ti ti-trash"></i>
-                  </button>
-                </form>
+                @if($payout->reversal)
+                  <span class="badge bg-label-secondary">Corrected by #{{ $payout->reversal->id }}</span>
+                @elseif(in_array($payout->purpose, [null, '', 'registration_payout'], true) && !$payout->settlement_details && $payout->amount > 0)
+                  <details class="payout-correction">
+                    <summary class="text-danger">Correct incorrect record</summary>
+                    <form method="POST" action="{{ route('superadmin.finances.payout.destroy', $payout) }}">
+                      @csrf @method('DELETE')
+                      <p class="small">This appends an opposite accounting entry and keeps the original. It does not return money or reverse a bank transfer. Use only for an incorrectly recorded payout.</p>
+                      <label class="form-label" for="payout-reason-{{ $payout->id }}">Correction reason</label>
+                      <textarea id="payout-reason-{{ $payout->id }}" name="reason" class="form-control" minlength="5" maxlength="1000" required></textarea>
+                      <label class="form-check mt-2"><input class="form-check-input" type="checkbox" name="confirm" value="1" required><span class="form-check-label">I confirm this payout record is incorrect.</span></label>
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Record accounting correction</button>
+                    </form>
+                  </details>
+                @else
+                  <span class="small text-muted">Immutable record</span>
+                @endif
               </td>
             </tr>
           @empty
@@ -938,6 +961,7 @@ if (payoutRecipient) {
     const option = payoutRecipient.options[payoutRecipient.selectedIndex];
     document.getElementById('payoutConvenorId').value = option?.dataset.convenorId || '';
     document.getElementById('payoutRecipientName').value = option?.dataset.recipientName || '';
+    document.getElementById('payoutRecipientUserId').value = option?.dataset.recipientUserId || '';
   };
 
   payoutRecipient.addEventListener('change', syncPayoutRecipient);

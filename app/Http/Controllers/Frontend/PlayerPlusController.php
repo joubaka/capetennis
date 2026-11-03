@@ -65,20 +65,36 @@ class PlayerPlusController extends Controller
             'terms_version' => ['required', \Illuminate\Validation\Rule::in([self::TERMS_VERSION])],
             'quoted_price_cents' => ['required', 'integer', 'min:'.PlayerPlusService::MIN_PRICE_CENTS, 'max:'.PlayerPlusService::MAX_PRICE_CENTS]],
             ['quoted_price_cents.min' => 'Please reload the player membership page to review a supported annual price.']);
-        $order = DB::transaction(function () use ($service, $player, $request, $data) {
+        [$order, $handoff] = DB::transaction(function () use ($service, $player, $request, $data) {
             $order = $service->start($player, $request->user(), $data['request_token'], (int) $data['quoted_price_cents'],
                 $data['plan'], ! empty($data['recurring_consent']));
-            if (! \App\Models\AuditEvent::where('action', 'player-plus.purchase-details-accepted')->where('subject_type', PlayerPlusOrder::class)
-                ->where('subject_id', (string) $order->id)->exists()) {
+            // start() may reuse a payer's immutable older checkout. New consent
+            // must never be represented as acceptance of a different saved price.
+            $matches = $order->price_cents === (int) $data['quoted_price_cents']
+                && $order->plan === $data['plan'] && $order->recurring_consented_at !== null;
+            $canBegin = $order->status === 'pending' && $order->expires_at->isFuture() && !$order->payfast_handed_off_at;
+            $audit = \App\Models\AuditEvent::where('action', 'player-plus.purchase-details-accepted')->where('subject_type', PlayerPlusOrder::class)
+                ->where('subject_id', (string) $order->id)->first();
+            if ($matches && $canBegin && !$audit) {
                 $audit = app(AuditWriter::class)->record(['category' => 'business', 'action' => 'player-plus.purchase-details-accepted',
                     'actor' => $request->user(), 'subject' => $order,
                     'metadata' => ['terms_version' => self::TERMS_VERSION, 'price_cents' => $order->price_cents,
                         'plan' => $order->plan ?? 'annual', 'recurring_consent' => (bool) $order->recurring_consented_at]], true);
                 if (! $audit) throw new \RuntimeException('Purchase details could not be recorded. Please try again.');
+                $audit = \App\Models\AuditEvent::findOrFail($audit);
             }
-            return $order;
+            $accepted = $matches && $audit && (int) $audit->actor_id === (int) $request->user()->id
+                && ($audit->metadata['terms_version'] ?? null) === self::TERMS_VERSION
+                && ($audit->metadata['price_cents'] ?? null) === $order->price_cents
+                && ($audit->metadata['plan'] ?? null) === $order->plan
+                && ($audit->metadata['recurring_consent'] ?? false) === true;
+            $handoff = $accepted && $canBegin;
+            if ($handoff) $order = $service->handoff($order, $request->user());
+            return [$order, $handoff];
         }, 3);
-        return redirect()->route('player-plus.orders.show', $order);
+        if ($handoff) return $this->launch($order, $service);
+        return redirect()->route('player-plus.orders.show', $order)->with('plus_checkout_review',
+            'Your saved checkout is shown below. Review its agreed price, plan and payment status before continuing.');
     }
 
     public function show(Request $request, PlayerPlusOrder $order)
@@ -93,8 +109,44 @@ class PlayerPlusController extends Controller
     public function pay(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)
     {
         $order = $service->handoff($order, $request->user());
+        return $this->launch($order, $service);
+    }
+
+    private function launch(PlayerPlusOrder $order, PlayerPlusService $service)
+    {
         $form = $service->form($order);
-        return response()->view('frontend.player-plus.order', compact('order', 'form'))->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.launch', compact('order', 'form'))->header('Cache-Control', 'private, no-store');
+    }
+
+    public function paymentReturn(Request $request, PlayerPlusOrder $order)
+    {
+        $status = $this->returnStatus($request, $order);
+        if ($status['state'] !== 'pending') return redirect()->to($status['destination'])->header('Cache-Control', 'private, no-store');
+        $order->load('player');
+        return response()->view('frontend.player-plus.order', ['order' => $order, 'form' => null, 'returnFlow' => true])
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function paymentStatus(Request $request, PlayerPlusOrder $order)
+    {
+        return response()->json($this->returnStatus($request, $order))->header('Cache-Control', 'private, no-store');
+    }
+
+    private function returnStatus(Request $request, PlayerPlusOrder $order): array
+    {
+        abort_unless((int) $order->user_id === (int) $request->user()->id, 403);
+        $receipt = route('player-plus.orders.show', $order);
+        if ($order->status === 'pending' && $order->payfast_handed_off_at && $order->expires_at->isFuture()
+            && !$order->pay_status && !$order->payfast_paid && !$order->activated_at && !$order->reconciliation_reason) {
+            return ['state' => 'pending', 'destination' => null];
+        }
+        $verified = $order->status === 'completed' && $order->pay_status && $order->payfast_paid && $order->activated_at
+            && !$order->reconciliation_reason && $order->term_starts_at?->lte(now()) && $order->term_ends_at?->isFuture();
+        $player = $order->player;
+        $canView = $verified && $player && app(PlayerPlusEntitlement::class)->forPlayer($request->user(), $player)
+            && app(PlayerRatingAccess::class)->allows($request->user(), $player);
+        return ['state' => $canView ? 'verified' : 'receipt',
+            'destination' => $canView ? route('my.tennis', ['player' => $player->id]).'#rating' : $receipt];
     }
 
     public function cancel(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)

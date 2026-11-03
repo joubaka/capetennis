@@ -51,13 +51,12 @@ class PlayerPlusMonthlyTest extends TestCase
             'quoted_price_cents' => 6900, 'plan' => 'monthly'];
         $this->actingAs($payer)->postJson(route('player-plus.store', $player), $data)->assertUnprocessable()->assertJsonValidationErrors('recurring_consent');
         $this->assertDatabaseCount('player_plus_orders', 0);
-        $this->post(route('player-plus.store', $player), $data + ['recurring_consent' => 1])->assertRedirect();
+        $response = $this->post(route('player-plus.store', $player), $data + ['recurring_consent' => 1])->assertOk();
         $order = PlayerPlusOrder::sole();
         $this->assertSame(6900, $order->price_cents);
         $this->assertSame('monthly', $order->plan);
         $this->assertNotNull($order->recurring_consented_at);
         $this->assertTrue((bool) AuditEvent::where('action', 'player-plus.purchase-details-accepted')->sole()->metadata['recurring_consent']);
-        $response = $this->post(route('player-plus.orders.pay', $order), ['amount' => 1])->assertOk();
         foreach (['amount' => '69.00', 'subscription_type' => '1', 'billing_date' => '2026-02-28', 'recurring_amount' => '69.00', 'frequency' => '3', 'cycles' => '0'] as $name => $value) {
             $response->assertSee('name="'.$name.'" value="'.$value.'"', false);
         }
@@ -285,7 +284,7 @@ class PlayerPlusMonthlyTest extends TestCase
         $this->postJson(route('player-plus.store', $player), array_replace($data, ['plan' => 'annual_recurring', 'recurring_consent' => 0]))
             ->assertUnprocessable()->assertJsonValidationErrors('recurring_consent');
         $this->assertDatabaseCount('player_plus_orders', 0);
-        $this->post(route('player-plus.store', $player), $data + ['plan' => 'annual_recurring'])->assertRedirect();
+        $this->post(route('player-plus.store', $player), $data + ['plan' => 'annual_recurring'])->assertOk()->assertViewIs('frontend.player-plus.launch');
         // The legacy internal start represents an already existing annual checkout; paying never converts its plan.
         $other = Player::factory()->create();
         $old = app(PlayerPlusService::class)->start($other, $payer, (string) Str::uuid());

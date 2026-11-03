@@ -1,6 +1,7 @@
-@props(['priceCents' => null, 'plan' => 'offer'])
+@props(['priceCents' => null, 'plan' => 'offer', 'showPricing' => true])
 @php($priceCents = $priceCents ?? \App\Services\Performance\PlayerPlusService::priceCents())
 <aside {{ $attributes->class(['rounded p-3 plus-benefits-visual']) }} style="background:#fff;border:1px solid #dce5ef;color:#20384b" aria-label="Player Plus membership benefits" data-player-plus-benefits>
+  @if($showPricing)
   <div class="d-flex flex-wrap justify-content-between align-items-baseline gap-2">
     <strong>Optional Player Plus</strong>
     @if($plan !== 'offer')
@@ -9,12 +10,13 @@
   </div>
   @if($plan === 'offer')<x-player-plus-pricing class="mt-2" />@endif
   <p class="small mt-2 mb-2">@if($plan === 'monthly')Monthly access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual_recurring')Annual access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual')12 months for one named player. This existing once-off purchase has no automatic renewal.@else Choose monthly or annual automatic renewal for one named player when available.@endif Shared with the player and their linked parents or guardians.</p>
+  @endif
   <p class="fw-semibold mb-2">Understand their playing strength. Follow their progress.</p>
   <p class="small text-muted mb-3">Eligible results are needed for a rating; purchasing Plus does not guarantee one.</p>
     <ul class="small ps-3 mb-2">
       <li><strong class="plus-benefit-title"><i class="ti ti-chart-line" aria-hidden="true"></i>See their progress</strong>View the player's saved Cape Tennis Rating (CTR), an estimate of singles playing strength, and 12-month progress history where eligible results are available.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-list-details" aria-hidden="true"></i>Explore the results</strong>Explore the recorded singles results and evidence behind the player's estimates.</li>
-      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>Put it in perspective</strong>See your player's rating position and search for another eligible published player's rating.</li>
+      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>Put it in perspective</strong>See your player's age-group Top 10 and their rating position. Search by name and choose one eligible published player to check their rating.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>Find the next step</strong>Understand your tennis pathway: ball-level progress, published benchmarks and suggested next steps where suitable evidence is available.</li>
     </ul>
   <details>

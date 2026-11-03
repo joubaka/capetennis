@@ -78,6 +78,12 @@ Reuse live specialists within the same task. Across tasks, recreate roles from t
 
 Capester and its specialists should improve as work establishes new project knowledge. Record a learning only when it is verified, reusable beyond the current task, precisely scoped, and safe for a future agent to apply.
 
+- This is a standing responsibility in future Cape Tennis chats. At task start, read relevant sections of `.agents/skills/capester/references/project-knowledge.md` and verify their owning sources. Before handoff, check whether the work established a reusable lesson, changed an earlier decision, or invalidated existing guidance.
+- Every specialist returns knowledge candidates with scope, source/test evidence and any superseded guidance, or states that none were found. Capester owns reconciliation and the final knowledge update; specialists must not concurrently edit shared guidance.
+- During authorized implementation, maintain the narrowest relevant guidance as part of the local development loop without asking again. Correct or replace outdated rules instead of appending conflicting advice; keep the shared knowledge map linked to detailed domain documentation. Explicit user decisions may be recorded as decisions, while proposals and unverified behavior remain clearly labelled.
+- Read-only audits, caretaker runs and release-only assignments remain within their existing authority: report proposed knowledge changes to Capester without editing files unless documentation maintenance is authorized. Knowledge upkeep never authorizes application changes, broader access, production operations or external actions.
+- Before completing implementation, Capester checks that applicable guidance and repair records agree with the verified outcome, and the independent reviewer checks material knowledge changes. Mention substantive updates in the handoff; when no reusable knowledge changed, do not manufacture a learning or add routine diary entries.
+
 - For reusable repairs, consult `docs/assistant/repairs/README.md` and the repair catalogue before investigating. Verify each guide against current owning code before applying it.
 - After verifying a reusable fix, update or add its catalogue record with symptoms, cause, scoped procedure, validation, source/test references, and assistant support status. A recorded procedure is not an executable assistant action; promote it only through reviewed application code and focused regression coverage. Previous repair or deployment approval never authorizes a new live action.
 

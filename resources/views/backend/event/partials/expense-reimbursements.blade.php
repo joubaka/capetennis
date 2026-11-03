@@ -3,6 +3,9 @@
   <summary class="card-header"><h5 class="mb-0">Record payment to director</h5></summary>
   <div class="card-body">
     <p>Record money already paid to a director from registration funds for expenses, profit share, or both. This reduces the total still owed without changing event profit or the calculated profit share. Use “Full outstanding balance” to include linked clothing amounts and deductions in one recorded settlement.</p>
+    @if($recon->contains('payment_resolution_required', true))
+      <div class="alert alert-warning" role="alert">Some recorded payout recipients need reconciliation. New payments for affected directors are blocked until their recorded payment identities are resolved.</div>
+    @endif
     @if($reimbursementErrors->any())
       <div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($reimbursementErrors->all() as $message)<li>{{ $message }}</li>@endforeach</ul></div>
     @endif
@@ -21,7 +24,11 @@
       <div class="col-md-6"><label for="reimbursement-director" class="form-label">Director</label>
         <select id="reimbursement-director" name="convenor_id" class="form-select" required>
           <option value="">Choose director</option>
-          @foreach($recon as $row)<option value="{{ $row['convenor']->id }}" data-settlement="{{ json_encode($directorSettlementPreviews[$row['convenor']->id] ?? null) }}" @selected((string) old('convenor_id') === (string) $row['convenor']->id)>{{ $row['convenor']->user->name ?? 'Unknown' }} — R {{ number_format($row['final_payout'], 2) }} total still owed</option>@endforeach
+          @foreach($recon as $row)
+            <option value="{{ $row['convenor']->id }}" data-settlement="{{ json_encode($directorSettlementPreviews[$row['convenor']->id] ?? null) }}" @disabled($row['payment_resolution_required'] ?? false) @selected((string) old('convenor_id') === (string) $row['convenor']->id)>
+              {{ $row['convenor']->user->name ?? 'Unknown' }} — {{ ($row['payment_resolution_required'] ?? false) ? 'Review recorded payout identity' : 'R '.number_format($row['final_payout'], 2).' total still owed' }}
+            </option>
+          @endforeach
         </select>
       </div>
       <div class="col-md-6"><label for="reimbursement-amount" class="form-label">Amount already paid (R)</label><input id="reimbursement-amount" name="amount" type="number" min="0.01" max="99999999.99" step="0.01" value="{{ old('amount') }}" class="form-control" required></div>
@@ -41,10 +48,10 @@
     </form>
     @endcan
     @if($reimbursementPayments->isNotEmpty())
-      <h6 class="mt-4">Recorded director payments</h6>
+      <h6 class="mt-4">Recorded registration payments &amp; corrections</h6>
       <div class="table-responsive"><table class="table"><thead><tr><th>Director</th><th>Purpose</th><th>Amount</th><th>Paid from</th><th>Payment date</th><th>Reference / note</th><th>Recorded by</th></tr></thead><tbody>
       @foreach($reimbursementPayments as $payment)
-        <tr><td>{{ $payment->recipient_name }}</td><td>{{ $payment->settlement_details ? 'Full net settlement' : ($payment->purpose === 'expense_reimbursement' ? 'Expense reimbursement' : 'Expenses / profit share') }}</td><td>R {{ number_format($payment->settlement_details ? $payment->settlement_details['cash_cents'] / 100 : (float) $payment->amount, 2) }}@if($payment->settlement_details)<small class="d-block text-muted">Registration settled: R {{ number_format((float) $payment->amount, 2) }}; clothing adjustment: R {{ number_format(($payment->settlement_details['cash_cents'] - $payment->settlement_details['registration_cents']) / 100, 2) }}</small>@endif</td><td>{{ $payment->settlement_details ? 'Registration and linked clothing' : 'Registration entries' }}</td><td>{{ $payment->paid_at?->format('d M Y') ?? 'Unknown' }}</td><td>{{ $payment->reference }} {{ $payment->description }}</td><td>{{ $payment->recorded_by_name ?? $payment->paidByUser?->name ?? 'Unknown' }}<small class="d-block">{{ $payment->created_at->format('d M Y H:i') }}</small></td></tr>
+        <tr><td>{{ $payment->recipient_name ?? $payment->convenor?->user?->name ?? 'Unknown' }}</td><td>{{ $payment->purpose === 'payout_reversal' ? 'Accounting correction (no transfer)' : ($payment->settlement_details ? 'Full net settlement' : ($payment->purpose === 'expense_reimbursement' ? 'Expense reimbursement' : 'Expenses / profit share')) }}</td><td>R {{ number_format($payment->settlement_details ? $payment->settlement_details['cash_cents'] / 100 : (float) $payment->amount, 2) }}@if($payment->settlement_details)<small class="d-block text-muted">Registration settled: R {{ number_format((float) $payment->amount, 2) }}; clothing adjustment: R {{ number_format(($payment->settlement_details['cash_cents'] - $payment->settlement_details['registration_cents']) / 100, 2) }}</small>@endif</td><td>{{ $payment->settlement_details ? 'Registration and linked clothing' : 'Registration entries' }}</td><td>{{ $payment->paid_at?->format('d M Y') ?? 'Unknown' }}</td><td>{{ $payment->reference }} {{ $payment->description }}</td><td>{{ $payment->recorded_by_name ?? $payment->paidByUser?->name ?? 'Unknown' }}<small class="d-block">{{ $payment->created_at->format('d M Y H:i') }}</small></td></tr>
       @endforeach
       </tbody></table></div>
     @endif

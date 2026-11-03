@@ -167,7 +167,7 @@ class PlayerPlusService
             $date = $order->payfast_handed_off_at->timezone('Africa/Johannesburg');
             $payfast->setSubscription(($order->isMonthly() ? $date->addMonthNoOverflow() : $date->addYearNoOverflow())->toDateString(), $order->isMonthly() ? 3 : 6);
         }
-        $payfast->setReturnUrl(route('player-plus.orders.show', $order));
+        $payfast->setReturnUrl(route('player-plus.orders.return', $order));
         $payfast->setCancelUrl(route('player-plus.orders.show', $order));
         return $payfast->getForm();
     }

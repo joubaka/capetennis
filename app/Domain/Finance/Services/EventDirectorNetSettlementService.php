@@ -23,13 +23,13 @@ class EventDirectorNetSettlementService
         $ledger = app(FinancialLedgerService::class)->buildForEvent($event);
         $expenses = EventExpense::where('event_id', $event->id)->whereNotIn('expense_type', ['payfast', 'cape_tennis_fee'])->get();
         $directors = $event->convenors()->with('user')->get();
-        $payments = EventPayout::where('event_id', $event->id)->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->get();
+        $payments = EventDirectorReconciliation::paymentsForEvent($event);
         $profit = $ledger['totals']['registration_net'] - $expenses->sum(fn ($expense) => EventExpenseReimbursementService::expenseCents($expense)) / 100;
         $recon = EventDirectorReconciliation::build($directors, $expenses, $payments, $profit);
         $clothing = app(RegionalClothingSettlementService::class)->report($event, $ledger['paymentRows']->merge($ledger['refundRows']));
         $projection = app(ConvenorPayoutProjection::class)->build($event, $recon, $clothing);
 
-        return $projection['cards']->mapWithKeys(function ($card) use ($event, $directors, $clothing) {
+        return $projection['cards']->mapWithKeys(function ($card) use ($event, $directors, $clothing, $payments) {
             $director = $directors->firstWhere('id', $card['convenor_id']);
             $legs = $card['regions']->filter(fn ($region) => $region['contribution_cents'] !== 0)->map(function ($region) use ($clothing) {
                 $report = $clothing->first(fn ($row) => (int) $row['scope']->region_id === (int) $region['region_id']);
@@ -59,8 +59,10 @@ class EventDirectorNetSettlementService
                     || \App\Models\EventRegionFinancialRecipientLink::where('event_id', $event->id)->where('region_id', $scope->region_id)
                         ->where('target_convenor_id', $director->id)->exists();
             });
-            $snapshot['available'] = ! $unresolved && $card['registration_cents'] >= $withheld && $card['combined_cents'] > 0;
-            $snapshot['unavailable_reason'] = $unresolved ? 'Review the ambiguous or stale clothing assignment for this director before recording a full settlement.' : null;
+            $unresolvedPayment = EventDirectorReconciliation::hasUnresolvedPayments($directors, $payments, $director);
+            $snapshot['available'] = ! $unresolved && ! $unresolvedPayment && $card['registration_cents'] >= $withheld && $card['combined_cents'] > 0;
+            $snapshot['unavailable_reason'] = $unresolvedPayment ? 'Resolve the unidentified or ambiguous recorded payout recipient before recording a full settlement.'
+                : ($unresolved ? 'Review the ambiguous or stale clothing assignment for this director before recording a full settlement.' : null);
 
             return [$director->id => $snapshot];
         })->all();

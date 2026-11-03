@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Wallet\ManualWalletAdjustmentService;
+use App\Services\Wallet\Exceptions\InsufficientFundsException;
 use Illuminate\Http\Request;
 
 class WalletTransactionController extends Controller
@@ -35,7 +36,7 @@ class WalletTransactionController extends Controller
 
         $request->validate([
             'type' => 'required|in:credit,debit',
-            'amount' => 'required|numeric|min:0.01',
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?$/D'],
             'reference' => 'nullable|string|max:255',
             'idempotency_key' => 'required|uuid',
         ]);
@@ -44,26 +45,23 @@ class WalletTransactionController extends Controller
         $wallet = $user->wallet ?? $user->wallet()->create();
         $amount = $request->amount;
 
-        if ($request->type === 'debit' && $wallet->balance < $amount) {
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'Insufficient balance for debit.'], 422);
-            }
-            return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
-        }
-
         $meta = [
             'admin' => auth()->user()->name,
             'reference' => $request->reference,
             'initiated_by' => 'manual_wallet_controller',
         ];
 
-        $transaction = app(ManualWalletAdjustmentService::class)->apply(
-            $wallet,
-            $request->type,
-            (float) $amount,
-            $request->string('idempotency_key')->toString(),
-            $meta
-        );
+        try {
+            $transaction = app(ManualWalletAdjustmentService::class)->apply(
+                $wallet, $request->type, (float) $amount,
+                $request->string('idempotency_key')->toString(), $meta
+            );
+        } catch (InsufficientFundsException) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Insufficient balance for debit.'], 422);
+            }
+            return back()->withErrors(['amount' => 'Insufficient balance for debit.']);
+        }
 
         if ($transaction->wasRecentlyCreated) {
             activity('wallet')

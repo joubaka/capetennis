@@ -79,6 +79,122 @@
         "tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php",
         "tests/Feature/TeamDraw/TeamDrawAdaptationTest.php"
       ]
+    },
+    {
+      "id": "RK-005",
+      "title": "Past-event history refresh returns Too Many Requests after ordinary rating-page visits",
+      "scope": "Authenticated player past-event rating-history refresh requests; no rating calculation or evidence-policy changes.",
+      "symptoms": "The update-history form opens a bare 429 page even when the player history has not recently been refreshed.",
+      "cause": "Unnamed numeric route throttles share the authenticated actor signature. Ordinary rating-page requests can consume the two-per-minute refresh allowance before the refresh controller runs.",
+      "fix": "Authorize player-rating access first, then apply a dedicated actor-wide history-refresh limiter in PlayerEventRatingHistoryController. Keep two requests per minute across all players for that actor. Browser saturation redirects to the authorized history page with a retry message; JSON receives 429 with retry_after. Both include Retry-After and private no-store headers. Preserve the worker's per-player cooldown, request coalescing, lease and global builder lock.",
+      "verification": "On 2026-11-02 the focused isolated MySQL regression run passed 5 tests with 55 assertions, including unrelated-throttle isolation, retry expiry, actor-wide cross-player budgets, independent actors, denied-target precedence, existing entitlement checks and worker coalescing. This is local evidence only.",
+      "limits": "This guide does not run a reconstruction, change saved ratings, remove rate limits, grant rating access, or authorize deployment. Private evidence and existing access gates remain unchanged.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Http/Controllers/Frontend/PlayerEventRatingHistoryController.php",
+        "app/Services/Performance/PlayerEventRatingHistoryRefresh.php"
+      ],
+      "tests": [
+        "tests/Feature/PlayerEventRatingHistoryTest.php"
+      ]
+    },
+    {
+      "id": "RK-006",
+      "title": "Player Plus discovery needs an age-group Top 10 and individual rating lookup",
+      "scope": "Ordinary Player Plus discovery for an authorised linked player; administrative full-list browsing remains separate.",
+      "symptoms": "Plus members have no age-group Top 10, while a broad name search reveals several ratings together.",
+      "cause": "The member discovery projection withheld ranking lists entirely and returned scores in every matching search suggestion.",
+      "fix": "Derive the member's Overall CTR Top 10 from the selected authorised player's calendar-year age group and gender. Junior groups include younger players; missing birth dates do not produce a broad list. Ignore submitted age, gender, level, page and page-size list overrides for members. Return at most ten alphabetically matched public names without scores, then reveal one selected eligible candidate's Overall CTR. Keep selected identity bound to the current search candidates and preserve publication, convergence, comparability and entitlement checks.",
+      "verification": "On 2026-11-02 PlayerRatingTopTenTest passed locally with 17 tests and 304 assertions using isolated SQLite. Coverage includes member filter tampering, ten-player bounds, one-player search selection, publication revocation, disconnected estimates, missing birth dates and administrative browsing. This is local evidence only.",
+      "limits": "Search reveals only the selected comparable public rating, not private history or evidence. This does not grant player ownership, alter ratings, enable opponent badges, or authorize deployment.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Performance/PlayerRatingTopTen.php",
+        "app/Http/Controllers/Frontend/MyTennisController.php"
+      ],
+      "tests": [
+        "tests/Feature/PlayerRatingTopTenTest.php"
+      ]
+    },
+    {
+      "id": "RK-007",
+      "title": "Super Admin workspace save feedback and toggle overlap",
+      "scope": "Legacy Super Admin workspace browser handlers; no settings, ledger or production repair action.",
+      "symptoms": "Conduct or terms save buttons remain disabled, dismissed feedback stops appearing, or Save All overwrites an autosaving checkbox.",
+      "cause": "Content callbacks referenced a notifier outside its lexical scope; Bootstrap dismissal removed its reusable node; disabled in-flight checkbox controls were omitted from form serialization and missing booleans were saved as false.",
+      "fix": "Keep content callbacks and notifier in the same ready closure, hide rather than remove reusable feedback, block full-form save while toggle, annual-price, template or content requests are pending, serialize before disabling the form, and restore only previously enabled controls in completion callbacks. Main destinations now use server-selected GET pages; initialize only present, visible local tables and editors. Preserve dedicated settings endpoints and server authorization.",
+      "verification": "Nine executable JavaScript handler/navigation regressions passed locally on 2026-11-02. Authenticated presentation/access checks also passed within the 130-test isolated MySQL dashboard suite. These checks do not establish live settings behavior.",
+      "limits": "No automatic settings mutation or production action. Monthly-only fields remain independent of the full-form payload. Preserve user-owned worktree changes and verify current owning handlers before applying the procedure.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Http/Controllers/Backend/SettingsController.php",
+        "docs/superadmin-dashboard-audit.md"
+      ],
+      "tests": [
+        "tests/Feature/SuperAdminWorkspacePresentationTest.php"
+      ]
+    },
+    {
+      "id": "RK-008",
+      "title": "Player Plus requires repeated checkout clicks and manual navigation after verified payment",
+      "scope": "Player Plus consent-to-PayFast handoff and payer-only return navigation; no provider payment execution from this guide.",
+      "symptoms": "A payer confirms purchase, then repeats Pay and Continue to PayFast; returning after payment requires navigating through membership details to ratings.",
+      "cause": "Purchase creation, canonical handoff and signed form submission were separate screens, and the provider returned to the billing receipt.",
+      "fix": "Use the direct consent workflow: canonical start, accurate immutable-price and plan comparison, current matching terms audit, then canonical handoff under the same transaction. Render the signed POST bridge with one automatic submission and a visible manual fallback. Reused mismatched or already handed-off attempts stay on their saved order review without repricing, repeat handoff or false new acceptance. The dedicated read-only provider return checks completed verified paid flags, an active purchased term, absence of reconciliation, real player linkage and entitlement before opening My Tennis's rating tab. Pending returns use bounded read-only status checks with request timeouts; sponsors and closed or review cases retain their receipt.",
+      "verification": "On 2026-11-02 all six scoped Player Plus feature classes passed against guarded local MySQL ct_testing: 77 tests, 743 assertions. Six JavaScript tests passed for one-shot fake-form submission, manual fallback, bounded polling, timeout recovery and safe destination handling. No provider or live payment was initiated.",
+      "limits": "Both explicit purchase and recurring consents, exact saved amounts, payer ownership, idempotency, five-minute expiry, signature and COMPLETE verification remain mandatory. Provider return query parameters never activate membership. Normal order receipts and renewal management remain accessible. This guide authorizes no production action, payment or deployment.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Http/Controllers/Frontend/PlayerPlusController.php",
+        "app/Services/Performance/PlayerPlusService.php"
+      ],
+      "tests": [
+        "tests/Feature/PlayerPlusDirectCheckoutTest.php",
+        "tests/Feature/PlayerPlusMonthlyTest.php"
+      ]
+    },
+    {
+      "id": "RK-009",
+      "title": "Registration payout retries or corrections distort director balances",
+      "scope": "Super Admin evidence recording for already-paid registration payouts, signed accounting corrections and event director reconciliation.",
+      "symptoms": "Repeated payout submission creates duplicates, deletion removes original evidence, or a recorded recipient payment is still offered through director settlement.",
+      "cause": "Legacy recording lacked payload-bound idempotency and immutable correction links; director projections included only dedicated director or expense purposes.",
+      "fix": "Use FinancialLedgerService and EventPayoutRecordingService. Lock the event, validate exact cents and event-bound recipient, bind a UUID retry to actor/event/payload, and require canonical audit evidence in the same transaction. Correct only an incorrect eligible record through a confirmed reasoned opposite entry; retain both originals and corrections immutable. Include signed generic and legacy payments consistently in director general/full-net projections. Unidentified, unmatched, orphaned, conflicting or ambiguous recipient allocations block affected settlement; never match names.",
+      "verification": "The local isolated MySQL dashboard run passed 130 tests and 1088 assertions on 2026-11-02, including 17 payout integrity regressions, both wallet entry points and existing director/ledger suites. The correction migration passed a MySQL down/up round trip; DeploymentConfigTest passed 42 tests and 190 assertions.",
+      "limits": "Requires database/migrations/2026_11_02_220000_add_event_payout_corrections.php. Recording or correcting evidence transfers no money and is not a bank refund. Linked director/clothing settlements require their own reconciliation. No production execution or automatic assistant action is authorized.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Domain/Finance/Services/EventPayoutRecordingService.php",
+        "app/Domain/Finance/Services/EventDirectorReconciliation.php",
+        "docs/superadmin-dashboard-audit.md"
+      ],
+      "tests": ["tests/Feature/SuperAdminPayoutIntegrityTest.php", "tests/Feature/ManualWalletAdjustmentTest.php"]
+    },
+    {
+      "id": "RK-010",
+      "title": "Settings saves need atomic audit evidence without raw content leakage",
+      "scope": "Six Super Admin settings endpoint families; operational flags, fees, offers, templates and legal content.",
+      "symptoms": "Bulk save can partially persist, generic logs omit coherent operation context, or raw template/legal/contact input appears in request audit history.",
+      "cause": "Independent model saves invalidate cache before commit and generic request/model audit paths can duplicate raw submitted values.",
+      "fix": "Collect and validate changes first. Use SettingsMutationService to enforce actor/key/group authority, lock existing database snapshots in key order, persist and require non-null canonical settings.updated evidence in one transaction. Retain scalar operational old/new values and use hashes/lengths for content/contact/logo values. Scope attempted and completed SettingsController request audit to submitted field names. Invalidate changed cache keys after commit; preserve the normal cached getter and unrelated model auditing.",
+      "verification": "Nine settings mutation regressions passed within the 130-test local isolated MySQL dashboard run on 2026-11-02. Coverage includes all six route gates, exact old/new evidence, integrity hashes, no-op retries, audit failure rollback, commit-timed cache invalidation, privacy across request/business logs and unchanged existing checkout prices.",
+      "limits": "This guide changes no live settings and restores no old policy automatically. Existing generic settings auditing was not absent; the repair adds coherent sanitized transaction-bound evidence. Do not globally disable model or request auditing.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/SettingsMutationService.php", "app/Http/Middleware/RecordAuditRequest.php"],
+      "tests": ["tests/Feature/SettingsMutationAuditTest.php"]
+    },
+    {
+      "id": "RK-011",
+      "title": "Hidden dashboard tabs load expensive data or capped previews imply full totals",
+      "scope": "Super Admin server-selected workspaces and their read-only financial/operational datasets.",
+      "symptoms": "Opening Settings computes event ledgers or mail reports, queues stop at arbitrary caps, or financial totals change with the visible event page.",
+      "cause": "One consolidated controller materialized every tab and client-only pagination hid incomplete server collections.",
+      "fix": "Allowlist the selected workspace and use GET navigation. Load cheap shell aggregates separately; query and render only the selected detail panel. Pair conditional markup with guarded plugin resources and visible-table initialization. Server-paginate queues with stable order and retained tab/search/subtab context, and calculate true totals independently. Stream all selected-year events through the canonical ledger in bounded chunks while retaining only the displayed summary rows; never sum a single page as the year total.",
+      "verification": "Eight workspace loading/pagination regressions and authenticated presentation/access checks passed within the local isolated MySQL dashboard suite on 2026-11-02. Nine executable JavaScript regressions cover save coordination, GET navigation and local subtab/audit initialization. No production timing benchmark is claimed.",
+      "limits": "Read pagination does not authorize financial mutations, publication or broader access. Keep all Settings subpanes in their selected page's form to preserve bulk-save semantics. Independent refund model paginators must retain their companion page context.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/SuperAdminController.php", "docs/superadmin-dashboard-audit.md"],
+      "tests": ["tests/Feature/SuperAdminWorkspaceLoadingTest.php", "tests/Feature/SuperAdminWorkspacePresentationTest.php"]
     }
   ]
 }

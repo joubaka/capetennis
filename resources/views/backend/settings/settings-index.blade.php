@@ -73,9 +73,12 @@
       <h1>Site settings</h1>
       <p>Manage Player Plus plans, payment fees and the requirements shown to players.</p>
     </div>
-    <a href="{{ route('backend.superadmin.index') }}#settings"
-         onclick="event.preventDefault(); window.location.href='{{ route('backend.superadmin.index') }}'; sessionStorage.setItem('openSettingsTab','1');"
+    <div class="d-flex flex-wrap gap-3">
+      <a href="{{ route('superadmin.audit.index', ['category' => 'business', 'action' => 'settings.updated']) }}"
+         class="settings-dashboard-link"><i class="ti ti-history" aria-hidden="true"></i> Settings change history</a>
+      <a href="{{ route('backend.superadmin.index') }}"
          class="settings-dashboard-link"><i class="ti ti-layout-dashboard" aria-hidden="true"></i> Super Admin dashboard</a>
+    </div>
   </header>
 
   @if(session('success'))

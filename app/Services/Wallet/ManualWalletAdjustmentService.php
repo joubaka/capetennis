@@ -5,7 +5,8 @@ namespace App\Services\Wallet;
 use App\Domain\Payments\Services\LedgerService;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
-use App\Services\Wallet\Exceptions\DuplicateTransactionException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class ManualWalletAdjustmentService
 {
@@ -15,29 +16,40 @@ class ManualWalletAdjustmentService
 
     public function apply(Wallet $wallet, string $type, float $amount, string $idempotencyKey, array $meta = []): WalletTransaction
     {
+        validator(['type' => $type, 'amount' => (string) $amount, 'idempotency_key' => $idempotencyKey], [
+            'type' => ['required', 'in:credit,debit'],
+            'amount' => ['required', 'numeric', 'min:0.01', 'regex:/^(?:0|[1-9][0-9]{0,7})(?:\.[0-9]{1,2})?$/D'],
+            'idempotency_key' => ['required', 'uuid'],
+        ])->validate();
         $sourceId = $this->sourceId($idempotencyKey);
         $meta['idempotency_key'] = $idempotencyKey;
+        $meta['actor_id'] = auth()->id();
+        $meta['reference'] = trim((string) ($meta['reference'] ?? ''));
 
-        try {
-            return $type === 'credit'
-                ? $this->ledger->appendWalletCredit($wallet, $amount, 'manual', $sourceId, $meta)
-                : $this->ledger->appendWalletDebit($wallet, $amount, 'manual', $sourceId, $meta);
-        } catch (DuplicateTransactionException $exception) {
+        return DB::transaction(function () use ($wallet, $type, $amount, $sourceId, $idempotencyKey, $meta) {
+            Wallet::whereKey($wallet->id)->lockForUpdate()->firstOrFail();
+            // Resolve a completed attempt before checking the remaining balance.
             $existing = WalletTransaction::query()
                 ->where('wallet_id', $wallet->id)
                 ->where('source_type', 'manual')
                 ->where('source_id', $sourceId)
-                ->first();
+                ->lockForUpdate()->first();
 
-            if ($existing
-                && $existing->type === $type
-                && abs((float) $existing->amount - $amount) < 0.005
-                && data_get($existing->meta, 'idempotency_key') === $idempotencyKey) {
+            if ($existing) {
+                if ($existing->type !== $type
+                    || number_format((float) $existing->amount, 2, '.', '') !== number_format($amount, 2, '.', '')
+                    || data_get($existing->meta, 'idempotency_key') !== $idempotencyKey
+                    || data_get($existing->meta, 'actor_id') !== $meta['actor_id']
+                    || trim((string) data_get($existing->meta, 'reference', '')) !== $meta['reference']) {
+                    throw ValidationException::withMessages(['idempotency_key' => 'This adjustment was already recorded with different details or by another administrator.']);
+                }
                 return $existing;
             }
 
-            throw $exception;
-        }
+            return $type === 'credit'
+                ? $this->ledger->appendWalletCredit($wallet, $amount, 'manual', $sourceId, $meta)
+                : $this->ledger->appendWalletDebit($wallet, $amount, 'manual', $sourceId, $meta);
+        });
     }
 
     private function sourceId(string $idempotencyKey): int

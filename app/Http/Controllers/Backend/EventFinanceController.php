@@ -140,8 +140,7 @@ class EventFinanceController extends Controller
         $netProfit = $grandTotalIncome - $totalExpenses;
 
         // ── Per-convenor totals for reconciliation (operational only) ─────
-        $reimbursementPayments = \App\Models\EventPayout::with('paidByUser')->where('event_id', $event->id)
-            ->whereIn('purpose', ['expense_reimbursement', 'director_payment'])->orderByDesc('id')->get();
+        $reimbursementPayments = \App\Domain\Finance\Services\EventDirectorReconciliation::paymentsForEvent($event);
         $recon = \App\Domain\Finance\Services\EventDirectorReconciliation::build($convenors, $operationalExpenses, $reimbursementPayments, $netProfit);
         $convenorPayoutProjection = app(\App\Domain\Finance\Services\ConvenorPayoutProjection::class)
             ->build($event, $recon, $clothingReconciliation);
