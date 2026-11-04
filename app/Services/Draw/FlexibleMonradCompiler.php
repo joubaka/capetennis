@@ -212,6 +212,35 @@ final class FlexibleMonradCompiler
         return array_values(array_unique(array_merge(array_column($node['sources'], 'match'), $node['prerequisites'] ?? [])));
     }
 
+    /** Number new fixtures by progression stage, without changing graph identities or layout order. */
+    public static function fixtureOrder(array $graph): array
+    {
+        $nodes = $graph['nodes'];
+        $stages = [];
+        $stage = function (string $key) use (&$stage, &$stages, $nodes): int {
+            if (isset($stages[$key])) return $stages[$key];
+            $node = $nodes[$key];
+            // An opening bye must not move its quarterfinal ahead of the
+            // remaining first-round matches. Placement round numbers are local
+            // to their section, so their stage comes from their feeders.
+            $value = $node['section'] === 'Main draw' ? (int) $node['round'] : 1;
+            foreach (self::dependencies($node) as $dependency) {
+                $value = max($value, $stage($dependency) + 1);
+            }
+            return $stages[$key] = $value;
+        };
+        $order = array_keys($nodes);
+        $indices = array_flip($order);
+        $rank = static function (array $node): int {
+            if ($node['section'] === 'Main draw') return 0;
+            if (preg_match('/^Positions (\d+)/', $node['section'], $match)) return (int) $match[1];
+            return PHP_INT_MAX;
+        };
+        usort($order, fn ($a, $b) => [$stage($a), $rank($nodes[$a]), $indices[$a]]
+            <=> [$stage($b), $rank($nodes[$b]), $indices[$b]]);
+        return $order;
+    }
+
     /**
      * Cross earlier main-round losers into later losers, then classify each
      * eliminated band. The 16-player Interpro template reverses A9–A12 into

@@ -2,6 +2,45 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-021",
+      "title": "Feed-in bracket omits unplayed bye paths",
+      "scope": "Display of fixed 16/32-slot Feed-in Monrad templates in browser, print and PDF; no fixture generation or stored graph changes.",
+      "symptoms": "An opening feed-in column has a blank branch and the later match receives an earlier main-draw loser directly, hiding that player's bye advance.",
+      "cause": "Canonical compilation correctly collapses unplayed bye matches, but the presentation previously restored only main-draw bye paths.",
+      "fix": "Project collapsed feed-in paths through withFeedInByes and FlexibleMonradFeedInDisplay. Match saved source signatures before expanding; retain incompatible historical topology unchanged. Show unnumbered Bye cards and original feeder labels, keeping unresolved losers pending and showing resolved losers only after a known winner. Do not persist synthetic cards or add them to scheduling/result entry. See DK-06 in docs/draw-knowledge/catalogue.md.",
+      "verification": "On 2026-11-04 focused PDF/display/repair-library PHP tests passed 10 tests and 288 assertions; the frontend layout/print/challenge bundle passed 18 tests including PHP/JS projection parity. A fictional 15-player browser preview showed the connected opening feed-in bye. Syntax checks passed; no production or narrow-phone verification is established.",
+      "limits": "Guide only; this presentation repair does not authorize recreating or renumbering any draw. Only compatible fixed 16/32 feed-in topology is expanded. Preserve fixture IDs, numbers, results, schedules and publication state. Deployment requires separate authorization.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/FlexibleMonradFeedInDisplay.php", "app/Services/Draw/FlexibleMonradPdfLayout.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Unit/FlexibleMonradFeedInDisplayTest.php", "tests/Unit/FlexibleMonradPrintResultsTest.php"]
+    },
+    {
+      "id": "RK-020",
+      "title": "Knockout match numbers jump between rounds",
+      "scope": "New standalone Playoffs only, Monrad only, Feed-in Monrad and Custom Monrad generation; excludes separate round-robin playoff generators and existing generated fixtures.",
+      "symptoms": "Opening-round match labels skip numbers because a quarterfinal or semifinal was numbered before another opening branch.",
+      "cause": "FlexibleMonradService assigned numbers in the compiler's depth-first node insertion order.",
+      "fix": "Use FlexibleMonradCompiler::fixtureOrder during new generation: progression stage first, main draw then highest placement bands, preserving topology order within each band. Skip structural byes and keep every feeder/prerequisite before its dependent. Preserve graph identities and existing stored fixture numbers. See DK-28 in docs/draw-knowledge/catalogue.md.",
+      "verification": "On 2026-11-04 KnockoutMatchNumberingTest passed 5 tests and 512 assertions locally, covering full fields, byes, placement stages, uneven direct entrants and challenge prerequisites. Generation/state preservation has focused feature coverage; deployment and live regeneration are not established by these checks.",
+      "limits": "Guide only. Do not renumber or recreate existing draws automatically. Any production installation or targeted regeneration needs explicit authorization and current state checks; preserve schedules, results, publication and unrelated draws.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/FlexibleMonradCompiler.php", "app/Services/Draw/FlexibleMonradService.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Unit/KnockoutMatchNumberingTest.php", "tests/Feature/Draw/FlexibleMonradTest.php"]
+    },
+    {
+      "id": "RK-019",
+      "title": "Feed-in byes collapse into one branch",
+      "scope": "Individual 16- and 32-slot Feed-in Monrad generation across age groups; existing scored and published graphs are protected.",
+      "symptoms": "Balanced main-draw byes leave both direct feed-in advances together, producing one large empty opening branch.",
+      "cause": "The compiler packed actual loser lists before crossing them, discarding empty template branch positions.",
+      "fix": "Preserve absent main-path loser sources through adjacent opening pairs and the reversed next-round loser crossing. For size 32, pair survivors before ordered quarterfinal-loser entry. Collapse byes without canonical fixtures or invented losses. Existing stored graphs are unchanged; only explicitly authorized, unpublished, unlocked, unscored and unscheduled draws may be backed up, reopened and regenerated through FlexibleMonradService with revision checks. Preserve starting placements and optional challenge settings. See DK-20 in docs/draw-knowledge/catalogue.md.",
+      "verification": "On 2026-11-04 the focused compiler, challenge and knowledge bundle passed 25 tests and 58473 assertions. Independent review checked 2000 randomized 16-slot fields/outcomes and full 16/32 graph parity with the original compiler. PHP lint and diff checks passed. The exact compiler blob was verified after scoped remote installation.",
+      "limits": "This is guidance, not an executable repair action. Never regenerate published, scored or scheduled draws to adopt the new default. New 16/32 generation is age independent; other sizes and separate round-robin playoff formats remain outside this repair. Remote mutation always requires explicit authorization and current safety checks.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/FlexibleMonradCompiler.php", "app/Services/Draw/FlexibleMonradService.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Unit/FlexibleMonradSixteenTemplateTest.php", "tests/Unit/FlexibleMonradThirtyTwoTemplateTest.php", "tests/Unit/FlexibleMonradCompilerTest.php"]
+    },
+    {
       "id": "RK-018",
       "title": "Dashboard directories truncate records or expose account tools",
       "scope": "Dashboard Users and Players tables and backend account directory, role definitions, role assignment and account deletion.",

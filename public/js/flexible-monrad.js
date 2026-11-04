@@ -432,7 +432,7 @@
   function generatedBoard() {
     const selectedMatches = Object.fromEntries(Object.entries(state.matches).filter(([, match]) => match.challenge_status !== 'disabled'));
     const displayMatches = config.workflow === 'feed_in_monrad'
-      ? bracketLayout.withMainDrawByes(selectedMatches, state.draft) : selectedMatches;
+      ? bracketLayout.withFeedInByes(bracketLayout.withMainDrawByes(selectedMatches, state.draft), state.draft) : selectedMatches;
     const board = $('fm-board'),
       sections = new Map(),
       coords = new Map();
@@ -724,15 +724,16 @@
     root.replaceChildren();
     const sections = new Map();
     if (state.generated)
-      Object.values(state.matches).filter(match => match.challenge_status !== 'disabled').forEach(match => {
+      Object.values(config.workflow === 'feed_in_monrad'
+        ? bracketLayout.withFeedInByes(state.matches, state.draft) : state.matches).filter(match => match.challenge_status !== 'disabled').forEach(match => {
         if (!sections.has(match.section)) sections.set(match.section, []);
         sections
           .get(match.section)
           .push([
-            `Match ${match.number}`,
+            match.displayOnly ? 'Bye' : `Match ${match.number}`,
             match.label,
             ...match.players.map((id, i) => matchParticipantLabel(match, i)),
-            match.walkover ? 'W/O' : match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', ') + (match.retired_registration_id ? ' RET' : ''),
+            match.displayOnly ? 'Bye · no match played' : match.walkover ? 'W/O' : match.automatic === 'walkover' ? 'Walkover' : match.automatic === 'void' ? 'Closed — no active players' : match.sets.map(s => s.join('-')).join(', ') + (match.retired_registration_id ? ' RET' : ''),
             match.schedule_hidden !== true && match.schedule?.time ? scheduleLabel(match.schedule, true) : ''
           ]);
       });
@@ -1138,8 +1139,9 @@
       if (config.demo) {
         demoGraph = await request(config.urls.generate, { draft });
         state.matches = {};
+        const numbers = Object.fromEntries(demoGraph.fixture_order.map((key, index) => [key, index + 1]));
         Object.entries(demoGraph.nodes).forEach(([key, node], index) => {
-          state.matches[key] = { ...node, id: index + 1, number: index + 1, players: [], winner: null, sets: [] };
+          state.matches[key] = { ...node, id: index + 1, number: numbers[key], players: [], winner: null, sets: [] };
         });
         state.generated = true;
         demoResolve();

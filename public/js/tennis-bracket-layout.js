@@ -118,10 +118,78 @@
     visit('');
     return {...expanded, ...Object.fromEntries(Object.entries(matches).filter(([, match]) => match.section !== 'Main draw'))};
   }
+  // Restore the fixed 16/32 feed-in template's collapsed bye paths for display.
+  // Match signatures must agree with the saved graph; older/different topologies
+  // are left intact rather than drawing a pathway that was never generated.
+  function withFeedInByes(matches, draft) {
+    const size = Number(draft?.size);
+    if (![16, 32].includes(size)) return matches;
+    const entries = Object.entries(matches);
+    const section = entries.find(([, match]) => / · Feed-in$/.test(match.section))?.[1].section;
+    if (!section) return matches;
+    const main = new Map(entries.filter(([, match]) => match.section === 'Main draw' && !match.displayOnly)
+      .map(([key, match]) => [match.path, key]));
+    const signature = sources => JSON.stringify(sources.map(source => [source.type, source.match || null, source.id || null]));
+    const real = new Map(entries.filter(([, match]) => match.section === section)
+      .map(([key, match]) => [signature(match.sources), [key, match]]));
+    const projected = {}, used = new Set();
+    let round = 0, failed = false;
+    const band = depth => Array.from({length: 2 ** depth}, (_, index) => {
+      const path = index.toString(2).padStart(depth, '0').replaceAll('0', 'a').replaceAll('1', 'b');
+      return {source: main.has(path) ? {type: 'loser', match: main.get(path)} : {type: 'bye'}};
+    });
+    const player = entry => {
+      if (entry.source.type === 'player') return entry.source.id;
+      const match = matches[entry.source.match];
+      if (!match?.winner) return null;
+      return entry.source.type === 'winner' ? match.winner
+        : match.players.find(id => id && Number(id) !== Number(match.winner)) || null;
+    };
+    const step = (survivors, incoming = null) => {
+      round++;
+      const pairs = incoming ? incoming.map((entry, index) => [entry, survivors[index]])
+        : Array.from({length: survivors.length / 2}, (_, index) => survivors.slice(index * 2, index * 2 + 2));
+      return pairs.map((pair, index) => {
+        const sources = pair.map(entry => entry.key
+          ? {...entry.source, original_match: entry.source.match ?? null, match: entry.key} : {...entry.source});
+        const actual = pair.map(entry => entry.source);
+        if (actual.every(source => source.type !== 'bye')) {
+          const existing = real.get(signature(actual));
+          if (!existing) { failed = true; return {source: {type: 'bye'}}; }
+          const [key, match] = existing;
+          used.add(key);
+          projected[key] = {...match, sources, round};
+          return {key, source: {type: 'winner', match: key}};
+        }
+        const key = `display_feed_bye_${round}_${index}`;
+        const survivor = pair.find(entry => entry.source.type !== 'bye') || {source: {type: 'bye'}};
+        projected[key] = {section, round, path: null, label: `Feed-in round ${round}`, sources,
+          players: pair.map(player), byes: actual.map(source => source.type === 'bye'),
+          winner: player(survivor), sets: [], displayOnly: true};
+        return {key, source: survivor.source};
+      });
+    };
+    const openingDepth = Math.log2(size) - 1;
+    let survivors = step(band(openingDepth));
+    survivors = step(survivors, band(openingDepth - 1).reverse());
+    if (size === 32) {
+      survivors = step(survivors);
+      survivors = step(survivors, band(2));
+    }
+    while (survivors.length > 1) survivors = step(survivors);
+    if (failed || used.size !== real.size) return matches;
+    const result = {};
+    let inserted = false;
+    entries.forEach(([key, match]) => {
+      if (match.section !== section) result[key] = match;
+      else if (!inserted) { Object.assign(result, projected); inserted = true; }
+    });
+    return result;
+  }
   // Keep crispEdges at exactly one device pixel, including fractional browser zoom.
   // A 1 CSS-pixel stroke at e.g. 125% can otherwise rasterise into two columns.
   const strokeWidth = ratio => 1 / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
-  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes };
+  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes, withFeedInByes };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TennisBracketLayout = api;
 })(typeof window === 'undefined' ? globalThis : window);

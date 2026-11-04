@@ -2,6 +2,16 @@
 
 Paths below are relative to the repository root. Test references are executable coverage, not a claim they all passed in this review. See [verification](verification.md).
 
+## DK-28 — Number new standalone knockout draws by progression round
+
+**Rule:** New Playoffs only, Monrad only, Feed-in Monrad and Custom Monrad fixtures are numbered across progression stages, rather than completing one branch first. Within a stage, main-draw matches come first, then placement sections from highest finishing positions downward, retaining top-to-bottom topology order. Byes create no fixtures or number gaps. Main-round depth prevents a bye from promoting a quarterfinal ahead of remaining opening matches; placement and challenge stages follow their feeder/prerequisite dependencies.
+
+**Scope:** `FlexibleMonradCompiler::fixtureOrder()` supplies numbering order only during new generation in `FlexibleMonradService`. Graph keys, feeder relationships and layout order remain stable. Existing generated fixtures retain their stored numbers. Reopening/regenerating any existing draw is a separate, explicitly scoped operation; this default does not authorize it. Round-robin-derived playoffs use separate generators and retain their current numbering.
+
+**Sources:** `app/Services/Draw/FlexibleMonradCompiler.php`, `app/Services/Draw/FlexibleMonradService.php`, and `app/Http/Controllers/Backend/DrawSetupController.php`.
+
+**Regression:** `tests/Unit/KnockoutMatchNumberingTest.php` passed locally on 4 November 2026: 5 tests, 512 assertions, covering full and bye-containing draws, placement stages, direct entrants and rolling challenge prerequisites. `tests/Feature/Draw/FlexibleMonradTest.php` includes generation/state and existing-number preservation coverage. Test results do not establish deployment or live draw recreation.
+
 ## DK-01 — One group finishes before the other starts
 
 **Question:** Can round-robin groups alternate rounds, with larger groups first?
@@ -67,6 +77,10 @@ Paths below are relative to the repository root. Test references are executable 
 **Question:** Can a full bracket show bye branches without inventing results or advancing unknown players?
 
 **Rule:** Display-only bye branches must not create canonical fixtures or scores. An unresolved feeder is not a vacancy; a withdrawal must not erase played evidence. Retrying or JSON key reordering must produce the same resolved state.
+
+**Feed-in presentation:** For the fixed 16/32-slot feed-in templates, restore collapsed bye paths as unnumbered display cards and connect their surviving source to the next round. Keep the original feeder reference for labels; a pending loser remains pending until the feeder result is known. Only project a template when its source signatures agree with the stored graph, leaving incompatible historical graphs intact. Presentation does not renumber matches, add schedule rows or regenerate draws.
+
+**Presentation sources and evidence:** `public/js/tennis-bracket-layout.js::withFeedInByes()` and `app/Services/Draw/FlexibleMonradFeedInDisplay.php` project the same cards for browser/print and PDF. On 4 November 2026 the focused PDF/display/repair-library unit bundle passed 10 tests, 288 assertions; the layout/print/challenge/frontend bundle passed 18 tests, including PHP/JS projection parity for 16/32-slot full, bye-containing and sparse fields. A fictional 15-player local browser preview showed the missing opening feed-in bye connected to the next round. Production and narrow-phone rendering were not verified.
 
 **Solution:** `app/Services/Draw/FlexibleMonradCompiler.php`, `FlexibleMonradProgression.php` and the format-specific presentation layer keep topology, resolved state and display separate.
 
@@ -234,7 +248,7 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Sources:** `app/Services/Scheduling/EventVenueScheduleService.php::wave()`, `app/Services/Draw/FlexibleMonradCompiler.php`.
 
-**32-slot feed-in topology:** New generation follows the fixed template: pair adjacent opening-round losers, feed second-round losers in reverse main-draw order, pair adjacent survivors, then feed quarterfinal losers in main-draw order. Preserve empty branch positions through each crossing; a bye advances the other source without creating a fixture or a loser. Packing only actual losses prematurely can put both direct advances in one branch. This applies to size 32 only; existing saved graphs retain their structure until explicitly reopened and regenerated through the guarded service. `tests/Unit/FlexibleMonradThirtyTwoTemplateTest.php` verifies a sparse 22-player field (55 matches), the separated direct advances, and complete unique positions for fields of 2–32 players in a fixed 32-slot bracket.
+**16/32-slot feed-in topology:** New generation follows the fixed template for either size, independent of age group: pair adjacent opening-round losers, then feed second-round losers in reverse main-draw order. In size 32, pair adjacent survivors before feeding quarterfinal losers in main-draw order. Preserve empty branch positions through each crossing; a bye advances the other source without creating a fixture or a loser. Packing only actual losses prematurely can put both direct advances in one branch. Existing saved graphs retain their structure until explicitly reopened and regenerated through the guarded service; never rebuild published or scored draws to adopt this rule. `tests/Unit/FlexibleMonradThirtyTwoTemplateTest.php` verifies a sparse 22-player field (55 matches), separated direct advances, and complete unique positions for fields of 2–32 players. `tests/Unit/FlexibleMonradSixteenTemplateTest.php` verifies sparse 16-slot branch placement, all field counts of 2–16, and semifinal-loser third-place paths.
 
 **History:** Audit U/19 interpro draw feed; Set up U19 event test (`01a17c41-558c-7d42-af02-378f44192c05`). Compare formats by participants and feeder relationships, not spreadsheet match numbers.
 

@@ -36,6 +36,40 @@ class FlexibleMonradTest extends TestCase
         return [$draw, ['size' => 4, 'slots' => $slots], $players];
     }
 
+    public function test_generation_numbers_rounds_and_does_not_renumber_an_existing_graph(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $numbers = Fixture::whereIn('id', array_values($record->fixture_map))->pluck('match_nr', 'id');
+        $this->assertSame(1, (int) $numbers[$record->fixture_map['main_a']]);
+        $this->assertSame(2, (int) $numbers[$record->fixture_map['main_b']]);
+        $this->assertSame(3, (int) $numbers[$record->fixture_map['main_final']]);
+        $this->assertCount(4, $record->fixture_map);
+        Fixture::whereKey($record->fixture_map['main_a'])->update(['match_nr' => 91]);
+        $existing = $service->generate($draw, $record->revision);
+        $this->assertSame($record->fixture_map, $existing->fixture_map);
+        $this->assertSame(91, (int) Fixture::findOrFail($record->fixture_map['main_a'])->match_nr);
+        $this->assertSame(4, $draw->drawFixtures()->count());
+        $state = $service->state($draw->fresh());
+        $this->assertSame(91, (int) $state['matches']['main_a']['number']);
+        $this->assertSame(3, (int) $state['matches']['main_final']['number']);
+    }
+
+    public function test_demo_preview_uses_the_same_round_order_as_new_fixtures(): void
+    {
+        $slots = [];
+        foreach (['aaa', 'aab', 'aba', 'abb', 'baa', 'bab', 'bba', 'bbb'] as $index => $path) {
+            $slots[$path] = ['type' => 'player', 'id' => $index + 1];
+        }
+        $this->postJson(route('flexible-monrad.demo-preview'), ['draft' => ['size' => 8, 'slots' => $slots]])
+            ->assertOk()->assertJsonPath('fixture_order.0', 'main_aa')
+            ->assertJsonPath('fixture_order.1', 'main_ab')
+            ->assertJsonPath('fixture_order.2', 'main_ba')
+            ->assertJsonPath('fixture_order.3', 'main_bb');
+    }
+
     public function test_retirement_preserves_score_and_opponent_winner_then_clear_and_correct(): void
     {
         [$draw, $draft] = $this->setupDraw();

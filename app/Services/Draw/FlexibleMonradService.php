@@ -149,7 +149,8 @@ final class FlexibleMonradService
             $draft = $this->validateDraft($draw, $this->withoutWithdrawnSetupSlots($draw, $record->draft));
             $graph = app(FlexibleMonradCompiler::class)->compile($draft);
             $map = [];
-            foreach ($graph['nodes'] as $key => $node) {
+            foreach (FlexibleMonradCompiler::fixtureOrder($graph) as $key) {
+                $node = $graph['nodes'][$key];
                 $fixture = Fixture::create(['draw_id' => $draw->id, 'stage' => 'FM',
                     'round' => $node['round'], 'match_nr' => count($map) + 1, 'match_status' => 0]);
                 $map[$key] = $fixture->id;

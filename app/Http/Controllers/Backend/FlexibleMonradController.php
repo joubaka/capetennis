@@ -77,7 +77,7 @@ class FlexibleMonradController extends Controller
             'draft.slots' => 'present|array|max:64', 'draft.slots.*.type' => 'required|in:player,bye',
             'draft.slots.*.id' => 'nullable|integer|min:1|max:22']);
         $graph = app(\App\Services\Draw\FlexibleMonradCompiler::class)->compile($data['draft']);
-        return response()->json($graph);
+        return response()->json($graph + ['fixture_order' => \App\Services\Draw\FlexibleMonradCompiler::fixtureOrder($graph)]);
     }
 
     public function save(Request $request, Draw $draw)

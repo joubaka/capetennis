@@ -15,6 +15,7 @@ final class FlexibleMonradPdfLayout
     public function build(array $state): array
     {
         $matches = array_filter((array) ($state['matches'] ?? []), fn ($match) => ($match['challenge_status'] ?? null) !== 'disabled');
+        $matches = FlexibleMonradFeedInDisplay::expand($matches, $state['draft'] ?? []);
         $players = collect($state['players'] ?? [])->mapWithKeys(fn ($player) => [(int) $player['id'] => $player]);
         $baseRanks = collect($state['base_positions'] ?? [])->filter(fn ($row) => ! empty($row['player']))
             ->mapWithKeys(fn ($row) => [(int) $row['player'] => (int) $row['position']]);
@@ -53,7 +54,7 @@ final class FlexibleMonradPdfLayout
                     'bottom' => $position['bottom'],
                     'middle' => $position['middle'],
                     'width' => self::CARD_WIDTH,
-                    'number' => isset($match['challenge_positions']) ? $match['number'].' · '.implode(' v ', $match['challenge_positions']) : $match['number'],
+                    'number' => !empty($match['displayOnly']) ? null : (isset($match['challenge_positions']) ? $match['number'].' · '.implode(' v ', $match['challenge_positions']) : $match['number']),
                     'participants' => [
                         ['label' => $participantLabels[0], 'style' => $this->participantStyle($match, 0, $players), 'width' => $this->pillWidth($participantLabels[0])],
                         ['label' => $participantLabels[1], 'style' => $this->participantStyle($match, 1, $players), 'width' => $this->pillWidth($participantLabels[1])],
@@ -65,11 +66,11 @@ final class FlexibleMonradPdfLayout
                     'winner' => $match['winner'] ?? null,
                     'player_ids' => $match['players'] ?? [null, null],
                     'schedule' => $this->scheduleLabel($match['schedule'] ?? null),
-                    'note' => ($match['retired'] ?? false) ? 'RET - Retired' : (($match['walkover'] ?? false) ? 'W/O - Walkover' : (isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : match ($match['automatic'] ?? null) {
+                    'note' => !empty($match['displayOnly']) ? 'Bye - no match played' : (($match['retired'] ?? false) ? 'RET - Retired' : (($match['walkover'] ?? false) ? 'W/O - Walkover' : (isset($match['skip_reason']) ? (str_contains($match['skip_reason'], 'already played') ? 'Skipped - already played' : 'Skipped - player unavailable') : match ($match['automatic'] ?? null) {
                         'walkover' => 'Walkover',
                         'void' => 'Closed - no active players',
                         default => null,
-                    })),
+                    }))),
                 ];
             }
 
@@ -96,7 +97,7 @@ final class FlexibleMonradPdfLayout
                 ->pluck('match'))->all();
             $endpoints = [];
             foreach ($entries as $entry) {
-                if (in_array($entry['key'], $followedWinners, true)) {
+                if (!empty($entry['match']['displayOnly']) || in_array($entry['key'], $followedWinners, true)) {
                     continue;
                 }
                 $position = $layout['positions'][$entry['key']];
@@ -231,13 +232,15 @@ final class FlexibleMonradPdfLayout
             return 'Bye (inactive)';
         }
         $source = (array) ($match['sources'][$slot] ?? []);
+        if (($source['type'] ?? null) === 'bye') return 'Bye';
         if (isset($source['current_position'])) return 'Current position '.$source['current_position'];
         if (isset($source['base_position'])) return 'Base position '.$source['base_position'];
         if (($source['type'] ?? null) === 'player') {
             return 'Direct entry';
         }
         $type = ($source['type'] ?? null) === 'winner' ? 'Winner' : 'Loser';
-        $number = isset($source['match'], $matches[$source['match']]) ? $matches[$source['match']]['number'] : '?';
+        $sourceKey = $source['original_match'] ?? $source['match'] ?? null;
+        $number = isset($matches[$sourceKey]) ? ($matches[$sourceKey]['number'] ?? '?') : '?';
         return $type.' of Match '.$number;
     }
 

@@ -27,7 +27,7 @@
         @endif
       @endforeach
       <rect x="{{ $card['x'] + $card['width'] - 38 }}" y="{{ $card['middle'] - 25 }}" width="38" height="14" fill="#ffffff"/>
-      <text x="{{ $card['x'] + $card['width'] - 5 }}" y="{{ $card['middle'] - 15 }}" text-anchor="end" fill="#64748b" font-family="DejaVu Sans, Arial, sans-serif" font-size="8">Match {{ $card['number'] }}</text>
+      <text x="{{ $card['x'] + $card['width'] - 5 }}" y="{{ $card['middle'] - 15 }}" text-anchor="end" fill="#64748b" font-family="DejaVu Sans, Arial, sans-serif" font-size="8">{{ $card['number'] === null ? 'Bye' : 'Match '.$card['number'] }}</text>
       @if($card['schedule'])
         <rect x="{{ $card['x'] + 52 }}" y="{{ $card['middle'] - 10 }}" width="{{ $card['width'] - 58 }}" height="13" fill="#ffffff"/>
         <text x="{{ $card['x'] + $card['width'] - 5 }}" y="{{ $card['middle'] }}" text-anchor="end" fill="#176448" font-family="DejaVu Sans, Arial, sans-serif" font-size="7" font-weight="700">{{ $card['schedule'] }}</text>
