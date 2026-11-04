@@ -31,17 +31,51 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         try {
             CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-01-01', 'Africa/Johannesburg'));
             $url = route('backend.player-performance.ratings');
-            $response = $this->get($url.'?age_group=u11')->assertOk()
+            $response = $this->get($url.'?age_group=u11&age_scope=group')->assertOk()
                 ->assertSee('U11 · born 2015')->assertSee('from 1 January to 31 December');
             $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
 
             CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-12-31', 'Africa/Johannesburg'));
-            $response = $this->get($url.'?age_group=u11')->assertOk()->assertSee('U11 · born 2015');
+            $response = $this->get($url.'?age_group=u11&age_scope=group')->assertOk()->assertSee('U11 · born 2015');
             $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
 
             CarbonImmutable::setTestNow(CarbonImmutable::parse('2027-01-01', 'Africa/Johannesburg'));
-            $response = $this->get($url.'?age_group=u12')->assertOk()->assertSee('U12 · born 2015');
+            $response = $this->get($url.'?age_group=u12&age_scope=group')->assertOk()->assertSee('U12 · born 2015');
             $this->assertEqualsCanonicalizing([$january->id, $december->id], $response->viewData('players')->getCollection()->pluck('id')->all());
+        } finally {
+            CarbonImmutable::setTestNow();
+        }
+    }
+
+    public function test_admin_junior_defaults_include_younger_calendar_birth_years(): void
+    {
+        Role::findOrCreate('super-user', 'web');
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $ratings = []; $births = [];
+        foreach (range(2012, 2020) as $year) {
+            foreach (['01-01', '12-31'] as $birthday) {
+                $player = Player::factory()->create(['dateOfBirth' => "$year-$birthday", 'gender' => 1]);
+                $births[$player->id] = $year;
+                $ratings[$player->id] = ['score' => 50.0, 'component' => 'birthdays', 'cohort' => AllAgeRatingModel::COHORT, 'last_played' => '2026-01-01', 'confidence_label' => 'Low', 'comparable' => true];
+            }
+        }
+        $this->calculated($ratings);
+        try {
+            foreach (['2026-01-01', '2026-12-31', '2027-01-01'] as $date) {
+                CarbonImmutable::setTestNow(CarbonImmutable::parse($date, 'Africa/Johannesburg'));
+                $season = (int) substr($date, 0, 4);
+                foreach (range(9, 13) as $age) {
+                    foreach (['grouped', 'shared'] as $sort) {
+                        $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u'.$age, 'sort' => $sort, 'ball_type' => 'overall', 'per_page' => 100]))->assertOk();
+                        $expected = array_keys(array_filter($births, fn ($year) => $year >= $season - $age));
+                        $this->assertEqualsCanonicalizing($expected, $response->viewData('players')->getCollection()->pluck('id')->all());
+                        $response->assertSee('U'.$age.' and younger · born '.($season - $age).' or later');
+                        $this->assertTrue($response->viewData('includeYounger'));
+                    }
+                }
+            }
+            $response = $this->get(route('backend.player-performance.ratings'))->assertOk();
+            $this->assertSame('younger', $response->viewData('ageScope'));
         } finally {
             CarbonImmutable::setTestNow();
         }
@@ -210,14 +244,14 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         }
         $search = $this->get($url.'?sort=age&search=Older')->assertOk();
         $this->assertSame([2], $search->viewData('players')->getCollection()->pluck('position')->all());
-        $filtered = $this->get($url.'?sort=age&age_group=u13&gender=boys')->assertOk();
+        $filtered = $this->get($url.'?sort=age&age_scope=group&age_group=u13&gender=boys')->assertOk();
         $this->assertSame(['Older Lower'], $filtered->viewData('players')->getCollection()->pluck('name')->all());
         $this->assertSame([1], $filtered->viewData('players')->getCollection()->pluck('position')->all());
         foreach (range(1, 26) as $number) {
             $player = Player::factory()->create(['name' => 'Paged', 'surname' => sprintf('Row%02d', $number), 'dateOfBirth' => '2013-01-01', 'gender' => 1]);
             $ratings[$player->id] = array_replace(reset($ratings), ['score' => 50.0 - $number]);
         }
-        $paged = $this->get($url.'?sort=age&age_group=u13&page=2')->assertOk();
+        $paged = $this->get($url.'?sort=age&age_scope=group&age_group=u13&page=2')->assertOk();
         $this->assertSame([26, 27, 28], $paged->viewData('players')->getCollection()->pluck('position')->all());
         $this->assertStringContainsString('sort=age', $paged->viewData('players')->url(1));
         $this->assertStringContainsString('age_group=u13', $paged->viewData('players')->url(1));

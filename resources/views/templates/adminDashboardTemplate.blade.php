@@ -1,5 +1,6 @@
 <div class="col-xl-12">
   @php
+    $tabs['users'] = ($tabs['users'] ?? false) && auth()->user()->hasRole('super-user');
     $primaryDashboardTab = ($tabs['events'] ?? false) ? 'events'
       : (($tabs['rankings'] ?? false) ? 'rankings'
       : (($tabs['users'] ?? false) ? 'users'
@@ -193,6 +194,7 @@
       @endif
 
       {{-- RANKINGS --}}
+      @if($tabs['rankings'] ?? false)
       <div class="tab-pane fade {{ $primaryDashboardTab === 'rankings' ? 'show active' : '' }}" id="tab-rankings" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">Series List</h5>
@@ -212,7 +214,10 @@
         </div>
       </div>
 
+      @endif
+
       {{-- USERS --}}
+      @if($tabs['users'] ?? false)
       <div class="tab-pane fade {{ $primaryDashboardTab === 'users' ? 'show active' : '' }}" id="tab-users" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">User List</h5>
@@ -232,7 +237,10 @@
         </div>
       </div>
 
+      @endif
+
       {{-- PLAYERS --}}
+      @if($tabs['players'] ?? false)
       <div class="tab-pane fade {{ $primaryDashboardTab === 'players' ? 'show active' : '' }}" id="tab-players" role="tabpanel">
         <div class="mb-4">
           <h5 class="card-header">Player List</h5>
@@ -251,6 +259,8 @@
           </div>
         </div>
       </div>
+
+      @endif
 
       {{-- ACTIVITY LOG --}}
       @if($tabs['activity'] ?? false)

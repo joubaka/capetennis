@@ -48,7 +48,8 @@ class PlayerPlusWalletTest extends TestCase
         $this->assertSame('annual', $order->plan); $this->assertTrue($order->pay_status); $this->assertFalse($order->payfast_paid);
         $this->assertNull($order->payfast_handed_off_at); $this->assertNull($order->payfast_pf_payment_id); $this->assertNull($order->recurring_consented_at);
         $this->assertSame(301.0, $payer->wallet()->first()->balance);
-        $this->assertSame('699.00', WalletTransaction::where('source_type', PlayerPlusOrder::WALLET_SOURCE)->sole()->getRawOriginal('amount'));
+        // MySQL returns DECIMAL as a string; SQLite returns this whole amount as an integer.
+        $this->assertSame(699.0, (float) WalletTransaction::where('source_type', PlayerPlusOrder::WALLET_SOURCE)->sole()->getRawOriginal('amount'));
         $this->assertTrue($order->hasVerifiedSettlement());
         $this->assertTrue(app(PlayerPlusEntitlement::class)->forPlayer($payer, $player));
         $this->assertTrue($order->term_starts_at->addYearNoOverflow()->eq($order->term_ends_at));

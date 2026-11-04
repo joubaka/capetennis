@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-018",
+      "title": "Dashboard directories truncate records or expose account tools",
+      "scope": "Dashboard Users and Players tables and backend account directory, role definitions, role assignment and account deletion.",
+      "symptoms": "Search misses users or players outside the first 25 records, ranking publication fails silently, or an ordinary/admin account can read the user directory or mutate account roles/deletion.",
+      "cause": "Client-side DataTables consumed bounded server pages; user/data was shadowed by resource binding; some account controllers trusted authentication or self identity rather than Super Admin authority. Names were concatenated as HTML and publication used an absent GET route.",
+      "fix": "Require super-user at account-tool controllers and role POST routes. Retire legacy GET role mutations. Keep role writes and successful critical audit atomic. Register static directory data before user/{user}. Use server-side DataTables with matching sortable indexes and escaped text fields. Navigate to canonical series settings/publication review without a dashboard publication mutation. See docs/dashboard-launch-readiness.md.",
+      "verification": "On 2026-11-03 isolated SQLite DashboardLaunchSafetyTest passed 10 tests and 73 assertions; existing dashboard/account suites passed 20 tests and 135 assertions. Three executable JavaScript regressions passed for table configuration, text escaping and ranking navigation. PHP lint, route registration, Blade compilation and diff checks passed. Independent quality and security source reviews found no remaining material scoped defect.",
+      "limits": "No production, MySQL concurrency or responsive browser verification is established. Historical player relationships remain usable but unverified; this repair does not revoke family access, change billing, publish rankings, execute role operations on live accounts or authorize deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/UserController.php", "app/Http/Controllers/Backend/RoleController.php", "docs/dashboard-launch-readiness.md"],
+      "tests": ["tests/Feature/DashboardLaunchSafetyTest.php", "tests/Feature/DashboardDatasetBoundingTest.php", "tests/Feature/DashboardWorkHubTest.php", "tests/Feature/AdminAccountBrowsingTest.php"]
+    },
+    {
       "id": "RK-017",
       "title": "Player dashboard shows archived rankings as current",
       "scope": "PlayerCompetitionTimelineService current series rankings on player dashboards and related private history views.",

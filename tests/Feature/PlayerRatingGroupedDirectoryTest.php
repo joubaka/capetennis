@@ -60,7 +60,7 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
         $sections = $first->viewData('sections');
         $this->assertSame(['u7', 'u8', 'u9', 'u10', 'u13', 'unknown', 'other'], array_keys($sections));
         foreach ($youngGroups as $key => $profiles) {
-            $filtered = $this->get($url.'?age_group='.$key.'&gender=boys')->assertOk();
+            $filtered = $this->get($url.'?age_scope=group&age_group='.$key.'&gender=boys')->assertOk();
             $expected = array_column($profiles, 0);
             if ($key === 'u10') $expected[] = 'YoungPlayer';
             $this->assertEqualsCanonicalizing(array_map(fn ($name) => $name.' Synthetic', $expected), $filtered->viewData('players')->getCollection()->pluck('name')->all());
@@ -76,20 +76,20 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
         $second = $this->get($url.'?u13_boys_page=2')->assertOk();
         $this->assertSame(11, $second->viewData('sections')['u13']['columns']['boys']->first()['position']);
         $this->assertSame(1, $second->viewData('sections')['u13']['columns']['girls']->first()['position']);
-        $search = $this->get($url.'?age_group=u13&search=Girl27')->assertOk();
+        $search = $this->get($url.'?age_scope=group&age_group=u13&search=Girl27')->assertOk();
         $this->assertSame(27, $search->viewData('sections')['u13']['columns']['girls']->first()['position']);
-        $local = $this->get($url.'?age_group=u13&gender=girls&u13_girls_page=3')->assertOk()->assertSee('LocalPlayer Synthetic (2013)')->assertSee('Awaiting calibration');
+        $local = $this->get($url.'?age_scope=group&age_group=u13&gender=girls&u13_girls_page=3')->assertOk()->assertSee('LocalPlayer Synthetic (2013)')->assertSee('Awaiting calibration');
         $this->assertNull($local->viewData('sections')['u13']['columns']['girls']->getCollection()->last()['position']);
         $this->assertSame(['girls'], array_keys($local->viewData('sections')['u13']['columns']));
         $this->getJson($url.'?u13_boys_page=-1')->assertUnprocessable();
-        $large = $this->get($url.'?age_group=u13&per_page=500')->assertOk()->assertSee('Players per list');
+        $large = $this->get($url.'?age_scope=group&age_group=u13&per_page=500')->assertOk()->assertSee('Players per list');
         $largeColumns = $large->viewData('sections')['u13']['columns'];
         $this->assertSame(500, $largeColumns['boys']->perPage());
         $this->assertCount(27, $largeColumns['boys']);
         $this->assertCount(28, $largeColumns['girls']);
         $this->assertNull($largeColumns['girls']->getCollection()->last()['position']);
         $this->assertStringContainsString('per_page=500', $largeColumns['boys']->url(2));
-        $shared = $this->get($url.'?sort=shared&age_group=u13&per_page=500')->assertOk()->assertSee('Players per page');
+        $shared = $this->get($url.'?sort=shared&age_scope=group&age_group=u13&per_page=500')->assertOk()->assertSee('Players per page');
         $this->assertSame(500, $shared->viewData('players')->perPage());
         $this->assertCount(56, $shared->viewData('players'));
         $this->getJson($url.'?per_page=501')->assertUnprocessable();

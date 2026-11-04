@@ -104,7 +104,7 @@ final class FlexibleMonradCompiler
             return ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
         }
         if ($mode === 'feed_in_monrad') {
-            $this->feedIn();
+            in_array($size, [16, 32], true) ? $this->feedInTemplate($size) : $this->feedIn();
             ksort($this->positions);
             $graph = ['nodes' => $this->nodes, 'positions' => $this->positions, 'players' => array_keys($seen)];
             if ($draft['challenge_playoffs'] ?? false) {
@@ -261,6 +261,71 @@ final class FlexibleMonradCompiler
             $this->classify($losers, $place);
             $place += count($losers);
         }
+    }
+
+    /** Preserve the 16/32-slot templates' empty branches rather than packing losses. */
+    private function feedInTemplate(int $size): void
+    {
+        $place = 2;
+        foreach ([0, 1] as $depth) {
+            $sources = $this->losses[$depth] ?? [];
+            if ($sources) $this->classify($sources, $place);
+            $place += count($sources);
+        }
+        $count = array_sum(array_map('count', array_filter($this->losses, fn ($depth) => $depth >= 2, ARRAY_FILTER_USE_KEY)));
+        if (! $count) return;
+        $section = 'Positions '.$place.'–'.($place + $count - 1).' · Feed-in';
+        $round = 1;
+        $eliminated = [];
+        $band = function (int $depth): array {
+            $sources = [];
+            for ($index = 0; $index < 2 ** $depth; $index++) {
+                $path = strtr(str_pad(decbin($index), $depth, '0', STR_PAD_LEFT), ['0' => 'a', '1' => 'b']);
+                $key = 'main_'.$path;
+                $sources[] = isset($this->nodes[$key]) ? ['type' => 'loser', 'match' => $key] : null;
+            }
+            return $sources;
+        };
+        // Pair adjacent opening losers, then receive reversed next-round losers.
+        // Both sizes retain empty branches in these same template positions.
+        $openingDepth = (int) log($size, 2) - 1;
+        $survivors = $this->templateFeedRound($band($openingDepth), null, $eliminated, $round, $section);
+        $survivors = $this->templateFeedRound($survivors, array_reverse($band($openingDepth - 1)), $eliminated, $round, $section);
+        if ($size === 32) {
+            // B17–B20 pair survivors; B21–B24 receive A25..A28 in order.
+            $survivors = $this->templateFeedRound($survivors, null, $eliminated, $round, $section);
+            $survivors = $this->templateFeedRound($survivors, $band(2), $eliminated, $round, $section);
+        }
+        while (count($survivors) > 1) {
+            $survivors = $this->templateFeedRound($survivors, null, $eliminated, $round, $section);
+        }
+        $this->positions[$place++] = $survivors[0];
+        foreach (array_reverse($eliminated) as $losers) {
+            $this->classify($losers, $place);
+            $place += count($losers);
+        }
+    }
+
+    /** Empty sources advance structurally, without canonical fixtures or losses. */
+    private function templateFeedRound(array $sources, ?array $incoming, array &$eliminated, int &$round, string $section): array
+    {
+        $pairs = $incoming === null ? array_chunk($sources, 2)
+            : array_map(fn ($entry, $source) => [$entry, $source], $incoming, $sources);
+        $next = $losers = [];
+        foreach ($pairs as [$a, $b]) {
+            if ($a === null || $b === null) {
+                $next[] = $a ?? $b;
+                continue;
+            }
+            [$win, $lose] = $this->feedMatch([$a, $b], $round, $section);
+            $next[] = $win;
+            $losers[] = $lose;
+        }
+        if ($losers) {
+            $eliminated[] = $losers;
+            $round++;
+        }
+        return $next;
     }
 
     private function reduceFeedIn(array &$sources, int $target, array &$eliminated, int &$round, string $section): void

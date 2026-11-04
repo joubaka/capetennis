@@ -14,7 +14,8 @@ class PlayerPlusPricingDisplayTest extends TestCase
         config(['cache.default' => 'array']);
         Schema::shouldReceive('hasTable')->andReturn(true);
         foreach ([PlayerPlusService::PRICE_SETTING => 'invalid', PlayerPlusService::MONTHLY_PRICE_SETTING => 'invalid',
-            PlayerPlusService::MONTHLY_ENABLED_SETTING => '0', PlayerRatingAccess::SETTING => '1'] as $key => $value) {
+            PlayerPlusService::MONTHLY_ENABLED_SETTING => '0', PlayerRatingAccess::SETTING => '1',
+            PlayerRatingAccess::COMING_SOON_SETTING => '1'] as $key => $value) {
             Cache::put('site_setting.'.$key, (object) ['value' => $value]);
         }
     }

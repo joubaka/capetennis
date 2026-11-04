@@ -116,7 +116,8 @@ class PlayerBallRatingDirectoryTest extends TestCase
         }
         $standard = $this->get($url.'?ball_type=standard&age_group=u13')->assertOk()
             ->assertSee('name="age_group"', false)->assertSee('data-ctr-age-section="u13"', false);
-        $this->assertSame([$fields['standard'][2]->id], $standard->viewData('players')->pluck('id')->all());
+        $this->assertEqualsCanonicalizing($fields['standard']->pluck('id')->all(), $standard->viewData('players')->pluck('id')->all());
+        $this->assertTrue($standard->viewData('includeYounger'));
         $this->assertTrue($standard->viewData('groupedOrder'));
         $this->assertDatabaseCount('players', 9);
     }

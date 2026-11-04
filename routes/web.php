@@ -661,20 +661,20 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   // Add these inside the backend/authenticated group (apply same middleware as other admin routes)
   Route::post('backend/users/{user}/add-role', [\App\Http\Controllers\Backend\UserController::class, 'addRole'])
     ->name('backend.users.addRole')
-    ->middleware(['auth', 'role:super-user|admin']);
+    ->middleware(['auth', 'role:super-user']);
 
   Route::post('backend/users/{user}/remove-role', [\App\Http\Controllers\Backend\UserController::class, 'removeRole'])
     ->name('backend.users.removeRole')
-    ->middleware(['auth', 'role:super-user|admin']);
+    ->middleware(['auth', 'role:super-user']);
 
   // Role management (create/delete roles)
   Route::post('backend/roles', [\App\Http\Controllers\Backend\RoleController::class, 'store'])
     ->name('backend.roles.store')
-    ->middleware(['auth', 'role:super-user|admin']);
+    ->middleware(['auth', 'role:super-user']);
 
   Route::delete('backend/roles/{role}', [\App\Http\Controllers\Backend\RoleController::class, 'destroy'])
     ->name('backend.roles.destroy')
-    ->middleware(['auth', 'role:super-user|admin']);
+    ->middleware(['auth', 'role:super-user']);
 
   // Code of Conduct / Agreements (admin)
   Route::prefix('agreements')->middleware('role:super-user|admin')->group(function () {
@@ -1546,11 +1546,13 @@ Route::delete(
   Route::get('dashboard', [DashboardController::class, 'dashboard'])->name('dashboard');
 
   //user
-  Route::get('user/addRole/{id}', [UserController::class, 'addRole'])->name('user.add.role');
-  Route::get('user/removeRole/{id}', [UserController::class, 'removeRole'])->name('user.remove.role');
+  Route::get('user/addRole/{id}', fn () => abort(410, 'Use the authorised role-management form.'))->name('user.add.role');
+  Route::get('user/removeRole/{id}', fn () => abort(410, 'Use the authorised role-management form.'))->name('user.remove.role');
   Route::get('user/search', [UserController::class, 'search'])
     ->middleware('role:super-user')
     ->name('backend.user.search');
+  // Register static directory data before the resource's user/{user} binding.
+  Route::get('user/data', [UserController::class, 'data'])->name('user.data');
   Route::resource('user', UserController::class);
 
   Route::get('export-clothing-orders-excel/{id}', [ClothingOrderController::class, 'exportExcel'])->name('export.excel.clothing');
@@ -2403,7 +2405,6 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   | USERS & PLAYERS DATA ENDPOINTS (for DataTables)
   |--------------------------------------------------------------------------
   */
-  Route::get('user/data', [UserController::class, 'data'])->name('user.data');
 
   /*
   |--------------------------------------------------------------------------

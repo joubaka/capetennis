@@ -234,6 +234,8 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Sources:** `app/Services/Scheduling/EventVenueScheduleService.php::wave()`, `app/Services/Draw/FlexibleMonradCompiler.php`.
 
+**32-slot feed-in topology:** New generation follows the fixed template: pair adjacent opening-round losers, feed second-round losers in reverse main-draw order, pair adjacent survivors, then feed quarterfinal losers in main-draw order. Preserve empty branch positions through each crossing; a bye advances the other source without creating a fixture or a loser. Packing only actual losses prematurely can put both direct advances in one branch. This applies to size 32 only; existing saved graphs retain their structure until explicitly reopened and regenerated through the guarded service. `tests/Unit/FlexibleMonradThirtyTwoTemplateTest.php` verifies a sparse 22-player field (55 matches), the separated direct advances, and complete unique positions for fields of 2–32 players in a fixed 32-slot bracket.
+
 **History:** Audit U/19 interpro draw feed; Set up U19 event test (`01a17c41-558c-7d42-af02-378f44192c05`). Compare formats by participants and feeder relationships, not spreadsheet match numbers.
 
 ## DK-21 — Multiple independent draws in one category

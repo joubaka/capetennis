@@ -63,6 +63,7 @@ class UserController extends Controller
    */
   public function index(Request $request)
   {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
     // If AJAX request, return JSON for DataTables
     if ($request->ajax() || $request->wantsJson()) {
       return $this->directoryData($request);
@@ -83,6 +84,7 @@ class UserController extends Controller
 
   private function directoryData(Request $request)
   {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
     $start = max(0, (int) $request->input('start', 0));
     $length = min(100, max(1, (int) $request->input('length', 25)));
     $term = mb_substr(trim((string) $request->input('search.value', '')), 0, 100);
@@ -190,6 +192,7 @@ class UserController extends Controller
    */
   public function destroy(User $user)
   {
+    abort_unless(request()->user()?->hasRole('super-user'), 403);
     DB::transaction(function () use ($user): void {
       $user->delete();
     });
@@ -205,19 +208,16 @@ class UserController extends Controller
    */
   public function removeRole(Request $request, $id)
   {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
     $request->validate(['role' => 'required|string']);
     $user = User::findOrFail($id);
 
-    // permission check: only admin or self (adjust as needed)
-    if (auth()->id() !== $user->id && !auth()->user()->can('admin')) {
-        abort(403);
-    }
-
     $roleName = $request->input('role');
     DB::transaction(function () use ($user, $roleName): void {
+      $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
       $before = $user->getRoleNames()->values()->all();
       $user->removeRole($roleName);
-      app(AuditWriter::class)->record([
+      $audit = app(AuditWriter::class)->record([
         'category' => 'security',
         'action' => 'user.role-removed',
         'subject' => $user,
@@ -225,6 +225,7 @@ class UserController extends Controller
         'after' => ['roles' => $user->fresh()->getRoleNames()->values()->all()],
         'reason' => "Removed role {$roleName}",
       ], true);
+      if (!$audit) throw new \RuntimeException('The role change audit could not be saved. No role was changed.');
     });
 
     return response()->json([
@@ -238,19 +239,16 @@ class UserController extends Controller
    */
   public function addRole(Request $request, $id)
   {
+    abort_unless($request->user()?->hasRole('super-user'), 403);
     $request->validate(['role' => 'required|string']);
     $user = User::findOrFail($id);
 
-    // permission check: only admin or self (adjust as needed)
-    if (auth()->id() !== $user->id && !auth()->user()->can('admin')) {
-        abort(403);
-    }
-
     $roleName = $request->input('role');
     DB::transaction(function () use ($user, $roleName): void {
+      $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
       $before = $user->getRoleNames()->values()->all();
       $user->assignRole($roleName);
-      app(AuditWriter::class)->record([
+      $audit = app(AuditWriter::class)->record([
         'category' => 'security',
         'action' => 'user.role-assigned',
         'subject' => $user,
@@ -258,6 +256,7 @@ class UserController extends Controller
         'after' => ['roles' => $user->fresh()->getRoleNames()->values()->all()],
         'reason' => "Assigned role {$roleName}",
       ], true);
+      if (!$audit) throw new \RuntimeException('The role change audit could not be saved. No role was changed.');
     });
 
     return response()->json([

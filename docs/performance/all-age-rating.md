@@ -5,6 +5,14 @@ shared score across age categories. Age and gender filters change membership of
 lists, never the player's estimated strength. It is not UTR, WTN, a win
 percentage, or an official selection ranking.
 
+The admin ratings directory defaults selected junior age filters to that age
+and younger. U9–U13 use calendar birth years: in the 2026 season U11 includes
+valid birth dates in 2015 or later, including both January and December births.
+The explicit birth-year-group-only option retains exact-year filtering for U9–U13. The
+unfiltered form retains the younger-age choice for its next submission. Red and
+Orange remain age independent. See `PlayerRatingGroupDirectoryTest` for the
+cutoffs, New Year rollover and exact-group override regressions.
+
 ## Evidence and comparability
 
 `AllAgeRatingModel` fits the existing regularized Bradley–Terry likelihood to

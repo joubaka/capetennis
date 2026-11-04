@@ -49,7 +49,8 @@ class PlayerRatingProfileDirectory
             if (in_array($sort, ['grouped', 'age'], true)) $sort = 'shared';
         }
         $includeYounger = $ageScope === 'younger' && in_array($ageGroup, ['u7', 'u8', 'u9', 'u10', 'u11', 'u12', 'u13', 'u18'], true);
-        $ageScope = $includeYounger ? 'younger' : 'group';
+        // Keep the unfiltered form ready to include younger ages on submission.
+        $ageScope = $includeYounger || ($ageGroup === '' && $ageScope === 'younger') ? 'younger' : 'group';
         $ageScopeLabel = $includeYounger ? strtoupper($ageGroup).' and younger · born '.($year - (int) substr($ageGroup, 1)).' or later' : null;
         $query = DB::table('players')->select(['id', 'name', 'surname', 'dateOfBirth', 'gender']);
         $validBirth = fn ($q) => $q->where('dateOfBirth', '>=', '1000-01-01')->where('dateOfBirth', '<=', $today->toDateString());

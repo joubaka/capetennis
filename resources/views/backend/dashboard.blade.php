@@ -504,13 +504,15 @@ $(function () {
   // ==========================================================
   var dtSeries = $('.datatable-series');
   if (dtSeries.length) {
+    const settingsUrl = @json(route('series.settings', ['series' => '__SERIES__']));
+    const seriesUrl = @json(route('series.show', ['series' => '__SERIES__']));
     dtSeries.DataTable({
       ordering: false,
       paging: false,
       ajax: APP_URL + '/events/ajax/series',
       columns: [
         { data: 'id' },
-        { data: 'name' },
+        { data: 'name', render: $.fn.dataTable.render.text() },
         { data: null },
         { data: null },
         { data: null },
@@ -519,15 +521,15 @@ $(function () {
         {
           targets: 2,
           render: function (data, type, full) {
-            return '<a href="' + APP_URL + '/backend/ranking/settings/' + full.id + '" class="btn btn-sm btn-warning">Settings</a>';
+            return '<a href="' + settingsUrl.replace('__SERIES__', encodeURIComponent(full.id)) + '" class="btn btn-sm btn-warning">Settings</a>';
           }
         },
         {
           targets: 3,
           render: function (data, type, full) {
-            var btnClass = full.leaderboard_published ? 'btn-success' : 'btn-danger';
             var text = full.leaderboard_published ? 'Published' : 'Not Published';
-            return '<div data-id="' + full.id + '" class="btn ' + btnClass + ' btn-sm publishLeaderboard">' + text + '</div>';
+            return '<span class="badge ' + (full.leaderboard_published ? 'bg-label-success' : 'bg-label-secondary') + '">' + text + '</span> ' +
+              '<a href="' + seriesUrl.replace('__SERIES__', encodeURIComponent(full.id)) + '" class="btn btn-sm btn-outline-primary">Review publication</a>';
           }
         },
         {
@@ -537,19 +539,6 @@ $(function () {
           }
         },
       ],
-      initComplete: function () {
-        $(document).on('click', '.publishLeaderboard', function () {
-          var id = $(this).data('id');
-          var $btn = $(this);
-          $.get(APP_URL + '/backend/series/publishLeaderboard/' + id, function (data) {
-            if (data.leaderboard_published == 1) {
-              $btn.removeClass('btn-danger').addClass('btn-success').text('Published');
-            } else {
-              $btn.removeClass('btn-success').addClass('btn-danger').text('Not Published');
-            }
-          });
-        });
-      }
     });
   }
 
@@ -559,23 +548,30 @@ $(function () {
   var dtUsers = $('.datatable-users');
   if (dtUsers.length) {
     dtUsers.DataTable({
+      processing: true,
+      serverSide: true,
+      searchDelay: 350,
       ordering: true,
+      order: [[0, 'desc']],
       pageLength: 25,
-      ajax: APP_URL + '/backend/user',
+      lengthMenu: [10, 25, 50, 100],
+      ajax: APP_URL + '/backend/user/data',
       columns: [
         { data: 'id' },
-        { data: 'name' },
-        { data: 'email' },
+        { data: 'name', render: $.fn.dataTable.render.text() },
+        { data: 'email', render: $.fn.dataTable.render.text() },
         { data: null },
         { data: null },
       ],
       columnDefs: [
         {
           targets: 3,
+          orderable: false,
+          searchable: false,
           render: function (data, type, full) {
             if (full.roles && full.roles.length) {
               return full.roles.map(function (r) {
-                return '<span class="badge bg-label-primary me-1">' + r.name + '</span>';
+                return '<span class="badge bg-label-primary me-1">' + $('<div>').text(String(r.name ?? '')).html() + '</span>';
               }).join('');
             }
             return '<span class="text-muted">—</span>';
@@ -583,6 +579,8 @@ $(function () {
         },
         {
           targets: 4,
+          orderable: false,
+          searchable: false,
           render: function (data, type, full) {
             return '<a href="' + APP_URL + '/backend/user/' + full.id + '" class="btn btn-sm btn-secondary">View</a>';
           }
@@ -597,8 +595,13 @@ $(function () {
   var dtPlayers = $('.datatable-players');
   if (dtPlayers.length) {
     dtPlayers.DataTable({
+      processing: true,
+      serverSide: true,
+      searchDelay: 350,
       ordering: true,
+      order: [[0, 'desc']],
       pageLength: 25,
+      lengthMenu: [10, 25, 50, 100],
       ajax: APP_URL + '/backend/player',
       columns: [
         { data: 'id' },
@@ -608,10 +611,11 @@ $(function () {
         { data: null },
       ],
       columnDefs: [
+        { targets: [2, 3, 4], orderable: false, searchable: false },
         {
           targets: 1,
           render: function (data, type, full) {
-            return (full.name || '') + ' ' + (full.surname || '');
+            return $('<div>').text((full.name || '') + ' ' + (full.surname || '')).html();
           }
         },
         {
