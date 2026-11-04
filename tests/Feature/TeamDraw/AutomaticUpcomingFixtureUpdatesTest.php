@@ -53,6 +53,8 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $imported->forceFill(['player_profile' => $profile->id])->save();
         $team->team_players()->where('rank', 1)->update(['player_id' => $profile->id]);
         $before = $fixture->fresh()->getAttributes();
+        $rosterBefore = $imported->fresh()->getAttributes();
+        $slotsBefore = $fixture->fixturePlayers()->get()->map->getAttributes()->all();
 
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']),
             ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
@@ -64,7 +66,8 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
             ->assertSee('Original2 District1');
 
         $this->assertSame($before, $fixture->fresh()->getAttributes());
-        $this->assertSame($profile->id, $imported->fresh()->player_profile);
+        $this->assertSame($rosterBefore, $imported->fresh()->getAttributes());
+        $this->assertSame($slotsBefore, $fixture->fixturePlayers()->get()->map->getAttributes()->all());
         $this->assertDatabaseCount('team_fixtures', 1);
     }
 

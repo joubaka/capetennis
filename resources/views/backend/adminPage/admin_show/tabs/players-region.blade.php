@@ -130,8 +130,8 @@
               @if($rosterCanEdit && !$rosterLocked)@include('backend.adminPage.admin_show._roster-actions', ['compactRoster' => true])
 @endif
               @if($rosterCanEdit && $automaticPlayingOrder && ($player || $np))
-                @include('backend.adminPage.admin_show._roster-order-buttons', ['compactRoster' => true, 'identity' => $team->noProfile ? $np : $slot])
-                @include('backend.adminPage.admin_show._roster-name-form', ['identity' => $team->noProfile ? $np : $slot])
+                @include('backend.adminPage.admin_show._roster-order-buttons', ['compactRoster' => true, 'identity' => $team->noProfile ? $slot->noProfile : $slot])
+                @include('backend.adminPage.admin_show._roster-name-form', ['identity' => $team->noProfile ? $slot->noProfile : $slot])
               @endif
               @if(!$rosterLocked && !$rankingManaged && $slot->selected_team_reserve && $slot->rank > 0 && $slot->rank <= $team->num_team_members && auth()->user()->can('team.players.manage', $team))
                 <form method="POST" action="{{ route('backend.team.addPlayers') }}" data-team-roster-change>
