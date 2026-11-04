@@ -250,6 +250,40 @@ class TeamDrawSelectionWorkflowTest extends TestCase
         $this->assertDatabaseCount('draws', 0);
     }
 
+    public function test_immediate_creation_generates_selected_opening_ties_and_rubbers_once_without_publishing_or_scheduling(): void
+    {
+        $item = $this->fourBoysTeams();
+        $base = $this->request([$item], true)->assertOk()->json('readiness.rounds');
+        $order = array_reverse(array_column($base[1]['ties'], 'pair_key'));
+        $chosen = $item + ['opening_round' => 2, 'tie_order' => [2 => $order]];
+        $payload = ['draws' => [$chosen], 'batch_key' => 'immediate-opening', 'guided_setup' => 0];
+        $url = route('headoffice.createSingleDraw.team', $this->event);
+        $response = $this->actingAs($this->admin)->postJson($url, $payload)->assertOk();
+        $draw = Draw::findOrFail($response->json('draw.id'));
+        $this->assertSame(6, $draw->teamTies()->count());
+        $this->assertSame(6, $draw->fixtures()->count());
+        $this->assertSame($order, $draw->teamTies()->where('round_nr', 1)->orderBy('tie_nr')->get()
+            ->map(fn ($tie) => min($tie->home_team_id, $tie->away_team_id).'-'.max($tie->home_team_id, $tie->away_team_id))->all());
+        $this->assertSame(1, (int) $draw->team_draw_selection['players_per_team']);
+        $this->postJson($url, $payload)->assertOk()->assertJsonPath('draw.id', $draw->id);
+        $this->assertDatabaseCount('draws', 1);
+        $this->assertDatabaseCount('team_ties', 6);
+        $this->assertDatabaseCount('team_fixtures', 6);
+        $this->assertDatabaseCount('team_fixture_players', 6);
+        $this->assertFalse((bool) $draw->published);
+        $this->assertFalse((bool) $draw->oop_published);
+        $this->assertFalse($draw->fixtures()->whereNotNull('scheduled_at')->exists());
+        $this->assertFalse($draw->fixtures()->whereNotNull('venue_id')->exists());
+        // A retry cannot silently switch an existing deferred draft to generated fixtures.
+        $draftPayload = ['draws' => [$item], 'batch_key' => 'existing-deferred', 'guided_setup' => 1];
+        $draftResponse = $this->postJson($url, $draftPayload)->assertOk();
+        $draft = Draw::findOrFail($draftResponse->json('draw.id'));
+        $draftPayload['guided_setup'] = 0;
+        $this->postJson($url, $draftPayload)->assertUnprocessable()->assertJsonValidationErrors('batch_key');
+        $this->assertSame(0, $draft->teamTies()->count());
+        $this->assertSame(0, $draft->fixtures()->count());
+    }
+
     public function test_guided_creation_saves_selection_without_generation_then_explicitly_generates_once(): void
     {
         $payload = ['draws' => [$this->item('Singles', [$this->categories['Boys']])], 'batch_key' => 'guided-test', 'guided_setup' => 1];

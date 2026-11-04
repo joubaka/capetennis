@@ -90,6 +90,7 @@ function dialog(initialMode = 'team', guided = false, ajax = false, regional = f
 
 test('single names fill from selected type and category and update automatically', () => {
   const ui = dialog();
+  assert.equal(ui.submitButton.textContent, 'Create draw');
   assert.equal(ui.name.value, '');
   assert.equal(ui.name.required, false);
   ui.state.type = { id: 'singles', value: '19', dataset: { code: 'singles' } };
@@ -253,13 +254,14 @@ test('unconfirmed creation response never displays completed progress', () => {
 test('bulk creation uses one request with estimated progress and confirmed completion', () => {
   const ui = dialog('team');
   ui.bulk.checked = true; ui.change('bulkTeamDraws');
+  assert.equal(ui.submitButton.textContent, 'Create draws');
   ui.state.bulkTypes = [{ value: '19', dataset: { code: 'singles', name: 'Team-Singles' } }];
   ui.state.bulkCategories = [{ value: '201', dataset: { name: 'u/13 Boys', age: 'u/13', gender: 'boys', pivotIds: '[201]' } },
     { value: '206', dataset: { name: 'u/13 Girls', age: 'u/13', gender: 'girls', pivotIds: '[206]' } }];
   ui.submit();
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.requests[0].url, '/team');
-  assert.equal(ui.requests[0].payload.guided_setup, 1);
+  assert.equal(ui.requests[0].payload.guided_setup, 0);
   assert.equal(ui.requests[0].payload.draws.length, 2);
   assert.equal(ui.values['#drawCreationPercent'], '0%');
   ui.tick(); ui.submit();
@@ -325,7 +327,7 @@ test('guided category team creates only after format and match setup with its se
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.requests[0].payload.drawName, 'u/13 Boys – Singles');
   assert.deepEqual(Array.from(ui.requests[0].payload.category_ids), ['201']);
-  assert.equal(ui.requests[0].payload.guided_setup, 1);
+  assert.equal(ui.requests[0].payload.guided_setup, 0);
 });
 
 test('guided regional competition requires an age group and transfers it into match setup after format review', () => {

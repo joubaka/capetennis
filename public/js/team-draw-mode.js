@@ -255,7 +255,7 @@
     }
 
     if (submitButton) {
-      submitButton.textContent = 'Save draw & continue';
+      submitButton.textContent = isTeam ? 'Create draw' : 'Save draw & continue';
     }
     updateCategorySelection();
   }
@@ -277,10 +277,10 @@
     $('#teamDrawTypeSection, #manualCategoryToggleGroup').toggleClass('d-none', !isTeam || bulk);
     if (bulk) {
       $('#categorySection, #type3Categories, #manualCategoryChoices').addClass('d-none');
-      if (submitButton) submitButton.textContent = 'Save draws & continue';
+      if (submitButton) submitButton.textContent = 'Create draws';
       return;
     }
-    if (submitButton && isTeam) submitButton.textContent = 'Save draw & continue';
+    if (submitButton && isTeam) submitButton.textContent = 'Create draw';
     var manual = isTeam && document.getElementById('manualTeamCategories').checked;
     var type = form.querySelector('input[name="draw_type_id"]:checked');
     var mixed = type && (type.dataset.code ? type.dataset.code === 'mixed_doubles' : (type.value === '3' || type.dataset.mixed === '1'));
@@ -637,7 +637,7 @@
       var payload = teamPayload();
       if (!payload) return;
       startCreationProgress();
-      $.post(data.createUrl, Object.assign(payload, {guided_setup: 1})).done(function (response) {
+      $.post(data.createUrl, Object.assign(payload, {guided_setup: 0})).done(function (response) {
         if (!response || response.success !== true) {
           failCreationProgress({ responseJSON: { message: 'Could not confirm draw creation. Check your draws before retrying.' } });
           return;

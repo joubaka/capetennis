@@ -45,6 +45,29 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         return [$event, $draw, $teams->first(), $fixture, $actor, $region];
     }
 
+    public function test_roster_fragment_keeps_imported_slot_identity_for_linked_players_after_generation(): void
+    {
+        [$event, , $team, $fixture] = $this->competition();
+        $profile = Player::factory()->create(['name' => 'Linked', 'surname' => 'Roster Player']);
+        $imported = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $imported->forceFill(['player_profile' => $profile->id])->save();
+        $team->team_players()->where('rank', 1)->update(['player_id' => $profile->id]);
+        $before = $fixture->fresh()->getAttributes();
+
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']),
+            ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
+            ->assertSee('Linked Roster Player')
+            ->assertSee('Playing-order changes update upcoming fixtures automatically.')
+            ->assertSee('Move up: Linked Roster Player', false)
+            ->assertSee('name="slot_id" value="'.$imported->id.'"', false)
+            ->assertSee('name="expected_player_id" value="'.$profile->id.'"', false)
+            ->assertSee('Original2 District1');
+
+        $this->assertSame($before, $fixture->fresh()->getAttributes());
+        $this->assertSame($profile->id, $imported->fresh()->player_profile);
+        $this->assertDatabaseCount('team_fixtures', 1);
+    }
+
     public function test_imported_rank_save_updates_upcoming_fixture_without_preview_and_stays_idempotent(): void
     {
         [$event, $draw, $team, $fixture, , $region] = $this->competition();
