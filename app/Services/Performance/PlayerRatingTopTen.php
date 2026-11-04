@@ -16,6 +16,19 @@ class PlayerRatingTopTen
 
     public function build(?User $user, ?Player $selected = null, array $filters = []): array
     {
+        return $this->project($user, $selected, $filters);
+    }
+
+    /** Only call with identities resolved from the authorised player's published fixtures. */
+    public function forMatchPlayers(User $user, Player $selected, array $playerIds): array
+    {
+        $ids = array_slice(array_values(array_unique(array_map('intval', $playerIds))), 0, 100);
+        if (!$ids) return [];
+        return $this->project($user, $selected, [], $ids)['match_players'] ?? [];
+    }
+
+    private function project(?User $user, ?Player $selected, array $filters, ?array $matchIds = null): array
+    {
         $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
         $result['can_browse'] = $user?->hasRole('super-user') === true;
         $search = is_string($filters['rating_search'] ?? null) ? mb_substr(trim($filters['rating_search']), 0, 100) : '';
@@ -48,7 +61,7 @@ class PlayerRatingTopTen
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
         foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $key => $label) {
-            if (!$result['can_browse'] && $key !== 'overall') continue;
+            if ((!$result['can_browse'] || $matchIds !== null) && $key !== 'overall') continue;
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
         if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
@@ -66,6 +79,7 @@ class PlayerRatingTopTen
             if (!$reference || ($component['converged'] ?? false) !== true) continue;
             $members = array_fill_keys($component['members'] ?? [], true);
             foreach ($graph['ratings'] ?? [] as $id => $rating) {
+                if ($matchIds !== null && !in_array((int) $id, $matchIds, true)) continue;
                 if (!is_array($rating) || !ctype_digit((string) $id) || (int) $id < 1 || (string) (int) $id !== (string) $id) continue;
                 $score = $rating['score'] ?? null;
                 if (!isset($members[$id]) || ($rating['component'] ?? null) !== $reference || ($rating['comparable'] ?? false) !== true
@@ -99,6 +113,10 @@ class PlayerRatingTopTen
                 if (isset($public[$id])) $players[] = ['id' => $id, ...$public[$id], ...$rating];
             }
             usort($players, fn ($a, $b) => $b['score'] <=> $a['score'] ?: strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
+            if ($matchIds !== null) {
+                $result['match_players'] = array_column(array_map(fn ($p) => array_intersect_key($p, array_flip(['id', 'name', 'score', 'confidence'])), $players), null, 'id');
+                return $result;
+            }
             if ($selected && $key === 'overall') {
                 $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge))), 'overall' => $players];
                 foreach ($populations as $scope => $population) {

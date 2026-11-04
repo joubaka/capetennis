@@ -14,6 +14,43 @@ use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
+    public function assertNoCorrectedTeamRefund(Model $entity): void
+    {
+        if ($entity instanceof \App\Models\TeamPaymentOrder && \App\Models\WalletTransaction::where('source_type', 'team_replacement_refund_reversal')->where('source_id', $entity->id)->exists()) {
+            throw ValidationException::withMessages(['refund' => 'This payment has a reversed replacement refund. Any further withdrawal or refund requires separate administrator reconciliation.']);
+        }
+    }
+
+    /** Compensate an unused erroneous wallet refund without deleting its immutable ledger evidence. */
+    public function reverseTeamReplacementWalletRefund(\App\Models\TeamPaymentOrder $order, \App\Models\WalletTransaction $credit, User $actor, string $reason, string $fingerprint, int $replacementOrderId): \App\Models\TeamPaymentOrder
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        if (DB::transactionLevel() === 0 || !FinanceMutationScope::allows('team_replacement_correction')) throw new \LogicException('Refund correction requires the enclosing verified replacement transaction.');
+        $locked = \App\Models\TeamPaymentOrder::lockForUpdate()->findOrFail($order->id);
+        $credit = \App\Models\WalletTransaction::lockForUpdate()->findOrFail($credit->id);
+        $wallet = $locked->user->wallet()->lockForUpdate()->firstOrFail();
+        if (blank($reason) || !$locked->pay_status || !$locked->withdrawn_at || !$locked->refunded_at
+            || $locked->refund_status !== 'completed' || $locked->refund_method !== 'wallet'
+            || $credit->source_type !== 'admin_team_withdrawal_refund' || (int) $credit->source_id !== (int) $locked->id
+            || $credit->type !== 'credit' || (int) $credit->wallet_id !== (int) $wallet->id
+            || round((float) $credit->amount, 2) !== round((float) $locked->refund_net, 2) || $locked->refund_net <= 0) {
+            throw ValidationException::withMessages(['correction' => 'An exact completed original-payer wallet refund is required.']);
+        }
+        $this->assertNoTeamProviderClaim($locked);
+        app(\App\Domain\Payments\Services\TeamReplacementPaymentCorrectionService::class)->assertUnusedRefund($locked->user, $wallet, $credit);
+        $before = $locked->only(['refund_status', 'refund_method', 'refund_gross', 'refund_fee', 'refund_net', 'refunded_at']);
+        $debit = $this->ledgerService->appendWalletDebit($wallet, (float) $credit->amount, 'team_replacement_refund_reversal', $locked->id,
+            ['refund_credit_id' => $credit->id, 'replacement_order_id' => $replacementOrderId, 'actor_id' => $actor->id, 'fingerprint' => $fingerprint, 'reason' => trim($reason)]);
+        FinanceMutationScope::run('refund_state_write', fn () => $locked->forceFill([
+            'refund_status' => 'not_refunded', 'refund_method' => null, 'refund_gross' => 0, 'refund_fee' => 0, 'refund_net' => 0, 'refunded_at' => null,
+        ])->save());
+        activity('refund')->performedOn($locked)->causedBy($actor)->withProperties([
+            'before' => $before, 'after' => $locked->only(array_keys($before)), 'refund_credit_id' => $credit->id,
+            'compensating_debit_id' => $debit->id, 'replacement_order_id' => $replacementOrderId, 'fingerprint' => $fingerprint, 'reason' => trim($reason),
+        ])->log('reversed erroneous team replacement wallet refund');
+        return $locked->fresh();
+    }
+
     /** Explicitly close a settled, withdrawn team's refund entitlement without moving money. */
     public function waiveAdminTeamWithdrawalRefund(\App\Models\TeamPaymentOrder $order, User $actor, string $reason, string $feeMode = 'current'): Model
     {
@@ -217,6 +254,7 @@ class RefundExecutionService
 
     private function assertNoTeamProviderClaim(Model $entity): void
     {
+        $this->assertNoCorrectedTeamRefund($entity);
         if ($entity instanceof \App\Models\TeamPaymentOrder
             && !FinanceMutationScope::allows('admin_team_provider_refund_finalize')
             && \App\Models\TeamProviderRefundAttempt::where('order_id', $entity->id)->exists()) {

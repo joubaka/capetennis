@@ -940,20 +940,7 @@ class EventAdminController extends Controller
     // =====================
     if ($event->isTeam()) {
 
-      $event->load([
-        'regions.teams.teamPlayers.player',
-        'regions.teams.team_players_no_profile',
-      ]);
-
-      $teams = $event->regions
-        ->flatMap(fn($r) => $r->teams);
-
-      $stats['entries'] = $teams->count(); // ✅ TEAMS
-      $stats['players'] = $teams->sum(function ($team) {
-        return
-          $team->teamPlayers->count() +
-          $team->team_players_no_profile->count();
-      });
+      $stats = $operations['teamStats'];
 
     } else {
 

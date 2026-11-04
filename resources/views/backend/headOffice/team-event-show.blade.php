@@ -138,6 +138,7 @@
 <script src="{{ asset('js/team-draw-mode.js') }}?v={{ filemtime(public_path('js/team-draw-mode.js')) }}"></script>
 <script src="{{ asset('js/head-office-draw-publication.js') }}?v={{ filemtime(public_path('js/head-office-draw-publication.js')) }}"></script>
 <script src="{{ asset('js/bulk-draw-deletion.js') }}?v={{ filemtime(public_path('js/bulk-draw-deletion.js')) }}"></script>
+<script src="{{ asset('js/draw-list-publication.js') }}?v={{ filemtime(public_path('js/draw-list-publication.js')) }}"></script>
 @endsection
 
 
@@ -204,10 +205,14 @@
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <button type="button" class="btn btn-outline-secondary" data-draw-delete-select-all>Select all draws</button>
             <button type="button" class="btn btn-outline-secondary" data-draw-delete-clear>Clear selection</button>
+            @if($canPublishAllDraws ?? false)
+              <button type="button" class="btn btn-success" data-draw-list-publish="selected">Publish selected draws</button>
+              <button type="button" class="btn btn-outline-primary" data-draw-list-publish="all">Publish all draws</button>
+            @endif
             <button type="button" class="btn btn-outline-danger" data-draw-delete-submit disabled>Delete selected draws</button>
             <span class="small text-muted" data-draw-delete-count role="status" aria-live="polite">0 draws selected</span>
           </div>
-          <p class="small text-muted mt-2 mb-0">Review selected draw names before permanently deleting them and their draft fixtures. Teams, registrations and payments are retained.</p>
+          <p class="small text-muted mt-2 mb-0">Select draws to publish or delete. Match times are published separately. Deletion requires a review of the selected draw names; teams, registrations and payments are retained.</p>
           <p class="small mt-2 mb-0" data-draw-delete-feedback role="status" aria-live="polite" hidden></p>
         </div>
         @endcan
@@ -242,7 +247,7 @@
             <details id="publication-draw-{{ $draw->id }}" class="event-draw-card event-draw-publication-card" data-quick-publication-card data-draw-id="{{ $draw->id }}" @if($draw->isTeamDraw() && ($draw->team_scoring_rules['undecided'] ?? false)) data-scoring-undecided @endif>
               <summary class="event-draw-card-summary">
                 @can('event.manage', $event)
-                  <input type="checkbox" class="form-check-input flex-shrink-0 no-print" data-delete-draw value="{{ $draw->id }}" aria-label="Select {{ $draw->drawName }} for deletion" style="min-width:24px;min-height:24px">
+                  <input type="checkbox" class="form-check-input flex-shrink-0 no-print" data-delete-draw value="{{ $draw->id }}" aria-label="Select {{ $draw->drawName }}" style="min-width:24px;min-height:24px">
                 @endcan
                 <div class="event-draw-card-summary-info">
                 <h6 class="mb-0">{{ $draw->drawName }} <span class="text-muted">— {{ $draw->formatDisplayLabel() }}</span></h6>

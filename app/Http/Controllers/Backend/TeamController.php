@@ -1084,7 +1084,7 @@ class TeamController extends Controller
         $data = $request->validate([
           'slot_id' => ['required', 'integer', 'min:1'], 'expected_rank' => ['required', 'integer', 'min:1'],
           'expected_player_id' => ['required', 'integer', 'min:0'],
-          'refund_action' => ['nullable', 'in:refund,waive,replacement'], 'reason' => ['nullable', 'string', 'max:1000'],
+          'refund_action' => ['nullable', 'in:refund,waive,replacement,transfer'], 'reason' => ['nullable', 'string', 'max:1000'],
           'deadline_override' => ['sometimes', 'boolean'],
           'withdrawal_override' => ['sometimes', 'boolean'],
         ] + ($team->noProfile ? ['player_id' => ['nullable', 'integer', 'exists:players,id', 'prohibits:name,surname'], 'name' => ['required_without:player_id', 'nullable', 'string', 'max:100'], 'surname' => ['required_without:player_id', 'nullable', 'string', 'max:100']]
@@ -1092,7 +1092,7 @@ class TeamController extends Controller
         $order = app(\App\Services\TeamRosterService::class)->replace($event, $region, $team, $request->user(), $data);
         $message = 'Player changed.';
         if ($order) {
-          $message = $order->pay_status ? 'Player changed. The refund paid the replacement entry.'
+          $message = $order->pay_status ? (($data['refund_action'] ?? null) === 'transfer' ? 'Player changed. The original payment paid the replacement entry.' : 'Player changed. The refund paid the replacement entry.')
             : 'Player changed. R'.number_format($order->wallet_reserved, 2).' of the refund is reserved. The original payer must complete the remaining R'.number_format($order->payfast_amount_due, 2).' through checkout within five minutes or restart. The replacement remains unpaid until payment completes.';
         }
         return response()->json(['message' => $message]);

@@ -1,5 +1,10 @@
 <section class="card card-body mb-4 no-print" aria-labelledby="organiser-setup-heading" data-organiser-setup>
-  <h3 class="h5" id="organiser-setup-heading">Set up your tournament</h3>
+  <details>
+  <summary style="min-height:44px;cursor:pointer">
+    <span class="h5" id="organiser-setup-heading">Set up your tournament</span>
+    <span class="small text-muted ms-2">Show / hide setup</span>
+  </summary>
+  <div class="mt-3">
   <p class="text-muted">Follow these steps for each age group or category. Your saved draws are below; use Continue setup to pick up where you left off.</p>
   @if($event->isInterprovincialTrials())
     <p class="small">These are individual player trials. Create player draws from the eligible entries in each category; team tie setup is used for team competitions.</p>
@@ -34,4 +39,6 @@
   @else
     <p class="small text-muted mb-0">Keep existing draws when returning to setup. Open a saved draw to review its matches before changing the format or generating again.</p>
   @endif
+  </div>
+  </details>
 </section>

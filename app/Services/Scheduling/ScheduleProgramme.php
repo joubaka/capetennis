@@ -123,20 +123,34 @@ final class ScheduleProgramme
         unset($node);
         foreach ($nodes as $node) foreach ($node['dependencies'] as $dependency) {
             if (isset($nodes[$dependency]) && $nodes[$dependency]['programme_phase'] > $node['programme_phase']) {
+                if (isset($node['discipline_phase'], $nodes[$dependency]['discipline_phase'])
+                    && $nodes[$dependency]['draw_id'] === $node['draw_id']
+                    && $nodes[$dependency]['discipline_phase'] < $node['discipline_phase']
+                    && $nodes[$dependency]['programme_day'] === $node['programme_day']) continue;
+                if (isset($node['discipline_phase'], $nodes[$dependency]['discipline_phase'])
+                    && $nodes[$dependency]['draw_id'] === $node['draw_id']
+                    && $nodes[$dependency]['discipline_phase'] < $node['discipline_phase']) {
+                    throw new \InvalidArgumentException('Composite team rounds must finish singles, reverse singles, doubles, then mixed. Put these rounds on the same day or use separate discipline draws to plan them across days.');
+                }
                 throw new \InvalidArgumentException($node['draw_name'].' match '.$node['match'].' must follow its qualifying matches. Move its match override or qualifying section to an earlier day/order.');
             }
         }
-        $phases = collect($nodes)->groupBy('programme_phase', preserveKeys: true)->sortKeys();
-        $previous = [];
         $prerequisites = [];
-        foreach ($phases as $phase => $phaseNodes) {
-            $prerequisites[$phase] = $previous;
-            $previous = $phaseNodes->keys()->all();
+        // Separate age groups can use their own venues at the same time.
+        foreach (collect($nodes)->groupBy(fn ($node) => $node['discipline_group'] ?? 'individual', preserveKeys: true) as $group) {
+            $previous = [];
+            foreach ($group->groupBy('programme_phase', preserveKeys: true)->sortKeys() as $phaseNodes) {
+                foreach ($phaseNodes as $key => $node) $prerequisites[$key] = $previous;
+                $previous = $phaseNodes->keys()->all();
+            }
         }
-        foreach ($nodes as &$node) {
+        foreach ($nodes as $key => &$node) {
+            if (isset($node['discipline_phase'])) {
+                $prerequisites[$key] = array_values(array_filter($prerequisites[$key], fn ($dependency) => ($nodes[$dependency]['discipline_phase'] ?? 0) <= $node['discipline_phase']));
+            }
             // Programme order controls section starts; genuine draw dependencies still require finish/rest.
-            $node['programme_start_dependencies'] = array_values(array_diff($prerequisites[$node['programme_phase']], $node['dependencies']));
-            $node['dependencies'] = array_merge($node['dependencies'], $prerequisites[$node['programme_phase']]);
+            $node['programme_start_dependencies'] = array_values(array_diff($prerequisites[$key], $node['dependencies']));
+            $node['dependencies'] = array_merge($node['dependencies'], $prerequisites[$key]);
             $node['dependencies'] = array_values(array_unique($node['dependencies']));
         }
         unset($node);

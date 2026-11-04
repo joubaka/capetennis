@@ -227,7 +227,8 @@ class TeamRosterService
             }
             $mirror = $team->noProfile ? TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->first() : $slot;
             $paid = (int) $slot->pay_status === 1 || (int) $mirror?->pay_status === 1;
-            if (($data['refund_action'] ?? null) === 'replacement'
+            $fundReplacement = in_array($data['refund_action'] ?? null, ['replacement', 'transfer'], true);
+            if ($fundReplacement
                 && TeamSelectionInvitation::where('team_id', $team->id)
                     ->whereHas('selectionImport', fn ($query) => $query->where('event_id', $event->id)->whereIn('status', ['draft', 'sent']))->exists()) {
                 $this->fail('Use the selection workflow for this team. Refund funding cannot bypass invitation acceptance.');
@@ -235,17 +236,19 @@ class TeamRosterService
             if ($paid) {
                 abort_unless($actor->hasRole('super-user'), 403);
                 $this->assertBeforeCompetition($event, $team);
-                if (empty($data['player_id']) || !in_array($data['refund_action'] ?? null, ['refund', 'waive', 'replacement'], true) || blank($data['reason'] ?? null)) $this->fail('Choose a database player, a payment option, and give a reason for replacing a paid player.');
+                if (empty($data['player_id']) || !in_array($data['refund_action'] ?? null, ['refund', 'waive', 'replacement', 'transfer'], true) || blank($data['reason'] ?? null)) $this->fail('Choose a database player, a payment option, and give a reason for replacing a paid player.');
                 if (!$mirror || (int) $mirror->player_id !== $playerId) $this->fail('The paid roster mirror no longer agrees. Refresh the player list.');
                 $withdrawals = app(AdminTeamWithdrawalService::class);
-                $refundAction = $data['refund_action'] === 'replacement' ? 'refund' : $data['refund_action'];
+                $refundAction = $fundReplacement ? 'refund' : $data['refund_action'];
+                $feeMode = $data['refund_action'] === 'transfer' ? 'full' : 'current';
                 $deadlineOverride = filter_var($data['deadline_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
                 $withdrawalOverride = filter_var($data['withdrawal_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $refundAction, deadlineOverride: $deadlineOverride, withdrawalOverride: $withdrawalOverride);
+                $review = $withdrawals->review($event, $team, $mirror, $actor, feeMode: $feeMode, refundAction: $refundAction, deadlineOverride: $deadlineOverride, withdrawalOverride: $withdrawalOverride);
                 if ($refundAction === 'refund' && !$review['refundAvailable']) $this->fail('The refund deadline has passed. Explicitly override the refund deadline with a reason, or choose to waive the refund.');
                 $withdrawnOrder = $withdrawals->confirm($event, $team, $mirror, $actor, [
                     'order_id' => $review['order']->id, 'fingerprint' => $review['fingerprint'],
                     'reason' => $data['reason'], 'refund_action' => $refundAction,
+                    'fee_mode' => $feeMode,
                     'deadline_override' => $deadlineOverride,
                     'withdrawal_override' => $withdrawalOverride,
                 ]);
@@ -256,7 +259,7 @@ class TeamRosterService
             $this->change($event, $region, $team, $actor, 'add', array_replace($data, ['_replacement_rank' => $rank]));
             $after = $team->noProfile ? NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $rank)->firstOrFail()
                 : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->firstOrFail();
-            $replacementOrder = ($data['refund_action'] ?? null) === 'replacement'
+            $replacementOrder = $fundReplacement
                 ? app(TeamPaymentService::class)->applyRefundToReplacement($withdrawnOrder, Player::findOrFail($data['player_id']), $actor) : null;
             $after->refresh();
             activity('team-roster')->performedOn($team)->causedBy($actor)

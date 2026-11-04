@@ -89,8 +89,11 @@ class MyTennisController extends Controller
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $filters = $request->validate(['year' => 'nullable|integer|min:1900|max:2100', 'compare_first' => 'nullable|integer|min:1900|max:2100',
             'compare_second' => 'nullable|integer|min:1900|max:2100', 'opponent' => 'nullable|integer|min:1',
-            'page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
+            'page' => 'nullable|integer|min:1|max:2500', 'upcoming_page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
+        $upcoming = $section === 'opponents' ? app(\App\Services\Performance\PlayerUpcomingMatchInsights::class)
+            ->forPlayer($request->user(), $player, (int) ($filters['upcoming_page'] ?? 1)) : null;
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
+            'upcoming' => $upcoming,
             'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
             'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
             ->header('Cache-Control', 'private, no-store');

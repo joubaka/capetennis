@@ -292,6 +292,45 @@ class TeamPaymentService
     {
     }
 
+    /** Restore verified original coverage only after the linked erroneous refund was compensated atomically. */
+    public function restoreCorrectedReplacementCoverage(TeamPaymentOrder $source, TeamPaymentOrder $closedReplacement, TeamPlayer $target, User $actor, string $reason, string $fingerprint): TeamPaymentOrder
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        if (DB::transactionLevel() === 0 || !FinanceMutationScope::allows('team_replacement_correction')) throw new \LogicException('Coverage correction requires an enclosing verified replacement transaction.');
+        $source = TeamPaymentOrder::lockForUpdate()->findOrFail($source->id);
+        $closedReplacement = TeamPaymentOrder::lockForUpdate()->findOrFail($closedReplacement->id);
+        $target = TeamPlayer::withoutGlobalScopes()->lockForUpdate()->findOrFail($target->id);
+        $reversal = \Spatie\Activitylog\Models\Activity::where('subject_type', TeamPaymentOrder::class)->where('subject_id', $source->id)
+            ->where('description', 'reversed erroneous team replacement wallet refund')->latest('id')->first();
+        if (!$reversal || (int) $reversal->causer_id !== (int) $actor->id || data_get($reversal->properties, 'fingerprint') !== $fingerprint
+            || data_get($reversal->properties, 'reason') !== trim($reason)
+            || (int) data_get($reversal->properties, 'replacement_order_id') !== (int) $closedReplacement->id
+            || blank($reason) || !$source->pay_status || !$source->withdrawn_at || $source->hasRefund() || $source->refunded_at
+            || $source->refund_gross != 0 || $source->refund_fee != 0 || $source->refund_net != 0 || $source->refund_method
+            || !$closedReplacement->withdrawn_at || (int) $target->team_id !== (int) $source->team_id || $target->pay_status
+            || (int) $closedReplacement->team_id !== (int) $source->team_id || (int) $closedReplacement->event_id !== (int) $source->event_id
+            || (int) $closedReplacement->user_id !== (int) $source->user_id || $closedReplacement->effective_player_id !== (int) $target->player_id) {
+            throw ValidationException::withMessages(['correction' => 'The exact compensated replacement coverage is required.']);
+        }
+        $this->assertUnpaidRosterCheckoutMayBeReset($closedReplacement);
+        $this->assertAdminWithdrawalSettlement($source);
+        $before = $source->only(['beneficiary_player_id', 'withdrawn_at', 'withdrawn_by']);
+        FinanceMutationScope::run(['payment_state_write', 'withdrawal_state_write'], function () use ($source, $target): void {
+            $source->forceFill(['beneficiary_player_id' => $target->player_id, 'withdrawn_at' => null, 'withdrawn_by' => null])->save();
+        });
+        $this->updateTeamPlayerSlot($target, ['pay_status' => 1]);
+        \App\Models\NoProfileTeamPlayer::where('team_id', $target->team_id)->where('rank', $target->rank)->where('player_profile', $target->player_id)->get()
+            ->each(fn ($slot) => $slot->update(['pay_status' => 1]));
+        DB::table('team_payment_transfers')->insert(['order_id' => $source->id, 'event_id' => $source->event_id, 'team_id' => $source->team_id,
+            'original_player_id' => $source->player_id, 'from_player_id' => $source->player_id, 'to_player_id' => $target->player_id,
+            'actor_id' => $actor->id, 'reason' => trim($reason), 'created_at' => now()]);
+        activity('team-payment')->performedOn($source)->causedBy($actor)->withProperties([
+            'before' => $before, 'after' => $source->only(array_keys($before)), 'replacement_order_id' => $closedReplacement->id,
+            'to_player_id' => $target->player_id, 'fingerprint' => $fingerprint, 'reason' => trim($reason),
+        ])->log('restored corrected team replacement payment coverage');
+        return $source->fresh();
+    }
+
     /** Apply only this withdrawal's proceeds, never the payer's other wallet funds. */
     public function applyRefundToReplacement(TeamPaymentOrder $source, Player $replacement, User $actor): TeamPaymentOrder
     {

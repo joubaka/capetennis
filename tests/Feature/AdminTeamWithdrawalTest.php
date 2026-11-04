@@ -116,6 +116,7 @@ class AdminTeamWithdrawalTest extends TestCase
     public function test_paid_roster_replacement_refunds_original_payer_once_and_replacement_starts_unpaid(): void
     {
         $s = $this->scenario(); $payload = $this->replacementPayload($s);
+        $payload['fee_mode'] = 'full'; // Only an explicit payment-transfer action may waive this fee.
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
         $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'], 'pay_status' => 0, 'rank' => 1]);
@@ -124,6 +125,85 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 2);
         $this->assertDatabaseCount('team_payment_orders', 1);
         $this->assertDatabaseCount('team_players', 1);
+    }
+
+    public function test_full_payment_transfer_pays_current_entry_without_fee_and_preserves_true_price_differences(): void
+    {
+        foreach (['same' => 250, 'lower' => 165, 'higher' => 265, 'hybrid_imported' => 250] as $case => $entryFee) {
+            $s = $this->scenario();
+            $region = \App\Models\TeamRegion::create(['region_name' => 'Test Region', 'region_fee' => 35]);
+            $s['team']->update(['region_id' => $region->id]);
+            $s['event']->update(['entryFee' => $entryFee]);
+            WalletTransaction::create(['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 285,
+                'source_type' => 'test_opening_funds', 'source_id' => $s['order']->id]);
+            $payload = $this->replacementPayload($s, 'transfer');
+            if ($case === 'same') {
+                $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+                \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+                $payload += ['deadline_override' => 1, 'withdrawal_override' => 1];
+            } else {
+                \App\Models\SiteSetting::set('withdrawal_allowed', '1');
+            }
+            if ($case === 'hybrid_imported') {
+                $s['team']->update(['noProfile' => 1]);
+                $raw = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id, 'rank' => 1,
+                    'player_profile' => $s['player']->id, 'name' => $s['player']->name, 'surname' => $s['player']->surname, 'pay_status' => 0]);
+                $payload['slot_id'] = $raw->id;
+                DB::table('team_payment_orders')->where('id', $s['order']->id)->update(['wallet_reserved' => 85,
+                    'payfast_paid' => true, 'payfast_pf_payment_id' => 'PF-transfer', 'payfast_amount_due' => 200]);
+                WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $s['order']->id)->update(['amount' => 85]);
+                DB::table('transactions_pf')->insert(['custom_str5' => 'TeamOrder', 'custom_int5' => $s['order']->id,
+                    'custom_int2' => $s['player']->id, 'custom_int3' => $s['event']->id, 'custom_int4' => $s['payer']->id,
+                    'pf_payment_id' => 'PF-transfer', 'amount_gross' => 200, 'payment_status' => 'COMPLETE']);
+            }
+            $response = $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+            $order = TeamPaymentOrder::where('team_id', $s['team']->id)->where('player_id', $payload['player_id'])->sole();
+            $fee = $entryFee + 35;
+            $this->assertSame((int) $s['payer']->id, (int) $order->user_id);
+            $this->assertEquals($fee, $order->total_amount);
+            $this->assertEquals(min(285, $fee), $order->wallet_reserved);
+            $this->assertEquals(max(0, $fee - 285), $order->payfast_amount_due);
+            $this->assertSame($fee <= 285, $order->pay_status);
+            $this->assertSame($fee <= 285, $order->wallet_debited);
+            $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'pay_status' => 1,
+                'player_id' => $s['player']->id, 'user_id' => $s['payer']->id, 'refund_status' => 'completed',
+                'refund_gross' => 285, 'refund_fee' => 0, 'refund_net' => 285]);
+            $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'], 'pay_status' => $fee <= 285 ? 1 : 0]);
+            $this->assertSame($fee <= 285 ? 4 : 3, WalletTransaction::where('wallet_id', $s['wallet']->id)->count());
+            $this->assertEquals(($case === 'hybrid_imported' ? 200 : 0) + 285 - ($fee <= 285 ? $fee : 0), $s['wallet']->fresh()->balance);
+            $this->assertSame(1, WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $s['order']->id)->count());
+            $audit = \Spatie\Activitylog\Models\Activity::where('subject_id', $s['order']->id)
+                ->where('description', 'super user confirmed team withdrawal')->sole();
+            $this->assertSame('full', $audit->properties['fee_mode']);
+            $this->assertSame($payload['reason'], $audit->properties['reason']);
+            $this->assertSame((int) $s['actor']->id, (int) $audit->causer_id);
+            if ($fee <= 285) $response->assertJsonPath('message', 'Player changed. The original payment paid the replacement entry.');
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertStatus($case === 'hybrid_imported' ? 404 : 422);
+            $this->assertSame(2, TeamPaymentOrder::where('team_id', $s['team']->id)->count());
+        }
+    }
+
+    public function test_full_payment_transfer_cannot_bypass_authorization_event_deadline_or_atomic_roster_checks(): void
+    {
+        $s = $this->scenario();
+        $payload = $this->replacementPayload($s, 'transfer');
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $payload['deadline_override'] = 1;
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['reason' => ' ']))->assertUnprocessable();
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['event_id' => Event::factory()->create()->id]))->assertNotFound();
+        $admin = User::factory()->create();
+        \App\Models\EventAdmin::create(['event_id' => $s['event']->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.team.changePlayer'), $payload)->assertForbidden();
+        $this->actingAs($s['actor']);
+        $otherTeam = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => 0]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($otherTeam, Player::findOrFail($payload['player_id']), 1);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertSame('not_refunded', $s['order']->fresh()->refund_status);
+        $this->assertSame($s['player']->id, (int) $s['slot']->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
     }
 
     public function test_refund_can_fund_replacement_without_spending_other_wallet_funds(): void
@@ -138,6 +218,7 @@ class AdminTeamWithdrawalTest extends TestCase
             }
             WalletTransaction::create(['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 1000, 'source_type' => 'test', 'source_id' => 1]);
             $payload = $this->replacementPayload($s, 'replacement');
+            $payload['fee_mode'] = 'full'; // A submitted mode cannot turn the net-refund action into a full transfer.
             if ($fee === 200) $payload['slot_id'] = $raw->id;
             $response = $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
             $order = TeamPaymentOrder::where('player_id', $payload['player_id'])->sole();
@@ -206,6 +287,7 @@ class AdminTeamWithdrawalTest extends TestCase
             'team_id' => $s['team']->id, 'player_id' => $s['player']->id, 'ranking_list_id' => 1, 'ranking_position' => 1,
             'queue_position' => 1, 'roster_rank' => 1, 'status' => 'paid_confirmed', 'order_id' => $s['order']->id]);
         $this->postJson(route('backend.team.changePlayer'), $this->replacementPayload($s, 'replacement'))->assertUnprocessable();
+        $this->postJson(route('backend.team.changePlayer'), $this->replacementPayload($s, 'transfer'))->assertUnprocessable();
         $this->assertNull($s['order']->fresh()->withdrawn_at);
         $this->assertDatabaseCount('wallet_transactions', 1);
         $this->assertDatabaseCount('team_payment_orders', 1);
@@ -329,7 +411,8 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertStringNotContainsString('name="deadline_override"', $render());
         $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
         $this->assertStringContainsString('name="deadline_override"', $render());
-        $this->assertStringContainsString('The normal refund fee still applies.', $render());
+        $this->assertStringContainsString('The normal refund fee still applies to wallet refunds', $render());
+        $this->assertStringContainsString('Move full payment to replacement', $render());
         $this->actingAs($s['payer']);
         $this->assertStringNotContainsString('name="deadline_override"', $render());
         $this->actingAs($s['actor']);

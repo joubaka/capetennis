@@ -8,6 +8,9 @@
   <a href="{{ route('my.tennis', ['player' => $recordPlayer->id]) }}">← My Tennis</a>
   <x-player-workspace-header :workspace="$workspace ?? null" :title="$recordSection === 'opponents' ? 'Opponent Insights' : 'Playing Record'" :subtitle="$recordPlayer->full_name.' · '.($recordSection === 'opponents' ? 'The results behind your repeat encounters.' : 'Your recorded tennis, organised by season.')">
   </x-player-workspace-header>
+  @if($recordSection === 'opponents' && isset($upcoming))
+    @include('frontend.my-tennis.record-upcoming')
+  @endif
   @if($record['reason'])
     <div class="record-sheet" role="status">{{ $record['reason'] }}</div>
   @else

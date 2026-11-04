@@ -50,6 +50,23 @@ test('full apply preserves another age draft and never redirects on an age switc
   assert.equal(app.requests.length,1); app.timers[0](); assert.deepEqual(app.redirects,[]);
 });
 
+test('bulk apply does not overwrite a newer individual age draft created while saving', async () => {
+  const app=scenario();
+  app.context.selectedProgrammeAge='bulk';
+  app.context.programmeDraws=[{id:1,programme_age:'13',is_team:true}];
+  app.context.programmeDirtyAges=new Set(['bulk']);
+  const pending=app.start();
+  app.context.selectedProgrammeAge='13';
+  app.context.programmeEditVersions.set('13',2);
+  app.context.programmeDirtyAges.add('13');
+  app.context.programmeSettings.set('13',{duration:99});
+  app.complete();await pending;
+  assert.equal(app.context.programmeSettings.get('13').duration,99);
+  assert.equal(app.context.programmeDirtyAges.has('13'),true);
+  assert.equal(app.requests.length,1);
+  app.timers[0]();assert.deepEqual(app.redirects,[]);
+});
+
 test('redirect checks edits made after successful revalidation', async () => {
   const app=scenario(); const pending=app.start(); app.complete(); await pending;
   assert.equal(app.requests.length,2); assert.equal(app.rendered.length,1);

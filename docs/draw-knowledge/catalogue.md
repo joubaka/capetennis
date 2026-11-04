@@ -334,6 +334,18 @@ Saved schedule preferences are pruned by draw identity and kind-qualified fixtur
 
 **Regression:** `tests/Feature/Draw/BulkDrawDeletionTest.php` and `DrawLifecycleHardeningTest.php` passed locally on 4 November 2026: 15 tests, 123 assertions on each of isolated SQLite and MySQL. The six `tests/Frontend/bulk-draw-deletion.test.cjs` cases passed, including exact selection, cancellation, malformed responses, duplicate requests and no automatic mutation retry. These results do not establish deployment of later changes.
 
+## DK-29 — Bulk team scheduling preserves age venues and discipline completion
+
+**Rule:** In the event venue planner, choose **Bulk schedule age groups**, select the ages, review their round cards and preview before saving privately. Each draw retains its assigned venues, courts and roster-position bands. The bulk programme shares daily windows and timing controls; age groups progress independently. Saving does not publish.
+
+Within each event, age group and qualification stage, all singles finish before reverse singles, then doubles, then mixed. Missing phases are skipped. Use stored rubber codes before draw labels; display order and rubber sequence do not enforce this rule. Player rest and court availability remain separate constraints. Partial selections must honour unselected prerequisites and retained saved successors; manual moves, removal and legacy reset cannot bypass the same boundary.
+
+Composite ties may play later-round singles before earlier-round doubles. Same-day discipline completion overrides composite round-card order. A composite cross-day arrangement that requires later-day singles before earlier-day reverse singles is rejected; move the composite rounds onto a compatible day or use discipline-specific draws. Placement competition singles still wait for their source competition, including its mixed rubbers. Unknown ages remain isolated by draw rather than becoming one shared age group.
+
+**Sources:** `app/Services/Scheduling/TeamDisciplineOrder.php`, `UnifiedTeamScheduleService.php`, `ScheduleProgramme.php`, `EventVenueScheduleService.php`, `app/Services/TeamScheduleService.php`, and `resources/views/backend/schedule/event-venue-schedule.blade.php`.
+
+**Regression:** `tests/Feature/Draw/TeamBulkSchedulingTest.php` covers independent ages and venues, spare courts, phase completion, partial selections, manual moves, failed reset, composite programmes, foreign/incomplete selections and placement dependencies. `tests/Frontend/schedule-programme-bulk.test.cjs` and the programme apply tests cover bulk selection and concurrent draft edits. Test execution and browser evidence must be reported separately from these coverage references; no deployment or live scheduling is authorized by this guide.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

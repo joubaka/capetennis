@@ -26,7 +26,7 @@
             <li class="d-flex justify-content-between">
               <span>Regions</span>
               <span class="badge bg-label-primary rounded-pill">
-                {{ $event->regions->count() }}
+                {{ $stats['regions'] }}
               </span>
             </li>
           @endif
@@ -36,7 +36,7 @@
             <li class="d-flex justify-content-between">
               <span>Teams</span>
               <span class="badge bg-label-primary rounded-pill">
-                {{ $event->regions->sum(fn ($r) => $r->teams->count()) }}
+                {{ $stats['teams'] }}
               </span>
             </li>
           @endif

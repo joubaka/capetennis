@@ -94,9 +94,9 @@ final class EventVenueScheduleService
             $programmeService = app(ScheduleProgramme::class);
             if ($draws->contains(fn ($draw) => $draw->isTeamDraw())) {
                 $ages = $draws->map(fn ($draw) => $programmeService->key($draw))->unique();
-                if ($ages->count() !== 1 || $ages->first() === null) throw new \InvalidArgumentException('Select one complete age group for the programme.');
-                $expected = $event->draws()->get()->filter(fn ($draw) => $programmeService->supports($draw) && $programmeService->key($draw) === $ages->first())->pluck('id');
-                if ($expected->diff($draws->pluck('id'))->isNotEmpty()) throw new \InvalidArgumentException('Include every discipline of the selected age group.');
+                if ($ages->contains(null) || $draws->contains(fn ($draw) => ! $draw->isTeamDraw())) throw new \InvalidArgumentException('Select complete team age groups for the programme.');
+                $expected = $event->draws()->get()->filter(fn ($draw) => $draw->isTeamDraw() && $ages->contains($programmeService->key($draw)))->pluck('id');
+                if ($expected->diff($draws->pluck('id'))->isNotEmpty()) throw new \InvalidArgumentException('Include every discipline of each selected age group.');
             }
             if ($draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock all age-group draws before creating a complete programme.');
             if ($options['draw_rounds'] ?? []) throw new \InvalidArgumentException('A complete programme cannot also filter rounds.');
@@ -268,13 +268,15 @@ final class EventVenueScheduleService
         $eligibleFixtureKeys = [];
         $dayRoundCoverage = [];
         $warnings = $rankRuleWarnings;
+        $phaseInventory = $draws->contains(fn ($draw) => $draw->isTeamDraw()) ? app(TeamDisciplineOrder::class)->inventory($event) : collect();
+        $phaseDependencies = app(TeamDisciplineOrder::class)->dependencies($phaseInventory);
         if ($dayBatch && $rankRules) $warnings[] = 'Saved position bands control the team venue allocations for this day; a tie may use more than one configured venue.';
         foreach ($draws as $draw) {
             if ($draw->locked) {
                 $warnings[] = "{$draw->drawName} was not changed because the draw is locked.";
                 continue;
             }
-            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
+            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression, $phaseDependencies) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
                 $timing = app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap, $dayBatch);
                 $node['timed'] = ! $draw->isTeamDraw() && $draw->settings?->score_format === 'timed';
                 $node['duration'] = $timing['duration_minutes'];
@@ -425,6 +427,15 @@ final class EventVenueScheduleService
             }
         }
         unset($node);
+
+        $externalPhaseDeadlines = [];
+        foreach ($phaseInventory as $later) {
+            if (isset($nodes['team:'.$later->id]) || ! $later->scheduled_at) continue;
+            foreach ($phaseDependencies['team:'.$later->id] ?? [] as $key) {
+                $at = Carbon::parse($later->scheduled_at);
+                if (! isset($externalPhaseDeadlines[$key]) || $at->lt($externalPhaseDeadlines[$key])) $externalPhaseDeadlines[$key] = $at;
+            }
+        }
 
         // A playoff-only preview still honours already scheduled group feeders.
         foreach ($nodes as $node) foreach ($node['dependencies'] as $dependency) {
@@ -688,6 +699,10 @@ final class EventVenueScheduleService
                             if ($end && $at->copy()->addMinutes($matchDuration)->gt($end)) continue;
                         }
                         if ($dayScope || $fullDay || ($node['fixture_kind'] ?? 'individual') === 'team') {
+                            if (isset($externalPhaseDeadlines[$id]) && $at->copy()->addMinutes($matchDuration)->gt($externalPhaseDeadlines[$id])) {
+                                $blocked[$id] = 'A saved later discipline in this age group leaves insufficient time. Include it when replanning or keep this match before it.';
+                                continue;
+                            }
                             foreach ($nodes as $later) {
                                 if ((! $later['fixed'] && ! $later['played'] && ! isset($later['preview_move'])) || ! in_array($id, $later['dependencies'], true)) continue;
                                 $laterSlot = $this->nodeSlot($later);
@@ -996,6 +1011,7 @@ final class EventVenueScheduleService
 
             $matches = collect($preview['matches'])
                 ->when($applyVenueIds, fn (Collection $rows) => $rows->whereIn('venue_id', $applyVenueIds))->values();
+            app(TeamDisciplineOrder::class)->validateAssignments($event, $matches);
             if ($applyVenueIds && $matches->isEmpty()) {
                 throw new \InvalidArgumentException('This venue has no new or changed fixtures to apply.');
             }
@@ -1089,9 +1105,19 @@ final class EventVenueScheduleService
                 $age = $firstDraw->isTeamDraw() ? app(ScheduleProgramme::class)->key($firstDraw)
                     : 'individual:'.implode(',', collect($programme['rounds'])->pluck('drawId')->unique()->sort()->values()->all());
                 $stored['programme'] = $programme;
-                $stored['programme_settings'][(string) $age] = array_intersect_key($options, array_flip([
+                $settings = array_intersect_key($options, array_flip([
                     'duration', 'player_rest', 'court_gap', 'gender_waves', 'gender_wave_release', 'reschedule_existing',
-                ])) + ['programme' => $programme];
+                ]));
+                if ($firstDraw->isTeamDraw()) {
+                    $programmeDraws = Draw::where('event_id', $event->id)->whereIn('id', collect($programme['rounds'])->pluck('drawId'))->get();
+                    foreach ($programmeDraws->groupBy(fn ($draw) => app(ScheduleProgramme::class)->key($draw)) as $groupAge => $ageDraws) {
+                        $ageProgramme = $programme;
+                        $ageProgramme['rounds'] = array_values(array_filter($programme['rounds'], fn ($row) => $ageDraws->contains('id', $row['drawId'])));
+                        $stored['programme_settings'][(string) $groupAge] = $settings + ['programme' => $ageProgramme];
+                    }
+                } else {
+                    $stored['programme_settings'][(string) $age] = $settings + ['programme' => $programme];
+                }
                 if (! $firstDraw->isTeamDraw()) {
                     foreach (collect($programme['rounds'])->pluck('drawId')->unique() as $drawId) {
                         $stored['individual_programme_by_draw'][(string) $drawId] = $age;
@@ -1791,6 +1817,10 @@ final class EventVenueScheduleService
             if ($slot?->time) return Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $duration));
         }
         if (isset($started[$dependency])) return $started[$dependency]->copy()->addMinutes($duration);
+        if (str_starts_with((string) $dependency, 'team:')) {
+            $fixture = TeamFixture::find((int) substr($dependency, 5));
+            if ($fixture?->scheduled_at) return Carbon::parse($fixture->scheduled_at)->addMinutes((int) ($fixture->duration_min ?: 120));
+        }
         return $finished[$dependency]->copy();
     }
 

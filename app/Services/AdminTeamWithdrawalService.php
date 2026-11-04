@@ -36,6 +36,7 @@ class AdminTeamWithdrawalService
             ->where('pay_status', true)->whereNull('withdrawn_at')->get();
         $this->ensure($orders->count() === 1, 'A unique current paid order is required. Review this player’s payment history.');
         $order = $orders->first();
+        app(RefundExecutionService::class)->assertNoCorrectedTeamRefund($order);
         $this->ensure(!$order->hasRefund() && !$order->refunded_at && !$order->refund_waived_at && !$order->refund_waived_by
             && blank($order->refund_waiver_reason) && blank($order->refund_method)
             && (float) $order->refund_gross === 0.0 && (float) $order->refund_fee === 0.0 && (float) $order->refund_net === 0.0,

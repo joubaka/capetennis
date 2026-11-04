@@ -16,6 +16,39 @@ class PublicDrawOrderingTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_discipline_sections_use_the_requested_order_for_published_and_unpublished_draws(): void
+    {
+        $user = \App\Models\User::factory()->create();
+        Gate::define('event.score', fn () => false);
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $user->assignRole('super-user');
+        $this->actingAs($user);
+        $draws = collect();
+        foreach ([true, false] as $published) {
+            foreach (['Mixed Doubles', 'Doubles', 'Singles Reverse', 'Singles'] as $index => $discipline) {
+                $draw = new Draw(['drawName' => 'Example '.$discipline, 'published' => $published, 'drawType_id' => $index + 1]);
+                $draw->id = $draws->count() + 1;
+                $draw->setRelation('draw_types', new DrawType(['drawTypeName' => 'Team - '.$discipline]));
+                $draw->setRelation('flexibleMonrad', null);
+                $draw->setRelation('settings', null);
+                $draws->push($draw);
+            }
+        }
+        $html = view('frontend.event.partials._draws_and_order_of_play', [
+            'event' => new Event(['id' => 1]), 'eventDraws' => $draws,
+        ])->render();
+        foreach (explode('Unpublished Draws</h6>', $html) as $section) {
+            $previous = -1;
+            foreach (['Singles', 'Singles Reverse', 'Doubles', 'Mixed Doubles'] as $discipline) {
+                $position = strpos($section, '>Team - '.$discipline.'</h6>');
+                $this->assertNotFalse($position);
+                $this->assertGreaterThan($previous, $position);
+                $previous = $position;
+            }
+        }
+        $this->assertStringContainsString('Unpublished Draws</h6>', $html);
+    }
+
     public function test_published_draws_sort_by_numeric_age_and_name_without_exposing_unpublished_draws(): void
     {
         Gate::define('event.score', fn () => false);

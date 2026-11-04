@@ -32,6 +32,15 @@ class EventOperationsService
         $pendingRefundCount = (clone $registrationQuery)
             ->where('refund_status', CategoryEventRegistration::REFUND_PENDING)->count();
 
+        if ($event->isTeam()) {
+            $teamStats = app(TeamEventOverviewStats::class)->for($event);
+            $entryCount = $teamStats['entries'];
+            $paidCount = $teamStats['paid'];
+            $pendingCheckoutCount = $teamStats['pending_checkouts'];
+            $withdrawalCount = $teamStats['withdrawals'];
+            $pendingRefundCount = $teamStats['pending_refunds'];
+        }
+
         $draws = $event->draws()->with(['drawFixtures'])->limit(100)->get();
         $readiness = $draws->mapWithKeys(fn ($draw) => [$draw->id => $this->drawReadiness->for($draw)]);
         $warnings = collect();
@@ -40,7 +49,7 @@ class EventOperationsService
         if ($canViewPendingCheckouts) {
             $checkoutAction = $event->isInterprovincialTrials()
                 ? route('backend.interprovincial-trials.programme.index', $event).'#trial-trial-payments'
-                : route('admin.events.entries.new', $event);
+                : ($event->isTeam() ? route('admin.events.transactions', $event) : route('admin.events.entries.new', $event));
             $this->warning($warnings, 'critical', 'pending_checkouts', 'Pending checkouts', $pendingCheckoutCount, $checkoutAction);
         }
         $this->warning($warnings, 'warning', 'withdrawals', 'Withdrawals', $withdrawalCount, route('admin.events.overview', $event));
@@ -70,7 +79,7 @@ class EventOperationsService
             'paid' => $paidCount,
             'withdrawals' => $withdrawalCount,
             'pending_refunds' => $pendingRefundCount,
-            'draws' => $draws->count(),
+            'draws' => $event->draws()->count(),
         ];
         if ($canViewPendingCheckouts) {
             $counts = [
@@ -79,11 +88,12 @@ class EventOperationsService
                 'pending_checkouts' => $pendingCheckoutCount,
                 'withdrawals' => $withdrawalCount,
                 'pending_refunds' => $pendingRefundCount,
-                'draws' => $draws->count(),
+                'draws' => $event->draws()->count(),
             ];
         }
 
         return [
+            'teamStats' => $teamStats ?? null,
             'lifecycle' => $this->lifecycle->snapshot($event),
             'counts' => $counts,
             'draws' => $draws,

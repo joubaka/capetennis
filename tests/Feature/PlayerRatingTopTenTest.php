@@ -50,6 +50,26 @@ class PlayerRatingTopTenTest extends TestCase
         return app(PlayerRatingTopTen::class)->build($user, $selected, $filters);
     }
 
+    public function test_match_comparisons_only_return_requested_public_comparable_ratings(): void
+    {
+        foreach (range(1, 5) as $id) $this->player($id, 'Opponent '.$id, status: $id === 4 ? 'draft' : 'published');
+        $selected = \App\Models\Player::find(1);
+        $user = \Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allowsDiscovery')->twice()->andReturnTrue();
+        $access->shouldReceive('allows')->twice()->with($user, $selected)->andReturn(true, false);
+        $snapshot = $this->snapshot([1 => 80, 2 => 75, 3 => 70, 4 => 65, 5 => 60]);
+        $snapshot['all_age']['ratings'][3]['comparable'] = false;
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
+        $service = app(PlayerRatingTopTen::class);
+        $ratings = $service->forMatchPlayers($user, $selected, [1, 2, 3, 4]);
+        $this->assertSame([1, 2], array_keys($ratings));
+        $this->assertSame(['id', 'name', 'score', 'confidence'], array_keys($ratings[2]));
+        $this->assertSame(75.0, $ratings[2]['score']);
+        $this->assertSame([], $service->forMatchPlayers($user, $selected, [2]));
+    }
+
     public function test_plus_receives_own_positions_and_age_top_ten_without_full_browsing(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
@@ -129,7 +149,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(['id' => 2, 'name' => 'Search 02 Example', 'score' => 51.0, 'confidence' => 'Moderate'], $chosen['search']['selected']);
         $chosenHtml = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $chosen, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertSame(1, substr_count($chosenHtml, 'data-rating-search-result'));
-        $this->assertStringContainsString('51.0 Overall CTR', $chosenHtml);
+        $this->assertStringContainsString('CTR 51.0 · Overall CTR', $chosenHtml);
         foreach ([['rating_search' => 'Search 01', 'rating_search_player' => 2], ['rating_search' => 'Search 14', 'rating_search_player' => 14], ['rating_search_player' => 2], ['rating_search' => 'search', 'rating_search_player' => 13], ['rating_search' => 'Search 15', 'rating_search_player' => 15]] as $invalidSelection) {
             $this->assertNull(app(PlayerRatingTopTen::class)->build($user, $selected, $invalidSelection)['search']['selected']);
         }

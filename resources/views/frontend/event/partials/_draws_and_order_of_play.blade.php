@@ -53,6 +53,16 @@
   <h6 class="event-play-section-title">Published draws</h6>
 
   @php
+    $drawTypePriority = function ($typeName) {
+        $name = strtolower(trim(preg_replace('/^team\s*[-–]\s*/iu', '', $typeName)));
+        return match ($name) {
+            'singles' => 0,
+            'singles reverse', 'reverse singles' => 1,
+            'doubles' => 2,
+            'mixed doubles' => 3,
+            default => 4,
+        };
+    };
     $publicRowsByDraw = $event->exists
         ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event, includeParticipants: false)->groupBy('draw_id')
         : collect();
@@ -77,11 +87,12 @@
                 ?: strnatcasecmp($left->drawName, $right->drawName)
                 ?: ($left->id <=> $right->id);
         });
-    // Keep type sections intact; each section follows its earliest public match.
+    // Discipline order is fixed; public match times still order draws within sections.
     $publishedDrawGroups = $publishedDraws->groupBy(fn ($draw) => $draw->draw_types?->drawTypeName ?? 'Other')
-        ->sort(function ($left, $right) use ($publicStartTimes) {
+        ->sort(function ($left, $right) use ($publicStartTimes, $drawTypePriority) {
             $firstTime = fn ($draws) => $draws->map(fn ($draw) => $publicStartTimes->get($draw->id))->filter()->min() ?? '9999';
-            return strcmp($firstTime($left), $firstTime($right))
+            return ($drawTypePriority($left->first()->draw_types?->drawTypeName ?? 'Other') <=> $drawTypePriority($right->first()->draw_types?->drawTypeName ?? 'Other'))
+                ?: strcmp($firstTime($left), $firstTime($right))
                 ?: ($right->max('drawType_id') <=> $left->max('drawType_id'))
                 ?: strnatcasecmp($left->first()->draw_types?->drawTypeName ?? 'Other', $right->first()->draw_types?->drawTypeName ?? 'Other');
         });
@@ -180,7 +191,7 @@
         <div class="mt-4">
           <h6 class="fw-bold text-danger">Unpublished Draws</h6>
 
-          @foreach($eventDraws->where('published', false)->sortByDesc('drawType_id')->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other') as $typeName => $draws)
+          @foreach($eventDraws->where('published', false)->sortByDesc('drawType_id')->groupBy(fn($d) => $d->draw_types?->drawTypeName ?? 'Other')->sortBy(fn ($draws, $typeName) => $drawTypePriority($typeName)) as $typeName => $draws)
             <h6 class="mt-3">{{ $typeName }}</h6>
             <div class="d-flex flex-wrap gap-2">
               @foreach($draws as $draw)

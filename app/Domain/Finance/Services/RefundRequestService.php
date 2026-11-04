@@ -268,6 +268,7 @@ class RefundRequestService
         if (! $actor || ((int) $order->user_id !== (int) $actor->id && ! $isSuperUser)) {
             throw ValidationException::withMessages(['refund' => 'Only the payer may request this refund.']);
         }
+        app(\App\Domain\Refunds\Services\RefundExecutionService::class)->assertNoCorrectedTeamRefund($order);
         if (! $order->event || ! $order->withdrawn_at) {
             throw ValidationException::withMessages(['refund' => 'Player must be withdrawn before requesting a refund.']);
         }

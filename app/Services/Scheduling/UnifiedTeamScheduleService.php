@@ -47,11 +47,12 @@ final class UnifiedTeamScheduleService
             'duration_minutes' => $fixture->duration_min ?: 120, 'gap_minutes' => (int) ($fixture->gap_minutes ?? 0)]);
     }
 
-    public function nodes(Draw $draw, string $progression): array
+    public function nodes(Draw $draw, string $progression, ?array $phaseDependencies = null): array
     {
         $fixtures = TeamFixture::with(['fixturePlayers.noProfile1', 'fixturePlayers.noProfile2',
             'teamTie.homeTeam', 'teamTie.awayTeam', 'region1Name', 'region2Name', 'fixtureResults'])
             ->where('draw_id', $draw->id)->orderBy('round_nr')->orderBy('tie_nr')->orderBy('rubber_sequence')->orderBy('id')->get();
+        foreach ($fixtures as $fixture) $fixture->setRelation('draw', $draw);
         $sourceDependencies = [];
         $sourceId = $draw->team_draw_selection['competition']['source_draw_id'] ?? null;
         if ($sourceId) {
@@ -69,6 +70,7 @@ final class UnifiedTeamScheduleService
             $regions = array_filter([$fixture->region1, $fixture->region2]);
             $dependencies = $fixtures->filter(function ($earlier) use ($fixture, $teams, $regions, $progression) {
                 if ((int) $earlier->round_nr >= (int) $fixture->round_nr) return false;
+                if (app(TeamDisciplineOrder::class)->phase($earlier) > app(TeamDisciplineOrder::class)->phase($fixture)) return false;
                 if ($progression === 'all_round') return true;
                 return (bool) array_intersect($teams, array_filter([$earlier->teamTie?->home_team_id, $earlier->teamTie?->away_team_id]))
                     || (bool) array_intersect($regions, array_filter([$earlier->region1, $earlier->region2]));
@@ -100,6 +102,7 @@ final class UnifiedTeamScheduleService
             usort($keys, fn ($left, $right) => [$nodes[$left]['tie_order'], $left] <=> [$nodes[$right]['tie_order'], $right]);
             foreach ($keys as $index => $key) $nodes[$key]['fallback_order_key'] = $slots[$index];
         }
+        app(TeamDisciplineOrder::class)->configureNodes($nodes, $draw->event, $phaseDependencies);
         return $nodes;
     }
 
@@ -140,6 +143,7 @@ final class UnifiedTeamScheduleService
         $duration = (int) ($data['duration'] ?? $data['duration_min'] ?? 75);
         $rest = (int) ($data['player_rest'] ?? 0);
         $gap = (int) ($data['court_gap'] ?? $fixture->gap_minutes ?? 0);
+        if ($error = app(TeamDisciplineOrder::class)->manualError($fixture, $start, $duration)) return $error;
         $progression = $data['round_progression'] ?? 'team_ready';
         if (! in_array($progression, ['team_ready', 'all_round'], true)) return 'Choose a valid round progression rule.';
         $nodes = $this->nodes($fixture->draw, $progression);
@@ -147,7 +151,8 @@ final class UnifiedTeamScheduleService
         foreach ($node['dependencies'] ?? [] as $key) {
             $earlier = TeamFixture::find((int) substr($key, 5));
             if (! $earlier?->scheduled_at) return 'Schedule the preceding team tie before this rubber.';
-            if (Carbon::parse($earlier->scheduled_at)->addMinutes((int) ($earlier->duration_min ?: 120) + $rest)->gt($start)) {
+            $dependencyRest = in_array($key, $node['discipline_dependencies'] ?? [], true) ? 0 : $rest;
+            if (Carbon::parse($earlier->scheduled_at)->addMinutes((int) ($earlier->duration_min ?: 120) + $dependencyRest)->gt($start)) {
                 return 'This rubber starts before the preceding team tie and required rest finish.';
             }
         }
@@ -206,6 +211,15 @@ final class UnifiedTeamScheduleService
 
     public function removalError(Event $event, array $fixtureIds, ?string $progression = null): ?string
     {
+        $inventory = app(TeamDisciplineOrder::class)->inventory($event);
+        $phaseDependencies = app(TeamDisciplineOrder::class)->dependencies($inventory);
+        $removedKeys = array_map(fn ($id) => 'team:'.$id, $fixtureIds);
+        foreach ($inventory as $later) {
+            if (! in_array((int) $later->id, array_map('intval', $fixtureIds), true) && $later->scheduled_at
+                && array_intersect($removedKeys, $phaseDependencies['team:'.$later->id] ?? [])) {
+                return 'A saved later discipline depends on these times. Return the dependent discipline to planning too.';
+            }
+        }
         $saved = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
         $progression ??= ($saved['round_progression'] ?? 'team_ready') === 'all_round' ? 'all_round' : 'team_ready';
         $drawIds = TeamFixture::whereIn('id', $fixtureIds)->whereHas('draw', fn ($q) => $q->where('event_id', $event->id))->pluck('draw_id')->unique();

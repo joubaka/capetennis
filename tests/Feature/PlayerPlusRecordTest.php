@@ -120,6 +120,7 @@ class PlayerPlusRecordTest extends TestCase
         $this->app->instance(PlayerRatingAccess::class, $access);
         $record = Mockery::mock(PlayerPlusRecordService::class); $record->shouldNotReceive('forPlayer');
         $this->app->instance(PlayerPlusRecordService::class, $record);
+        $this->mock(\App\Services\Performance\PlayerUpcomingMatchInsights::class)->shouldNotReceive('forPlayer');
         $request = Request::create('/'); $request->setUserResolver(fn () => new User);
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
         app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $this->player());
@@ -230,5 +231,26 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertStringContainsString('opponent_page=2', $html);
         $this->assertStringContainsString('compare_first=2025', $html);
         $this->assertStringContainsString('year=2026', $html);
+    }
+
+    public function test_upcoming_matches_precede_unavailable_history_and_names_open_comparison_details(): void
+    {
+        $record = $this->record([]); $record['reason'] = 'History unavailable';
+        $upcoming = ['rows' => [['date' => '2026-11-05 09:00:00', 'event' => 'Upcoming Open', 'draw' => 'Singles',
+            'venue' => 'Example courts', 'court' => '2', 'team' => null,
+            'opponents' => [['id' => 43, 'name' => '<script>Opponent</script>']], 'url' => '/published-draw']],
+            'ratings' => [42 => ['score' => 80.0, 'confidence' => 'Low'], 43 => ['score' => 75.0, 'confidence' => 'Moderate']],
+            'total' => 1, 'page' => 1, 'pages' => 1];
+        $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
+        $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record, 'upcoming' => $upcoming]);
+        $this->assertLessThan(strpos($html, 'History unavailable'), strpos($html, 'id="upcoming-heading"'));
+        $this->assertStringContainsString('<details', $html);
+        $this->assertStringContainsString('Overall CTR 80.0', $html);
+        $this->assertStringContainsString('Overall CTR 75.0', $html);
+        $this->assertStringContainsString('Moderate confidence', $html);
+        $this->assertStringContainsString('Court 2', $html);
+        $this->assertStringContainsString('&lt;script&gt;Opponent&lt;/script&gt;', $html);
+        $this->assertStringNotContainsString('<script>Opponent</script>', $html);
+        $this->assertStringContainsString('opponent=43#opponent-meetings', $html);
     }
 }

@@ -39,6 +39,7 @@
             <option value="">Choose payment option</option>
             <option value="refund">Refund original payer's wallet</option>
             @if(!\App\Models\TeamSelectionInvitation::where('team_id', $team->id)->whereHas('selectionImport', fn ($query) => $query->where('event_id', $event->id)->whereIn('status', ['draft', 'sent']))->exists())
+              <option value="transfer">Move full payment to replacement</option>
               <option value="replacement">Use refund toward replacement player</option>
             @endif
             <option value="waive">Waive refund — no money returned</option>
@@ -55,10 +56,10 @@
               <input class="form-check-input" type="checkbox" name="deadline_override" value="1">
               <span class="form-check-label">Override refund deadline for this replacement</span>
             </label>
-            <p class="small text-muted">For a wallet refund or refund-funded replacement after the deadline, explicitly confirm this override and explain why in Reason. Leave it unchecked when waiving the refund. The normal refund fee still applies.</p>
+            <p class="small text-muted">To return or move payment after the deadline, explicitly confirm this override and explain why in Reason. Leave it unchecked when waiving the refund. The normal refund fee still applies to wallet refunds and refund-funded replacements; moving the full payment waives that fee.</p>
           @endif
           <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
-          <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid unless the refund covers their full entry fee. Using the refund reserves only those proceeds for the original payer's new checkout. They must pay any shortfall within five minutes or restart; unused or released funds stay in their wallet. Original payment history stays with the original payer and player.</p>
+          <p class="small text-muted">Move full payment to replacement waives the withdrawal fee and uses the original paid amount. Wallet refunds and Use refund toward replacement player deduct the normal refund fee. The replacement starts unpaid unless the available funds cover their current entry and regional fee. Any shortfall must be paid by the original payer within five minutes or they must restart; unused or released funds stay in their wallet. Original payment history stays with the original payer and player.</p>
         @endif
         <button class="btn btn-primary">Save player</button>
         <p class="small text-muted mt-1">The current player stays in place until you save.</p>

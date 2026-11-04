@@ -27,6 +27,7 @@ final class TeamScheduleService
         }
         DB::transaction(function () use ($draw, $data) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $this->lockScheduler();
             $fixture = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->lockForUpdate()->firstOrFail();
@@ -37,6 +38,10 @@ final class TeamScheduleService
                 return;
             }
             app(TeamDrawMutationGuard::class)->fixture($fixture);
+            if ($error = app(\App\Services\Scheduling\TeamDisciplineOrder::class)->manualError(
+                $fixture, $fixture->scheduled_at ? Carbon::parse($fixture->scheduled_at) : null, (int) ($fixture->duration_min ?: 120))) {
+                throw ValidationException::withMessages(['scheduled_at' => $error]);
+            }
             if ($fixture->venue_id) {
                 $venue = $draw->venues()->where('venues.id', $fixture->venue_id)->first();
                 if (!$venue) {
@@ -104,6 +109,7 @@ final class TeamScheduleService
     {
         return DB::transaction(function () use ($draws, $data, $reset) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->whereIn('id', $draws->pluck('event_id'))->orderBy('id')->lockForUpdate()->get();
             $guard = app(TeamDrawMutationGuard::class);
             $lockedDraws = Draw::whereIn('id', $draws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             if ($lockedDraws->contains(fn ($draw) => isset($draw->team_draw_selection['competition']))) throw ValidationException::withMessages(['draw' => 'Use the event venue planner to schedule placement competitions with qualification dependencies.']);
@@ -136,6 +142,12 @@ final class TeamScheduleService
             // Serialize schedulers sharing the same venue, even across events.
             Venue::whereIn('id', $allVenueIds)->orderBy('id')->lockForUpdate()->get();
             if ($reset) {
+                foreach ($lockedDraws->groupBy('event_id') as $eventId => $eventDraws) {
+                    $ids = TeamFixture::whereIn('draw_id', $eventDraws->pluck('id'))->pluck('id')->all();
+                    if ($error = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->removalError(\App\Models\Event::findOrFail($eventId), $ids)) {
+                        throw ValidationException::withMessages(['scheduled_at' => $error]);
+                    }
+                }
                 $this->clearRows($lockedDraws->pluck('id')->all());
             }
             $start = Carbon::parse($data['start']);
@@ -166,64 +178,85 @@ final class TeamScheduleService
             $calendar = \App\Domain\Draws\Services\ScheduleAvailability::load($allVenueIds, $identityIds, [], null, $gap);
             $assigned = [];
             $skipped = [];
-            foreach ($lockedDraws as $draw) {
-                $fixtures = TeamFixture::with(['fixturePlayers', 'teamTie'])->where('draw_id', $draw->id)
-                    ->whereNull('scheduled_at')->when($rounds->isNotEmpty(), fn ($q) => $q->whereIn('round_nr', $rounds))
-                    ->orderByRaw('CAST(round_nr AS UNSIGNED)')->orderBy('tie_nr')->orderBy('rubber_sequence')
-                    ->orderBy('home_rank_nr')->orderBy('id')->lockForUpdate()->get();
-                foreach ($fixtures as $fixture) {
-                    if ($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0 || $fixture->teamTie?->isCompleted()) {
-                        $skipped[] = ['id' => $fixture->id, 'reason' => 'Fixture has play or results'];
-                        continue;
+            $phaseOrder = app(\App\Services\Scheduling\TeamDisciplineOrder::class);
+            $phaseDependencies = [];
+            $phaseInventories = [];
+            foreach ($lockedDraws->pluck('event_id')->unique() as $eventId) {
+                $phaseInventories[$eventId] = $phaseOrder->inventory(\App\Models\Event::findOrFail($eventId))->keyBy('id');
+                $phaseDependencies += $phaseOrder->dependencies($phaseInventories[$eventId]);
+            }
+            $fixtures = TeamFixture::with(['fixturePlayers', 'teamTie'])->whereIn('draw_id', $lockedDraws->pluck('id'))
+                ->whereNull('scheduled_at')->when($rounds->isNotEmpty(), fn ($q) => $q->whereIn('round_nr', $rounds))
+                ->orderByRaw('CAST(round_nr AS UNSIGNED)')->orderBy('tie_nr')->orderBy('rubber_sequence')
+                ->orderBy('home_rank_nr')->orderBy('id')->lockForUpdate()->get()
+                ->sortBy(fn ($fixture) => [$phaseOrder->phase($fixture), $fixture->draw_id, (int) $fixture->round_nr, (int) $fixture->tie_nr, (int) $fixture->rubber_sequence, $fixture->id]);
+            foreach ($fixtures as $fixture) {
+                $draw = $lockedDraws->firstWhere('id', $fixture->draw_id);
+                if ($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0 || $fixture->teamTie?->isCompleted()) {
+                    $skipped[] = ['id' => $fixture->id, 'reason' => 'Fixture has play or results'];
+                    continue;
+                }
+                $rank = $fixture->home_rank_nr ?? $fixture->rubber_sequence;
+                $duration = (int) ($data['rank_duration_map'][$rank] ?? $data['duration']);
+                $mapped = $data['rank_venue_map'][$rank] ?? null;
+                $venues = $venuesByDraw[$draw->id]->when($mapped, fn ($v) => $v->where('id', $mapped));
+                $players = $this->players($fixture);
+                $identityIds = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture);
+                $best = null;
+                $phaseStart = $start->copy();
+                foreach ($phaseDependencies['team:'.$fixture->id] ?? [] as $dependency) {
+                    $earlier = $phaseInventories[$draw->event_id][(int) substr($dependency, 5)] ?? null;
+                    if (! $earlier?->scheduled_at) {
+                        $skipped[] = ['id' => $fixture->id, 'reason' => 'Schedule every earlier discipline in this age group first.'];
+                        continue 2;
                     }
-                    $rank = $fixture->home_rank_nr ?? $fixture->rubber_sequence;
-                    $duration = (int) ($data['rank_duration_map'][$rank] ?? $data['duration']);
-                    $mapped = $data['rank_venue_map'][$rank] ?? null;
-                    $venues = $venuesByDraw[$draw->id]->when($mapped, fn ($v) => $v->where('id', $mapped));
-                    $players = $this->players($fixture);
-                    $identityIds = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->participants($fixture);
-                    $best = null;
-                    foreach ($venues as $venue) {
-                        $courts = max(1, (int) ($venue->pivot->num_courts ?? 1));
-                        for ($court = 1; $court <= $courts; $court++) {
-                            $candidate = $start->copy();
-                            do {
-                                $moved = false;
-                                $finish = $candidate->copy()->addMinutes($duration);
-                                foreach ($bookings as $booking) {
-                                    $sameCourt = $booking['venue'] === (int) $venue->id
-                                        && ($booking['court'] === null || $booking['court'] === $court);
-                                    if (!$sameCourt && !array_intersect($players, $booking['players'])) {
-                                        continue;
-                                    }
-                                    if ($candidate->lt($booking['end']->copy()->addMinutes($gap))
-                                        && $finish->copy()->addMinutes($gap)->gt($booking['start'])) {
-                                        $candidate = $booking['end']->copy()->addMinutes($gap);
-                                        $moved = true;
-                                        break;
-                                    }
+                    $phaseStart = $phaseStart->max(Carbon::parse($earlier->scheduled_at)->addMinutes((int) ($earlier->duration_min ?: 120)))->copy();
+                }
+                foreach ($venues as $venue) {
+                    $courts = max(1, (int) ($venue->pivot->num_courts ?? 1));
+                    for ($court = 1; $court <= $courts; $court++) {
+                        $candidate = $phaseStart->copy();
+                        do {
+                            $moved = false;
+                            $finish = $candidate->copy()->addMinutes($duration);
+                            foreach ($bookings as $booking) {
+                                $sameCourt = $booking['venue'] === (int) $venue->id
+                                    && ($booking['court'] === null || $booking['court'] === $court);
+                                if (!$sameCourt && !array_intersect($players, $booking['players'])) {
+                                    continue;
                                 }
-                            } while ($moved && $candidate->copy()->addMinutes($duration)->lte($end));
-                            $candidate = $calendar->nextAvailableForMatch($candidate, $duration + $gap, $duration + $gap,
-                                (int) $venue->id, (string) $court, $identityIds);
-                            if ($candidate->copy()->addMinutes($duration)->lte($end)
-                                && ($best === null || $candidate->lt($best['start']))) {
-                                $best = ['start' => $candidate, 'venue' => (int) $venue->id, 'court' => $court];
+                                if ($candidate->lt($booking['end']->copy()->addMinutes($gap))
+                                    && $finish->copy()->addMinutes($gap)->gt($booking['start'])) {
+                                    $candidate = $booking['end']->copy()->addMinutes($gap);
+                                    $moved = true;
+                                    break;
+                                }
                             }
+                        } while ($moved && $candidate->copy()->addMinutes($duration)->lte($end));
+                        $candidate = $calendar->nextAvailableForMatch($candidate, $duration + $gap, $duration + $gap,
+                            (int) $venue->id, (string) $court, $identityIds);
+                        if ($candidate->copy()->addMinutes($duration)->lte($end)
+                            && ($best === null || $candidate->lt($best['start']))) {
+                            $best = ['start' => $candidate, 'venue' => (int) $venue->id, 'court' => $court];
                         }
                     }
-                    if ($best === null) {
-                        $skipped[] = ['id' => $fixture->id, 'reason' => 'No conflict-free slot within the time window'];
-                        continue;
-                    }
-                    $fixture->forceFill(['scheduled_at' => $best['start'], 'venue_id' => $best['venue'],
-                        'court_label' => "Court {$best['court']}", 'duration_min' => $duration,
-                        'gap_minutes' => $gap, 'scheduled' => 1, 'clash_flag' => false])->save();
-                    $calendar->reserveWithRest($best['venue'], (string) $best['court'], $best['start'], $duration + $gap, $duration + $gap, $identityIds);
-                    $bookings[] = $this->booking($fixture, $best['start'], $best['start']->copy()->addMinutes($duration));
-                    $assigned[] = ['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $best['venue'],
-                        'court' => $fixture->court_label, 'scheduled_at' => $best['start']->format('Y-m-d H:i'), 'duration' => $duration];
                 }
+                if ($best === null) {
+                    $skipped[] = ['id' => $fixture->id, 'reason' => 'No conflict-free slot within the time window'];
+                    continue;
+                }
+                if ($error = $phaseOrder->manualError($fixture, $best['start'], $duration, $phaseInventories[$draw->event_id], $phaseDependencies)) {
+                    $skipped[] = ['id' => $fixture->id, 'reason' => $error];
+                    continue;
+                }
+                $fixture->forceFill(['scheduled_at' => $best['start'], 'venue_id' => $best['venue'],
+                    'court_label' => "Court {$best['court']}", 'duration_min' => $duration,
+                    'gap_minutes' => $gap, 'scheduled' => 1, 'clash_flag' => false])->save();
+                $phaseInventories[$draw->event_id][$fixture->id] = $fixture;
+                $calendar->reserveWithRest($best['venue'], (string) $best['court'], $best['start'], $duration + $gap, $duration + $gap, $identityIds);
+                $bookings[] = $this->booking($fixture, $best['start'], $best['start']->copy()->addMinutes($duration));
+                $assigned[] = ['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'venue_id' => $best['venue'],
+                    'court' => $fixture->court_label, 'scheduled_at' => $best['start']->format('Y-m-d H:i'), 'duration' => $duration];
             }
             return ['success' => true, 'assigned' => $assigned, 'count' => count($assigned),
                 'skipped' => $skipped, 'clashes' => [], 'rounds_processed' => $rounds];
@@ -234,11 +267,18 @@ final class TeamScheduleService
     {
         DB::transaction(function () use ($draws) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->whereIn('id', $draws->pluck('event_id'))->orderBy('id')->lockForUpdate()->get();
             $locked = Draw::whereIn('id', $draws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             $this->lockScheduler();
             TeamFixture::whereIn('draw_id', $locked->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             foreach ($locked as $draw) {
                 app(TeamDrawMutationGuard::class)->destructive($draw);
+            }
+            foreach ($locked->groupBy('event_id') as $eventId => $eventDraws) {
+                $ids = TeamFixture::whereIn('draw_id', $eventDraws->pluck('id'))->pluck('id')->all();
+                if ($error = app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->removalError(\App\Models\Event::findOrFail($eventId), $ids)) {
+                    throw ValidationException::withMessages(['scheduled_at' => $error]);
+                }
             }
             $this->clearRows($locked->pluck('id')->all());
         });

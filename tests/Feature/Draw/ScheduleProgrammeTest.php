@@ -139,7 +139,7 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame('2026-10-09 09:00:00', TeamFixture::orderBy('scheduled_at')->first()->scheduled_at->format('Y-m-d H:i:s'));
     }
 
-    public function test_six_court_programme_pipelines_sections_with_real_player_rest_and_gender_waves(): void
+    public function test_six_court_programme_preserves_discipline_completion_player_rest_and_gender_waves(): void
     {
         [$event, $options] = $this->scenario(8, 6);
         $girlsPlayers = Player::factory()->count(16)->create();
@@ -160,13 +160,17 @@ class ScheduleProgrammeTest extends TestCase
         $regions = [\App\Models\TeamRegion::create(['region_name' => 'Home region', 'short_name' => 'HOME']), \App\Models\TeamRegion::create(['region_name' => 'Away region', 'short_name' => 'AWAY'])];
         TeamFixture::whereIn('draw_id', $options['draw_ids'])->update(['region1' => $regions[0]->id, 'region2' => $regions[1]->id]);
         $options['programme']['days'][0]['start'] = $options['start'] = '2026-10-09 08:30:00';
+        $options['programme']['days'][0]['end'] = '2026-10-09 20:00:00';
         $options += ['gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'whole_wave', 'round_progression' => 'team_ready'];
         $options['duration'] = $options['wave_minutes'] = 45;
         $options['player_rest'] = 15;
         $preview = app(EventVenueScheduleService::class)->preview($event, $options);
         $dayOne = collect($preview['matches'])->where('programme_day', 1);
-        $this->assertCount(62, $dayOne);
-        $this->assertLessThanOrEqual('2026-10-09 17:15:00', $dayOne->max('scheduled_at'));
+        $this->assertCount(64, $dayOne);
+        $this->assertLessThanOrEqual('2026-10-09 19:15:00', $dayOne->max('scheduled_at'));
+        $singlesEnd = $dayOne->filter(fn ($row) => ! str_contains($row['draw_name'], 'Reverse'))->max('scheduled_at');
+        $reverseStart = $dayOne->filter(fn ($row) => str_contains($row['draw_name'], 'Reverse'))->min('scheduled_at');
+        $this->assertGreaterThanOrEqual(2700, strtotime($reverseStart) - strtotime($singlesEnd));
         foreach (collect($preview['matches'])->flatMap(fn ($row) => array_map(fn ($id) => ['id' => $id, 'at' => $row['scheduled_at']], $row['participant_ids']))->groupBy('id') as $bookings) {
             $previous = null;
             foreach ($bookings->sortBy('at') as $booking) {
@@ -184,7 +188,7 @@ class ScheduleProgrammeTest extends TestCase
         $continuousDay = collect($continuous['matches'])->where('programme_day', 1);
         $this->assertCount(64, $continuousDay);
         $this->assertCount(0, collect($continuous['unscheduled'])->where('programme_day', 1));
-        $this->assertLessThanOrEqual('2026-10-09 17:15:00', $continuousDay->max('scheduled_at'));
+        $this->assertLessThanOrEqual('2026-10-09 19:15:00', $continuousDay->max('scheduled_at'));
         foreach ($continuousDay->flatMap(fn ($row) => array_map(fn ($id) => ['id' => $id, 'at' => $row['scheduled_at']], $row['participant_ids']))->groupBy('id') as $bookings) {
             $previous = null;
             foreach ($bookings->sortBy('at') as $booking) {
@@ -200,7 +204,7 @@ class ScheduleProgrammeTest extends TestCase
         $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
-    public function test_saved_next_section_allows_start_overlap_only_for_available_players_and_courts(): void
+    public function test_saved_later_discipline_prevents_overlap_even_with_disjoint_players_and_spare_courts(): void
     {
         [$event, $options] = $this->scenario(1, 2);
         $service = app(EventVenueScheduleService::class);
@@ -215,10 +219,9 @@ class ScheduleProgrammeTest extends TestCase
         $players = Player::factory()->count(2)->create();
         $next->fixturePlayers()->first()->update(['team1_id' => $players[0]->id, 'team2_id' => $players[1]->id]);
         $separate = $service->preview($event, $options);
-        $this->assertCount(0, $separate['unscheduled']);
+        $this->assertNotEmpty($separate['unscheduled']);
         $singlesThird = collect($separate['matches'])->where('draw_id', $options['draw_ids'][0])->where('round', 3)->first();
-        $this->assertSame('2026-10-09 09:00:00', $singlesThird['scheduled_at']);
-        $this->assertNotSame($next->court_label, $singlesThird['court']);
+        $this->assertNull($singlesThird);
         $this->assertSame('2026-10-09 09:00:00', $next->fresh()->scheduled_at->format('Y-m-d H:i:s'));
     }
 
