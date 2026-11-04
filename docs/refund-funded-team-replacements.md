@@ -11,6 +11,13 @@ late refund and refund-funded replacements remain blocked; an explicit refund
 waiver remains available without returning money. The override cannot accompany
 a waiver or be used before the deadline.
 
+When site withdrawals are disabled, a paid replacement additionally requires
+**Override withdrawal closure for this replacement** and a reason from the super
+user, including when waiving the refund. This separate consent is bound to the
+withdrawal review fingerprint and audit, and does not waive the refund deadline
+or change the global setting. The normal withdrawal endpoints do not accept this
+override. It is rejected if withdrawals have reopened before confirmation.
+
 `TeamRosterService::replace()` withdraws the original entry, obtains its wallet
 refund through `AdminTeamWithdrawalService`, adds the replacement, and calls
 `TeamPaymentService::applyRefundToReplacement()` within one transaction. A failure

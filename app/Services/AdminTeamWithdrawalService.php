@@ -10,9 +10,11 @@ use Illuminate\Validation\ValidationException;
 
 class AdminTeamWithdrawalService
 {
-    public function review(Event $event, Team $team, TeamPlayer $slot, User $actor, string $destination = 'wallet', string $feeMode = 'current', string $refundAction = 'refund', bool $deadlineOverride = false): array
+    public function review(Event $event, Team $team, TeamPlayer $slot, User $actor, string $destination = 'wallet', string $feeMode = 'current', string $refundAction = 'refund', bool $deadlineOverride = false, bool $withdrawalOverride = false): array
     {
         abort_unless($actor->hasRole('super-user'), 403);
+        $withdrawalsAllowed = \App\Models\SiteSetting::get('withdrawal_allowed', '1') === '1';
+        $this->ensure(!$withdrawalOverride || !$withdrawalsAllowed, 'A withdrawal closure override is only available while withdrawals are disabled.');
         $this->ensure(in_array($refundAction, ['refund', 'waive'], true) && ($refundAction !== 'waive' || $destination === 'wallet'), 'Choose a valid refund decision.');
         $this->ensure(in_array($destination, ['wallet', 'payfast'], true) && in_array($feeMode, ['current', 'full'], true), 'Choose a valid refund destination and fee policy.');
         abort_unless((int) $slot->team_id === (int) $team->id && $team->category()->where('event_id', $event->id)->exists(), 404);
@@ -53,8 +55,8 @@ class AdminTeamWithdrawalService
         $refundAvailable = !$deadlinePassed || $deadlineOverride;
         $this->ensure($refundAction === 'waive' || !$refundAvailable || $amounts['net'] > 0, 'No refundable amount is available under the current withdrawal policy.');
         $this->ensure(!$refundAvailable || $destination !== 'payfast' || ($order->payfast_paid && $amounts['payfastNet'] > 0), 'This payment has no refundable PayFast component. Choose the original payer wallet.');
-        return compact('order', 'amounts', 'refundAvailable', 'imported', 'destination', 'feeMode', 'currentFee', 'deadlinePassed', 'deadlineOverride')
-            + ['fingerprint' => $this->fingerprint($event, $slot, $order, $amounts, $refundAvailable, $destination, $feeMode, $currentFee, $refundAction, $deadlineOverride)];
+        return compact('order', 'amounts', 'refundAvailable', 'imported', 'destination', 'feeMode', 'currentFee', 'deadlinePassed', 'deadlineOverride', 'withdrawalOverride', 'withdrawalsAllowed')
+            + ['fingerprint' => $this->fingerprint($event, $slot, $order, $amounts, $refundAvailable, $destination, $feeMode, $currentFee, $refundAction, $deadlineOverride, $withdrawalOverride)];
     }
 
     public function confirm(Event $event, Team $team, TeamPlayer $slot, User $actor, array $data): TeamPaymentOrder
@@ -64,10 +66,12 @@ class AdminTeamWithdrawalService
         $feeMode = $data['fee_mode'] ?? 'current';
         $refundAction = $data['refund_action'] ?? 'refund';
         $deadlineOverride = filter_var($data['deadline_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $withdrawalOverride = filter_var($data['withdrawal_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $this->ensure(!$withdrawalOverride || filled($data['reason'] ?? null), 'Give a reason for overriding the withdrawal closure.');
         $this->ensure(!$deadlineOverride || filled($data['reason'] ?? null), 'Give a reason for refunding after the deadline.');
         $this->ensure(in_array($refundAction, ['refund', 'waive'], true) && ($refundAction !== 'waive' || filled($data['reason'] ?? null)), 'Choose a valid refund decision and give a waiver reason.');
         if ($destination === 'payfast' && DB::transactionLevel() !== 0) throw new \LogicException('Provider withdrawal requires a committed request outside an enclosing transaction.');
-        $result = DB::transaction(function () use ($event, $team, $slot, $actor, $data, $destination, $feeMode, $refundAction, $deadlineOverride): TeamPaymentOrder {
+        $result = DB::transaction(function () use ($event, $team, $slot, $actor, $data, $destination, $feeMode, $refundAction, $deadlineOverride, $withdrawalOverride): TeamPaymentOrder {
             $event = app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::lockForUpdate()->findOrFail($team->id);
             $slot = TeamPlayer::withoutGlobalScopes()->lockForUpdate()->findOrFail($slot->id);
@@ -85,10 +89,11 @@ class AdminTeamWithdrawalService
                 && data_get($audit->properties, 'destination', 'wallet') === $destination && data_get($audit->properties, 'fee_mode', 'current') === $feeMode
                 && data_get($audit->properties, 'refund_action', 'refund') === $refundAction
                 && (bool) data_get($audit->properties, 'deadline_override', false) === $deadlineOverride
+                && (bool) data_get($audit->properties, 'withdrawal_override', false) === $withdrawalOverride
                 && (in_array($order->refund_status, ['pending', 'completed', 'waived'], true) || data_get($audit->properties, 'refund_available') === false)) return $order;
-            $review = $this->review($event, $team, $slot, $actor, $destination, $feeMode, $refundAction, $deadlineOverride);
+            $review = $this->review($event, $team, $slot, $actor, $destination, $feeMode, $refundAction, $deadlineOverride, $withdrawalOverride);
             $this->ensure((int) $review['order']->id === (int) $order->id && hash_equals($review['fingerprint'], $data['fingerprint']), 'This player or refund calculation changed. Open a fresh review.');
-            $this->ensure(\App\Models\SiteSetting::get('withdrawal_allowed', '1') === '1', 'Withdrawals are currently disabled.');
+            $this->ensure($review['withdrawalsAllowed'] || $withdrawalOverride, 'Withdrawals are currently disabled. An explicit super-admin withdrawal closure override and reason are required.');
             $this->ensure(!\App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id))
                 ->whereHas('registration.players', fn ($q) => $q->where('players.id', $slot->player_id))->exists(), 'Resolve individual registration participation before this team withdrawal.');
             $playerId = (int) $slot->player_id;
@@ -110,6 +115,7 @@ class AdminTeamWithdrawalService
                 'fingerprint' => $review['fingerprint'], 'refund_available' => $review['refundAvailable'], 'amounts' => $review['amounts'],
                 'destination' => $destination, 'fee_mode' => $feeMode, 'payer_id' => $order->user_id, 'refund_action' => $refundAction,
                 'deadline_override' => $deadlineOverride, 'deadline' => $event->withdrawalCloseAt()->toIso8601String(),
+                'withdrawal_override' => $withdrawalOverride, 'withdrawals_allowed' => $review['withdrawalsAllowed'],
                 'reason' => $data['reason'], 'automatic_replacement' => false, 'original_imported_slots' => $review['imported']->map->getAttributes()->all(),
             ])->log('super user confirmed team withdrawal');
             return $order->fresh();
@@ -133,10 +139,11 @@ class AdminTeamWithdrawalService
         app(TeamPaymentService::class)->assertAdminWithdrawalSettlement($order);
     }
 
-    private function fingerprint(Event $event, TeamPlayer $slot, TeamPaymentOrder $order, array $amounts, bool $available, string $destination, string $feeMode, float $currentFee, string $refundAction, bool $deadlineOverride): string
+    private function fingerprint(Event $event, TeamPlayer $slot, TeamPaymentOrder $order, array $amounts, bool $available, string $destination, string $feeMode, float $currentFee, string $refundAction, bool $deadlineOverride, bool $withdrawalOverride): string
     {
         return hash_hmac('sha256', implode('|', [$event->id, $slot->id, $slot->rank, $slot->player_id, $order->id, $order->user_id,
             TeamPaymentService::cashRefundFingerprint($order, $amounts), $available ? $destination : 'no-refund', $feeMode, $currentFee, $refundAction, $deadlineOverride ? 'override' : 'standard',
+            $withdrawalOverride ? 'closure-override' : 'closure-standard',
             \App\Models\SiteSetting::get('withdrawal_allowed', '1'), $event->withdrawalCloseAt()->toIso8601String(),
             \App\Models\NoProfileTeamPlayer::where('team_id', $slot->team_id)->where('rank', $slot->rank)->value('id')]), (string) config('app.key'));
     }

@@ -240,12 +240,14 @@ class TeamRosterService
                 $withdrawals = app(AdminTeamWithdrawalService::class);
                 $refundAction = $data['refund_action'] === 'replacement' ? 'refund' : $data['refund_action'];
                 $deadlineOverride = filter_var($data['deadline_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
-                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $refundAction, deadlineOverride: $deadlineOverride);
+                $withdrawalOverride = filter_var($data['withdrawal_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $refundAction, deadlineOverride: $deadlineOverride, withdrawalOverride: $withdrawalOverride);
                 if ($refundAction === 'refund' && !$review['refundAvailable']) $this->fail('The refund deadline has passed. Explicitly override the refund deadline with a reason, or choose to waive the refund.');
                 $withdrawnOrder = $withdrawals->confirm($event, $team, $mirror, $actor, [
                     'order_id' => $review['order']->id, 'fingerprint' => $review['fingerprint'],
                     'reason' => $data['reason'], 'refund_action' => $refundAction,
                     'deadline_override' => $deadlineOverride,
+                    'withdrawal_override' => $withdrawalOverride,
                 ]);
             } else {
                 if (!empty($data['refund_action'])) $this->fail('Refresh the player list: this player is unpaid and needs no refund decision.');

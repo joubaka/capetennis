@@ -337,6 +337,124 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertStringNotContainsString('name="deadline_override"', $render());
     }
 
+    public function test_closed_withdrawal_replacement_requires_separate_consent_and_preserves_exact_original_payer_funding(): void
+    {
+        foreach (['refund', 'replacement', 'waive'] as $action) {
+            $s = $this->scenario();
+            \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+            $s['event']->update(['withdrawal_deadline' => now()->subDay(), 'entryFee' => 256.50]);
+            WalletTransaction::create(['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 285,
+                'source_type' => 'test_opening_funds', 'source_id' => $s['order']->id]);
+            $payload = $this->replacementPayload($s, $action);
+            if ($action !== 'waive') $payload['deadline_override'] = 1;
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+            $this->assertNull($s['order']->fresh()->withdrawn_at);
+            $payload['withdrawal_override'] = 1;
+            if ($action !== 'waive') {
+                $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['deadline_override' => 0]))->assertUnprocessable();
+            }
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+            $this->assertSame('0', \App\Models\SiteSetting::get('withdrawal_allowed'));
+            $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'pay_status' => 1,
+                'user_id' => $s['payer']->id, 'player_id' => $s['player']->id,
+                'refund_status' => $action === 'waive' ? 'waived' : 'completed']);
+            $this->assertSame($action === 'waive' ? 0 : 1, WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $s['order']->id)->count());
+            $this->assertSame($action === 'replacement' ? 4 : ($action === 'refund' ? 3 : 2), WalletTransaction::where('wallet_id', $s['wallet']->id)->count());
+            $this->assertSame($action === 'replacement' ? 2 : 1, TeamPaymentOrder::where('team_id', $s['team']->id)->count());
+            if ($action !== 'waive') {
+                $this->assertEquals(28.50, $s['order']->fresh()->refund_fee);
+                $this->assertEquals(256.50, $s['order']->fresh()->refund_net);
+            }
+            if ($action === 'replacement') {
+                $order = TeamPaymentOrder::where('team_id', $s['team']->id)->where('player_id', $payload['player_id'])->sole();
+                $this->assertSame((int) $s['payer']->id, (int) $order->user_id);
+                $this->assertTrue($order->pay_status);
+                $this->assertEquals(256.50, $order->wallet_reserved);
+            }
+            $audit = \Spatie\Activitylog\Models\Activity::where('subject_id', $s['order']->id)
+                ->where('description', 'super user confirmed team withdrawal')->sole();
+            $this->assertTrue($audit->properties['withdrawal_override']);
+            $this->assertFalse($audit->properties['withdrawals_allowed']);
+            $this->assertSame($payload['reason'], $audit->properties['reason']);
+            $this->assertSame((int) $s['actor']->id, (int) $audit->causer_id);
+        }
+    }
+
+    public function test_closure_override_rejects_invalid_unauthorized_cross_event_and_failed_replacements_atomically(): void
+    {
+        $s = $this->scenario();
+        $payload = $this->replacementPayload($s, 'replacement') + ['withdrawal_override' => 1];
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable(); // Still open.
+        \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+        foreach ([['withdrawal_override' => 0], ['withdrawal_override' => 'yes'], ['reason' => ' ']] as $bad) {
+            $this->postJson(route('backend.team.changePlayer'), array_replace($payload, $bad))->assertUnprocessable();
+        }
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['event_id' => Event::factory()->create()->id]))->assertNotFound();
+        $admin = User::factory()->create();
+        \App\Models\EventAdmin::create(['event_id' => $s['event']->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.team.changePlayer'), $payload)->assertForbidden();
+        $this->actingAs($s['actor']);
+        $this->postJson($this->url($s), $this->payload($s) + ['withdrawal_override' => 1])->assertUnprocessable();
+        $otherTeam = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => 0]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($otherTeam, Player::findOrFail($payload['player_id']), 1);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertSame('not_refunded', $s['order']->fresh()->refund_status);
+        $this->assertSame($s['player']->id, (int) $s['slot']->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertSame('0', \App\Models\SiteSetting::get('withdrawal_allowed'));
+    }
+
+    public function test_closure_override_is_bound_to_fresh_review_reason_and_replay_consent(): void
+    {
+        $s = $this->scenario();
+        $payload = $this->payload($s);
+        \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+        $service = app(AdminTeamWithdrawalService::class);
+        $data = $payload + ['withdrawal_override' => 1];
+        $reject = function (array $data) use ($service, $s): void {
+            try {
+                $service->confirm($s['event'], $s['team'], $s['slot'], $s['actor'], $data);
+                $this->fail('Expected the withdrawal review to reject the request.');
+            } catch (\Illuminate\Validation\ValidationException) {
+                $this->assertTrue(true);
+            }
+        };
+        $reject($data); // Old open-withdrawal fingerprint.
+        $review = $service->review($s['event'], $s['team'], $s['slot'], $s['actor'], withdrawalOverride: true);
+        $data['fingerprint'] = $review['fingerprint'];
+        $reject(array_replace($data, ['reason' => ' ']));
+        $reject(array_replace($data, ['withdrawal_override' => 0]));
+        \App\Models\SiteSetting::set('withdrawal_allowed', '1');
+        $reject($data); // Closure was lifted after preview.
+        \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+        $service->confirm($s['event'], $s['team'], $s['slot'], $s['actor'], $data);
+        $service->confirm($s['event'], $s['team'], $s['slot'], $s['actor'], $data);
+        $reject(array_replace($data, ['withdrawal_override' => 0]));
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertSame('0', \App\Models\SiteSetting::get('withdrawal_allowed'));
+    }
+
+    public function test_closure_override_checkbox_is_only_offered_for_closed_paid_super_user_replacements(): void
+    {
+        $s = $this->scenario();
+        $render = fn () => view('backend.adminPage.admin_show._roster-actions', [
+            'event' => $s['event'], 'team' => $s['team'], 'slot' => $s['slot'], 'name' => 'Test Player',
+        ])->render();
+        $this->assertStringNotContainsString('name="withdrawal_override"', $render());
+        \App\Models\SiteSetting::set('withdrawal_allowed', '0');
+        $this->assertStringContainsString('name="withdrawal_override"', $render());
+        $this->assertStringContainsString('Any refund deadline override must be confirmed separately.', $render());
+        $this->actingAs($s['payer']);
+        $this->assertStringNotContainsString('name="withdrawal_override"', $render());
+        $this->actingAs($s['actor']);
+        $s['slot']->pay_status = 0;
+        $this->assertStringNotContainsString('name="withdrawal_override"', $render());
+    }
+
     public function test_paid_replacement_rejects_unresolved_handoff_and_waiver_rolls_back_for_duplicate_target(): void
     {
         $s = $this->scenario(); $payload = $this->replacementPayload($s, 'waive');

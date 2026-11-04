@@ -43,6 +43,13 @@
             @endif
             <option value="waive">Waive refund — no money returned</option>
           </select></label>
+          @if(\App\Models\SiteSetting::get('withdrawal_allowed', '1') !== '1')
+            <label class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="withdrawal_override" value="1">
+              <span class="form-check-label">Override withdrawal closure for this replacement</span>
+            </label>
+            <p class="small text-muted">Withdrawals are currently disabled. Confirm this exception and explain why in Reason. It applies only to this replacement and does not reopen withdrawals. Any refund deadline override must be confirmed separately.</p>
+          @endif
           @if(now()->gt($event->withdrawalCloseAt()))
             <label class="form-check mb-2">
               <input class="form-check-input" type="checkbox" name="deadline_override" value="1">

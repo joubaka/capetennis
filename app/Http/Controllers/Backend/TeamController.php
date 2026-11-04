@@ -1086,6 +1086,7 @@ class TeamController extends Controller
           'expected_player_id' => ['required', 'integer', 'min:0'],
           'refund_action' => ['nullable', 'in:refund,waive,replacement'], 'reason' => ['nullable', 'string', 'max:1000'],
           'deadline_override' => ['sometimes', 'boolean'],
+          'withdrawal_override' => ['sometimes', 'boolean'],
         ] + ($team->noProfile ? ['player_id' => ['nullable', 'integer', 'exists:players,id', 'prohibits:name,surname'], 'name' => ['required_without:player_id', 'nullable', 'string', 'max:100'], 'surname' => ['required_without:player_id', 'nullable', 'string', 'max:100']]
           : ['player_id' => ['required', 'integer', 'exists:players,id']]));
         $order = app(\App\Services\TeamRosterService::class)->replace($event, $region, $team, $request->user(), $data);
