@@ -61,7 +61,7 @@ function submissionHarness({failure = false, modal = false} = {}) {
   const panel = {dataset: {}, querySelectorAll: () => [button]};
   let modalOpen = modal;
   const modalEvents = {};
-  const actionsModal = modal ? {id: 'actions-841-10', classList: {contains: () => modalOpen},
+  const actionsModal = modal ? {id: 'actions-841-10', dataset: {}, classList: {contains: () => modalOpen},
     querySelectorAll: () => [button], addEventListener: (name, callback) => { modalEvents[name] = callback; }} : null;
   const form = {dataset: {}, elements: {direction: {value: 'down'}, expected_rank: {value: '1'}},
     closest: selector => selector === '[data-roster-actions-modal]' ? actionsModal : selector === '[data-roster-panel]' && !modal ? panel : null,
@@ -73,12 +73,12 @@ function submissionHarness({failure = false, modal = false} = {}) {
     bootstrap: {Modal: {getInstance: () => ({hide() { modalOpen = false; modalEvents['hidden.bs.modal'](); }})}},
     refreshTeamRoster(target) {
       if (!modal) throw new Error('A confirmed ordinary move must not refresh the roster.');
-      assert.equal(target, panel); assert.equal(modalOpen, false); reconciled++;
+      assert.equal(target, panel); assert.equal(modalOpen, true); reconciled++;
     },
     applyTeamRosterOrder(target, data) { target.elements.expected_rank.value = String(data.rank); return true; }};
   const document = {addEventListener: (name, handler) => { listeners[name] = handler; },
     querySelector: () => ({closest: () => panel}),
-    createElement: () => ({dataset: {}, setAttribute() {}, remove() { feedback = null; }})};
+    createElement: () => ({dataset: {}, setAttribute() {}, querySelector: () => ({}), remove() { feedback = null; }})};
   const source = fs.readFileSync('resources/views/backend/adminPage/admin_show/_roster-script.blade.php', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInNewContext(source, {window, document, FormData: class {constructor(target) { this.rank = target.elements.expected_rank.value; }},
     fetch: async (url, options) => {
@@ -110,7 +110,7 @@ test('a rejected move keeps the old rank and enables a safe retry', async () => 
   assert.equal(h.feedback().textContent, 'This player changed.');
 });
 
-test('a dialog action resolves its original region and closes before the authorized AJAX reconciliation', async () => {
+test('a dialog action resolves its original region and remains visible until AJAX reconciliation finishes', async () => {
   const h = submissionHarness({modal: true});
   await h.submit();
   assert.equal(h.requests.length, 1);
@@ -178,7 +178,7 @@ test('an older panel fetch cannot overwrite a newer confirmed arrow move', async
   vm.runInNewContext(snippet, {window, document: {querySelectorAll: () => [players, order],
     createElement() { throw new Error('A stale panel response must be discarded before rendering.'); }},
     requests: new Map(), workspaceUrl: () => '/roster', fetch: () => new Promise(resolve => { release = resolve; }),
-    Map, Error, Number, Promise});
+    Map, Error, Number, Promise, AbortController, setTimeout, clearTimeout});
   const pending = window.refreshTeamRoster(order);
   window.invalidateTeamRosterPanels(players);
   release({ok: true, text: async () => '<table>old order</table>'});

@@ -19,14 +19,28 @@ if (!window.teamRosterControls) {
     actionModalAnchors.delete(modal);
   });
   document.addEventListener('hide.bs.modal', event => {
+    if (event.target.dataset.rosterBusy) { event.preventDefault(); return; }
     if (!event.target.matches?.('[data-roster-actions-modal]') || !window.jQuery?.fn?.select2) return;
     event.target.querySelectorAll('.select2-hidden-accessible').forEach(select => window.jQuery(select).select2('close'));
   });
+  const waitForRosterSave = promise => {
+    let timeout;
+    return Promise.race([promise, new Promise((resolve, reject) => {
+      timeout = setTimeout(() => reject(new Error('The server has not confirmed the save. It may still complete. Refresh the player list to check before making another change.')), 90000);
+    })]).finally(() => clearTimeout(timeout));
+  };
   const closeActionsModal = modal => {
     if (!modal?.classList.contains('show')) return Promise.resolve();
     const instance = window.bootstrap?.Modal.getInstance(modal);
     if (!instance) return Promise.reject(new Error('Close player actions, then retry updating the roster.'));
-    return new Promise(resolve => { modal.addEventListener('hidden.bs.modal', resolve, {once:true}); instance.hide(); });
+    return new Promise((resolve, reject) => {
+      const hidden = () => { clearTimeout(timeout); resolve(); };
+      const timeout = setTimeout(() => {
+        modal.removeEventListener('hidden.bs.modal', hidden);
+        reject(new Error('The player list is updated. Close player actions to continue.'));
+      }, 5000);
+      modal.addEventListener('hidden.bs.modal', hidden, {once:true}); instance.hide();
+    });
   };
   const initReplacementSelects = root => {
     if (!window.jQuery?.fn?.select2) return;
@@ -107,6 +121,7 @@ if (!window.teamRosterControls) {
       if (confirmation.hidden) { form.querySelector('[data-team-roster-remove-toggle]').click(); return; }
     }
     form.dataset.busy = '1';
+    if (modal) modal.dataset.rosterBusy = '1';
     if (panel) panel.dataset.rosterSaving = '1';
     const payload = new FormData(form), buttons = [...new Set([
       ...(panel || form).querySelectorAll('button'), ...(modal || form).querySelectorAll('button')
@@ -114,14 +129,51 @@ if (!window.teamRosterControls) {
     buttons.forEach(button => button.disabled = true);
     let feedback = form.parentElement.querySelector('[data-team-roster-feedback]');
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
-    feedback.className = 'alert alert-info'; feedback.textContent = 'Saving…';
+    let progressTimer;
+    const showProgress = (message, slowMessage) => {
+      clearTimeout(progressTimer);
+      feedback.className = 'alert alert-info d-flex align-items-center gap-2';
+      feedback.setAttribute('aria-live', 'polite');
+      feedback.innerHTML = '<span class="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true"></span><span><span data-roster-progress-message></span><span class="small d-block" aria-hidden="true" data-roster-progress-time></span></span>';
+      const label = feedback.querySelector('[data-roster-progress-message]'), clock = feedback.querySelector('[data-roster-progress-time]');
+      label.textContent = message;
+      const started = Date.now();
+      const tick = () => {
+        const seconds = Math.floor((Date.now() - started) / 1000);
+        clock.textContent = seconds + 's elapsed';
+        if (seconds >= 10 && label.textContent !== slowMessage) label.textContent = slowMessage;
+        progressTimer = setTimeout(tick, 1000);
+      };
+      tick();
+    };
+    const refreshRoster = async () => {
+      showProgress(form.dataset.saved ? 'Saved. Updating the player list…' : 'Checking the current player list…', 'The player list is taking longer to load. Please wait…');
+      if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(panel);
+      else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
+      else throw new Error('Reopen this player list to see the current roster.');
+      if (modal) delete modal.dataset.rosterBusy;
+      await closeActionsModal(modal);
+    };
     let movedInPlace = false;
     try {
-      if (!form.dataset.saved) {
-        const response = await fetch(form.getAttribute('action'), {method:'POST', body:payload, headers:{Accept:'application/json'}});
-        if (response.status === 404) throw new Error('This player list changed. Use Refresh roster to load its current players and try again.');
-        const data = await response.json();
-        if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.');
+      if (!form.dataset.saved && !form.dataset.saveUnconfirmed) {
+        showProgress('Saving player change…', 'Saving is taking longer than usual. Please wait; do not submit again…');
+        // A lost response does not prove that the server rolled the mutation back.
+        form.dataset.saveUnconfirmed = '1';
+        const data = await waitForRosterSave((async () => {
+          const response = await fetch(form.getAttribute('action'), {method:'POST', body:payload, headers:{Accept:'application/json'}});
+          if (response.status >= 400 && response.status < 500 && response.status !== 408) {
+            const data = await response.json().catch(() => ({}));
+            const message = response.status === 404 ? 'This player list changed. Use Refresh roster to load its current players and try again.'
+              : response.status === 401 || response.status === 419 ? 'Your session expired. Reload the page and sign in again before saving.'
+              : Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.';
+            const error = new Error(message); error.confirmedNotSaved = true; throw error;
+          }
+          const data = await response.json();
+          if (!response.ok || response.redirected) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be confirmed.');
+          return data;
+        })());
+        delete form.dataset.saveUnconfirmed;
         form.dataset.saved = '1';
         form.dataset.successMessage = data.message || 'Player list updated.';
         if (form.elements.direction && window.applyTeamRosterOrder?.(form, data)) {
@@ -131,27 +183,31 @@ if (!window.teamRosterControls) {
         }
       }
       if (!movedInPlace) {
-        await closeActionsModal(modal);
-        if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(panel);
-        else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
-        else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
+        await refreshRoster();
       }
-      window.toastr?.success(form.dataset.successMessage || 'Player list updated.');
+      window.toastr?.success(form.dataset.successMessage || 'Player list refreshed. Check the player before making another change.');
     } catch (error) {
-      feedback.className = 'alert alert-danger'; feedback.textContent = error.message;
-      if (form.dataset.saved) {
+      if (error.confirmedNotSaved) delete form.dataset.saveUnconfirmed;
+      clearTimeout(progressTimer);
+      feedback.className = 'alert alert-danger';
+      feedback.textContent = form.dataset.saveUnconfirmed ? 'The save has not been confirmed. It may still complete. Refresh the player list to check before making another change.' : error.message;
+      if (form.dataset.saved || form.dataset.saveUnconfirmed) {
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Refresh player list';
         retry.addEventListener('click', async () => {
           retry.disabled = true;
-          try { await closeActionsModal(modal); await window.refreshTeamRoster(panel || form); window.toastr?.success('Player list updated.'); }
-          catch (refreshError) { feedback.firstChild.textContent = refreshError.message; retry.disabled = false; }
+          if (modal) modal.dataset.rosterBusy = '1';
+          try { await refreshRoster(); window.toastr?.success(form.dataset.saved ? 'Player list updated.' : 'Player list refreshed. Check the player before making another change.'); }
+          catch (refreshError) { feedback.className = 'alert alert-danger'; feedback.textContent = refreshError.message; feedback.append(retry); retry.disabled = false; }
+          finally { clearTimeout(progressTimer); if (modal) delete modal.dataset.rosterBusy; }
         });
         feedback.append(retry);
       }
     } finally {
+      clearTimeout(progressTimer);
       delete form.dataset.busy;
+      if (modal) delete modal.dataset.rosterBusy;
       if (panel) delete panel.dataset.rosterSaving;
-      buttons.forEach(button => { if (!form.dataset.saved || !form.contains(button)) button.disabled = false; });
+      buttons.forEach(button => { if ((!form.dataset.saved && !form.dataset.saveUnconfirmed) || !form.contains(button)) button.disabled = false; });
       if (movedInPlace && event.submitter?.isConnected) event.submitter.focus({preventScroll:true});
     }
   });

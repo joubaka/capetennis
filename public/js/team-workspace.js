@@ -383,9 +383,11 @@
     if (rosterRefreshes.has(key)) return rosterRefreshes.get(key).catch(() => {}).then(() => window.refreshTeamRoster(panel));
     requests.get(key)?.abort();
     const opened = new Map([...panel.querySelectorAll('[data-roster-team], [data-order-team]')].map(team => [team.dataset.rosterTeam || team.dataset.orderTeam, team.open]));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
     panel.setAttribute('aria-busy', 'true');
     const refresh = (async () => {
-      const response = await fetch(workspaceUrl({ roster_region: regionId, panel: panelName }), { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' } });
+      const response = await fetch(workspaceUrl({ roster_region: regionId, panel: panelName }), { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, signal: controller.signal });
       if (!response.ok || response.redirected) throw new Error('The change was saved, but the player list could not be updated. Retry refreshing the list.');
       const html = await response.text();
       if (!panel.isConnected || (panel.dataset.rosterRevision || '0') !== revision) return;
@@ -409,7 +411,10 @@
       applyFilters();
       if (!panel.hidden) window.scrollTo(0, scroll);
       document.dispatchEvent(new Event('roster:loaded'));
-    })().finally(() => { panel.removeAttribute('aria-busy'); rosterRefreshes.delete(key); });
+    })().catch(error => {
+      if (error.name === 'AbortError') throw new Error('Refreshing the player list took too long. Retry refreshing the list to check its current players.');
+      throw error;
+    }).finally(() => { clearTimeout(timeout); panel.removeAttribute('aria-busy'); rosterRefreshes.delete(key); });
     rosterRefreshes.set(key, refresh);
     return refresh;
   };

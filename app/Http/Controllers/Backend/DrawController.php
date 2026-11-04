@@ -29,7 +29,6 @@ use App\Models\DrawAuditLog;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -224,48 +223,7 @@ class DrawController extends Controller
 
     try {
       $counts = DB::transaction(function () use ($draw) {
-        $individualFixtureIds = Fixture::where('draw_id', $draw->id)->pluck('id');
-        $teamFixtureIds = TeamFixture::where('draw_id', $draw->id)->pluck('id');
-
-        DrawAuditLog::record($draw->id, 'deleted', null, [
-          'individual_fixtures' => $individualFixtureIds->count(),
-          'team_fixtures' => $teamFixtureIds->count(),
-        ]);
-
-        DB::table('order_of_plays')->whereIn('fixture_id', $individualFixtureIds)->delete();
-        DB::table('order_of_plays')->where('draw_id', $draw->id)->delete();
-        DB::table('schedules')->where('draw_id', $draw->id)->delete();
-        DB::table('fixture_results')->whereIn('fixture_id', $individualFixtureIds)->delete();
-        DB::table('team_fixture_results')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
-        DB::table('team_fixture_players')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
-        DB::table('team_order_of_plays')->whereIn('team_fixture_id', $teamFixtureIds)->delete();
-        TeamFixture::whereIn('id', $teamFixtureIds)->delete();
-        Fixture::whereIn('id', $individualFixtureIds)->delete();
-
-        $drawGroupIds = DB::table('draw_groups')->where('draw_id', $draw->id)->pluck('id');
-        DB::table('draw_group_registrations')->whereIn(
-          'draw_group_id',
-          $drawGroupIds
-        )->delete();
-        DB::table('draw_group_rankings')->whereIn('draw_group_id', $drawGroupIds)->delete();
-        DB::table('draw_groups')->where('draw_id', $draw->id)->delete();
-        DB::table('draw_registrations')->where('draw_id', $draw->id)->delete();
-        DB::table('draw_teams')->where('draw_id', $draw->id)->delete();
-        DB::table('draw_venues')->where('draw_id', $draw->id)->delete();
-        DB::table('draw_settings')->where('draw_id', $draw->id)->delete();
-        DB::table('flexible_monrad_draws')->where('draw_id', $draw->id)->delete();
-        DB::table('draw_events')->where('draw_id', $draw->id)->delete();
-        if (Schema::hasColumn('rank_venue_mappings', 'draw_id')) {
-          DB::table('rank_venue_mappings')->where('draw_id', $draw->id)->delete();
-        }
-        $subDrawIds = DB::table('sub_draws')->where('draw_id', $draw->id)->pluck('id');
-        DB::table('registration_sub_draws')->whereIn('sub_draw_id', $subDrawIds)->delete();
-        DB::table('sub_draws')->whereIn('id', $subDrawIds)->delete();
-        DB::table('team_ties')->where('draw_id', $draw->id)->delete();
-
-        $draw->delete();
-
-        return [$individualFixtureIds->count(), $teamFixtureIds->count()];
+        return app(\App\Services\Draw\BulkDrawDeletionService::class)->deleteGraph($draw);
       });
 
       return response()->json([

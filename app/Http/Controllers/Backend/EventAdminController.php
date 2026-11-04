@@ -87,13 +87,20 @@ class EventAdminController extends Controller
       abort_if($eventRegions->isEmpty(), 403);
     }
     if ($regionalScoped) $event->setRelation('regions', $event->regions->whereIn('id', $eventRegions->pluck('region_id'))->values());
+    $rosterFragment = null;
+    if (request()->has('roster_region')) {
+      $rosterFragment = request()->validate(['roster_region' => 'required|integer', 'panel' => 'sometimes|in:players,order']);
+      abort_unless($event->regions->contains('id', (int) $rosterFragment['roster_region']), 404);
+    }
     $teamSelectionInvitations = TeamSelectionInvitation::query()
       ->where('event_id', $event->id)
       ->when($regionalScoped, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
+      ->when($rosterFragment, fn ($query) => $query->where('region_id', (int) $rosterFragment['roster_region']))
       ->whereHas('selectionImport', fn ($query) => $query->whereIn('status', ['draft', 'sent']))
       ->orderBy('team_id')->orderBy('queue_position')->get()->groupBy('team_id')->toBase();
     $teams = app(\App\Services\EventTeamScope::class)->query($event, $teamSelectionInvitations->keys()->all())
       ->when($regionalScoped, fn ($query) => $query->whereIn('region_id', $eventRegions->pluck('region_id')))
+      ->when($rosterFragment, fn ($query) => $query->where('region_id', (int) $rosterFragment['roster_region']))
       ->with(['category.category', 'teamPlayers', 'team_players_no_profile'])
       ->orderBy('name')->get()->groupBy('region_id');
     $selectionImports = \App\Models\EventSelectionRosterImport::where('event_id', $event->id)->orderBy('id')->limit(501)->get(['groups']);
@@ -133,8 +140,8 @@ class EventAdminController extends Controller
 
     }
 
-    if (request()->has('roster_region')) {
-      $data = request()->validate(['roster_region' => 'required|integer', 'panel' => 'sometimes|in:players,order']);
+    if ($rosterFragment) {
+      $data = $rosterFragment;
       $region = $event->regions->firstWhere('id', (int) $data['roster_region']);
       abort_unless($region, 404);
       $region->teams->loadMissing('teamPlayers.player');

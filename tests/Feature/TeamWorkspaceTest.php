@@ -214,6 +214,22 @@ class TeamWorkspaceTest extends TestCase
             ->assertOk()->assertSee('data-order-move', false)->assertSee($player->name);
     }
 
+    public function test_region_refresh_does_not_hydrate_other_regions_teams_or_rosters(): void
+    {
+        $otherRegion = TeamRegion::create(['region_name' => 'Other event region']);
+        $this->event->regions()->attach($otherRegion->id);
+        $otherTeam = Team::factory()->create(['region_id' => $otherRegion->id, 'category_event_id' => $this->team->category_event_id]);
+        TeamPlayer::create(['team_id' => $otherTeam->id, 'player_id' => Player::factory()->create()->id, 'rank' => 1, 'pay_status' => 0]);
+
+        foreach (['players', 'order'] as $panel) {
+            $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->region->id.'&panel='.$panel)
+                ->assertOk()
+                ->assertViewHas('region', fn ($region) => $region->teams->modelKeys() === [$this->team->id])
+                ->assertViewHas('event', fn ($event) => $event->regions->firstWhere('id', $otherRegion->id)->teams->isEmpty());
+        }
+        $this->assertDatabaseHas('team_players', ['team_id' => $otherTeam->id]);
+    }
+
     public function test_imported_roster_without_mirror_is_visible_and_results_reject_foreign_category(): void
     {
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Imported', 'surname' => 'Only', 'email' => 'only@example.test', 'pay_status' => 0]);
