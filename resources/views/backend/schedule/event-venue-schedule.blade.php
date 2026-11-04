@@ -493,15 +493,26 @@
       @endif
       @if($teamPlanning)
       <section id="age-venue-setup" class="border rounded p-3 mb-3" hidden aria-label="Age group venue setup">
+        <nav class="d-flex flex-wrap gap-3 mb-3" aria-label="Age setup progress"><span class="text-muted">1. Age group selected</span><strong id="age-setup-progress-2">2. Venues & courts</strong><strong id="age-setup-progress-3">3. Playing-order numbers</strong><strong id="age-setup-progress-4">4. Review & save</strong></nav>
+        <div id="age-setup-step-2">
         <h6>Choose this age group's venues & courts</h6>
         <p class="small text-muted">Choose courts once for all boys, girls, rounds and disciplines in this age group. Add missing event venues using Edit venues & courts above.</p>
         <div id="age-setup-courts" class="row g-3 mb-3"></div>
+        </div>
+        <div id="age-setup-step-3" hidden>
         <h6>Assign playing-order numbers</h6>
         <p class="small text-muted">Use original roster numbers, not CTR ratings or pair numbers. Each band uses the selected courts at its venue. Uncovered numbers use this age group's selected venues. Reverse singles, doubles and mixed use their players' original roster numbers; the saved cross-band rule applies when partners or opponents belong to different bands.</p>
+        <p class="small" id="age-setup-number-default">Without bands, all playing-order numbers use this age group's selected courts.</p>
         <div id="age-setup-bands"></div>
         <button type="button" id="age-setup-add-band" class="btn btn-sm btn-outline-secondary mb-3">Add playing-order band</button>
+        </div>
+        <div id="age-setup-step-4" hidden>
+        <h6>Review this age group's setup</h6>
+        <div id="age-setup-review" class="mb-3"></div>
         <p class="small">Saving replaces venue and number-band exceptions for <strong>all rounds and disciplines of this age group</strong>. Other ages and saved match times remain unchanged. Preview new match times separately.</p>
         <button type="button" id="age-setup-save" class="btn btn-primary">Save age setup for all rounds & disciplines</button>
+        </div>
+        <div class="d-flex gap-2 mt-3"><button type="button" id="age-setup-back" class="btn btn-outline-secondary" hidden>Back</button><button type="button" id="age-setup-next" class="btn btn-primary">Next: playing-order numbers</button></div>
         <div id="age-setup-status" class="small mt-2" role="status" aria-live="polite"></div>
       </section>
       <p id="age-setup-bulk-help" class="small text-muted" hidden>Select one age at a time to set up its venues, courts and playing-order numbers. Then choose Bulk schedule age groups to preview the prepared ages together.</p>

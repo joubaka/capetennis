@@ -151,4 +151,24 @@ class TeamAgeVenueSetupTest extends TestCase
         $this->assertNull($selected->fresh()->scheduled_at);
         $this->assertSame($before,$unrelated->fresh()->getAttributes());
     }
+
+    public function test_advanced_draw_setup_retains_shared_age_metadata_and_flags_round_exceptions(): void
+    {
+        [$event,$draws,$venue,$other,$data]=$this->scenario();
+        $service=app(TeamAgeVenueSetup::class);$saved=$service->save($event,$data,auth()->id());
+        foreach ([[$venue,3],[$other,2]] as [$physical,$count]) foreach (range(1,$count) as $label) {
+            DB::table('event_venue_courts')->insert(['event_id'=>$event->id,'venue_id'=>$physical->id,'label'=>(string)$label,'active'=>true,'ball_type'=>'standard','created_at'=>now(),'updated_at'=>now()]);
+        }
+        $response=$this->postJson(route('backend.event-venue-schedule.assignments',$event),[
+            'setup_only'=>true,'venues'=>[['id'=>$venue->id,'courts'=>3],['id'=>$other->id,'courts'=>2]],
+            'schedule'=>['rank_preference_draw_ids'=>[$draws[4]->id],'rank_venue_preferences'=>[]],
+            'assignments'=>[['draw_id'=>$draws[4]->id,'venue_ids'=>[$other->id],'court_allocations'=>[['venue_id'=>$other->id,'court_labels'=>['1']]]]],
+        ]);
+        $this->assertSame(200,$response->status(),$response->getContent());
+        $this->assertSame($saved['state']['setup'],$service->state($event,10)['setup']);
+        $row=$saved['round_venue_setups'][0];$row['court_allocations'][0]['court_labels']=['2'];
+        $this->postJson(route('backend.event-venue-schedule.assignments',$event),['setup_only'=>true,'round_venue_setups'=>[$row]])->assertOk();
+        $this->assertTrue($service->state($event,10)['exceptions']);
+        $this->assertSame($saved['state']['setup'],$service->state($event,10)['setup']);
+    }
 }

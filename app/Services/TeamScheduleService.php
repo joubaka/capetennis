@@ -27,7 +27,7 @@ final class TeamScheduleService
     private function saveLocked(Draw $draw, array $data): void
     {
         if (isset($draw->team_draw_selection['competition']) || $this->hasRoundSetup($draw)) {
-            $existing = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->firstOrFail();
+            $existing = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->lockForUpdate()->firstOrFail();
             if (array_key_exists('scheduled_at', $data) && ! $data['scheduled_at']) {
                 try { app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->unapply($draw->event, drawId: $draw->id, fixtureId: $existing->id); }
                 catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['scheduled_at' => $exception->getMessage()]); }

@@ -11,7 +11,7 @@ test('missing courts overlapping bands and outside venues are blocked before pos
  assert.throws(()=>payload(10,state,courts,[{...band,venue_id:8}]),/selected venue/);
 });
 function harness(fail=false){
- const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',hidden:false,disabled:false,listeners:{},addEventListener(name,fn){this.listeners[name]=fn;},querySelectorAll(){return[];},set innerHTML(value){this.html=value;},get innerHTML(){return this.html||'';}});return elements.get(id);};
+ const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',hidden:false,disabled:false,listeners:{},setAttribute(name,value){this[name]=value;},addEventListener(name,fn){this.listeners[name]=fn;},querySelectorAll(){return[];},set innerHTML(value){this.html=value;},get innerHTML(){return this.html||'';}});return elements.get(id);};
  const doc={getElementById:get,createElement(){throw Error('No bands in this scenario');}};
  get('age-venue-setup').querySelectorAll=()=>[get('age-setup-save')];
  const age=get('programme-age');age.value='10';
@@ -34,4 +34,12 @@ test('failed save retains draft and blocks scheduling until successful explicit 
 test('saving locks the age selector and clears dirty state only for submitted age',async()=>{
  const app=harness();app.get('age-venue-setup').listeners.change();const pending=app.start();assert.equal(app.age.disabled,true);app.age.value='12';app.age.listeners.change();app.get('age-venue-setup').listeners.change();app.complete();await pending;
  assert.equal(app.controller.isDirty(),true);assert.equal(app.states['10'].setup.age,10);assert.equal(app.states['12'].setup,null);
+});
+test('stepper validates courts before numbers and review and Back retains selected courts',()=>{
+ const app=harness();
+ assert.equal(app.get('age-setup-step-2').hidden,false);assert.equal(app.get('age-setup-step-3').hidden,true);
+ app.setSelected([]);app.get('age-setup-next').listeners.click();assert.equal(app.get('age-setup-step-2').hidden,false);assert.match(app.get('age-setup-status').textContent,/court/);
+ app.setSelected([{value:'7',dataset:{name:'Ten courts'}}]);app.get('age-setup-next').listeners.click();assert.equal(app.get('age-setup-step-3').hidden,false);
+ app.get('age-setup-next').listeners.click();assert.equal(app.get('age-setup-step-4').hidden,false);assert.match(app.get('age-setup-review').innerHTML,/Under 10/);assert.match(app.get('age-setup-review').innerHTML,/Ten courts.*Courts 1/);assert.match(app.get('age-setup-review').innerHTML,/All playing-order numbers/);
+ app.get('age-setup-back').listeners.click();app.get('age-setup-back').listeners.click();assert.equal(app.get('age-setup-step-2').hidden,false);app.get('age-setup-next').listeners.click();app.get('age-setup-next').listeners.click();assert.match(app.get('age-setup-review').innerHTML,/Ten courts.*Courts 1/);
 });
