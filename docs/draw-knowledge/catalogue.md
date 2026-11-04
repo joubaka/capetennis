@@ -322,6 +322,18 @@ An optional players-per-team count uses the first 1–12 roster positions per so
 
 **Regression:** The focused selection/readiness/adaptation/scheduling/generation/ordering bundle passed locally on 3 November 2026: 88 tests, 808 assertions, isolated MySQL with transactional rollback. This includes the corrected appended-round fixture, competing-draw scheduling with fixture IDs across a lexical boundary, and `tests/Unit/Services/TeamOpeningRoundScheduleTest.php` (4 tests, 205 assertions) covering even/odd fields, exact permutations, default priority and stable fallback ordering. The three `tests/Frontend/team-draw-*.test.cjs` files passed 35 tests, including repeat preview, independent batch tie choices and count payloads. These checks do not establish browser acceptance, deployment or live event changes.
 
+## DK-28 — Delete an exact reviewed selection of draft draws
+
+The team-event Draws page has separate deletion checkboxes, Select all draws, Clear selection and Delete selected draws. Select all covers the event's loaded draw groups, including collapsed groups. A server preview lists the exact names and fixture counts before permanent deletion; teams, roster players, registrations and payments are retained.
+
+The bulk endpoint authorizes every selected draw, binds the confirmation revision to the actor, event, exact IDs and full removed graph, then rechecks under locks and deletes the whole selection atomically. Reject locked/published draws, published schedules or ties, played/scored fixtures, substitution history, placement dependencies and foreign/shared graph references. Super-user access does not bypass these state checks. A stale graph or a validation/transaction failure leaves the entire selected batch unchanged. Deletion audit records remain available.
+
+Saved schedule preferences are pruned by draw identity and kind-qualified fixture keys. A team fixture and an individual fixture with the same numeric ID are distinct; retain unrelated keys and list-shaped round preferences. An uncertain browser response must not trigger an automatic deletion retry. The older single-draw deletion endpoint has its existing lifecycle policy; sharing cleanup does not make it equivalent to the guarded bulk endpoint.
+
+**Sources:** `app/Services/Draw/BulkDrawDeletionService.php`, `app/Http/Controllers/Backend/BulkDrawDeletionController.php`, `public/js/bulk-draw-deletion.js`, and the head-office team-event view.
+
+**Regression:** `tests/Feature/Draw/BulkDrawDeletionTest.php` and `DrawLifecycleHardeningTest.php` passed locally on 4 November 2026: 15 tests, 123 assertions on each of isolated SQLite and MySQL. The six `tests/Frontend/bulk-draw-deletion.test.cjs` cases passed, including exact selection, cancellation, malformed responses, duplicate requests and no automatic mutation retry. These results do not establish deployment of later changes.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

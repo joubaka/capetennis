@@ -247,7 +247,7 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertDatabaseCount('team_payment_orders', 1);
     }
 
-    public function test_late_replacement_requires_explicit_waiver_and_event_admin_cannot_make_financial_decision(): void
+    public function test_late_replacement_requires_explicit_decision_and_event_admin_cannot_make_financial_decision(): void
     {
         $s = $this->scenario(); $payload = $this->replacementPayload($s);
         $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
@@ -258,6 +258,83 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->actingAs($s['actor'])->postJson(route('backend.team.changePlayer'), array_replace($payload, ['refund_action' => 'waive']))->assertOk();
         $this->assertSame('waived', $s['order']->fresh()->refund_status);
         $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_late_replacement_override_refunds_and_funds_only_original_payer_exactly_once(): void
+    {
+        foreach (['refund', 'replacement'] as $action) {
+            $s = $this->scenario();
+            WalletTransaction::create(['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 285,
+                'source_type' => 'test_opening_funds', 'source_id' => $s['order']->id]);
+            $s['event']->update(['withdrawal_deadline' => now()->subDay(), 'entryFee' => 256.50]);
+            $payload = $this->replacementPayload($s, $action) + ['deadline_override' => 1];
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+            $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'pay_status' => 1,
+                'player_id' => $s['player']->id, 'user_id' => $s['payer']->id,
+                'refund_status' => 'completed', 'refund_fee' => 28.50, 'refund_net' => 256.50]);
+            $this->assertSame(1, WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $s['order']->id)->count());
+            $this->assertDatabaseHas('wallet_transactions', ['wallet_id' => $s['wallet']->id, 'type' => 'credit',
+                'amount' => 256.50, 'source_type' => 'admin_team_withdrawal_refund', 'source_id' => $s['order']->id]);
+            $orders = TeamPaymentOrder::where('team_id', $s['team']->id)->get();
+            $this->assertCount($action === 'replacement' ? 2 : 1, $orders);
+            $this->assertSame($action === 'replacement' ? 4 : 3, WalletTransaction::where('wallet_id', $s['wallet']->id)->count());
+            $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'],
+                'pay_status' => $action === 'replacement' ? 1 : 0]);
+            if ($action === 'replacement') {
+                $replacement = $orders->firstWhere('player_id', $payload['player_id']);
+                $this->assertSame((int) $s['payer']->id, (int) $replacement->user_id);
+                $this->assertEquals(256.50, $replacement->wallet_reserved);
+                $this->assertEquals(0, $replacement->payfast_amount_due);
+                $this->assertTrue($replacement->wallet_debited);
+            }
+            $audit = \Spatie\Activitylog\Models\Activity::where('subject_id', $s['order']->id)
+                ->where('description', 'super user authorized team withdrawal refund after deadline')->sole();
+            $this->assertTrue($audit->properties['deadline_override']);
+            $this->assertSame($payload['reason'], $audit->properties['reason']);
+            $this->assertSame((int) $s['actor']->id, (int) $audit->causer_id);
+        }
+    }
+
+    public function test_replacement_deadline_override_rejects_invalid_or_unauthorized_requests_atomically(): void
+    {
+        $s = $this->scenario();
+        $payload = $this->replacementPayload($s, 'replacement') + ['deadline_override' => 1];
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable(); // Not late.
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        foreach ([['deadline_override' => 0], ['deadline_override' => 'yes'], ['reason' => ' '], ['refund_action' => 'waive']] as $bad) {
+            $this->postJson(route('backend.team.changePlayer'), array_replace($payload, $bad))->assertUnprocessable();
+        }
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['event_id' => Event::factory()->create()->id]))->assertNotFound();
+        $admin = User::factory()->create();
+        \App\Models\EventAdmin::create(['event_id' => $s['event']->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.team.changePlayer'), $payload)->assertForbidden();
+        $this->actingAs($s['actor']);
+        $otherTeam = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => 0]);
+        app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($otherTeam, Player::findOrFail($payload['player_id']), 1);
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertSame('not_refunded', $s['order']->fresh()->refund_status);
+        $this->assertSame($s['player']->id, (int) $s['slot']->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_replacement_form_offers_override_only_for_late_paid_super_user(): void
+    {
+        $s = $this->scenario();
+        $render = fn () => view('backend.adminPage.admin_show._roster-actions', [
+            'event' => $s['event'], 'team' => $s['team'], 'slot' => $s['slot'], 'name' => 'Test Player',
+        ])->render();
+        $this->assertStringNotContainsString('name="deadline_override"', $render());
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $this->assertStringContainsString('name="deadline_override"', $render());
+        $this->assertStringContainsString('The normal refund fee still applies.', $render());
+        $this->actingAs($s['payer']);
+        $this->assertStringNotContainsString('name="deadline_override"', $render());
+        $this->actingAs($s['actor']);
+        $s['slot']->pay_status = 0;
+        $this->assertStringNotContainsString('name="deadline_override"', $render());
     }
 
     public function test_paid_replacement_rejects_unresolved_handoff_and_waiver_rolls_back_for_duplicate_target(): void

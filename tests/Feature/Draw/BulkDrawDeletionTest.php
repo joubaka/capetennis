@@ -160,10 +160,16 @@ class BulkDrawDeletionTest extends TestCase
         $saved = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
         $this->assertSame(90, $saved['duration']);
         $this->assertSame([$draws[1]->id], $saved['draw_ids']);
-        $this->assertSame([['draw_id' => $draws[1]->id, 'rounds' => [2]]], $saved['draw_rounds']);
-        $this->assertSame([['drawId' => $draws[1]->id, 'round' => 2]], $saved['programme']['rounds']);
+        $this->assertCount(1, $saved['draw_rounds']);
+        $this->assertSame($draws[1]->id, $saved['draw_rounds'][0]['draw_id']);
+        $this->assertSame([2], $saved['draw_rounds'][0]['rounds']);
+        $this->assertCount(1, $saved['programme']['rounds']);
+        $this->assertSame($draws[1]->id, $saved['programme']['rounds'][0]['drawId']);
+        $this->assertSame(2, $saved['programme']['rounds'][0]['round']);
         $this->assertSame([$retainedKey, 'individual:'.$fixture->id], $saved['selected_fixture_keys']);
-        $this->assertSame([['fixture_key' => $retainedKey, 'court' => '2']], $saved['preview_moves']);
+        $this->assertCount(1, $saved['preview_moves']);
+        $this->assertSame($retainedKey, $saved['preview_moves'][0]['fixture_key']);
+        $this->assertSame('2', $saved['preview_moves'][0]['court']);
         $this->assertSame([$retainedKey => ['duration' => 90]], $saved['match_timing']);
     }
 
@@ -198,5 +204,25 @@ class BulkDrawDeletionTest extends TestCase
             ->assertSee('js/bulk-draw-deletion.js', false)->assertSee(route('backend.event-draws.delete-preview', $event), false);
         if ($path = getenv('BULK_DRAW_DELETE_SNAPSHOT')) file_put_contents($path, $response->getContent());
         $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+    }
+
+    public function test_cross_draw_team_tie_references_block_deletion_in_both_directions(): void
+    {
+        $event = Event::factory()->create(); $this->actingAs($this->manager($event));
+        $draw = Draw::factory()->create(['event_id' => $event->id]);
+        $foreign = Draw::factory()->create();
+        $tie = \App\Models\TeamTie::factory()->create(['draw_id' => $draw->id]);
+        $foreignTie = \App\Models\TeamTie::factory()->create(['draw_id' => $foreign->id]);
+        $revision = $this->preview($event, [$draw->id])->assertOk()->json('revision');
+        foreach ([[$foreign->id, $tie->id], [$draw->id, $foreignTie->id]] as [$drawId, $tieId]) {
+            $fixture = TeamFixture::create(['draw_id' => $drawId, 'team_tie_id' => $tieId, 'match_nr' => 1, 'match_status' => 0]);
+            $this->preview($event, [$draw->id])->assertUnprocessable()->assertSee('inconsistent team tie references');
+            $this->applySelection($event, [$draw->id], $revision)->assertUnprocessable();
+            $this->assertDatabaseHas('draws', ['id' => $draw->id]);
+            $this->assertDatabaseHas('team_ties', ['id' => $tie->id]);
+            $this->assertDatabaseHas('team_ties', ['id' => $foreignTie->id]);
+            $this->assertDatabaseHas('team_fixtures', ['id' => $fixture->id]);
+            $fixture->delete();
+        }
     }
 }

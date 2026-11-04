@@ -43,6 +43,13 @@
             @endif
             <option value="waive">Waive refund — no money returned</option>
           </select></label>
+          @if(now()->gt($event->withdrawalCloseAt()))
+            <label class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="deadline_override" value="1">
+              <span class="form-check-label">Override refund deadline for this replacement</span>
+            </label>
+            <p class="small text-muted">For a wallet refund or refund-funded replacement after the deadline, explicitly confirm this override and explain why in Reason. Leave it unchecked when waiving the refund. The normal refund fee still applies.</p>
+          @endif
           <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
           <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid unless the refund covers their full entry fee. Using the refund reserves only those proceeds for the original payer's new checkout. They must pay any shortfall within five minutes or restart; unused or released funds stay in their wallet. Original payment history stays with the original payer and player.</p>
         @endif

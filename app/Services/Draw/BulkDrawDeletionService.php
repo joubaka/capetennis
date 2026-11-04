@@ -22,6 +22,10 @@ final class BulkDrawDeletionService
             $individual = Fixture::withoutEagerLoads()->whereIn('draw_id', $ids)->orderBy('id')->lockForUpdate()->get();
             $team = TeamFixture::withoutEagerLoads()->whereIn('draw_id', $ids)->orderBy('id')->lockForUpdate()->get();
             $ties = DB::table('team_ties')->whereIn('draw_id', $ids)->orderBy('id')->lockForUpdate()->get();
+            $tieIds = $ties->pluck('id')->map('intval')->all();
+            $this->ensure(!$team->contains(fn ($fixture) => $fixture->team_tie_id !== null && !in_array((int) $fixture->team_tie_id, $tieIds, true))
+                && !TeamFixture::withoutEagerLoads()->where(fn ($query) => $query->whereNotIn('draw_id', $ids)->orWhereNull('draw_id'))
+                    ->whereIn('team_tie_id', $tieIds)->exists(), 'A selected draw has inconsistent team tie references. Review it before deletion.');
             $this->ensure(!$draws->contains(fn ($draw) => $draw->oop_published)
                 && !DB::table('published_schedule_assignments')->where(fn ($query) => $query->whereIn('draw_id', $ids)
                     ->orWhere(fn ($rows) => $rows->where('fixture_kind', 'team')->whereIn('fixture_id', $team->modelKeys()))
@@ -31,13 +35,9 @@ final class BulkDrawDeletionService
                 && !DB::table('fixture_results')->whereIn('fixture_id', $individual->modelKeys())->exists()
                 && !DB::table('team_fixture_results')->whereIn('team_fixture_id', $team->modelKeys())->exists()
                 && !$ties->contains(fn ($tie) => in_array($tie->status, ['published', 'in_progress', 'completed'], true) || $tie->published_at || $tie->winner_team_id), 'Published, started or scored ties cannot be deleted.');
-            $allDraws = Draw::withoutEagerLoads()->where('event_id', $event->id)->orderBy('id')->get();
-            foreach ($allDraws as $candidate) {
+            foreach ($draws as $candidate) {
                 $competition = $candidate->team_draw_selection['competition'] ?? [];
-                if (in_array($candidate->id, $ids, true)) $this->ensure(!$competition, 'A selected draw belongs to a linked placement programme.');
-                foreach (['source_draw_id', 'draft_playoff_draw_id', 'playoff_draw_id'] as $key) {
-                    $this->ensure(!in_array((int) ($competition[$key] ?? 0), $ids, true), 'A selected draw is referenced by a placement programme.');
-                }
+                $this->ensure(!$competition, 'A selected draw belongs to a linked placement programme.');
             }
             $this->ensure(!Draw::whereNotIn('id', $ids)->where(function ($query) use ($ids) {
                 foreach (['source_draw_id', 'draft_playoff_draw_id', 'playoff_draw_id'] as $key) $query->orWhereIn('team_draw_selection->competition->'.$key, $ids);
@@ -46,7 +46,7 @@ final class BulkDrawDeletionService
             $this->ensure(!Fixture::whereNotIn('draw_id', $ids)->where(fn ($query) => $query->whereIn('parent_fixture_id', $individual->modelKeys())->orWhereIn('loser_parent_fixture_id', $individual->modelKeys()))->exists(), 'Other draws depend on a selected draw.');
             $this->ensure(!DB::table('team_substitutions')->where('event_id', $event->id)->exists(), 'This event has competition substitution history. Preserve its draw history.');
             $state = [
-                'event_draws' => $allDraws->map->getAttributes()->all(),
+                'selected_draws' => $draws->map->getAttributes()->all(),
                 'individual' => $individual->map->getAttributes()->all(), 'team' => $team->map->getAttributes()->all(), 'ties' => $ties->all(),
                 'players' => DB::table('team_fixture_players')->whereIn('team_fixture_id', $team->modelKeys())->orderBy('id')->lockForUpdate()->get()->all(),
                 'individual_bookings' => DB::table('order_of_plays')->where(fn ($query) => $query->whereIn('draw_id', $ids)->orWhereIn('fixture_id', $individual->modelKeys()))->orderBy('id')->lockForUpdate()->get()->all(),

@@ -239,11 +239,13 @@ class TeamRosterService
                 if (!$mirror || (int) $mirror->player_id !== $playerId) $this->fail('The paid roster mirror no longer agrees. Refresh the player list.');
                 $withdrawals = app(AdminTeamWithdrawalService::class);
                 $refundAction = $data['refund_action'] === 'replacement' ? 'refund' : $data['refund_action'];
-                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $refundAction);
-                if ($refundAction === 'refund' && !$review['refundAvailable']) $this->fail('The refund deadline has passed. Choose an explicit refund waiver to continue.');
+                $deadlineOverride = filter_var($data['deadline_override'] ?? false, FILTER_VALIDATE_BOOLEAN);
+                $review = $withdrawals->review($event, $team, $mirror, $actor, refundAction: $refundAction, deadlineOverride: $deadlineOverride);
+                if ($refundAction === 'refund' && !$review['refundAvailable']) $this->fail('The refund deadline has passed. Explicitly override the refund deadline with a reason, or choose to waive the refund.');
                 $withdrawnOrder = $withdrawals->confirm($event, $team, $mirror, $actor, [
                     'order_id' => $review['order']->id, 'fingerprint' => $review['fingerprint'],
                     'reason' => $data['reason'], 'refund_action' => $refundAction,
+                    'deadline_override' => $deadlineOverride,
                 ]);
             } else {
                 if (!empty($data['refund_action'])) $this->fail('Refresh the player list: this player is unpaid and needs no refund decision.');
