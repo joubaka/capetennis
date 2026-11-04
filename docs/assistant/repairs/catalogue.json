@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-022",
+      "title": "Late team PayFast payment leaves registration awaiting review",
+      "scope": "Expired team checkouts with verified late PayFast receipts; explicit super-user review only.",
+      "symptoms": "The roster shows Payment being checked after money was received, and the registration remains unconfirmed.",
+      "cause": "The provider receipt arrived after the five-minute checkout window and reservation release. Automatic activation would bypass current roster, payer and financial checks.",
+      "fix": "Warn before team PayFast handoff and use the event Finances late-team-payment review workflow. Preview through TeamLatePaymentReconciliationService, then explicitly confirm a current preview that passes all canonical guards. Preserve blocked cases for separate investigation; never set paid flags directly. See docs/late-team-payment-reconciliation.md.",
+      "verification": "On 2026-11-04 the isolated SQLite TeamLatePaymentReconciliationTest passed 27 tests and 245 assertions, including role/event isolation, exact receipt, stale/tampered previews, successful/repeated apply, queue pagination and no extra receipts, wallet debits or mail. Existing expiry/recovery tests passed 25 tests and 291 assertions; AssistantRepairLibraryTest passed 3 tests and 129 assertions. PHP lint, route registration, Blade compilation, debug-call and diff checks passed. Shared MySQL test execution was inconclusive; browser and production behavior remain unverified.",
+      "limits": "Guide only; no automatic ITN recovery, timeout extension, new charge, wallet debit or confirmation mail. Local implementation does not establish deployment or authorize production reconciliation. Provider delays can still recur.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/TeamLatePaymentController.php", "app/Domain/Payments/Services/TeamLatePaymentReconciliationService.php", "docs/late-team-payment-reconciliation.md"],
+      "tests": ["tests/Feature/TeamLatePaymentReconciliationTest.php"]
+    },
+    {
       "id": "RK-021",
       "title": "Feed-in bracket omits unplayed bye paths",
       "scope": "Display of fixed 16/32-slot Feed-in Monrad templates in browser, print and PDF; no fixture generation or stored graph changes.",

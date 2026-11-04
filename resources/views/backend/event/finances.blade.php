@@ -908,6 +908,12 @@
        SECTION 3 – RECONCILIATION / RECON
   ══════════════════════════════════════════════════════════════════════ --}}
   @include('backend.event.partials.expense-reimbursements')
+  @if(auth()->user()?->hasRole('super-user'))
+    <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <span>Players showing “Payment being checked” need a late payment review.</span>
+      <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('backend.late-team-payments.index', $event) }}">Review late team payments</a>
+    </div>
+  @endif
   <details class="card mb-4" id="finance-reconciliation" data-finance-details open>
     <summary class="card-header">
       <h5 class="mb-0"><i class="ti ti-arrows-exchange me-2"></i>Registration reconciliation</h5>

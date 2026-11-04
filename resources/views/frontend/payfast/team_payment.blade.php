@@ -104,6 +104,9 @@
           @endphp
 
           @if($payfastDue > 0)
+            <div class="alert alert-warning" role="alert">
+              Complete your payment within five minutes of being sent to PayFast. If payment confirmation arrives after checkout expires, including a provider delay, it will need an administrator's review before registration is confirmed. If money has left your account, do not pay again; contact Cape Tennis with your payment reference.
+            </div>
             <div class="border rounded p-4">
               <form id="teamPayfastForm" action="{{ $autoSubmitPayfast ? $payfast->url : route('team.payment.payfast.handoff', ['team' => $team->id, 'player' => $player->id, 'event' => $event->id]) }}" method="post">
                 @unless($autoSubmitPayfast)

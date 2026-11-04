@@ -203,6 +203,103 @@ class TeamLatePaymentReconciliationTest extends TestCase
         $this->assertTrue($order->fresh()->pay_status);
     }
 
+    public function test_web_review_is_event_scoped_authorized_and_read_only_until_confirmed(): void
+    {
+        [$order, $actor] = $this->scenario();
+        Mail::fake();
+        $event = Event::findOrFail($order->event_id);
+        $index = route('backend.late-team-payments.index', $event);
+        $previewUrl = route('backend.late-team-payments.preview', [$event, $order]);
+        $applyUrl = route('backend.late-team-payments.apply', [$event, $order]);
+        $this->actingAs($order->user)->get($index)->assertForbidden();
+        $this->post($previewUrl, ['reason' => 'Reviewed exact receipt'])->assertForbidden();
+        $this->post($applyUrl, [])->assertForbidden();
+        $this->actingAs($actor)->get($index)->assertOk()->assertSee('Order #'.$order->id);
+        $otherEvent = Event::factory()->create();
+        $this->post(route('backend.late-team-payments.preview', [$otherEvent, $order]), ['reason' => 'Reviewed receipt'])->assertNotFound();
+        $this->post(route('backend.late-team-payments.apply', [$otherEvent, $order]), [])->assertNotFound();
+        $before = $order->fresh()->getAttributes();
+        $preview = $this->post($previewUrl, ['reason' => 'Reviewed exact receipt']);
+        $preview->assertOk()->assertSee('R490.00')->assertSee('LATE-EXACT');
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $token = $preview->viewData('token');
+        $this->post($applyUrl, ['preview_token' => $token, 'confirm' => 1, 'amount' => 1, 'provider' => 'FAKE'])
+            ->assertRedirect($index);
+        $this->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertRedirect($index);
+        $this->assertTrue($order->fresh()->pay_status);
+        $this->assertSame('LATE-EXACT', $order->fresh()->payfast_pf_payment_id);
+        $this->assertSame(490.0, $order->fresh()->payfast_amount_due);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertSame(1, Activity::where('description', TeamLatePaymentReconciliationService::AUDIT)->count());
+        $this->assertStringNotContainsString($token, \App\Models\AuditEvent::all()->toJson());
+        Mail::assertNothingSent();
+        Mail::assertNothingQueued();
+    }
+
+    public function test_web_apply_requires_an_unexpired_untampered_actor_bound_preview_and_confirmation(): void
+    {
+        [$order, $actor] = $this->scenario();
+        $event = Event::findOrFail($order->event_id);
+        $previewUrl = route('backend.late-team-payments.preview', [$event, $order]);
+        $applyUrl = route('backend.late-team-payments.apply', [$event, $order]);
+        $token = $this->actingAs($actor)->post($previewUrl, ['reason' => 'Reviewed exact receipt'])->viewData('token');
+        $this->post($applyUrl, ['preview_token' => $token])->assertSessionHasErrors('confirm');
+        $this->from($previewUrl)->post($applyUrl, ['preview_token' => 'tampered', 'confirm' => 1])
+            ->assertRedirect(route('backend.late-team-payments.index', $event))->assertSessionHasErrors('payment');
+        $otherActor = User::factory()->create()->assignRole('super-user');
+        $this->actingAs($otherActor)->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertSessionHasErrors('payment');
+        $this->travel(11)->minutes();
+        $this->actingAs($actor)->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertSessionHasErrors('payment');
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_web_preview_change_is_rejected_and_unsafe_orders_remain_discoverable(): void
+    {
+        [$order, $actor] = $this->scenario();
+        $event = Event::findOrFail($order->event_id);
+        $previewUrl = route('backend.late-team-payments.preview', [$event, $order]);
+        $applyUrl = route('backend.late-team-payments.apply', [$event, $order]);
+        $token = $this->actingAs($actor)->post($previewUrl, ['reason' => 'Reviewed exact receipt'])->viewData('token');
+        TeamPlayer::where('team_id', $order->team_id)->where('player_id', $order->player_id)->update(['rank' => 2]);
+        $this->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertSessionHasErrors('payment');
+        $token = $this->post($previewUrl, ['reason' => 'Reviewed current roster'])->viewData('token');
+        TeamPaymentOrder::create(['user_id' => $order->user_id, 'team_id' => $order->team_id,
+            'event_id' => $order->event_id, 'player_id' => $order->player_id, 'total_amount' => 490, 'wallet_reserved' => 0, 'payfast_amount_due' => 490]);
+        $this->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertSessionHasErrors('payment');
+        $token = $this->post($previewUrl, ['reason' => 'Reviewed successor too'])->viewData('token');
+        Transaction::where('pf_payment_id', 'LATE-EXACT')->update(['amount_gross' => 489.99]);
+        $this->post($applyUrl, ['preview_token' => $token, 'confirm' => 1])->assertSessionHasErrors('reconciliation');
+        $this->get(route('backend.late-team-payments.index', $event))->assertOk()->assertSee('Order #'.$order->id);
+        $this->post($previewUrl, ['reason' => 'Review blocked amount'])->assertSessionHasErrors('reconciliation');
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_web_queue_is_paginated_and_hides_other_event_orders(): void
+    {
+        [$order, $actor] = $this->scenario();
+        $url = route('backend.late-team-payments.index', $order->event_id);
+        auth()->logout();
+        $this->get($url)->assertRedirect();
+        $other = TeamPaymentOrder::create(['user_id' => $order->user_id, 'team_id' => $order->team_id,
+            'event_id' => Event::factory()->create()->id, 'player_id' => $order->player_id,
+            'total_amount' => 490, 'collection_status' => 'reconciliation_required']);
+        for ($i = 0; $i < 21; $i++) {
+            TeamPaymentOrder::create(['user_id' => $order->user_id, 'team_id' => $order->team_id,
+                'event_id' => $order->event_id, 'player_id' => $order->player_id,
+                'total_amount' => 490, 'collection_status' => 'reconciliation_required', 'withdrawn_at' => now()]);
+        }
+        $response = $this->actingAs($actor)->get($url)->assertOk()->assertDontSee('Order #'.$other->id.' ');
+        $this->assertSame(20, $response->viewData('orders')->count());
+        $this->assertSame(22, $response->viewData('orders')->total());
+        $this->assertNotContains($other->id, $response->viewData('orders')->pluck('id')->all());
+        $this->assertSame(2, $this->get($url.'?page=2')->assertOk()->viewData('orders')->count());
+    }
+
     private function scenario(): array
     {
         $this->freezeTime();

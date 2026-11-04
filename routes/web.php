@@ -773,6 +773,12 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::post('/{event}/{order}/release', [\App\Http\Controllers\Backend\PayfastHandoffController::class, 'release'])->middleware('throttle:10,1')->name('release');
   });
 
+  Route::middleware('role:super-user')->prefix('superadmin/late-team-payments')->name('backend.late-team-payments.')->group(function () {
+    Route::get('/{event}', [\App\Http\Controllers\Backend\TeamLatePaymentController::class, 'index'])->name('index');
+    Route::post('/{event}/{order}/preview', [\App\Http\Controllers\Backend\TeamLatePaymentController::class, 'preview'])->middleware('throttle:10,1')->name('preview');
+    Route::post('/{event}/{order}/apply', [\App\Http\Controllers\Backend\TeamLatePaymentController::class, 'apply'])->middleware('throttle:10,1')->name('apply');
+  });
+
   // PayFast signature debug tool (super-user only)
   Route::get('superadmin/payfast-signature-check', [\App\Http\Controllers\Backend\SuperAdminController::class, 'payfastSignatureCheck'])
     ->middleware('role:super-user')
