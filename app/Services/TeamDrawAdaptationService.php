@@ -11,6 +11,15 @@ use Illuminate\Support\Facades\DB;
 class TeamDrawAdaptationService
 {
     public array $lastEventReports = [];
+    private int $rosterBatchDepth = 0;
+
+    /** Reconcile a replacement only after its remove and add have both succeeded. */
+    public function withDeferredRosterAdaptation(callable $mutation): mixed
+    {
+        $this->rosterBatchDepth++;
+        try { return $mutation(); }
+        finally { $this->rosterBatchDepth--; }
+    }
     public function lockEvent(int $eventId): Event
     {
         Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
@@ -19,6 +28,7 @@ class TeamDrawAdaptationService
 
     public function adaptEvent(Event|int $event): array
     {
+        if ($this->rosterBatchDepth) return [];
         $eventId = $event instanceof Event ? $event->id : $event;
         return $this->lastEventReports = DB::transaction(function () use ($eventId) {
             $this->lockEvent($eventId);

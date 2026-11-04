@@ -59,7 +59,7 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']),
             ['X-Requested-With' => 'XMLHttpRequest'])->assertOk()
             ->assertSee('Linked Roster Player')
-            ->assertSee('Playing-order changes update upcoming fixtures automatically.')
+            ->assertSee('Roster changes update upcoming fixtures automatically.')
             ->assertSee('Move up: Linked Roster Player', false)
             ->assertSee('name="slot_id" value="'.$imported->id.'"', false)
             ->assertSee('name="expected_player_id" value="'.$profile->id.'"', false)
@@ -69,6 +69,138 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $this->assertSame($rosterBefore, $imported->fresh()->getAttributes());
         $this->assertSame($slotsBefore, $fixture->fixturePlayers()->get()->map->getAttributes()->all());
         $this->assertDatabaseCount('team_fixtures', 1);
+    }
+
+    public function test_open_registration_restores_roster_options_and_adapts_unpaid_replace_remove_fill_and_reserve(): void
+    {
+        [$event, $draw, $team, $fixture] = $this->competition();
+        $first = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']))
+            ->assertOk()->assertSee('Change player')->assertSee('Change name')->assertSee('Confirm remove')
+            ->assertSee('Move up: Original1 District1', false)->assertSee('Add player')->assertSee('Add reserve player');
+        $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'slot_id' => $first->id, 'expected_rank' => 1, 'expected_player_id' => 0,
+            'name' => 'Replacement', 'surname' => 'Upcoming'])->assertOk();
+        $replacement = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $this->assertEquals($replacement->id, $fixture->fixturePlayers()->firstOrFail()->team1_no_profile_id);
+        $this->postJson(route('backend.team.removePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'slot_id' => $replacement->id, 'expected_rank' => 1, 'expected_player_id' => 0])->assertOk();
+        $this->assertNull($fixture->fixturePlayers()->firstOrFail()->team1_no_profile_id);
+        $this->postJson(route('backend.team.addPlayers'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'target_rank' => 1, 'name' => 'Filled', 'surname' => 'Upcoming'])->assertOk();
+        $filled = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $this->assertEquals($filled->id, $fixture->fixturePlayers()->firstOrFail()->team1_no_profile_id);
+        $this->postJson(route('backend.team.addPlayers'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'reserve' => 1, 'name' => 'Reserve', 'surname' => 'Upcoming'])->assertOk();
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $team->id, 'rank' => 3, 'name' => 'Reserve']);
+        $this->assertEquals($filled->id, $fixture->fixturePlayers()->firstOrFail()->team1_no_profile_id);
+        $this->assertDatabaseCount('team_fixtures', 1);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_open_roster_replacement_preserves_started_profile_match_and_updates_upcoming_match(): void
+    {
+        foreach ([1, 2] as $status) {
+        [$event, $draw, $team, $fixture] = $this->competition(false);
+        $opponent = Team::factory()->create(['category_event_id' => $team->category_event_id, 'noProfile' => false]);
+        foreach ([1, 2] as $rank) TeamPlayer::create(['team_id' => $opponent->id, 'player_id' => Player::factory()->create()->id, 'rank' => $rank, 'pay_status' => 0]);
+        app(TeamDrawAdaptationService::class)->adaptEvent($event);
+        $upcoming = TeamFixture::where('draw_id', $draw->id)->where('id', '!=', $fixture->id)
+            ->whereHas('teamTie', fn ($query) => $query->where('home_team_id', $team->id))->firstOrFail();
+        $fixture->update(['match_status' => $status]);
+        if ($status === 2) $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+        $before = $fixture->fresh()->getAttributes();
+        $participants = $fixture->fixturePlayers()->get()->map->getAttributes()->all();
+        $results = $fixture->fixtureResults()->get()->map->getAttributes()->all();
+        $slot = $team->team_players()->where('rank', 1)->firstOrFail();
+        $oldPlayer = $slot->player_id;
+        $newPlayer = Player::factory()->create();
+        $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'slot_id' => $slot->id, 'expected_rank' => 1, 'expected_player_id' => $oldPlayer, 'player_id' => $newPlayer->id])->assertOk();
+        $this->assertSame($before, $fixture->fresh()->getAttributes());
+        $this->assertSame($participants, $fixture->fixturePlayers()->get()->map->getAttributes()->all());
+        $this->assertSame($results, $fixture->fixtureResults()->get()->map->getAttributes()->all());
+        $this->assertEquals($oldPlayer, $fixture->fixturePlayers()->firstOrFail()->team1_id);
+        $this->assertEquals($newPlayer->id, $upcoming->fixturePlayers()->firstOrFail()->team1_id);
+        $this->assertTrue($fixture->fixturePlayers()->firstOrFail()->player1()->whereKey($oldPlayer)->exists());
+        }
+    }
+
+    public function test_imported_started_identity_cannot_be_deleted_and_closed_or_locked_draws_keep_protection(): void
+    {
+        [$event, $draw, $team, $fixture] = $this->competition();
+        $slot = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id, 'expected_rank' => 1, 'expected_player_id' => 0];
+        $fixture->update(['match_status' => 1]);
+        $participants = $fixture->fixturePlayers()->get()->map->getAttributes()->all();
+        $this->postJson(route('backend.team.changePlayer'), $payload + ['name' => 'Rejected', 'surname' => 'Replacement'])
+            ->assertUnprocessable()->assertSee('competition replacement workflow');
+        $this->assertSame($participants, $fixture->fixturePlayers()->get()->map->getAttributes()->all());
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $slot->id, 'name' => $slot->name]);
+        $this->assertDatabaseMissing('no_profile_team_players', ['name' => 'Rejected']);
+        $fixture->update(['match_status' => 0]);
+        $draw->update(['locked' => true]);
+        $this->postJson(route('backend.team.removePlayer'), $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $slot->id]);
+        $draw->update(['locked' => false]);
+        $event->update(['signUp' => false]);
+        $this->postJson(route('backend.team.removePlayer'), $payload)->assertUnprocessable();
+        $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']))
+            ->assertOk()->assertDontSee('Change player')->assertDontSee('Add reserve player');
+    }
+
+    public function test_open_roster_change_preserves_other_ties_and_their_bookings_in_the_same_draw(): void
+    {
+        [$event, $draw, $team] = $this->competition();
+        foreach (['North', 'South'] as $name) {
+            $extra = Team::factory()->create(['category_event_id' => $team->category_event_id, 'noProfile' => true, 'num_team_members' => 2]);
+            foreach ([1, 2] as $rank) NoProfileTeamPlayer::create(['team_id' => $extra->id, 'rank' => $rank, 'name' => $name, 'surname' => 'Player'.$rank, 'pay_status' => 0]);
+        }
+        app(TeamDrawAdaptationService::class)->adaptEvent($event);
+        $unrelated = $draw->fixtures()->whereHas('teamTie', fn ($query) => $query->where('home_team_id', '!=', $team->id)->where('away_team_id', '!=', $team->id))->firstOrFail();
+        $venue = \App\Models\Venue::forceCreate(['name' => 'Retained court']);
+        $unrelated->update(['scheduled_at' => $event->start_date->format('Y-m-d').' 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60, 'scheduled' => 1]);
+        $before = $unrelated->fresh()->getAttributes();
+        $lineups = $unrelated->fixturePlayers()->get()->map->getAttributes()->all();
+        $slot = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'slot_id' => $slot->id, 'expected_rank' => 1, 'expected_player_id' => 0, 'name' => 'Updated', 'surname' => 'Source'])->assertOk();
+        $this->assertSame($before, $unrelated->fresh()->getAttributes());
+        $this->assertSame($lineups, $unrelated->fixturePlayers()->get()->map->getAttributes()->all());
+    }
+
+    public function test_open_roster_growth_and_removal_adapt_derived_rubbers(): void
+    {
+        [$event, $draw, $team] = $this->competition();
+        $team->update(['num_team_members' => 4]);
+        $snapshot = $draw->team_format_snapshot; $snapshot['name'] = 'Roster positions · Singles';
+        $draw->update(['team_format_snapshot' => $snapshot]);
+        app(TeamDrawAdaptationService::class)->adaptEvent($event);
+        $this->assertSame(2, $draw->fixtures()->count());
+        $this->postJson(route('backend.team.addPlayers'), ['event_id' => $event->id, 'team_id' => $team->id, 'name' => 'Additional', 'surname' => 'Player'])->assertOk();
+        $this->assertSame(3, $draw->fixtures()->count());
+        $slot = $team->team_players_no_profile()->where('rank', 3)->firstOrFail();
+        $this->postJson(route('backend.team.removePlayer'), ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id,
+            'expected_rank' => 3, 'expected_player_id' => 0])->assertOk();
+        $this->assertSame(2, $draw->fixtures()->count());
+    }
+
+    public function test_started_profile_without_verified_snapshot_rejects_replacement_without_losing_history(): void
+    {
+        [$event, , $team, $fixture] = $this->competition(false);
+        $fixture->update(['match_status' => 1]);
+        $row = $fixture->fixturePlayers()->firstOrFail();
+        $row->forceFill(['participant_snapshot' => null])->save();
+        $slot = $team->team_players()->where('rank', 1)->firstOrFail();
+        $before = $slot->getAttributes();
+        $lineup = $row->fresh()->getAttributes();
+        $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id,
+            'expected_rank' => 1, 'expected_player_id' => $slot->player_id, 'player_id' => Player::factory()->create()->id])
+            ->assertUnprocessable()->assertSee('no verified participant history');
+        $this->assertSame($before, $slot->fresh()->getAttributes());
+        $this->assertSame($lineup, $row->fresh()->getAttributes());
     }
 
     public function test_imported_rank_save_updates_upcoming_fixture_without_preview_and_stays_idempotent(): void

@@ -152,6 +152,22 @@ class AdminTeamWithdrawalService
         foreach ($players as $assignment) {
             $fixture = TeamFixture::without('fixturePlayers')->lockForUpdate()->findOrFail($assignment->team_fixture_id);
             $tie = $fixture->team_tie_id ? TeamTie::lockForUpdate()->findOrFail($fixture->team_tie_id) : null;
+            if (app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->protected($fixture)) {
+                $this->ensure(!$fixture->fixtureResults()->lockForUpdate()->exists() && (int) $fixture->match_status !== 2
+                    && $tie?->status !== TeamTie::STATUS_COMPLETED, 'Completed fixture participation must be resolved before withdrawing.');
+                $this->ensure(app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->updatesAutomatically($event),
+                    'Started fixture participation must be resolved before withdrawing.');
+                $this->ensure(!collect([1, 2])->contains(fn ($side) => in_array((int) $assignment->{'team'.$side.'_no_profile_id'}, $importedIds, true)),
+                    'This imported player has started match history. Use the competition replacement workflow to retain their original identity.');
+                foreach ([1, 2] as $side) {
+                    if ((int) $assignment->{'team'.$side.'_id'} !== $playerId) continue;
+                    $snapshot = $assignment->participant_snapshot[$side] ?? [];
+                    $this->ensure(app(TeamParticipantHistoryService::class)->matches($assignment, $side, $team, $event->id) && !empty($snapshot['name']),
+                        'A started match has no verified participant history. Ask the organiser to review it before withdrawing this player.');
+                }
+                // Profile IDs and frozen snapshots remain on historical matches; only upcoming participation is released.
+                continue;
+            }
             $changes = [];
             foreach ([1 => 'home_team_id', 2 => 'away_team_id'] as $side => $teamColumn) {
                 $column = 'team'.$side.'_id';

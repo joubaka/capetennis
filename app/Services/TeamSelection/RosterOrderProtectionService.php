@@ -19,6 +19,17 @@ class RosterOrderProtectionService
 
     public function execute(int $eventId, int $actorId, array $proposal, callable $mutation, bool $preview, ?string $fingerprint): array
     {
+        return $this->executeProtected($eventId, $actorId, $proposal, $mutation, $preview, $fingerprint);
+    }
+
+    /** Open-registration roster changes may change upcoming structure, but never played history. */
+    public function executeRoster(int $eventId, int $actorId, int $teamId, callable $mutation): void
+    {
+        $this->executeProtected($eventId, $actorId, ['team_id' => $teamId], $mutation, false, null, true);
+    }
+
+    private function executeProtected(int $eventId, int $actorId, array $proposal, callable $mutation, bool $preview, ?string $fingerprint, bool $rosterChange = false): array
+    {
         DB::beginTransaction();
         $previousPreviewing = self::$previewing;
         // Keep nontransactional UI flashes and debug logs out of both speculative attempts.
@@ -30,6 +41,8 @@ class RosterOrderProtectionService
             $event = $adaptation->lockEvent($eventId);
             $automatic = !$preview && !$fingerprint && $this->updatesAutomatically($event);
             $before = $this->snapshot($eventId);
+            $protectedBefore = $rosterChange ? TeamFixture::whereIn('id', collect($before['fixtures'])->pluck('id'))->get()
+                ->filter(fn ($fixture) => app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->protected($fixture))->pluck('id') : null;
             $token = hash_hmac('sha256', json_encode([$eventId, $actorId, $proposal, $before], JSON_THROW_ON_ERROR), (string) config('app.key'));
             if (!$preview && !$automatic && (!$fingerprint || !hash_equals($token, $fingerprint))) {
                 throw ValidationException::withMessages(['order' => 'Review the move again: the roster or schedule changed, or confirmation is missing.']);
@@ -54,15 +67,18 @@ class RosterOrderProtectionService
             foreach (['publication', 'results'] as $immutable) {
                 if ($before[$immutable] != $after[$immutable]) $blocked[] = 'This move would change published schedule or result history. Nothing has been changed.';
             }
-            $protectedIds = TeamFixture::whereIn('id', collect($before['fixtures'])->pluck('id'))->get()
+            $protectedIds = $protectedBefore ?? TeamFixture::whereIn('id', collect($before['fixtures'])->pluck('id'))->get()
                 ->filter(fn ($fixture) => app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->protected($fixture))->pluck('id');
             if (collect($before['lineups'])->whereIn('team_fixture_id', $protectedIds)->values()->all() !== collect($after['lineups'])->whereIn('team_fixture_id', $protectedIds)->values()->all()) {
                 $blocked[] = 'Started match participants must be retained. Nothing has been changed.';
             }
+            if ($rosterChange && collect($before['fixtures'])->whereIn('id', $protectedIds)->values()->all() !== collect($after['fixtures'])->whereIn('id', $protectedIds)->values()->all()) {
+                $blocked[] = 'Started match history must be retained. Nothing has been changed.';
+            }
             $bookings = fn ($state) => collect($state['fixtures'])->mapWithKeys(fn ($fixture) => [$fixture['id'] => collect($fixture)->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes', 'scheduled'])->all()])->all();
-            if ($bookings($before) !== $bookings($after)) $blocked[] = 'This move would change match bookings. Nothing has been changed.';
+            if (!$rosterChange && $bookings($before) !== $bookings($after)) $blocked[] = 'This move would change match bookings. Nothing has been changed.';
             foreach ($reports as $drawId => $report) {
-                if ($report['cleared_fixture_ids'] || $report['removed_fixture_ids'] || $report['added_fixture_ids'] || ($report['review_required'] && in_array($drawId, $affectedDrawIds)) || $report['review_tie_ids']) {
+                if ((!$rosterChange || !in_array($drawId, $affectedDrawIds)) && ($report['cleared_fixture_ids'] || $report['removed_fixture_ids'] || $report['added_fixture_ids'] || ($report['review_required'] && in_array($drawId, $affectedDrawIds)) || $report['review_tie_ids'])) {
                     $blocked = array_merge($blocked, $report['warnings']);
                     $blocked[] = 'This move cannot preserve the existing matches and schedule. Nothing has been changed.';
                 }
@@ -101,6 +117,54 @@ class RosterOrderProtectionService
             if ($unrelatedChange) {
                 $blocked = ['Another team has a lineup requiring organiser review. This move was not saved and no bookings were changed.'];
                 $warnings = [];
+            }
+            if ($rosterChange) {
+                $ownsFixture = function (array $fixture, array $state) use ($sourceTeamId): bool {
+                    $tie = collect($state['ties'])->firstWhere('id', $fixture['team_tie_id']);
+                    if (!$tie) return false;
+                    $draw = collect($state['draws'])->firstWhere('id', $fixture['draw_id']);
+                    $selection = json_decode($draw['team_draw_selection'] ?? 'null', true) ?: [];
+                    return collect([$tie['home_team_id'], $tie['away_team_id']])->contains(function ($sideId) use ($sourceTeamId, $selection) {
+                        return $sideId == $sourceTeamId || in_array((int) $sourceTeamId,
+                            array_map('intval', collect($selection['mixed_sides'][$sideId] ?? [])->only(['boys', 'girls'])->all()), true);
+                    });
+                };
+                $unrelatedFixtures = fn ($state) => collect($state['fixtures'])->reject(fn ($fixture) => $ownsFixture($fixture, $state))->values();
+                $unrelatedBefore = $unrelatedFixtures($before);
+                $unrelatedAfter = $unrelatedFixtures($after);
+                if ($unrelatedBefore->all() !== $unrelatedAfter->all()
+                    || collect($before['lineups'])->whereIn('team_fixture_id', $unrelatedBefore->pluck('id'))->values()->all()
+                        !== collect($after['lineups'])->whereIn('team_fixture_id', $unrelatedAfter->pluck('id'))->values()->all()) {
+                    $blocked[] = 'Another team has matches requiring organiser review. This roster change was not saved.';
+                }
+                foreach ($before['lineups'] as $slot) {
+                    if (!$protectedIds->contains($slot['team_fixture_id'])) continue;
+                    foreach ([1, 2] as $side) {
+                        $profileId = $slot['team'.$side.'_id'];
+                        if ($profileId && $sourceOwns($slot, $side, $before)
+                            && collect($before['roster'])->contains(fn ($member) => $member['team_id'] == $sourceTeamId && $member['player_id'] == $profileId)
+                            && !collect($after['roster'])->contains(fn ($member) => $member['team_id'] == $sourceTeamId && $member['player_id'] == $profileId)) {
+                            $snapshot = json_decode($slot['participant_snapshot'] ?? 'null', true) ?: [];
+                            if (empty($snapshot[$side]['name']) || (int) ($snapshot[$side]['profile_id'] ?? 0) !== (int) $profileId
+                                || (int) ($snapshot[$side]['source_team_id'] ?? 0) !== (int) $sourceTeamId
+                                || (int) ($snapshot[$side]['event_id'] ?? 0) !== $eventId) {
+                                $blocked[] = 'A started match has no verified participant history. Ask the organiser to review it before replacing this player.';
+                            }
+                        }
+                        $importedId = $slot['team'.$side.'_no_profile_id'];
+                        if (!$importedId) continue;
+                        $oldImported = collect($before['imported'])->firstWhere('id', $importedId);
+                        $newImported = collect($after['imported'])->firstWhere('id', $importedId);
+                        $identityFields = ['id', 'team_id', 'rank', 'player_profile'];
+                        $mirrors = fn ($state) => collect($state['roster'])->filter(fn ($row) => $row['team_id'] == ($oldImported['team_id'] ?? 0)
+                            && ($row['rank'] == ($oldImported['rank'] ?? 0) || (!empty($oldImported['player_profile']) && $row['player_id'] == $oldImported['player_profile'])))
+                            ->map(fn ($row) => collect($row)->only(['id', 'team_id', 'rank', 'player_id'])->all())->values()->all();
+                        if (!$oldImported || !$newImported || collect($oldImported)->only($identityFields)->all() !== collect($newImported)->only($identityFields)->all()
+                            || $mirrors($before) !== $mirrors($after)) {
+                            $blocked[] = 'This imported player has started match history. Use the competition replacement workflow to retain their original identity.';
+                        }
+                    }
+                }
             }
             $names = function (array $state, int $fixtureId) use ($sourceOwns): string {
                 return collect($state['lineups'])->where('team_fixture_id', $fixtureId)->flatMap(function ($slot) use ($sourceOwns, $state) {

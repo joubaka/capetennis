@@ -196,8 +196,8 @@
       "scope": "Source-aware team fixtures; authorised roster maintenance during open registration, without rewriting played history.",
       "symptoms": "A corrected roster name remains stale in fixtures, or generated matches unnecessarily force an order-confirmation step during open registration.",
       "cause": "Upcoming fixture snapshots retained their creation names, and roster-order confirmation did not distinguish an open registration period from a closed event.",
-      "fix": "Use canonical roster claim, imported-name correction, profile update and playing-order workflows. TeamParticipantHistoryService refreshes verified upcoming snapshot display names under the event lock while preserving source identity and link attestations. Open non-Trials team events save playing order through RosterOrderProtectionService without an extra confirmation; the same rollback checks still protect bookings, publication, results, started matches and unrelated teams. See DK-26 for boundaries.",
-      "verification": "On 2026-11-02 the isolated automatic-update and draw-adaptation suites passed 28 tests with 155 assertions. Coverage includes post-draw registration eligibility/claim, name corrections, order saves, stale revisions/order, idempotency, player conflicts, event isolation and started/result protection. No live event was changed.",
+      "fix": "Use canonical roster claim, imported-name correction, profile update and playing-order workflows. TeamParticipantHistoryService refreshes verified upcoming snapshot display names under the event lock while preserving source identity and link attestations. Open non-Trials team events save playing order through RosterOrderProtectionService without an extra confirmation; the same rollback checks still protect bookings, publication, results, started matches and unrelated teams. For ordinary non-Trials rosters without managed-selection or substitution-history restrictions, open-registration add, fill, remove, replacement and reserve controls remain available after generation, with atomic structural adaptation after the entire mutation. Structural changes may replan affected upcoming rubbers; order-only saves retain strict booking checks. Frozen started/scored fixtures and unrelated ties stay unchanged. Protected imported source rank/link/mirror mappings cannot be removed or remapped. Existing completed-match paid withdrawal/refund restrictions remain. See DK-26 for boundaries.",
+      "verification": "On 2026-11-04 the roster, automatic-update, adaptation and admin-withdrawal bundle passed 83 tests with 758 assertions on each of isolated SQLite and MySQL. Coverage includes restored controls, structural adaptation, same-draw unrelated bookings, frozen started/scored records, imported identity preservation, paid refund rules, retries, closed registration and event isolation. These are local tests, not deployment or live evidence.",
       "limits": "Locked, placement-draft and source-less legacy fixtures require organiser review. Structural additions still need scheduling and publication. Closed registration retains order confirmation. This guide grants no production or publication authority and executes no repair.",
       "assistant_action": "guide_only",
       "sources": [
@@ -207,7 +207,9 @@
       ],
       "tests": [
         "tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php",
-        "tests/Feature/TeamDraw/TeamDrawAdaptationTest.php"
+        "tests/Feature/TeamDraw/TeamDrawAdaptationTest.php",
+        "tests/Feature/TeamSelection/RegionalRosterTest.php",
+        "tests/Feature/AdminTeamWithdrawalTest.php"
       ]
     },
     {
@@ -338,6 +340,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/Performance/PlayerPathwayService.php", "app/Services/Performance/PlayerPathwayEvidence.php"],
       "tests": ["tests/Feature/PlayerPathwayTest.php", "tests/Browser/pathway-loading.cjs"]
+    },
+    {
+      "id": "RK-023",
+      "title": "Regional roster fails to load after team fixtures are generated",
+      "scope": "Players roster fragments with automatic playing-order controls for imported teams containing linked player profiles.",
+      "symptoms": "The roster fragment returns HTTP 500 after fixture generation activates automatic playing-order controls; the local reproduction reports an attempt to read id on null.",
+      "cause": "The players-region Blade reused the display fallback np as the imported roster identity. That fallback is intentionally null when a linked profile supplies the display name.",
+      "fix": "In players-region automatic-order and name-form includes, resolve imported identity from slot->noProfile, matching the existing roster-action convention. Retain linked-profile display and rename restrictions, event/team authorization and expected-player stale-state checks. No roster or fixture data repair is needed.",
+      "verification": "On 2026-11-04 the isolated SQLite regression failed with HTTP 500 before the fix. After the fix, AutomaticUpcomingFixtureUpdatesTest and TeamDrawAdaptationTest passed 29 tests and 166 assertions, including unchanged roster, fixture and participant attributes after rendering. Independent diff review found no issues.",
+      "limits": "This guide does not authorize deployment, live data changes or bypassing roster protections. A generic roster error can have other causes; inspect the actual response and reproduce before applying this fix.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/EventAdminController.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/TeamDraw/AutomaticUpcomingFixtureUpdatesTest.php", "tests/Feature/TeamDraw/TeamDrawAdaptationTest.php"]
     }
   ]
 }

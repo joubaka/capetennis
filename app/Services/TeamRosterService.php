@@ -10,6 +10,24 @@ use Illuminate\Validation\ValidationException;
 
 class TeamRosterService
 {
+    private int $rosterMutationDepth = 0;
+
+    private function protectOpenRoster(Event $event, Team $team, User $actor, callable $mutation): mixed
+    {
+        $result = null;
+        app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->executeRoster($event->id, $actor->id, $team->id,
+            function () use ($mutation, $event, &$result): void {
+                $this->rosterMutationDepth++;
+                try {
+                    $result = app(TeamDrawAdaptationService::class)->withDeferredRosterAdaptation($mutation);
+                    app(TeamDrawAdaptationService::class)->adaptEvent($event);
+                } finally {
+                    $this->rosterMutationDepth--;
+                }
+            });
+        return $result;
+    }
+
     public function authorize(Event $event, ?EventRegion $region, Team $team, User $actor): void
     {
         app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertTeamBelongsToEvent($team, $event);
@@ -20,6 +38,10 @@ class TeamRosterService
 
     public function change(Event $event, ?EventRegion $region, Team $team, User $actor, string $action, array $data): void
     {
+        if ($action !== 'move' && !$this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) {
+            $this->protectOpenRoster($event, $team, $actor, fn () => $this->change($event, $region, $team, $actor, $action, $data));
+            return;
+        }
         DB::transaction(function () use ($event, $region, $team, $actor, $action, $data): void {
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
@@ -149,6 +171,10 @@ class TeamRosterService
 
     public function editName(Event $event, ?EventRegion $region, Team $team, User $actor, array $data): void
     {
+        if (!$this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) {
+            $this->protectOpenRoster($event, $team, $actor, fn () => $this->editName($event, $region, $team, $actor, $data));
+            return;
+        }
         DB::transaction(function () use ($event, $region, $team, $actor, $data): void {
             app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
@@ -180,6 +206,9 @@ class TeamRosterService
 
     public function replace(Event $event, ?EventRegion $region, Team $team, User $actor, array $data): ?TeamPaymentOrder
     {
+        if (!$this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) {
+            return $this->protectOpenRoster($event, $team, $actor, fn () => $this->replace($event, $region, $team, $actor, $data));
+        }
         return DB::transaction(function () use ($event, $region, $team, $actor, $data): ?TeamPaymentOrder {
             app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
@@ -235,6 +264,10 @@ class TeamRosterService
 
     public function fillEmptyPlace(Event $event, ?EventRegion $region, Team $team, User $actor, array $data): void
     {
+        if (!$this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) {
+            $this->protectOpenRoster($event, $team, $actor, fn () => $this->fillEmptyPlace($event, $region, $team, $actor, $data));
+            return;
+        }
         DB::transaction(function () use ($event, $region, $team, $actor, $data): void {
             app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
@@ -333,6 +366,10 @@ class TeamRosterService
 
     public function confirmMainPlace(Event $event, ?EventRegion $region, Team $team, User $actor, int $slotId, int $expectedRank): void
     {
+        if (!$this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) {
+            $this->protectOpenRoster($event, $team, $actor, fn () => $this->confirmMainPlace($event, $region, $team, $actor, $slotId, $expectedRank));
+            return;
+        }
         DB::transaction(function () use ($event, $region, $team, $actor, $slotId, $expectedRank): void {
             app(TeamDrawAdaptationService::class)->lockEvent($event->id);
             $team = Team::query()->lockForUpdate()->findOrFail($team->id);
@@ -413,6 +450,7 @@ class TeamRosterService
 
     private function assertBeforeCompetition(Event $event, Team $team): void
     {
+        if ($this->rosterMutationDepth && $this->canUpdateRosterAutomatically($event)) return;
         if ($this->isLocked($event, $team)) {
             $this->fail('The competition has fixture history. Ask the event administrator to change this roster.');
         }
@@ -429,6 +467,11 @@ class TeamRosterService
     {
         return app(\App\Services\TeamSelection\RosterOrderProtectionService::class)->updatesAutomatically($event)
             && !\App\Models\TeamSubstitution::where('event_id', $event->id)->exists();
+    }
+
+    public function canUpdateRosterAutomatically(Event $event): bool
+    {
+        return $this->canUpdateOrderAutomatically($event);
     }
 
     private function fail(string $message): never

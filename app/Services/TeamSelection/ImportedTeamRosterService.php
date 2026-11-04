@@ -200,7 +200,7 @@ final class ImportedTeamRosterService
         return DB::transaction(function () use ($event, $slot, $name, $surname, $actor): NoProfileTeamPlayer {
             app(\App\Services\TeamDrawAdaptationService::class)->lockEvent($event->id);
             $locked = NoProfileTeamPlayer::query()->lockForUpdate()->findOrFail($slot->id);
-            abort_unless((int) $locked->team?->category?->event_id === (int) $event->id, 404);
+            app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertTeamBelongsToEvent($locked->team, $event);
             $before = ['name' => $locked->name, 'surname' => $locked->surname];
             $after = ['name' => trim($name), 'surname' => trim($surname)];
 

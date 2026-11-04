@@ -37,7 +37,9 @@
     $reserveCount = $team->workspaceSlots->where('selected_team_reserve', true)->count() + $teamReserves->whereNotIn('player_id', $team->workspaceSlots->where('selected_team_reserve', true)->pluck('player_id'))->count();
     $slots = $team->workspaceSlots;
     $occupiedSlots = $slots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile);
-    $rosterLocked = app(\App\Services\TeamRosterService::class)->isLocked($event, $team);
+    $fixtureHistory = app(\App\Services\TeamRosterService::class)->isLocked($event, $team);
+    $automaticRosterChanges = !$rankingManaged && app(\App\Services\TeamRosterService::class)->canUpdateRosterAutomatically($event);
+    $rosterLocked = $fixtureHistory && !$automaticRosterChanges;
     $automaticPlayingOrder = $rosterLocked && !$rankingManaged && app(\App\Services\TeamRosterService::class)->canUpdateOrderAutomatically($event);
     $rosterCanEdit = $rosterOnly || auth()->user()->can('team.players.manage', $team);
   @endphp
@@ -58,7 +60,7 @@
 
     </summary>
     <div class="roster-team-body">
-      @if($rosterLocked)<p class="text-muted">{{ $automaticPlayingOrder ? 'Playing-order changes update upcoming fixtures automatically. Started matches and results keep their original players.' : 'This competition has fixture history. Ask the event administrator to change this player list.' }}</p>
+      @if($fixtureHistory)<p class="text-muted">{{ $automaticRosterChanges ? 'Roster changes update upcoming fixtures automatically. Started matches and results keep their original players. Imported players with started match history require the competition replacement workflow.' : 'This competition has fixture history. Ask the event administrator to change this player list.' }}</p>
 @endif
 
       <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">

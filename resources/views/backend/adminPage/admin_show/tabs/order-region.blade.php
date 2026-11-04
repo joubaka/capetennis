@@ -5,6 +5,7 @@
   @php
     $rosterOnly = $rosterOnly ?? false;
     $rankingManaged = ($teamSelectionInvitations ?? collect())->has($team->id);
+    $orderLocked = $orderLocked && !app(\App\Services\TeamRosterService::class)->canUpdateOrderAutomatically($event);
     $editable = $rosterOnly ? !$orderLocked : (!$rankingManaged && !$orderLocked && auth()->user()->can('team.players.manage', $team));
     $orderStatus = $orderLocked ? 'Locked' : ($rankingManaged ? 'Ranking-managed' : ($editable ? 'Editable' : 'Read-only'));
     $orderHint = $orderLocked ? 'Locked here: fixtures generated. Review safe moves in selection playing order.' : ($rankingManaged ? 'Order follows team selection.' : ($editable ? 'Drag a row or use Move up / Move down. Moves save immediately.' : 'You do not have permission to change this team order.'));

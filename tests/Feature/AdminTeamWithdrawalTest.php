@@ -37,6 +37,75 @@ class AdminTeamWithdrawalTest extends TestCase
         return ['order_id' => $s['order']->id, 'fingerprint' => $review['fingerprint'], 'reason' => 'Player requested withdrawal', 'confirm' => 1];
     }
 
+    private function competitionScenario(bool $imported = false): array
+    {
+        $s = $this->scenario();
+        $type = \App\Models\EventType::forceCreate(['name' => 'Open team event', 'type' => \App\Models\EventType::TEAM]);
+        $s['event']->update(['eventType' => $type->id, 'signUp' => true, 'deadline' => 0, 'start_date' => now()->addWeek()]);
+        $s['team']->update(['noProfile' => $imported, 'num_team_members' => 1]);
+        if ($imported) $s['imported'] = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id,
+            'rank' => 1, 'name' => $s['player']->name, 'surname' => $s['player']->surname, 'player_profile' => $s['player']->id, 'pay_status' => 1]);
+        $opponent = Team::factory()->create(['category_event_id' => $s['team']->category_event_id, 'noProfile' => false, 'num_team_members' => 1]);
+        TeamPlayer::create(['team_id' => $opponent->id, 'player_id' => Player::factory()->create()->id, 'rank' => 1, 'pay_status' => 0]);
+        $draw = \App\Models\Draw::factory()->create(['event_id' => $s['event']->id, 'locked' => false, 'published' => false]);
+        $draw->forceFill(['team_category_id' => 1, 'team_draw_selection' => ['category_ids' => [$s['team']->category_event_id], 'rubber_code' => 'singles', 'players_per_team' => 1],
+            'team_format_snapshot' => ['name' => 'Singles', 'rubbers' => [['sequence' => 1, 'rubber_code' => 'singles', 'name' => 'Singles 1',
+                'player_count_per_team' => 1, 'home_positions' => [1], 'away_positions' => [1]]]]])->save();
+        app(\App\Services\TeamDrawAdaptationService::class)->adaptDraw($draw, null, true, true);
+        $fixture = $draw->fixtures()->firstOrFail();
+        if ($imported) {
+            // Historical fixtures may retain an imported identity captured before a later profile claim.
+            $assignment = $fixture->fixturePlayers()->firstOrFail();
+            $snapshot = $assignment->participant_snapshot;
+            $snapshot[1]['profile_id'] = null;
+            $snapshot[1]['imported_id'] = (int) $s['imported']->id;
+            $snapshot[1]['linked_profile_id'] = (int) $s['player']->id;
+            $assignment->forceFill(['team1_id' => null, 'team1_no_profile_id' => $s['imported']->id, 'participant_snapshot' => $snapshot])->save();
+        }
+        return $s + compact('draw', 'fixture');
+    }
+
+    public function test_open_paid_profile_replacement_preserves_started_participation_and_refunds_exactly_once(): void
+    {
+        foreach ([1] as $status) {
+            $s = $this->competitionScenario();
+            $s['fixture']->update(['match_status' => $status]);
+            if ($status === 2) $s['fixture']->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+            $before = $s['fixture']->fresh()->getAttributes();
+            $players = $s['fixture']->fixturePlayers()->get()->map->getAttributes()->all();
+            $results = $s['fixture']->fixtureResults()->get()->map->getAttributes()->all();
+            $payload = $this->replacementPayload($s);
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+            $this->assertSame($before, $s['fixture']->fresh()->getAttributes());
+            $this->assertSame($players, $s['fixture']->fixturePlayers()->get()->map->getAttributes()->all());
+            $this->assertSame($results, $s['fixture']->fixtureResults()->get()->map->getAttributes()->all());
+            $this->assertEquals($s['player']->id, $s['fixture']->fixturePlayers()->firstOrFail()->team1_id);
+            $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $payload['player_id'], 'pay_status' => 0]);
+            $this->assertDatabaseHas('team_payment_orders', ['id' => $s['order']->id, 'refund_status' => 'completed', 'refund_net' => 256.50, 'user_id' => $s['payer']->id]);
+            $this->assertSame(1, WalletTransaction::where('wallet_id', $s['wallet']->id)->where('type', 'credit')->count());
+        }
+    }
+
+    public function test_imported_started_closed_and_scored_paid_replacements_are_rejected_without_refund_effects(): void
+    {
+        foreach (['imported', 'closed', 'scored'] as $case) {
+            $imported = $case === 'imported';
+            $s = $this->competitionScenario($imported);
+            $s['fixture']->update(['match_status' => 1]);
+            if ($case === 'closed') $s['event']->update(['signUp' => false]);
+            if ($case === 'scored') $s['fixture']->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+            $players = $s['fixture']->fixturePlayers()->get()->map->getAttributes()->all();
+            $payload = $this->replacementPayload($s);
+            if ($imported) $payload['slot_id'] = $s['imported']->id;
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+            $this->assertSame($players, $s['fixture']->fixturePlayers()->get()->map->getAttributes()->all());
+            $this->assertDatabaseHas('team_players', ['id' => $s['slot']->id, 'player_id' => $s['player']->id, 'pay_status' => 1]);
+            $this->assertNull($s['order']->fresh()->withdrawn_at);
+            $this->assertSame(0, WalletTransaction::where('wallet_id', $s['wallet']->id)->where('type', 'credit')->count());
+        }
+    }
+
     private function replacementPayload(array $s, string $action = 'refund'): array
     {
         return ['event_id' => $s['event']->id, 'team_id' => $s['team']->id, 'slot_id' => $s['slot']->id,
