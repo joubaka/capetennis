@@ -242,7 +242,6 @@
   .day-batch-mode .schedule-publication { display:none !important; }
   .schedule-workspace:not(.day-batch-mode) .day-batch-intro { display:none; }
   .day-batch-mode:not(.day-batch-review) #advanced-scheduling { display:none; }
-  .day-batch-mode #venue-management:target { display:block !important; }
   .schedule-tools > summary { cursor:pointer; padding:1rem; min-height:44px; }
   .schedule-tools .workspace-actions { margin-bottom:1rem; }
   .schedule-tools .btn, #day-batch-workflow .btn, #day-batch-workflow summary { min-height:44px; }
@@ -320,7 +319,7 @@
       </ul>
     </div>
   @endif
-      <div class="venue-management mb-3 legacy-schedule-copy" id="venue-management">
+      <div class="venue-management mb-3" id="venue-management">
         <div class="venue-management-summary">
           <span class="venue-management-icon"><i class="ti ti-building-community" aria-hidden="true"></i></span>
           <span><strong>Venues & courts</strong><span class="d-block small text-muted">Assigned to this event</span></span>
