@@ -228,9 +228,13 @@ final class EventVenueScheduleController extends Controller
                 'warnings' => array_slice($report['warnings'] ?? [], 0, 5)];
         })->filter(fn ($notice) => $notice['pending_count'] > 0 || $notice['review_required'])->values();
 
+        $teamAgeVenueStates = [];
+        foreach ($draws->where('is_team', true)->pluck('programme_age')->filter()->unique() as $age) {
+            $teamAgeVenueStates[(string) $age] = app(\App\Services\Scheduling\TeamAgeVenueSetup::class)->state($event, (int) $age);
+        }
         return view('backend.schedule.event-venue-schedule', compact(
             'event', 'draws', 'venues', 'allVenues', 'announcementDraft', 'scheduleDraft', 'adaptationNotices', 'planningDate', 'planningScope', 'pendingPlayoffDraws', 'pendingSecondRoundRobinDraws', 'savedDayReplan'
-        ));
+        ))->with('teamAgeVenueStates', $teamAgeVenueStates);
     }
 
     private function standardPairCount(Draw $draw, string $code): ?int
@@ -961,6 +965,27 @@ final class EventVenueScheduleController extends Controller
     public function updateAssignments(Request $request, Event $event)
     {
         $this->authorize('event.manage', $event);
+        if ($request->has('age_setup')) {
+            $data = $request->validate([
+                'age_setup.age' => ['required', 'integer', 'min:1', 'max:100'],
+                'age_setup.revision' => ['required', 'string', 'size:64'],
+                'age_setup.court_allocations' => ['required', 'array', 'min:1', 'max:100'],
+                'age_setup.court_allocations.*.venue_id' => ['required', 'integer', 'distinct'],
+                'age_setup.court_allocations.*.court_labels' => ['required', 'array', 'min:1', 'max:100'],
+                'age_setup.court_allocations.*.court_labels.*' => ['required', 'string', 'max:50'],
+                'age_setup.rank_venue_preferences' => ['present', 'array', 'max:50'],
+                'age_setup.rank_venue_preferences.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+                'age_setup.rank_venue_preferences.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'],
+                'age_setup.rank_venue_preferences.*.venue_id' => ['required', 'integer'],
+            ]);
+            try {
+                return response()->json(app(\App\Services\Scheduling\TeamAgeVenueSetup::class)->save($event, $data['age_setup'], $request->user()?->id));
+            } catch (\DomainException $exception) {
+                return response()->json(['message' => $exception->getMessage()], 409);
+            } catch (\InvalidArgumentException $exception) {
+                return response()->json(['message' => $exception->getMessage()], 422);
+            }
+        }
         if ($request->boolean('setup_only') && $request->has('round_venue_setups')) {
             $data = $request->validate([
                 'round_venue_setups' => ['required', 'array', 'min:1', 'max:2000'],
@@ -1174,7 +1199,7 @@ final class EventVenueScheduleController extends Controller
                 $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
                 $data['schedule']['limit_daily_matches'] = ! empty($stored['limit_daily_matches']) || ! empty($data['schedule']['limit_daily_matches']);
                 $data['schedule']['round_venue_setups'] = $stored['round_venue_setups'] ?? [];
-                foreach (['programme', 'programme_settings'] as $key) {
+                foreach (['programme', 'programme_settings', 'team_age_venue_setups'] as $key) {
                     if (isset($stored[$key])) $data['schedule'][$key] = $stored[$key];
                 }
                 unset($data['schedule']['rank_preference_draw_ids']);

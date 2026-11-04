@@ -18,9 +18,9 @@ function initialWorkspace({team=false, scoped=false, hash='', wizardHidden=false
  return {get,switches,steps};
 }
 
-test('team event root opens age-group scheduling and bulk ages without requesting a preview or saving',()=>{
+test('team event root opens age selection without requesting a preview or saving',()=>{
  const app=initialWorkspace({team:true});
- assert.deepEqual(app.switches,[true]);assert.equal(app.get('programme-age').value,'bulk');assert.deepEqual(app.get('programme-age').events,['change']);assert.equal(app.get('advanced-scheduling').open,false);
+ assert.deepEqual(app.switches,[true]);assert.equal(app.get('programme-age').value,'');assert.deepEqual(app.get('programme-age').events,[]);assert.equal(app.get('advanced-scheduling').open,false);
 });
 
 test('explicit team draw selection is never replaced by bulk-all on entry',()=>{

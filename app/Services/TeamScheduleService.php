@@ -16,7 +16,14 @@ final class TeamScheduleService
 {
     public function save(Draw $draw, array $data): void
     {
-        if (isset($draw->team_draw_selection['competition'])) {
+        if (isset($draw->team_draw_selection['competition']) || $this->hasRoundSetup($draw)) {
+            $existing = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->firstOrFail();
+            if (array_key_exists('scheduled_at', $data) && ! $data['scheduled_at']) {
+                try { app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->unapply($draw->event, $existing->id); }
+                catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['scheduled_at' => $exception->getMessage()]); }
+                return;
+            }
+            $data = array_replace($existing->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min', 'gap_minutes']), $data);
             TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->firstOrFail();
             try {
                 app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->assign($draw->event, array_replace($data, ['expected_draw_id' => $draw->id]));
@@ -117,6 +124,7 @@ final class TeamScheduleService
             TeamFixture::whereIn('draw_id', $lockedDraws->pluck('id'))->orderBy('id')->lockForUpdate()->get();
             $venuesByDraw = [];
             foreach ($lockedDraws as $draw) {
+                if ($this->hasRoundSetup($draw)) throw ValidationException::withMessages(['draw' => 'This draw has age-group or round court assignments. Use the event schedule planner to preserve them.']);
                 $guard->schedule($draw);
                 if ($reset) {
                     $guard->destructive($draw);
@@ -282,6 +290,12 @@ final class TeamScheduleService
             }
             $this->clearRows($locked->pluck('id')->all());
         });
+    }
+
+    private function hasRoundSetup(Draw $draw): bool
+    {
+        $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $draw->event_id)->value('options'), true) ?: [];
+        return collect($stored['round_venue_setups'] ?? [])->contains(fn ($row) => (int) $row['draw_id'] === (int) $draw->id);
     }
 
     private function clearRows(array $ids): void
