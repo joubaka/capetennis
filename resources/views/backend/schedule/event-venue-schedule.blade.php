@@ -232,6 +232,9 @@
   $unapplyRouteAvailable = \Illuminate\Support\Facades\Route::has('backend.event-venue-schedule.unapply');
   $guideSelection = $event->draws->whereIn('id', collect($draws)->where('selected', true)->pluck('id'));
   $teamPlanning = $draws->where('selected', true)->contains('is_team', true) || ($draws->isEmpty() && $event->isTeam());
+  $selectedScheduleDraws = $draws->where('selected', true);
+  $teamProgrammeDefault = $teamPlanning && !$planningDate && $selectedScheduleDraws->isNotEmpty()
+    && $selectedScheduleDraws->every(fn($draw) => $draw['is_team'] && $draw['programme_supported'] && $draw['programme_age'] !== null);
 @endphp
 <style>
   .day-batch-mode #individual-schedule-selection, .day-batch-mode #programme-wizard,
@@ -256,7 +259,7 @@
   #day-batch-venues label:has(.day-batch-court), #day-batch-rounds label:has(.day-batch-fixture) { display:inline-flex; align-items:center; min-height:44px; }
   @media(max-width:575.98px) { #day-batch-draws { grid-template-columns:minmax(0,1fr); } }
 </style>
-<div class="container-xxl flex-grow-1 container-p-y schedule-workspace day-batch-mode">
+<div class="container-xxl flex-grow-1 container-p-y schedule-workspace{{ $teamProgrammeDefault ? '' : ' day-batch-mode' }}" data-team-programme-default="{{ $teamProgrammeDefault ? 'true' : 'false' }}">
   @include('backend.event.partials.header', [
     'eventWorkspaceActive' => 'schedule',
     'eventWorkspaceIcon' => 'ti-calendar-event',
@@ -282,8 +285,8 @@
       @if(!$teamPlanning)
         <p class="text-muted mb-0">Select individual draws, then set up days, venues and match times. Each draw keeps its own gender.</p>
       @elseif(!$planningDate && $draws->where('programme_supported', true)->whereNotNull('programme_age')->isNotEmpty())
-        <p class="text-muted mb-0">Choose an age group, arrange its rounds by day, then preview and save the complete schedule.</p>
-        <p class="text-muted small mt-2 mb-0">Your saved days, venue bands and courts load for the selected age group. Review and publish the saved schedule when ready.</p>
+        <p class="text-muted mb-0">Add the event venues, select age groups, assign their courts and playing days, then preview and save.</p>
+        <p class="text-muted small mt-2 mb-0">Each age group keeps its own venues. Singles finish before reverse singles, then doubles, then mixed. Publication is a separate step.</p>
       @else
         <p class="text-muted mb-0">Assign courts, set the timing, then review and save the schedule.</p>
         <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
@@ -294,7 +297,7 @@
       @if($planningDate)
         <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id] + ($guideSelection->isNotEmpty() ? ['draw_ids'=>$guideSelection->pluck('id')->values()->all()] : [])) }}#round-days">Plan rounds across days</a>
       @else
-        <button type="button" class="btn btn-outline-primary" id="toggle-day-box-planner" aria-pressed="false">Plan rounds across days</button>
+        <button type="button" class="btn btn-outline-secondary" id="toggle-day-box-planner" aria-pressed="{{ $teamProgrammeDefault ? 'true' : 'false' }}">{{ $teamProgrammeDefault ? 'Schedule selected matches for one day' : 'Plan rounds across days' }}</button>
       @endif
       <a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a></div>
   </div>
@@ -322,7 +325,7 @@
       <div class="venue-management mb-3" id="venue-management">
         <div class="venue-management-summary">
           <span class="venue-management-icon"><i class="ti ti-building-community" aria-hidden="true"></i></span>
-          <span><strong>Venues & courts</strong><span class="d-block small text-muted">Assigned to this event</span></span>
+          <span><strong>{{ $teamProgrammeDefault ? '1. Venues & courts' : 'Venues & courts' }}</strong><span class="d-block small text-muted">Assigned to this event</span></span>
           <span class="assigned-venue-list" aria-label="Assigned venues">
             @forelse($venues as $venue)
               <span class="assigned-venue-chip"><i class="ti ti-map-pin" aria-hidden="true"></i>{{ $venue['name'] }} <span class="text-muted">· {{ $venue['courts'] }} {{ Str::plural('court', $venue['courts']) }} · {{ ucfirst($venue['common_ball_type'] ?? 'standard') }}</span></span>
@@ -450,7 +453,7 @@
   @endif
 
       @include('backend.schedule.partials.draw-controls')
-      <button type="button" id="toggle-advanced-scheduling" class="btn btn-link">Advanced: complete programmes and draw defaults</button>
+      <button type="button" id="toggle-advanced-scheduling" class="btn btn-link" @if($teamProgrammeDefault) hidden @endif>Advanced: complete programmes and draw defaults</button>
     </div>
   </details>
 
@@ -472,7 +475,7 @@
   </section>
   @endif
   <details class="workspace-section mb-3" id="programme-wizard" open @if($planningDate || $draws->where('programme_supported', true)->whereNotNull('programme_age')->isEmpty()) hidden @endif>
-    <summary><span class="section-title"><h5>{{ $teamPlanning ? 'Schedule age groups' : 'Set up selected draws' }}</h5><small class="text-muted">{{ $teamPlanning ? "Choose one or more age groups, arrange days and venues, then preview and save" : "Arrange days and venues, then preview and save" }}</small></span></summary>
+    <summary><span class="section-title"><h5>{{ $teamPlanning ? '2. Select age groups & assign courts' : 'Set up selected draws' }}</h5><small class="text-muted">{{ $teamPlanning ? "Choose ages below, then use Assign venues & courts on their round cards" : "Arrange days and venues, then preview and save" }}</small></span></summary>
     <div class="section-body">
       <p class="small text-muted">Plan team disciplines or individual Monrad rounds across the event’s {{ $programmeDayCount }} playing {{ Str::plural('day', $programmeDayCount) }}. Monrad rounds include winner and loser placement matches. Team roster venue bands keep their existing rules; venue moves are flagged for review.</p>
       <label class="form-label" for="programme-age" @if(!$teamPlanning) hidden @endif>Age group</label>
@@ -490,6 +493,10 @@
       @endif
       <p class="small">{{ $teamPlanning ? 'Choose an age group to load its saved days and venue bands, or bulk schedule selected age groups. Within each age group, all singles finish before reverse singles, then doubles, then mixed.' : 'Your selected draws define this programme.' }} Move each round to its playing day, assign venues and courts, then preview and save. Review and publication remain separate.</p>
       <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">{{ $teamPlanning ? "Choose an age group." : "Select draws to set up the schedule." }}</div>
+      @if($teamPlanning)
+      <p class="small mb-3">On each round card, choose <strong>Assign venues & courts</strong> to select that age group's venues, courts and player-position bands. Event venues above only make courts available; they do not assign them to an age group.</p>
+      <h6>3. Arrange playing days & timing</h6>
+      @endif
       <div class="row g-3 mb-3">@foreach($programmeDates as $day => $programmeDate)<div class="{{ $programmeDayCount === 1 ? 'col-12' : ($programmeDayCount === 2 ? 'col-md-6' : 'col-md-4') }}"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T08:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T18:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $programmeDate]) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2" id="programme-drag-instructions">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
       <div id="programme-stages" class="row g-3 mb-3" aria-label="Drag rounds into daily playing order"></div>
@@ -526,6 +533,7 @@
       <p class="small text-muted">Use free courts to avoid waiting for every earlier match to finish. Your boys/girls order, round wave interval, court availability and player rest still apply.</p>
         </div>
       </details>
+      @if($teamPlanning)<h6>4. Preview & save</h6><p class="small text-muted">Generate suggested times, resolve any unallocated matches, then save the complete schedule privately. Review and publish the saved schedule separately.</p>@endif
       <button id="programme-create" type="button" class="btn btn-primary">Create event schedule preview</button>
       <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
@@ -3250,7 +3258,7 @@
     document.getElementById('day-batch-workflow').hidden = enabled;
     const toggle = document.getElementById('toggle-day-box-planner');
     toggle?.setAttribute('aria-pressed', String(enabled));
-    if (toggle) toggle.textContent = enabled ? 'Back to scheduling one day' : 'Plan rounds across days';
+    if (toggle) toggle.textContent = enabled ? 'Schedule selected matches for one day' : (workspace.dataset.teamProgrammeDefault === 'true' ? 'Back to age-group schedule' : 'Plan rounds across days');
     document.getElementById('programme-create').textContent = enabled ? 'Generate suggested schedule' : programmeCreateLabel;
     const instructions = document.getElementById('programme-drag-instructions');
     if (!instructions.dataset.original) instructions.dataset.original = instructions.textContent;
@@ -3258,15 +3266,27 @@
     dayBatchPayload = null; payload = null; programmePayload = null; ++programmeRefreshVersion; invalidatePreview();
     document.getElementById('programme-create').disabled = false;
     if (enabled) {
-      if (!individualSelection) document.getElementById('programme-wizard').hidden = false;
-      document.getElementById('programme-wizard').open = true;
+      const wizard = document.getElementById('programme-wizard');
+      if (!individualSelection && workspace.dataset.teamProgrammeDefault === 'true') wizard.hidden = false;
+      wizard.open = true;
       showWorkflowStep(1);
+      if (workspace.dataset.teamProgrammeDefault === 'true') document.getElementById('advanced-scheduling').open = false;
     }
   };
   document.getElementById('toggle-day-box-planner')?.addEventListener('click', () => setDayBoxPlanner(!programmeDayBoxMode));
-  if (window.location.hash === '#round-days' && document.getElementById('toggle-day-box-planner')) setDayBoxPlanner(true);
-  showWorkflowStep(1);
-  if (!document.getElementById('programme-wizard').hidden) document.getElementById('advanced-scheduling').open = false;
+  const initializeScheduleWorkspace = () => {
+    const teamProgramme = workspace.dataset.teamProgrammeDefault === 'true';
+    const wizard = document.getElementById('programme-wizard');
+    if (teamProgramme || (window.location.hash === '#round-days' && !wizard.hidden && document.getElementById('toggle-day-box-planner'))) setDayBoxPlanner(true);
+    if (teamProgramme && !@json(request()->has('draw_ids'))) {
+      const age = document.getElementById('programme-age');
+      age.value = 'bulk';
+      age.dispatchEvent(new Event('change'));
+    }
+    showWorkflowStep(1);
+    if (!wizard.hidden) document.getElementById('advanced-scheduling').open = false;
+  };
+  initializeScheduleWorkspace();
 })();
 </script>
 @endsection
