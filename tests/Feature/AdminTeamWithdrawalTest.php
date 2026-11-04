@@ -57,6 +57,92 @@ class AdminTeamWithdrawalTest extends TestCase
         $this->assertDatabaseCount('team_players', 1);
     }
 
+    public function test_refund_can_fund_replacement_without_spending_other_wallet_funds(): void
+    {
+        foreach ([256.50, 200, 285] as $fee) {
+            $s = $this->scenario();
+            $s['event']->update(['entryFee' => $fee]);
+            if ($fee === 200) {
+                $s['team']->update(['noProfile' => 1]);
+                $raw = \App\Models\NoProfileTeamPlayer::create(['team_id' => $s['team']->id, 'rank' => 1,
+                    'player_profile' => $s['player']->id, 'name' => $s['player']->name, 'surname' => $s['player']->surname, 'pay_status' => 0]);
+            }
+            WalletTransaction::create(['wallet_id' => $s['wallet']->id, 'type' => 'credit', 'amount' => 1000, 'source_type' => 'test', 'source_id' => 1]);
+            $payload = $this->replacementPayload($s, 'replacement');
+            if ($fee === 200) $payload['slot_id'] = $raw->id;
+            $response = $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+            $order = TeamPaymentOrder::where('player_id', $payload['player_id'])->sole();
+            $applied = min(256.50, $fee);
+            $this->assertSame((int) $s['payer']->id, (int) $order->user_id);
+            $this->assertSame($fee > 256.50 ? false : true, $order->pay_status);
+            $this->assertEquals($applied, $order->wallet_reserved);
+            $this->assertEquals(max(0, $fee - 256.50), $order->payfast_amount_due);
+            $this->assertEquals($fee <= 256.50 ? $applied : 0, WalletTransaction::where('source_type', 'team_registration_wallet_payment')->where('source_id', $order->id)->sum('amount'));
+            $this->assertSame((int) $s['player']->id, (int) $s['order']->fresh()->player_id);
+            $this->assertTrue($s['order']->fresh()->pay_status);
+            $this->assertEquals(715 + 256.50 - ($fee <= 256.50 ? $applied : 0), $s['wallet']->fresh()->balance);
+            $this->assertSame($fee <= 256.50 ? 4 : 3, WalletTransaction::where('wallet_id', $s['wallet']->id)->count());
+            $this->assertSame(1, WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $s['order']->id)->count());
+            $audit = \Spatie\Activitylog\Models\Activity::where('subject_type', TeamPaymentOrder::class)->where('subject_id', $s['order']->id)
+                ->where('description', 'applied withdrawal refund to replacement checkout')->sole();
+            $this->assertEquals($order->id, $audit->properties['replacement_order_id']);
+            $this->assertEquals($applied, $audit->properties['amount_applied']);
+            $this->postJson(route('backend.team.changePlayer'), $payload)->assertStatus($fee === 200 ? 404 : 422);
+            $this->assertSame(1, TeamPaymentOrder::where('player_id', $payload['player_id'])->count());
+            if ($fee > 256.50) {
+                $response->assertJsonPath('message', 'Player changed. R256.50 of the refund is reserved. The original payer must complete the remaining R28.50 through checkout within five minutes or restart. The replacement remains unpaid until payment completes.');
+                $this->actingAs($s['actor'])->get(route('team.checkout', $order))->assertForbidden();
+                $this->actingAs($s['payer'])->get(route('team.checkout', $order))->assertOk()->assertViewHas('walletReserved', 256.50);
+                $this->travel(6)->minutes();
+                $this->assertTrue(app(\App\Domain\Payments\Services\TeamPaymentService::class)->expireUnpaidCheckout($order));
+                $this->assertEquals(0, $order->fresh()->wallet_reserved);
+                $this->assertFalse($order->fresh()->wallet_debited);
+                $this->assertSame(1, WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $s['order']->id)->count());
+                $this->travelBack();
+            }
+        }
+    }
+
+    public function test_refund_replacement_rejects_late_unauthorized_and_cross_event_requests_atomically(): void
+    {
+        $s = $this->scenario(); $payload = $this->replacementPayload($s, 'replacement');
+        $this->postJson(route('backend.team.changePlayer'), array_replace($payload, ['event_id' => Event::factory()->create()->id]))->assertNotFound();
+        $admin = User::factory()->create();
+        \App\Models\EventAdmin::create(['event_id' => $s['event']->id, 'user_id' => $admin->id]);
+        $this->actingAs($admin)->postJson(route('backend.team.changePlayer'), $payload)->assertForbidden();
+        $s['event']->update(['withdrawal_deadline' => now()->subDay()]);
+        $this->actingAs($s['actor'])->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+    }
+
+    public function test_partial_refund_replacement_rolls_back_when_checkout_is_closed(): void
+    {
+        $s = $this->scenario();
+        $s['event']->update(['entryFee' => 285, 'signUp' => false]);
+        $this->postJson(route('backend.team.changePlayer'), $this->replacementPayload($s, 'replacement'))->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertEquals($s['player']->id, $s['slot']->fresh()->player_id);
+    }
+
+    public function test_refund_replacement_cannot_bypass_managed_selection_acceptance(): void
+    {
+        $s = $this->scenario();
+        $import = \App\Models\TeamSelectionImport::create(['source_id' => 1, 'event_id' => $s['event']->id, 'region_id' => 1,
+            'series_id' => 1, 'ranking_run_id' => 'test', 'status' => 'sent']);
+        \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $s['event']->id, 'region_id' => 1,
+            'team_id' => $s['team']->id, 'player_id' => $s['player']->id, 'ranking_list_id' => 1, 'ranking_position' => 1,
+            'queue_position' => 1, 'roster_rank' => 1, 'status' => 'paid_confirmed', 'order_id' => $s['order']->id]);
+        $this->postJson(route('backend.team.changePlayer'), $this->replacementPayload($s, 'replacement'))->assertUnprocessable();
+        $this->assertNull($s['order']->fresh()->withdrawn_at);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertEquals($s['player']->id, $s['slot']->fresh()->player_id);
+    }
+
     public function test_paid_imported_replacement_detects_paid_mirror_and_records_waiver_without_money_moving(): void
     {
         $s = $this->scenario(); $payload = $this->replacementPayload($s, 'waive');

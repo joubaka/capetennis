@@ -644,14 +644,7 @@
         }
         completeCreationProgress();
         creationPending = false;
-        if (window.DrawSetupGuide && response.continue_url) {
-          creationControls.forEach(function(state){state.control.disabled=state.disabled;});
-          if(submitButton)submitButton.textContent=creationButtonText;
-          var guides=response.guides || [{name:'Saved draw',url:response.continue_url}];
-          window.DrawSetupGuide.created(guides);
-          if(guides.length>1)window.DrawSetupGuide.choose(guides);else window.DrawSetupGuide.open(response.continue_url);
-        }
-        else window.location.assign(response.continue_url || window.location.href);
+        window.location.reload();
       }).fail(failCreationProgress);
       return;
     }

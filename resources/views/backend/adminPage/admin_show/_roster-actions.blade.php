@@ -36,12 +36,15 @@
         @endif
         @if($replacementPaid)
           <label class="form-label w-100">Original player's payment<select class="form-select" name="refund_action" required>
-            <option value="">Choose refund or waiver</option>
+            <option value="">Choose payment option</option>
             <option value="refund">Refund original payer's wallet</option>
+            @if(!\App\Models\TeamSelectionInvitation::where('team_id', $team->id)->whereHas('selectionImport', fn ($query) => $query->where('event_id', $event->id)->whereIn('status', ['draft', 'sent']))->exists())
+              <option value="replacement">Use refund toward replacement player</option>
+            @endif
             <option value="waive">Waive refund — no money returned</option>
           </select></label>
           <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
-          <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid. Original payment history stays with the original payer and player.</p>
+          <p class="small text-muted">Refunds follow the current fee and withdrawal deadline policy. The replacement starts unpaid unless the refund covers their full entry fee. Using the refund reserves only those proceeds for the original payer's new checkout. They must pay any shortfall within five minutes or restart; unused or released funds stay in their wallet. Original payment history stays with the original payer and player.</p>
         @endif
         <button class="btn btn-primary">Save player</button>
         <p class="small text-muted mt-1">The current player stays in place until you save.</p>

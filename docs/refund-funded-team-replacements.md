@@ -1,0 +1,29 @@
+# Refund-funded team replacements
+
+The standard paid roster replacement form offers **Use refund toward replacement
+player** to super users. It follows the existing withdrawal deadline and current
+refund fee policy; it does not transfer or rewrite the original paid order.
+
+`TeamRosterService::replace()` withdraws the original entry, obtains its wallet
+refund through `AdminTeamWithdrawalService`, adds the replacement, and calls
+`TeamPaymentService::applyRefundToReplacement()` within one transaction. A failure
+rolls back the withdrawal, refund and replacement together.
+
+- The new order belongs to the original payer. Only the proven net refund credit
+  may fund it, capped at the server-calculated current entry and regional fee.
+  Existing wallet funds are not automatically spent.
+- Full funding finalizes through the canonical wallet payment service. Excess
+  refund remains in the original payer's wallet.
+- Partial funding reserves the proceeds without a debit or paid entry. The
+  original payer must complete checkout within its normal five-minute window.
+  Expiry releases the reservation; the refund remains in their wallet. Partial
+  funding is rejected if that payer cannot use the normal checkout.
+- Active managed selection campaigns use their invitation workflow instead;
+  this option is hidden and server-side guarded for those teams.
+- Original paid history remains intact. The audit links the refund credit,
+  original order, replacement order, applied amount and remaining balance.
+  Repeated stale replacement submissions cannot issue a second refund.
+
+Regression evidence lives in `tests/Feature/AdminTeamWithdrawalTest.php` and
+`tests/Feature/TeamSelection/RegionalRosterTest.php`. Local tests do not establish
+deployment or live payment behavior.

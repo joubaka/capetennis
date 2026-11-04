@@ -292,6 +292,48 @@ class TeamPaymentService
     {
     }
 
+    /** Apply only this withdrawal's proceeds, never the payer's other wallet funds. */
+    public function applyRefundToReplacement(TeamPaymentOrder $source, Player $replacement, User $actor): TeamPaymentOrder
+    {
+        abort_unless($actor->hasRole('super-user'), 403);
+        return DB::transaction(function () use ($source, $replacement, $actor): TeamPaymentOrder {
+            $source = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($source->id);
+            $event = Event::query()->lockForUpdate()->findOrFail($source->event_id);
+            $team = Team::query()->lockForUpdate()->findOrFail($source->team_id);
+            $fail = fn (string $message) => throw ValidationException::withMessages(['replacement' => $message]);
+            abort_unless($team->category()->where('event_id', $event->id)->exists(), 404);
+            if (TeamSelectionInvitation::where('team_id', $team->id)->whereHas('selectionImport', fn ($query) => $query->where('event_id', $event->id)->whereIn('status', ['draft', 'sent']))->exists()) $fail('Use the selection workflow for this team.');
+            $credits = \App\Models\WalletTransaction::where('source_type', 'admin_team_withdrawal_refund')->where('source_id', $source->id)->lockForUpdate()->get();
+            $payer = User::query()->lockForUpdate()->findOrFail($source->user_id);
+            if (!$source->withdrawn_at || $source->refund_status !== 'completed' || $source->refund_method !== 'wallet'
+                || $source->effective_player_id === (int) $replacement->id || $source->refund_net <= 0
+                || $credits->count() !== 1 || $credits->first()->type !== 'credit'
+                || round((float) $credits->first()->amount, 2) !== round((float) $source->refund_net, 2)
+                || !$payer->wallet()->whereKey($credits->first()->wallet_id)->exists()) $fail('A completed original-payer wallet refund is required.');
+            if (\Spatie\Activitylog\Models\Activity::where('subject_type', TeamPaymentOrder::class)->where('subject_id', $source->id)
+                ->where('description', 'applied withdrawal refund to replacement checkout')->exists()) $fail('This refund has already been applied to a replacement.');
+            if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$replacement->id])->lockForUpdate()->exists()) $fail('The replacement already has payment history.');
+            $slots = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $replacement->id)->lockForUpdate()->get();
+            if ($slots->count() !== 1 || $slots->first()->pay_status) $fail('A unique unpaid replacement roster place is required.');
+            app(\App\Services\PlayerEligibilityService::class)->assertEligible($replacement, $event);
+            $fee = round((float) $event->entryFee + (float) $team->regions?->region_fee, 2);
+            if ($fee <= 0) $fail('No replacement entry fee is payable. Choose a wallet refund instead.');
+            $applied = min(round((float) $source->refund_net, 2), $fee);
+            $remaining = round($fee - $applied, 2);
+            if ($remaining > 0) app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->assertCanRegister($payer, $event, $team, $replacement);
+            $order = $this->ensureOrder($payer, $team, $replacement, $event, $fee);
+            $order = $this->reservePayment($order, $applied, $remaining);
+            if ($remaining === 0.0) $order = $this->finalizeWalletPayment($order, ['suppress_registration_confirmation' => true]);
+            activity('team-payment')->performedOn($source)->causedBy($actor)->withProperties([
+                'event_id' => $event->id, 'team_id' => $team->id, 'payer_id' => $payer->id,
+                'replacement_order_id' => $order->id, 'replacement_player_id' => $replacement->id,
+                'refund_credit_id' => $credits->first()->id, 'amount_applied' => $applied,
+                'remaining_amount' => $remaining, 'unused_refund' => round($source->refund_net - $applied, 2),
+            ])->log('applied withdrawal refund to replacement checkout');
+            return $order;
+        });
+    }
+
     public function ensureOrder(User $user, Team $team, Player $player, Event $event, float $total): TeamPaymentOrder
     {
         return FinanceMutationScope::run('payment_state_write', function () use ($user, $team, $player, $event, $total) {

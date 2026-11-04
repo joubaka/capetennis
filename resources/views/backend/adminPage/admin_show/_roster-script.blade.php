@@ -123,6 +123,7 @@ if (!window.teamRosterControls) {
         const data = await response.json();
         if (!response.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'The change could not be saved.');
         form.dataset.saved = '1';
+        form.dataset.successMessage = data.message || 'Player list updated.';
         if (form.elements.direction && window.applyTeamRosterOrder?.(form, data)) {
           movedInPlace = true;
           delete form.dataset.saved;
@@ -135,7 +136,7 @@ if (!window.teamRosterControls) {
         else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
         else throw new Error('The change was saved. Reopen this player list to see the updated roster.');
       }
-      window.toastr?.success('Player list updated.');
+      window.toastr?.success(form.dataset.successMessage || 'Player list updated.');
     } catch (error) {
       feedback.className = 'alert alert-danger'; feedback.textContent = error.message;
       if (form.dataset.saved) {

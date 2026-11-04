@@ -92,6 +92,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Refund-funded standard team replacements create a distinct original-payer
+  checkout; they do not transfer the original payment history. Partial funding
+  remains an expiring reservation and requires a usable payer checkout. Active
+  managed selection campaigns retain their invitation workflow. Consult
+  `docs/refund-funded-team-replacements.md`, `TeamPaymentService` and the focused
+  `AdminTeamWithdrawalTest` regressions before changing this boundary.
+
 - Individual division caps include unresolved checkout and category-move holds,
   including orders without an active entry row. Release places through canonical
   cancellation/expiry; elapsed time alone is insufficient. Admission needs current

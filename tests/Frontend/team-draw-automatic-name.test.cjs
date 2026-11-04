@@ -235,7 +235,7 @@ test('team creation errors stop progress, restore controls and permit a retry wi
   assert.equal(ui.requests[0].payload.batch_key, ui.requests[1].payload.batch_key);
   ui.requests[1].resolve({ success: true, continue_url:'/continue' });
   assert.equal(ui.values['#drawCreationPercent'], '100%');
-  assert.deepEqual(ui.navigation, ['/continue']);
+  assert.deepEqual(ui.navigation, ['reload']);
 });
 
 test('unconfirmed creation response never displays completed progress', () => {
@@ -268,7 +268,7 @@ test('bulk creation uses one request with estimated progress and confirmed compl
   ui.requests[0].resolve({ success: true, continue_url:'/continue', draws: [{ id: 1 }, { id: 2 }] });
   assert.equal(ui.values['#drawCreationPercent'], '100%');
   assert.equal(ui.timers.size, 0);
-  assert.deepEqual(ui.navigation, ['/continue']);
+  assert.deepEqual(ui.navigation, ['reload']);
 });
 
 test('guided team create starts with competition only and Continue reveals selection without a request', () => {
@@ -342,8 +342,23 @@ test('guided regional competition requires an age group and transfers it into ma
   assert.deepEqual(ui.navigation, ['/regional?group=0&step=4']);
   assert.equal(ui.requests.length, 0, 'Review and configure matches before creating anything');
 });
-test('created team batch opens in-page draw choices without navigating',()=>{
-  const ui=dialog('team',false,true);ui.state.type={id:'singles',value:'19',dataset:{code:'singles'}};ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();
-  const guides=[{name:'Boys',url:'/guide/1'},{name:'Girls',url:'/guide/2'}];ui.requests[0].resolve({success:true,continue_url:'/event',draws:[{id:1},{id:2}],guides});
-  assert.deepEqual(ui.navigation,[]);assert.equal(ui.modalCalls[1][0],'choose');assert.deepEqual(ui.modalCalls[1][1],guides);assert.equal(ui.submitButton.disabled,false);
+test('confirmed team creation refreshes the event page instead of opening setup guides',()=>{
+  for (const ajax of [true, false]) for (const count of [1, 2]) {
+    const ui=dialog('team',false,ajax);ui.state.type={id:'singles',value:'19',dataset:{code:'singles'}};ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();
+    const guides=[{name:'Boys',url:'/guide/1'},{name:'Girls',url:'/guide/2'}].slice(0,count);
+    ui.requests[0].resolve({success:true,continue_url:count === 1 ? '/guide/1' : '/event',draws:guides.map((_,index)=>({id:index+1})),guides});
+    assert.deepEqual(ui.navigation,['reload']);
+    assert.deepEqual(ui.modalCalls,[]);
+  }
+});
+
+test('failed or unconfirmed team creation keeps the event page and never opens setup guides',()=>{
+  for (const rejected of [true, false]) {
+    const ui=dialog('team',false,true);ui.state.type={id:'singles',value:'19',dataset:{code:'singles'}};ui.state.choices.category_choice={value:'201',dataset:{age:'u/13 Boys',pivotId:'201'}};ui.change('category_choice');ui.submit();
+    if (rejected) ui.requests[0].reject({responseJSON:{message:'Try again'}});
+    else ui.requests[0].resolve({success:false,continue_url:'/guide/1'});
+    assert.deepEqual(ui.navigation,[]);
+    assert.deepEqual(ui.modalCalls,[]);
+    assert.equal(ui.submitButton.disabled,false);
+  }
 });
