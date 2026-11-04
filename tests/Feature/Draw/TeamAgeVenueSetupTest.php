@@ -134,4 +134,21 @@ class TeamAgeVenueSetupTest extends TestCase
         $this->assertSame(collect($before['round_venue_setups'])->whereIn('draw_id',$draws->skip(4)->pluck('id'))->values()->all(),collect($after['round_venue_setups'])->whereIn('draw_id',$draws->skip(4)->pluck('id'))->values()->all());
         $this->assertSame($published,DB::table('published_schedule_assignments')->get()->toJson());
     }
+
+    public function test_legacy_unschedule_uses_fixture_and_draw_identity_when_numeric_ids_collide(): void
+    {
+        [$event,$draws,$venue,$other,$data]=$this->scenario();
+        app(TeamAgeVenueSetup::class)->save($event,$data,auth()->id());
+        $selected=$draws[2]->fixtures()->orderByDesc('id')->first();
+        $unrelatedDraw=$draws->firstWhere('id',$selected->id);
+        $this->assertNotNull($unrelatedDraw);
+        $this->assertNotSame($draws[2]->id,$unrelatedDraw->id);
+        $unrelated=$unrelatedDraw->fixtures()->first();
+        $selected->update(['scheduled_at'=>'2026-11-06 10:00','venue_id'=>$venue->id,'court_label'=>'1','duration_min'=>30]);
+        $unrelated->update(['scheduled_at'=>'2026-11-06 10:00','venue_id'=>$other->id,'court_label'=>'1','duration_min'=>30]);
+        $before=$unrelated->fresh()->getAttributes();
+        app(TeamScheduleService::class)->save($draws[2],['fixture_id'=>$selected->id,'scheduled_at'=>null]);
+        $this->assertNull($selected->fresh()->scheduled_at);
+        $this->assertSame($before,$unrelated->fresh()->getAttributes());
+    }
 }

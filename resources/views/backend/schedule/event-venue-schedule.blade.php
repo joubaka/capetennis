@@ -3295,9 +3295,10 @@
     }
   };
   document.getElementById('toggle-day-box-planner')?.addEventListener('click', () => setDayBoxPlanner(!programmeDayBoxMode));
+  @php($ageSetupVenueOptions = $venues->map(fn($venue) => ['id'=>$venue['id'], 'name'=>$venue['name'], 'labels'=>array_column($venue['court_list'], 'label')])->values())
   const ageSetupController = window.TeamAgeVenueSetup.mount({document,
     states:@json($teamAgeVenueStates ?? []),
-    venues:@json($venues->map(fn($venue) => ['id'=>$venue['id'],'name'=>$venue['name'],'labels'=>array_column($venue['court_list'], 'label')])->values()),
+    venues:@json($ageSetupVenueOptions),
     post:body => post(assignmentUrl, body),
     onDirty:dirty => {
       programmePayload=null; ++programmeRefreshVersion;

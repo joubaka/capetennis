@@ -24,6 +24,7 @@ final class TeamAgeVenueSetup
             'courts' => DB::table('event_venue_courts')->where('event_id', $event->id)->orderBy('id')->get()->all(),
             'draw_venues' => DB::table('draw_venues')->whereIn('draw_id', $ids)->orderBy('draw_id')->orderBy('venue_id')->get()->all(),
             'overrides' => collect($stored['round_venue_setups'] ?? [])->whereIn('draw_id', $ids)->values()->all(),
+            'day_allocations' => collect($stored['day_batch_allocations'] ?? [])->filter(fn ($row, $key) => str_starts_with((string) $key, 'team:') && in_array((int) ($row['draw_id'] ?? 0), $ids, true))->all(),
             'setup' => $stored['team_age_venue_setups'][(string) $age] ?? null,
         ];
         $effective = collect($graph['overrides'])->map(fn ($row) => ['court_allocations' => $row['court_allocations'],
@@ -55,6 +56,7 @@ final class TeamAgeVenueSetup
             $saved = collect($rounds)->first(fn ($row) => in_array($row['draw_id'], $state['draw_ids'], true));
             $stored['team_age_venue_setups'][(string) $data['age']] = ['court_allocations' => $saved['court_allocations'],
                 'rank_venue_preferences' => array_map(fn ($rule) => array_diff_key($rule, ['draw_ids' => true]), $saved['rank_venue_preferences'])];
+            $stored['day_batch_allocations'] = collect($stored['day_batch_allocations'] ?? [])->reject(fn ($row, $key) => str_starts_with((string) $key, 'team:') && in_array((int) ($row['draw_id'] ?? 0), $state['draw_ids'], true))->all();
             DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->update(['options' => json_encode($stored, JSON_THROW_ON_ERROR), 'updated_by' => $actor, 'updated_at' => now()]);
             foreach ($state['draw_ids'] as $id) DrawAuditLog::record($id, 'team_age_venue_setup_saved', null, ['age' => (int) $data['age'], 'actor_id' => $actor, 'round_count' => count($state['rounds'][$id])]);
             return ['message' => 'Age-group setup saved across all rounds and disciplines. Saved match times and publication are unchanged.',

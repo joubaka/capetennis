@@ -16,10 +16,20 @@ final class TeamScheduleService
 {
     public function save(Draw $draw, array $data): void
     {
+        DB::transaction(function () use ($draw, $data) {
+            DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
+            DB::table('events')->where('id', $draw->event_id)->lockForUpdate()->get();
+            $current = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            $this->saveLocked($current, $data);
+        });
+    }
+
+    private function saveLocked(Draw $draw, array $data): void
+    {
         if (isset($draw->team_draw_selection['competition']) || $this->hasRoundSetup($draw)) {
             $existing = TeamFixture::where('draw_id', $draw->id)->whereKey($data['fixture_id'])->firstOrFail();
             if (array_key_exists('scheduled_at', $data) && ! $data['scheduled_at']) {
-                try { app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->unapply($draw->event, $existing->id); }
+                try { app(\App\Services\Scheduling\UnifiedTeamScheduleService::class)->unapply($draw->event, drawId: $draw->id, fixtureId: $existing->id); }
                 catch (\InvalidArgumentException $exception) { throw ValidationException::withMessages(['scheduled_at' => $exception->getMessage()]); }
                 return;
             }
