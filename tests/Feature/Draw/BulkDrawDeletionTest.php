@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, Team, TeamFixture, User};
+use App\Models\{Draw, Event, Fixture, Team, TeamFixture, TeamTie, User};
 use App\Services\Draw\BulkDrawDeletionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +82,34 @@ class BulkDrawDeletionTest extends TestCase
         $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
         $this->preview($event, [$safe->id])->assertUnprocessable();
         $this->assertDatabaseHas('team_fixture_results', ['team_fixture_id' => $fixture->id]);
+    }
+
+    public function test_lifecycle_feedback_names_each_blocking_draw_and_separates_the_evidence(): void
+    {
+        $event = Event::factory()->create();
+        $this->actingAs($this->manager($event));
+        [$enabled, $started, $scored, $advanced, $safe] = collect(['Singles', 'Doubles', 'Mixed', 'Playoffs', 'Draft'])
+            ->map(fn ($name) => Draw::factory()->create(['event_id' => $event->id, 'drawName' => $name, 'published' => false]))
+            ->all();
+        $ids = [$enabled->id, $started->id, $scored->id, $advanced->id, $safe->id];
+        $revision = $this->preview($event, $ids)->assertOk()->json('revision');
+
+        TeamTie::factory()->published()->create(['draw_id' => $enabled->id]);
+        TeamFixture::create(['draw_id' => $started->id, 'match_nr' => 1, 'match_status' => 2]);
+        $fixture = TeamFixture::create(['draw_id' => $scored->id, 'match_nr' => 1, 'match_status' => 0]);
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+        Fixture::factory()->create(['draw_id' => $advanced->id, 'match_status' => 3]);
+
+        $expected = [
+            "Singles (#{$enabled->id}): Scoring enabled for team ties.",
+            "Doubles (#{$started->id}): Play started.",
+            "Mixed (#{$scored->id}): Scores recorded.",
+            "Playoffs (#{$advanced->id}): Match status or outcome recorded.",
+        ];
+        $this->assertSame($expected, $this->preview($event, $ids)->assertUnprocessable()->json('errors.draw_ids'));
+        $this->assertSame($expected, $this->applySelection($event, $ids, $revision)->assertUnprocessable()->json('errors.draw_ids'));
+        $this->assertDatabaseCount('draws', 5);
+        $this->assertDatabaseCount('draw_audit_logs', 0);
     }
 
     public function test_changed_selection_setup_fixtures_or_actor_invalidate_confirmation_without_partial_deletion(): void

@@ -213,7 +213,7 @@
             <span class="small text-muted" data-draw-delete-count role="status" aria-live="polite">0 draws selected</span>
           </div>
           <p class="small text-muted mt-2 mb-0">Select draws to publish or delete. Match times are published separately. Deletion requires a review of the selected draw names; teams, registrations and payments are retained.</p>
-          <p class="small mt-2 mb-0" data-draw-delete-feedback role="status" aria-live="polite" hidden></p>
+          <p class="small mt-2 mb-0" style="white-space: pre-line" data-draw-delete-feedback role="status" aria-live="polite" hidden></p>
         </div>
         @endcan
 

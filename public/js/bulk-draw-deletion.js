@@ -26,7 +26,7 @@
       headers: {'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content},
       body: JSON.stringify(payload)});
     const result = await response.json();
-    if (!response.ok || result.success !== true) throw new Error(Object.values(result.errors || {}).flat().join(' ') || result.message || 'The request could not be confirmed.');
+    if (!response.ok || result.success !== true) throw new Error(Object.values(result.errors || {}).flat().join('\n') || result.message || 'The request could not be confirmed.');
     return result;
   }
   submit.addEventListener('click', async () => {

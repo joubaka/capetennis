@@ -16,7 +16,7 @@ function ui({confirmed = true, reviews, failures = {}} = {}) {
       const body = JSON.parse(options.body); requests.push({url, method: options.method, body});
       const result = reviews || {success: true, event_id: 7, revision: 'a'.repeat(64), draws: body.draw_ids.map(id => ({id, name: 'Draw ' + id})), individual_fixtures: 0, team_fixtures: 12, deleted: options.method === 'DELETE'};
       const failure = failures[options.method];
-      return {ok: !failure, async json() { return failure ? {message: failure} : result; }};
+      return {ok: !failure, async json() { return typeof failure === 'string' ? {message: failure} : (failure || result); }};
     }};
   const document = {querySelector(selector) { return selector.startsWith('meta') ? {content: 'csrf'} : toolbar; }, querySelectorAll() { return inputs; }};
   vm.runInNewContext(fs.readFileSync('public/js/bulk-draw-deletion.js', 'utf8'), {window, document});
@@ -64,6 +64,17 @@ test('a failed preview or mismatched event/selection cannot reach deletion', asy
     assert.equal(view.reloads.length, 0);
     assert.equal(view.controls.submit.disabled, false);
   }
+});
+
+test('a blocked preview shows each draw reason on its own line', async () => {
+  const reasons = ['Singles (#11): Scoring enabled for team ties.', 'Doubles (#22): Play started; Scores recorded.'];
+  const view = ui({failures: {POST: {errors: {draw_ids: reasons}}}});
+  view.controls['select-all'].click();
+  await view.controls.submit.click();
+  assert.equal(view.controls.feedback.hidden, false);
+  assert.equal(view.controls.feedback.textContent, reasons.join('\n'));
+  assert.equal(view.requests.length, 1);
+  assert.equal(view.confirmations.length, 0);
 });
 
 test('an uncertain deletion is never repeated automatically or reported as completed', async () => {

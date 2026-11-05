@@ -330,6 +330,8 @@ The bulk endpoint authorizes every selected draw, binds the confirmation revisio
 
 Saved schedule preferences are pruned by draw identity and kind-qualified fixture keys. A team fixture and an individual fixture with the same numeric ID are distinct; retain unrelated keys and list-shaped round preferences. An uncertain browser response must not trigger an automatic deletion retry. The older single-draw deletion endpoint has its existing lifecycle policy; sharing cleanup does not make it equivalent to the guarded bulk endpoint.
 
+When the tie or fixture lifecycle check blocks deletion, the preview identifies each affected draw and separates internal scoring publication, started play, and saved score rows. A draw can be hidden publicly while its team ties are enabled for scoring. Protected statuses and recorded outcomes without score rows are reported separately so automatic advancements are not described as played matches.
+
 **Sources:** `app/Services/Draw/BulkDrawDeletionService.php`, `app/Http/Controllers/Backend/BulkDrawDeletionController.php`, `public/js/bulk-draw-deletion.js`, and the head-office team-event view.
 
 **Regression:** `tests/Feature/Draw/BulkDrawDeletionTest.php` and `DrawLifecycleHardeningTest.php` passed locally on 4 November 2026: 15 tests, 123 assertions on each of isolated SQLite and MySQL. The six `tests/Frontend/bulk-draw-deletion.test.cjs` cases passed, including exact selection, cancellation, malformed responses, duplicate requests and no automatic mutation retry. These results do not establish deployment of later changes.

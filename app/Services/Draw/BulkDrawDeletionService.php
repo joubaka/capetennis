@@ -2,7 +2,9 @@
 
 namespace App\Services\Draw;
 
-use App\Models\{Draw, DrawAuditLog, Event, Fixture, TeamFixture, User, Venue};
+use App\Domain\Draws\Enums\FixtureState;
+use App\Models\{Draw, DrawAuditLog, Event, Fixture, TeamFixture, TeamTie, User, Venue};
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\{DB, Gate, Schema};
 use Illuminate\Validation\ValidationException;
 
@@ -30,11 +32,7 @@ final class BulkDrawDeletionService
                 && !DB::table('published_schedule_assignments')->where(fn ($query) => $query->whereIn('draw_id', $ids)
                     ->orWhere(fn ($rows) => $rows->where('fixture_kind', 'team')->whereIn('fixture_id', $team->modelKeys()))
                     ->orWhere(fn ($rows) => $rows->where('fixture_kind', 'individual')->whereIn('fixture_id', $individual->modelKeys())))->exists(), 'Hide published match times before deleting draws.');
-            $this->ensure(!$individual->contains(fn ($fixture) => (int) $fixture->match_status !== 0 || (int) $fixture->winner_registration > 0)
-                && !$team->contains(fn ($fixture) => (int) $fixture->match_status !== 0)
-                && !DB::table('fixture_results')->whereIn('fixture_id', $individual->modelKeys())->exists()
-                && !DB::table('team_fixture_results')->whereIn('team_fixture_id', $team->modelKeys())->exists()
-                && !$ties->contains(fn ($tie) => in_array($tie->status, ['published', 'in_progress', 'completed'], true) || $tie->published_at || $tie->winner_team_id), 'Published, started or scored ties cannot be deleted.');
+            $this->ensureUnplayed($draws, $individual, $team, $ties);
             foreach ($draws as $candidate) {
                 $competition = $candidate->team_draw_selection['competition'] ?? [];
                 $this->ensure(!$competition, 'A selected draw belongs to a linked placement programme.');
@@ -80,6 +78,49 @@ final class BulkDrawDeletionService
                 'draws' => $draws->map(fn ($draw) => ['id' => (int) $draw->id, 'name' => $draw->drawName])->all(),
                 'individual_fixtures' => $individual->count(), 'team_fixtures' => $team->count(), 'deleted' => $revision !== null];
         });
+    }
+
+    private function ensureUnplayed(Collection $draws, Collection $individual, Collection $team, Collection $ties): void
+    {
+        $individualScores = DB::table('fixture_results')->whereIn('fixture_id', $individual->modelKeys())
+            ->distinct()->pluck('fixture_id')->flip();
+        $teamScores = DB::table('team_fixture_results')->whereIn('team_fixture_id', $team->modelKeys())
+            ->distinct()->pluck('team_fixture_id')->flip();
+        $reasons = [];
+
+        foreach ($ties as $tie) {
+            if ($tie->status === TeamTie::STATUS_PUBLISHED || $tie->published_at) {
+                $reasons[$tie->draw_id]['Scoring enabled for team ties'] = true;
+            }
+            if ($tie->status === 'in_progress') {
+                $reasons[$tie->draw_id]['Play started'] = true;
+            }
+            if ($tie->status === TeamTie::STATUS_COMPLETED || $tie->winner_team_id) {
+                $reasons[$tie->draw_id]['Team tie outcome recorded'] = true;
+            }
+        }
+
+        foreach ($individual->concat($team) as $fixture) {
+            $status = (int) $fixture->match_status;
+            $isIndividual = $fixture instanceof Fixture;
+            $hasScore = ($isIndividual ? $individualScores : $teamScores)->has($fixture->id);
+            if ($hasScore) {
+                $reasons[$fixture->draw_id]['Scores recorded'] = true;
+            }
+            if ($status === FixtureState::STATUS_PARTIAL) {
+                $reasons[$fixture->draw_id]['Play started'] = true;
+            }
+            if (!$hasScore && ($status !== FixtureState::STATUS_PENDING && $status !== FixtureState::STATUS_PARTIAL
+                || ($isIndividual && (int) $fixture->winner_registration > 0))) {
+                $reasons[$fixture->draw_id]['Match status or outcome recorded'] = true;
+            }
+        }
+
+        if ($reasons !== []) {
+            $messages = $draws->filter(fn ($draw) => isset($reasons[$draw->id]))
+                ->map(fn ($draw) => "{$draw->drawName} (#{$draw->id}): ".implode('; ', array_keys($reasons[$draw->id])).'.');
+            throw ValidationException::withMessages(['draw_ids' => $messages->values()->all()]);
+        }
     }
 
     /** Shared graph cleanup; callers own authorization, lifecycle checks and the transaction. */
