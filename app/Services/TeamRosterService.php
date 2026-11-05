@@ -327,9 +327,6 @@ class TeamRosterService
             if ($outgoingPlayerId && TeamSelectionInvitation::where('event_id', $event->id)->where('player_id', $outgoingPlayerId)->exists()) {
                 $this->fail('The player being replaced has selection history. Use the selection workflow.');
             }
-            if ($outgoingPlayerId && TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$outgoingPlayerId])->lockForUpdate()->exists()) {
-                $this->fail('The player being replaced has checkout history. Resolve it through the payment workflow before moving the reserve.');
-            }
         }
         if ($sourceTeam->category?->locked_at) $this->fail('The reserve’s current category is locked.');
         $this->assertReservePromotionAllowed($event, $sourceTeam, $source, $actor);

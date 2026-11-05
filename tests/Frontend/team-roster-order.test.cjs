@@ -62,11 +62,11 @@ function submissionHarness({failure = false, modal = false} = {}) {
   let modalOpen = modal;
   const modalEvents = {};
   const actionsModal = modal ? {id: 'actions-841-10', dataset: {}, classList: {contains: () => modalOpen},
-    querySelectorAll: () => [button], addEventListener: (name, callback) => { modalEvents[name] = callback; }} : null;
+    querySelector: () => null, querySelectorAll: () => [button], addEventListener: (name, callback) => { modalEvents[name] = callback; }} : null;
   const form = {dataset: {}, elements: {direction: {value: 'down'}, expected_rank: {value: '1'}},
     closest: selector => selector === '[data-roster-actions-modal]' ? actionsModal : selector === '[data-roster-panel]' && !modal ? panel : null,
     querySelectorAll: () => [button], getAttribute: () => '/backend/team/orderPlayerList', contains: () => true,
-    parentElement: {querySelector: () => feedback}, after: node => { feedback = node; }};
+    get nextElementSibling() { return feedback; }, after: node => { feedback = node; }};
   let reconciled = 0;
   if (modal) delete form.elements.direction;
   const window = {toastr: {success: message => successes.push(message)},
@@ -78,7 +78,7 @@ function submissionHarness({failure = false, modal = false} = {}) {
     applyTeamRosterOrder(target, data) { target.elements.expected_rank.value = String(data.rank); return true; }};
   const document = {addEventListener: (name, handler) => { listeners[name] = handler; },
     querySelector: () => ({closest: () => panel}),
-    createElement: () => ({dataset: {}, setAttribute() {}, querySelector: () => ({}), remove() { feedback = null; }})};
+    createElement: () => ({dataset: {}, setAttribute() {}, matches: () => true, querySelector: () => ({}), remove() { feedback = null; }})};
   const source = fs.readFileSync('resources/views/backend/adminPage/admin_show/_roster-script.blade.php', 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
   vm.runInNewContext(source, {window, document, FormData: class {constructor(target) { this.rank = target.elements.expected_rank.value; }},
     fetch: async (url, options) => {
@@ -116,6 +116,18 @@ test('a dialog action resolves its original region and remains visible until AJA
   assert.equal(h.requests.length, 1);
   assert.equal(h.reconciled(), 1);
   assert.equal(h.successes.length, 1);
+});
+
+test('a rejected remove reports beside its own form instead of overwriting replacement feedback', async () => {
+  const h = submissionHarness({failure: true, modal: true});
+  const replacementFeedback = {textContent: 'Previous replacement error'};
+  h.form.parentElement = {querySelector: () => replacementFeedback};
+  h.form.elements.remove = {value: '1'};
+  h.form.querySelector = () => ({hidden: false});
+  await h.submit();
+  assert.equal(replacementFeedback.textContent, 'Previous replacement error');
+  assert.equal(h.feedback().textContent, 'This player changed.');
+  assert.equal(h.button.disabled, false);
 });
 
 test('the standard modal moves to body when opening and restores its original roster location when closed', () => {

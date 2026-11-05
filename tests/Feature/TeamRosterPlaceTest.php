@@ -201,6 +201,52 @@ class TeamRosterPlaceTest extends TestCase
         $this->assertDatabaseCount('team_payment_orders', 0);
     }
 
+    public function test_cross_team_reserve_replacement_closes_only_resettable_outgoing_checkouts(): void
+    {
+        $this->team->category->category->update(['name' => 'u/10 Boys']);
+        $sourceTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id, 'noProfile' => true, 'num_team_members' => 3]);
+        $outgoingPlayer = Player::factory()->male()->create();
+        $outgoing = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => $outgoingPlayer->name, 'surname' => $outgoingPlayer->surname, 'player_profile' => $outgoingPlayer->id, 'pay_status' => 0]);
+        $outgoingMirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $outgoingPlayer->id, 'pay_status' => 0]);
+        $player = Player::factory()->male()->create(['dateOfBirth' => $this->event->start_date->copy()->subYears(9)->toDateString()]);
+        $source = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $sourceMirror = TeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => $player->id, 'pay_status' => 0]);
+        $payer = User::factory()->create();
+        $checkout = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'player_id' => $outgoingPlayer->id,
+            'user_id' => $payer->id, 'total_amount' => 100, 'wallet_reserved' => 25, 'payfast_amount_due' => 75, 'pay_status' => false];
+        $payload = ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'slot_id' => $outgoing->id,
+            'expected_rank' => 2, 'expected_player_id' => $outgoingPlayer->id, 'player_id' => $player->id];
+        $route = route('backend.team.changePlayer');
+        foreach ([['payfast_handed_off_at' => now()], ['payfast_pf_payment_id' => 'test-provider-receipt']] as $evidence) {
+            $order = \App\Models\TeamPaymentOrder::create($checkout + $evidence);
+            $before = $order->fresh()->getAttributes();
+            $this->postJson($route, $payload)->assertUnprocessable()
+                ->assertJsonPath('errors.player_id.0', 'This checkout has payment or settlement evidence and cannot be reset.');
+            $this->assertSame($before, $order->fresh()->getAttributes());
+            $this->assertModelExists($source);
+            $this->assertModelExists($outgoing);
+            $this->assertDatabaseHas('team_players', ['id' => $sourceMirror->id, 'player_id' => $player->id, 'rank' => 4]);
+            $this->assertDatabaseHas('team_players', ['id' => $outgoingMirror->id, 'player_id' => $outgoingPlayer->id, 'rank' => 2]);
+            DB::table('team_payment_orders')->where('id', $order->id)->delete();
+        }
+
+        $order = \App\Models\TeamPaymentOrder::create($checkout);
+        $this->postJson($route, $payload)->assertOk();
+        $closed = $order->fresh();
+        $this->assertNotNull($closed->withdrawn_at);
+        $this->assertEquals($this->actor->id, $closed->withdrawn_by);
+        $this->assertEquals($payer->id, $closed->user_id);
+        $this->assertEquals($outgoingPlayer->id, $closed->player_id);
+        $this->assertEquals(0, (float) $closed->wallet_reserved);
+        $this->assertFalse($closed->pay_status);
+        $this->assertModelMissing($source);
+        $this->assertModelMissing($outgoing);
+        $this->assertDatabaseHas('team_players', ['id' => $sourceMirror->id, 'player_id' => 0, 'rank' => 4]);
+        $this->assertDatabaseHas('team_players', ['id' => $outgoingMirror->id, 'player_id' => $player->id, 'rank' => 2, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_payment_orders', 1);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_profile_team_add_fills_a_numbered_gap_with_a_cross_team_reserve(): void
     {
         $this->team->update(['noProfile' => false]);

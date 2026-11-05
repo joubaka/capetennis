@@ -129,7 +129,7 @@ if (!window.teamRosterControls) {
       ...(panel || form).querySelectorAll('button'), ...(modal || form).querySelectorAll('button')
     ])].filter(button => !button.disabled);
     buttons.forEach(button => button.disabled = true);
-    let feedback = form.parentElement.querySelector('[data-team-roster-feedback]');
+    let feedback = form.nextElementSibling?.matches('[data-team-roster-feedback]') ? form.nextElementSibling : null;
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
     let progressTimer;
     const showProgress = (message, slowMessage) => {
@@ -160,7 +160,7 @@ if (!window.teamRosterControls) {
     let movedInPlace = false;
     try {
       if (!form.dataset.saved && !form.dataset.saveUnconfirmed) {
-        showProgress('Saving player change…', 'Saving is taking longer than usual. Please wait; do not submit again…');
+        showProgress(form.elements.remove ? 'Removing player…' : 'Saving player change…', 'Saving is taking longer than usual. Please wait; do not submit again…');
         // A lost response does not prove that the server rolled the mutation back.
         form.dataset.saveUnconfirmed = '1';
         const data = await waitForRosterSave((async () => {
