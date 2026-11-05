@@ -13,7 +13,9 @@
         <div>
           <div class="small text-muted">Player actions</div>
           <h5 class="modal-title" id="{{ $modalId }}-title">{{ $name }}</h5>
-          <p class="small text-body mb-0 mt-1" id="{{ $modalId }}-description">Choose what you want to do with this roster spot.</p>
+          <p class="small text-body mb-0 mt-1 text-break" id="{{ $modalId }}-description">
+            {{ $team->name }} <span class="text-muted">#{{ $team->id }}</span> · Rank <span data-current-roster-rank>{{ $identity->rank }}</span>
+          </p>
         </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
