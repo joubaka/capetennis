@@ -221,12 +221,12 @@ class SettingsController extends Controller
     }
 
     /**
-     * Save the content of Terms & Conditions or Code of Conduct via AJAX.
+     * Save editable conduct, terms or convenor guidance content via AJAX.
      */
     public function storeContent(Request $request)
     {
         $request->validate([
-            'key'     => 'required|in:code_of_conduct_content,terms_conditions_content',
+            'key'     => 'required|in:code_of_conduct_content,terms_conditions_content,'.SiteSetting::COURT_CONVENOR_GUIDE,
             'content' => 'required|string|max:65535',
         ]);
 

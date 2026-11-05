@@ -8,11 +8,18 @@ function scenario(programme = true) {
   let listener, resolveApply;
   const button = {disabled:false, innerHTML:'Save', addEventListener:(_, callback) => {listener=callback;}};
   const messages=[], requests=[], timers=[], redirects=[], rendered=[];
+  const controls=new Map();
   const context = {
     payload:{draw_ids:[1], ...(programme ? {programme:{days:[{start:'2026-10-09'},{start:'2026-10-10'},{start:'2026-10-11'}],rounds:[{draw_id:1,round:1,day:2,sequence:1}]}} : {})},
     revision:'original-revision', dayBatchPayload:null, programmePayload:null, selectedProgrammeAge:'13', programmeEditVersions:new Map([['13',1]]),
     programmeDirtyAges:new Set(programme ? ['13'] : []), programmeSavedAges:new Set(), programmeSettings:new Map(), programmeDisciplineOrders:{}, programmeScopedDays:{}, programmeStatus:message => messages.push(message),
-    document:{getElementById:id => id==='apply-preview' ? button : {id}},
+    document:{getElementById:id => {
+      if (id==='apply-preview') return button;
+      if (!controls.has(id)) controls.set(id,{id,hidden:true});
+      return controls.get(id);
+    },querySelector:() => ({href:'/calendar?date=2026-10-09'})},
+    programmeDates:['2026-10-09','2026-10-10','2026-10-11'], programmeTimingKeys:['duration'],
+    programmeTimingDate:() => context.payload.programme_save_date,
     readProgrammeOptions:() => ({duration:30}), updateProgrammeSaveState:() => {},
     applyUrl:'/apply', previewUrl:'/preview', drawsUrl:'/saved', replanVenueIds:[],
     post:(url,body) => {requests.push({url,body}); return url==='/apply' ? new Promise(resolve => {resolveApply=resolve;}) : Promise.resolve({matches:[]});},
@@ -32,6 +39,7 @@ function scenario(programme = true) {
 test('day-scoped save preserves the unsaved programme and does not redirect', async () => {
   const app = scenario();
   app.context.payload.programme_save_date = '2026-10-09';
+  app.context.payload.duration = 45;
   app.context.payload.programme.discipline_order = 'by_day';
   const pending = app.start();
   app.complete();
@@ -42,6 +50,10 @@ test('day-scoped save preserves the unsaved programme and does not redirect', as
   assert.equal(app.context.programmeDirtyAges.has('13'), true);
   assert.equal(app.context.programmeSavedAges.has('13'), false);
   assert.match(app.messages.at(-1), /Saved 3 matches privately for 2026-10-09/);
+  assert.equal(app.context.programmeScopedDays['13']['2026-10-09'].timing.duration, 45);
+  assert.equal(app.context.document.getElementById('programme-view-saved-day').href, '/calendar?date=2026-10-09');
+  assert.equal(app.context.document.getElementById('programme-next-day').value, '2026-10-10');
+  assert.equal(app.context.document.getElementById('programme-after-day-save').hidden, false);
   assert.deepEqual(app.redirects, []);
 });
 

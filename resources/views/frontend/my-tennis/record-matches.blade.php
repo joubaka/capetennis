@@ -6,7 +6,7 @@
     <p>{{ $match['event'] }}</p>
     @if($match['date_basis'] === 'event start proxy')<small class="record-note">Estimated date</small>@endif
   </div>
-  <div class="record-score">{{ $match['won'] ? 'Win' : 'Loss' }}<br>{{ $match['score'] }}</div>
+  <div class="record-score"><span>{{ $match['won'] ? 'Win' : 'Loss' }}</span><br><span>{{ $match['score'] }}</span></div>
 </article>
 @endforeach
 @include('frontend.my-tennis.record-pagination')

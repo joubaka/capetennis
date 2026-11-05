@@ -28,6 +28,10 @@
   $pendingPlayoffs = $pendingPlayoffs ?? collect();
   $planningDraws = !empty($scope['draw_id']) ? $draws->where('id', (int) $scope['draw_id']) : $draws;
   $teamPlanning = $planningDraws->contains(fn ($draw) => $draw->isTeamDraw()) || ($planningDraws->isEmpty() && $event->isTeam());
+  $openTeamProgramme = $date !== 'all' && $planningDraws->isNotEmpty()
+    && $planningDraws->every(fn ($draw) => $draw->isTeamDraw() && app(\App\Services\Scheduling\ScheduleProgramme::class)->key($draw) !== null)
+    && empty($scope['venue_id']) && empty($scope['draw_id']) && empty($scope['origin_draw_id'])
+    && in_array($date, app(\App\Services\Scheduling\ScheduleProgramme::class)->eventDates($event), true);
 @endphp
 @include('backend.draw.partials.guide-modal')
 <div class="container-xxl py-3" data-saved-calendar>
@@ -43,11 +47,11 @@
     @if($date !== 'all' && $savedCount > 0)
       <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id]+$scope+['replan_saved'=>1]) }}">Replan this day’s saved matches</a>
     @endif
-    <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id] + ($date !== 'all' ? ['date'=>$date] : []) + (!empty($scope['venue_id']) ? ['venue_id'=>$scope['venue_id']] : []) + (!empty($scope['draw_id']) ? ['draw_ids'=>[$scope['draw_id']]] : []) + (!empty($scope['origin_draw_id']) ? ['origin_draw_id'=>$scope['origin_draw_id']] : [])) }}">{{ $date === 'all' ? 'Schedule more matches' : 'Add matches to this day' }}</a>
+    <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id] + ($date !== 'all' ? [($openTeamProgramme ? 'programme_date' : 'date')=>$date] : []) + (!empty($scope['venue_id']) ? ['venue_id'=>$scope['venue_id']] : []) + (!empty($scope['draw_id']) ? ['draw_ids'=>[$scope['draw_id']]] : []) + (!empty($scope['origin_draw_id']) ? ['origin_draw_id'=>$scope['origin_draw_id']] : [])) }}">{{ $date === 'all' ? 'Schedule more matches' : 'Add matches to this day' }}</a>
     <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$date !== 'all' ? $date : ($event->start_date ? \Carbon\Carbon::parse($event->start_date)->toDateString() : now()->toDateString())] + (!empty($scope['draw_id']) ? ['draw_id'=>$scope['draw_id']] : []) + (!empty($scope['origin_draw_id']) ? ['origin_draw_id'=>$scope['origin_draw_id']] : [])) }}">{{ $teamPlanning ? 'Replan selected rounds - whole ties' : 'Replan selected rounds - full day' }}</a>
     @if($date !== 'all' && !empty($scope['draw_id']))<a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.edit-day', ['event'=>$event->id, 'date'=>$date, 'draw_id'=>$scope['draw_id']] + (!empty($scope['origin_draw_id']) ? ['origin_draw_id'=>$scope['origin_draw_id']] : [])) }}">Edit saved times - this draw and day</a>@endif
   </div>
-  <p class="small text-muted">{{ $teamPlanning ? 'Add matches opens position-band planning.' : 'Add matches opens match and round planning.' }} Edit saved times includes only this draw's saved matches on the selected day. {{ $teamPlanning ? 'Whole-tie' : 'Full-day' }} replanning can include unscheduled matches and draws across all venues; calendar filters do not restrict it.</p>
+  <p class="small text-muted">{{ $openTeamProgramme ? 'Add matches opens the team planner with this day selected.' : ($teamPlanning ? 'Add matches opens position-band planning.' : 'Add matches opens match and round planning.') }} Edit saved times includes only this draw's saved matches on the selected day. {{ $teamPlanning ? 'Whole-tie' : 'Full-day' }} replanning can include unscheduled matches and draws across all venues; calendar filters do not restrict it.</p>
   @if(!empty($scope['origin_draw_id']) || !empty($scope['draw_id']))<a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$event, $draws->firstWhere('id', (int) ($scope['origin_draw_id'] ?? $scope['draw_id']))] + ($date !== 'all' ? ['schedule_date'=>$date] : [])) }}">{{ !empty($scope['origin_draw_id']) && ($scope['origin_draw_id'] != ($scope['draw_id'] ?? null)) ? 'Back to original draw' : 'Back to this draw' }} - {{ $draws->firstWhere('id', (int) ($scope['origin_draw_id'] ?? $scope['draw_id']))?->drawName }} - setup &amp; publication</a>@endif
   @php
     $publishedCount = (int) ($publicationCounts['Published'] ?? 0);

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\SiteSetting;
 use App\Models\User;
 use App\Models\Venue;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -113,6 +114,18 @@ class EventScoringAccountSettingsTest extends TestCase
         $this->assertTrue((bool) $event->published);
         $this->assertFalse((bool) $event->signUp);
         $this->assertSame('active', $event->status);
+    }
+
+    public function test_event_directors_can_copy_the_saved_court_convenor_guide_as_plain_text(): void
+    {
+        $viewer = User::factory()->create()->assignRole('super-user');
+        $event = Event::factory()->create();
+        $guide = 'Contact the organiser. </textarea><script>alert(1)</script>';
+        SiteSetting::set(SiteSetting::COURT_CONVENOR_GUIDE, $guide, SiteSetting::GROUP_GENERAL);
+
+        $this->actingAs($viewer)->get(route('admin.events.settings', $event))
+            ->assertOk()->assertSee('Copy guide')->assertSee($guide)
+            ->assertDontSee($guide, false);
     }
 
     public function test_unrelated_autosaves_do_not_submit_the_registration_control_until_it_changes(): void

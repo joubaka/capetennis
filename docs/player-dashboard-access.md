@@ -113,6 +113,10 @@ limit is not a global query or event-size guarantee.
 
 ## Loading presentation
 
+My Tennis shows the requested view first, then starts up to five authorized
+tab requests in parallel. A tab click joins an in-flight request or uses its
+short-lived page copy. One slow tab should not delay the start of another.
+
 Use the shared CapeLoading indicator factory and layout loading styles for new
 loading states. Native, Bootstrap and SweetAlert indicators share ring styling;
 filled action buttons retain contrasting white indicators. Programmatic heading

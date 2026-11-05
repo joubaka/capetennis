@@ -47,7 +47,8 @@ class EventFinanceReportTest extends TestCase
         $this->assertEquals(-123.50, $pdfData['netProfit']);
         $this->assertCount(1, $pdfData['expenses']);
         $html = $this->get(route('admin.events.finances', $this->event));
-        $html->assertOk()->assertSee('Download PDF')->assertSee('Email report');
+        $html->assertOk()->assertSee('Download PDF')->assertSee('Email report')
+            ->assertSee('Court Convenor Guide')->assertSee('Copy guide');
         $this->assertEquals(123.50, $html->viewData('totalExpenses'));
         $this->assertEquals(-123.50, $html->viewData('netProfit'));
         if (getenv('CT_FINANCE_REPORT_QA') === '1') {

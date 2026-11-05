@@ -54,9 +54,6 @@ class MyTennisController extends Controller
         $data['canPreviewNonPlus'] = $request->user()->hasRole('super-user');
         $data['previewNonPlus'] = $data['canPreviewNonPlus'] && $request->boolean('preview_non_plus');
         $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
-        if ($request->query() === [] && $data['canViewRating'] && !$request->session()->has('errors')) {
-            return redirect()->route('my.tennis.pathway', $ratingPlayer)->header('Cache-Control', 'private, no-store');
-        }
         $data['overviewPathway'] = null;
         $data['ratingSnapshot'] = null;
         if ($ratingPlayer && $data['canViewRating']) {

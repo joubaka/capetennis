@@ -99,6 +99,24 @@ class SettingsMutationAuditTest extends TestCase
         $this->assertSame(2, AuditEvent::where('action', 'settings.updated')->count());
     }
 
+    public function test_court_convenor_guide_uses_the_audited_super_user_content_editor(): void
+    {
+        $this->assertStringContainsString('Alderd know via WhatsApp', SiteSetting::courtConvenorGuide());
+        $guide = "First warning\nContact the organiser.";
+        $payload = ['key' => SiteSetting::COURT_CONVENOR_GUIDE, 'content' => $guide];
+
+        $this->actingAs(User::factory()->create())
+            ->postJson(route('settings.store.content'), $payload)->assertForbidden();
+        $this->actingAs($this->admin)
+            ->postJson(route('settings.store.content'), $payload)->assertOk();
+
+        $this->assertSame($guide, SiteSetting::courtConvenorGuide());
+        $record = AuditEvent::where('action', 'settings.updated')->sole();
+        $this->assertSame(hash('sha256', $guide), $record->after[SiteSetting::COURT_CONVENOR_GUIDE]['value']['sha256']);
+        $this->actingAs($this->admin)->get(route('settings.index'))
+            ->assertOk()->assertSee('Court Convenor Guide')->assertSee($guide);
+    }
+
     public function test_denied_and_invalid_settings_requests_do_not_log_raw_submitted_content(): void
     {
         $raw = 'Synthetic content must never enter request audit 5532';

@@ -117,6 +117,12 @@ class ScheduleProgrammeTest extends TestCase
         $draft = json_decode(DB::table('event_venue_schedule_drafts')
             ->where('event_id', $event->id)->value('options'), true, flags: JSON_THROW_ON_ERROR);
         $this->assertSame(['2026-10-09'], array_keys($draft['team_programme_days'][10]));
+        $this->assertSame([
+            'duration' => 45,
+            'player_rest' => 15,
+            'court_gap' => $options['court_gap'],
+            'gender_wave_release' => 'whole_wave',
+        ], $draft['team_programme_days'][10]['2026-10-09']['timing']);
         $this->assertSame([1, 2], collect($draft['team_programme_days'][10]['2026-10-09']['rounds'])
             ->where('drawId', $doublesDrawId)->pluck('round')->all());
         $fridayReverse = TeamFixture::findOrFail($friday->where('draw_id', $reverseDrawId)->sole()['fixture_id']);
@@ -142,6 +148,35 @@ class ScheduleProgrammeTest extends TestCase
             $this->assertStringContainsString('unscheduled', $exception->getMessage());
         }
         $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_successive_day_saves_keep_prior_bookings_and_each_days_timing(): void
+    {
+        [$event, $options] = $this->scenario();
+        $service = app(EventVenueScheduleService::class);
+        $bookings = fn () => DB::table('team_fixtures')->whereNotNull('scheduled_at')->orderBy('id')
+            ->get(['id', 'scheduled_at', 'venue_id', 'court_label', 'duration_min'])->keyBy('id');
+
+        foreach (['2026-10-09' => [4, 45], '2026-10-10' => [5, 30], '2026-10-11' => [3, 40]] as $date => [$count, $duration]) {
+            $before = $bookings();
+            $day = array_replace($options, ['programme_save_date' => $date, 'duration' => $duration]);
+            $preview = $service->preview($event->fresh(), $day);
+            $this->assertSame([], $preview['unscheduled']);
+            $this->assertCount($count, $preview['matches']);
+            $this->assertTrue(collect($preview['matches'])->every(fn ($row) => str_starts_with($row['scheduled_at'], $date)));
+            $this->assertEquals($before, $bookings());
+
+            $this->assertSame($count, $service->apply($event->fresh(), $day, $preview['revision'])['count']);
+            $after = $bookings();
+            $this->assertEquals($before, $after->only($before->keys()));
+            $this->assertCount($before->count() + $count, $after);
+            $this->assertTrue($after->diffKeys($before)->every(fn ($row) => (int) $row->duration_min === $duration));
+        }
+
+        $draft = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['2026-10-09' => 45, '2026-10-10' => 30, '2026-10-11' => 40],
+            collect($draft['team_programme_days'][10])->map(fn ($placement) => $placement['timing']['duration'])->all());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
     }
 
     public function test_two_day_event_uses_daily_windows_and_preserves_saved_programme(): void

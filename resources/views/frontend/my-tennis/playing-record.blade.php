@@ -29,6 +29,22 @@
     .ct-record .record-month-column span { display:block; }
     .ct-record .record-month-chart small { font-size:.65rem; }
     .ct-record .record-key { display:inline-block; width:.7rem; height:.7rem; border-radius:2px; }
+    .ct-record .results-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.6rem 1rem; margin-bottom:.75rem; }
+    .ct-record .results-toolbar .record-filter { align-items:center; gap:.5rem; }
+    .ct-record .results-toolbar .form-select { min-height:44px; min-width:8rem; width:auto; }
+    .ct-record .results-form { display:flex; align-items:center; flex-wrap:wrap; gap:.4rem; margin:.5rem 0; }
+    .ct-record .results-form .badge { min-width:1.65rem; }
+    .ct-record .results-grid .record-sheet { padding:1rem; margin-bottom:.85rem; }
+    @media(min-width:992px) {
+      .ct-record .results-grid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:1rem; align-items:start; }
+      .ct-record #match-results .record-row { grid-template-columns:6rem minmax(0,1fr) auto; gap:.65rem; align-items:baseline; padding:.55rem 0; }
+      .ct-record #match-results .record-row p { display:inline; }
+      .ct-record #match-results .record-row p + .record-note { margin-inline-start:.35rem; }
+      .ct-record #match-results .record-score { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:0 .45rem; }
+      .ct-record #match-results .record-score br { display:none; }
+      .ct-record .results-grid .record-comparison-table { min-width:0; }
+      .ct-record .results-grid .record-comparison-table :is(th,td) { white-space:normal; }
+    }
     @media(max-width:575px) {
       .ct-record .record-month-chart > div:nth-child(even) small { visibility:hidden; }
       .ct-record .record-upcoming-row { grid-template-columns:minmax(0,1fr); gap:.25rem; }
@@ -37,7 +53,7 @@
     }
   </style>
   @include('frontend.my-tennis.profile-header', ['workspaceTab' => $recordSection, 'ratingPlayer' => $recordPlayer])
-  @if($recordSection === 'record')<h2 class="h5">Results</h2>@endif
+  @if($recordSection === 'record' && $record['reason'])<h2 class="h5">Results</h2>@endif
   @if($recordSection === 'opponents' && isset($upcoming))
     @include('frontend.my-tennis.record-upcoming')
   @endif
@@ -50,30 +66,43 @@
   @if($record['reason'])
     <div class="record-sheet" role="status">{{ $record['reason'] }}</div>
   @else
-    <form method="get" class="record-filter mb-3" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => $recordSection]) }}{{ $recordSection === 'opponents' ? '#past-opponents' : '' }}">
+    @if($recordSection === 'record')
+      <div class="results-toolbar">
+        <h2 class="h5 mb-0">Results</h2>
+    @endif
+    <form method="get" class="record-filter {{ $recordSection === 'opponents' ? 'mb-3' : '' }}" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => $recordSection]) }}{{ $recordSection === 'opponents' ? '#past-opponents' : '' }}">
       @if($record['opponent'] || request()->integer('opponent'))<input type="hidden" name="opponent" value="{{ $record['opponent']['id'] ?? request()->integer('opponent') }}">@endif
       @foreach(['first', 'second'] as $comparisonSide)@if($record['comparison'][$comparisonSide.'_year'] !== '')<input type="hidden" name="compare_{{ $comparisonSide }}" value="{{ $record['comparison'][$comparisonSide.'_year'] }}">@endif @endforeach
-      <div><label for="record-year" class="form-label">Season</label><select id="record-year" name="year" class="form-select"><option value="">All seasons</option>@foreach($record['years'] as $year)<option value="{{ $year }}" @selected((string)$year === $record['year'])>{{ $year }}</option>@endforeach</select></div>
+      <div @class(['d-flex align-items-center gap-2' => $recordSection === 'record'])><label for="record-year" @class(['form-label', 'mb-0' => $recordSection === 'record'])>Season</label><select id="record-year" name="year" class="form-select"><option value="">All seasons</option>@foreach($record['years'] as $year)<option value="{{ $year }}" @selected((string)$year === $record['year'])>{{ $year }}</option>@endforeach</select></div>
       <button class="btn btn-outline-primary" type="submit">Apply</button>
     </form>
+    @if($recordSection === 'record')</div>@endif
     @if($record['stale'])<p class="record-note" role="status">An update is pending. These are the last saved results.</p>@endif
     @if(!$record['played'])<div class="record-sheet" role="status">No saved match results for this season.</div>@endif
     @if($recordSection === 'record')
+      <div class="results-grid">
+      <section class="record-sheet" id="match-results">
+        <h2>Match results</h2>
       @if($record['played'])
-        <p class="mb-3"><strong>{{ $record['played'] }} {{ \Illuminate\Support\Str::plural('match', $record['played']) }}</strong>
+        <p class="mb-2"><strong>{{ $record['played'] }} {{ \Illuminate\Support\Str::plural('match', $record['played']) }}</strong>
           · {{ $record['wins'] }} W · {{ $record['played'] - $record['wins'] }} L · {{ round(100 * $record['wins'] / $record['played']) }}% win rate
           <span class="record-note">· {{ $record['events'] }} {{ \Illuminate\Support\Str::plural('event', $record['events']) }} · {{ $record['opponent_count'] }} {{ \Illuminate\Support\Str::plural('opponent', $record['opponent_count']) }}</span>
         </p>
       @endif
-      @if($record['form'])<section class="record-sheet"><h2>Latest five results</h2><div class="d-flex flex-wrap gap-2">@foreach($record['form'] as $formMatch)<span class="badge p-2" style="background:{{ $formMatch['won'] ? '#004177' : '#172e45' }};color:#fff" aria-label="{{ $formMatch['won'] ? 'Win' : 'Loss' }} against {{ $formMatch['opponent'] }} on {{ $formMatch['date'] }}">{{ $formMatch['won'] ? 'W' : 'L' }}</span>@endforeach</div><p class="record-note mt-2 mb-0">Approximate order when dates are estimated or shared.</p></section>@endif
-      <section class="record-sheet" id="match-results">
-        <h2>Match results</h2>
+      @if($record['form'])
+        <div class="results-form">
+          <strong class="record-note">Latest five results</strong>
+          @foreach($record['form'] as $formMatch)<span class="badge" style="background:{{ $formMatch['won'] ? '#004177' : '#172e45' }};color:#fff" aria-label="{{ $formMatch['won'] ? 'Win' : 'Loss' }} against {{ $formMatch['opponent'] }} on {{ $formMatch['date'] }}">{{ $formMatch['won'] ? 'W' : 'L' }}</span>@endforeach
+          <span class="record-note">Order may be approximate.</span>
+        </div>
+      @endif
         @if(!empty($record['record_month']))
           <p class="record-note">{{ \Carbon\CarbonImmutable::createFromFormat('!Y-m', $record['record_month'])->format('F Y') }} · <a href="{{ request()->fullUrlWithQuery(['record_month' => null, 'page' => null]) }}#match-results">Clear month filter</a></p>
           @if(!$record['results']['total'])<p class="record-note" role="status">No saved match results for this month.</p>@endif
         @endif
         @include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page'])
       </section>
+      <aside aria-label="Results trends and milestones">
       @include('frontend.my-tennis.record-monthly')
       @include('frontend.my-tennis.record-comparison')
       @if($record['first'])
@@ -82,6 +111,8 @@
       @if($record['first_win'])<p class="mb-0"><strong>Earliest recorded win:</strong> {{ $record['first_win']['date'] }} · {{ $record['first_win']['opponent'] }} <span class="record-note">({{ $record['first_win']['date_basis'] }})</span></p>@endif</section>
       <section class="record-sheet"><h2>Results by season</h2>@foreach($record['seasons'] as $season)<div class="record-season"><a href="{{ request()->fullUrlWithQuery(['year' => $season['year'], 'record_month' => null, 'page' => null]) }}">{{ $season['year'] }}</a><div style="flex:1;max-width:30rem"><span>{{ $season['played'] }} matches · {{ $season['wins'] }} wins · {{ $season['played'] - $season['wins'] }} losses</span><div aria-hidden="true" style="display:flex;height:8px;border-radius:5px;overflow:hidden;background:#ff9f43;margin-top:.5rem"><span style="background:#004177;width:{{ 100 * $season['wins'] / $season['played'] }}%"></span></div></div></div>@endforeach</section>
       @endif
+      </aside>
+      </div>
     @else
       @if($record['opponent'])
       @php

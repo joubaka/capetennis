@@ -20,16 +20,16 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   let rows = [];
   settings.get('13').programme.discipline_order = 'event';
   const context = {document:{getElementById:get, addEventListener() {}, querySelectorAll:() => []}, programmeSettings:settings, programmeDisciplineOrders:{13:'by_day'}, selectedProgrammeAge:'', programmePayload:null,
-    programmeScopedDays:{13:{'2026-10-11':{day:{start:'2026-10-11 08:30:00', end:'2026-10-11 17:45:00', gender_waves:'girls_then_boys'}, rounds:[{drawId:1, round:1, day:3, sequence:4}]}}},
+    programmeScopedDays:{13:{'2026-10-11':{day:{start:'2026-10-11 08:30:00', end:'2026-10-11 17:45:00', gender_waves:'girls_then_boys'}, rounds:[{drawId:1, round:1, day:3, sequence:4}], timing:{duration:45, player_rest:15}}}},
     programmeDates:['2026-10-09','2026-10-10','2026-10-11'], programmeDayIndexes:[0,1,2], programmeDayNumbers:[1,2,3], programmeDayCount:3,
     programmeMatchOverrides:new Map(), readProgrammeMatchOverrides:() => [],
     programmeGroup:() => get('programme-age').value === '13' ? [{id:1,programme_age:13,name:'Mixed doubles',rounds:[1],venues:[]}] : [{id:2,programme_age:15,name:'Mixed doubles',rounds:[1],venues:[]}],
-    programmeRows:() => rows, invalidatePreview:() => {}, renderProgrammeStages:() => {}, updateProgrammeDayPublicationLinks:() => {}, programmeStatus:() => {}, updateProgrammeSaveState:() => {}, updateProgrammeDayLabels:() => {}, programmeDayLabel:day => `Day ${day}`, escapeHtml:value => value};
+    programmeRows:() => rows, invalidatePreview:() => {}, markProgrammeDirty:() => {}, renderProgrammeStages:() => {}, updateProgrammeDayPublicationLinks:() => {}, programmeStatus:() => {}, updateProgrammeSaveState:() => {}, updateProgrammeDayLabels:() => {}, programmeDayLabel:day => `Day ${day}`, escapeHtml:value => value};
   const setupStart = source.indexOf('  const programmeOptionControls =');
   const setupEnd = source.indexOf('  const programmeSavedAges =', setupStart);
   vm.runInNewContext(source.slice(setupStart, setupEnd), context);
   const start = source.indexOf("  document.getElementById('programme-age').addEventListener('change'");
-  const end = source.indexOf("  document.querySelectorAll('.programme-time')", start);
+  const end = source.indexOf('  const changeProgrammeMatchOverrides', start);
   vm.runInNewContext(source.slice(start, end), context);
   get('programme-age').value = '13'; get('programme-age').listener();
   assert.equal(get('programme-start-0').value, '2026-10-09T09:30');
@@ -49,6 +49,29 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   assert.equal(get('reschedule-existing').checked, true);
   assert.equal(get('programme-discipline-setting').hidden, false);
   assert.equal(get('programme-discipline-order').value, 'by_day');
+  get('programme-save-date').value = '2026-10-11';
+  get('programme-wizard').listener({target:{id:'programme-save-date', value:'2026-10-11'}});
+  assert.equal(get('programme-duration').value, 45);
+  assert.equal(get('programme-rest').value, 15);
+  get('programme-reschedule-existing').checked = true;
+  get('reschedule-existing').checked = true;
+  get('programme-save-date').value = '';
+  get('programme-wizard').listener({target:{id:'programme-save-date', value:''}});
+  assert.equal(get('programme-duration').value, 85, 'whole event retains its programme timing');
+  assert.equal(get('programme-reschedule-existing').checked, false, 'one-day replan consent never expands to the whole event');
+  assert.equal(get('reschedule-existing').checked, false);
+  context.programmeScopedDays[13]['2026-10-09'] = {timing:{duration:45, player_rest:15, court_gap:0, gender_wave_release:'whole_wave'}};
+  get('programme-save-date').value = '2026-10-10';
+  get('programme-wizard').listener({target:{id:'programme-save-date', value:'2026-10-10'}});
+  assert.equal(get('programme-duration').value, 85, 'previous timing is not copied silently');
+  assert.equal(get('programme-copy-timing').hidden, false);
+  get('programme-copy-timing').listener();
+  assert.equal(get('programme-duration').value, 45);
+  assert.equal(get('schedule-rest').value, 15);
+  assert.equal(get('schedule-gap').value, 0);
+  assert.equal(get('gender-wave-release').value, 'whole_wave', 'the preview request uses the copied release rule');
+  assert.equal(get('programme-start-1').value, '2026-10-10T09:30', 'copy timing leaves date-specific hours alone');
+  delete context.programmeScopedDays[13]['2026-10-09'];
   get('programme-save-date').value = '2026-10-09';
   get('programme-wizard').listener({target:{id:'programme-save-date', value:'2026-10-09'}});
   assert.equal(get('programme-reschedule-existing').checked, false, 'scoping a save keeps existing times by default');

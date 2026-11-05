@@ -104,7 +104,7 @@
     <a href="#settings-fees">Default fees</a>
     <a href="#settings-methods">Payment methods</a>
     <a href="#settings-agreements">Player requirements</a>
-    <a href="#settings-content">Published content</a>
+    <a href="#settings-content">Conduct &amp; content</a>
   </nav>
   <form action="{{ route('settings.store') }}" method="POST">
     @csrf
@@ -351,6 +351,23 @@
         <textarea name="terms_conditions_content" id="terms_conditions_content_input" class="d-none">{{ old('terms_conditions_content', $generalSettings['terms_conditions_content'] ?? '') }}</textarea>
       </div>
     </div>
+
+    <section class="card mb-4" aria-labelledby="court-convenor-guide-label">
+      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h5 id="court-convenor-guide-label" class="mb-0">Court Convenor Guide</h5>
+          <small class="text-muted">Share this guide from Event Directors or Venue Convenors. Use this card’s Save button to apply edits.</small>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary save-content-btn"
+                data-key="{{ \App\Models\SiteSetting::COURT_CONVENOR_GUIDE }}" data-textarea="court-convenor-guide">
+          <i class="ti ti-device-floppy me-1"></i> Save
+        </button>
+      </div>
+      <div class="card-body">
+        <textarea id="court-convenor-guide" class="form-control" rows="12"
+                  aria-labelledby="court-convenor-guide-label">{{ \App\Models\SiteSetting::courtConvenorGuide() }}</textarea>
+      </div>
+    </section>
 
     </div>
 

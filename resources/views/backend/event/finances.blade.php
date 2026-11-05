@@ -1299,13 +1299,15 @@
      MANAGE VENUE CONVENORS MODAL
 ════════════════════════════════════════════════════════════════════════ --}}
 <div class="modal fade" id="manageVenueConvenorsModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="ti ti-map-pin me-2"></i>Venue Convenors <span class="badge bg-label-secondary" id="vcCount">{{ $venueConvenors->count() }}</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body p-0">
+
+        <x-backend.court-convenor-guide class="p-3 border-bottom" />
 
         {{-- Current venue convenors list --}}
         <div id="venueConvenorList">

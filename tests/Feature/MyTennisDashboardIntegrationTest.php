@@ -94,7 +94,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->export('admin-preview', $response);
     }
 
-    public function test_bare_landing_opens_progress_for_an_eligible_remembered_player(): void
+    public function test_bare_landing_opens_profile_for_an_eligible_remembered_player(): void
     {
         $user = User::factory()->create();
         $player = Player::factory()->create(['userId' => $user->id, 'name' => 'Taylor']);
@@ -105,7 +105,10 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->get(route('my.tennis'))->assertOk()->assertViewIs('frontend.my-tennis.index')->assertSee('Edit profile');
         $this->get(route('my.tennis', ['player' => $player, 'tab' => 'profile']))->assertOk()->assertSee('Edit profile');
         $progress = route('my.tennis.pathway', $player);
-        $this->get(route('my.tennis'))->assertRedirect($progress)->assertHeader('Cache-Control', 'no-store, private');
+        $this->get(route('my.tennis'))->assertOk()
+            ->assertViewHas('workspaceTab', 'profile')
+            ->assertViewHas('selectedPlayer', fn (Player $selected) => $selected->is($player))
+            ->assertHeader('Cache-Control', 'no-store, private');
         $response = $this->get($progress)->assertOk()
             ->assertViewIs('frontend.my-tennis.pathway-page')->assertViewHas('ratingPlayer', fn (Player $selected) => $selected->is($player))
             ->assertHeader('Cache-Control', 'no-store, private');

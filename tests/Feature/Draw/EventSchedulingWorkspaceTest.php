@@ -57,6 +57,27 @@ class EventSchedulingWorkspaceTest extends TestCase
         }
     }
 
+    public function test_team_calendar_opens_the_age_planner_with_one_date_selected(): void
+    {
+        [$event, $draw, $venue] = $this->setupEvent();
+        $draw->forceFill(['drawName' => 'Under 12 singles', 'team_category_id' => 1])->save();
+        $this->rubber($draw);
+        $date = '2026-10-10';
+        $programmeUrl = route('backend.event-venue-schedule.index', ['event' => $event, 'programme_date' => $date]);
+        $calendarScope = ['event' => $event, 'date' => $date];
+
+        $this->get(route('backend.event-venue-schedule.calendar', $calendarScope))
+            ->assertOk()->assertSee(e($programmeUrl), false);
+        $this->get($programmeUrl)->assertOk()
+            ->assertSee('data-team-programme-default="true"', false)
+            ->assertSeeInOrder(['What do you want to schedule?', 'Age group'])
+            ->assertSee('value="2026-10-10" selected', false);
+
+        $this->get(route('backend.event-venue-schedule.calendar', $calendarScope + ['venue_id' => $venue->id]))
+            ->assertOk()->assertDontSee(e($programmeUrl), false)
+            ->assertSee(e(route('backend.event-venue-schedule.index', $calendarScope + ['venue_id' => $venue->id])), false);
+    }
+
     public function test_published_individual_manual_edit_checks_the_whole_court_booking(): void
     {
         [$event, $draw, $venue] = $this->setupEvent();

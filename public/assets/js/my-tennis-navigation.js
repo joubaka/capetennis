@@ -3,6 +3,7 @@
 
   const workspaceSelector = '[data-my-tennis-workspace]';
   const cacheLifetime = 60000;
+  const warmConcurrency = 5;
   let pending = null;
   let renderedUrl = pageKey(new URL(window.location.href));
   let scope = null;
@@ -80,8 +81,10 @@
         await task;
       }
     }
-    warmNext();
-    warmNext();
+    // A normal workspace has six tabs. Start the other five together so a
+    // slow Activity or Rating response cannot hold up Results or Opponents.
+    const workers = Math.min(warmConcurrency, queue.length);
+    for (let i = 0; i < workers; i++) warmNext();
   }
 
   function cachedPage(key) {

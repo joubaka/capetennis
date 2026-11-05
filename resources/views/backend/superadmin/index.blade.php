@@ -1501,6 +1501,7 @@
                   <div id="sa-coc-editor" style="min-height:200px;"></div>
                 </div>
                 <textarea id="sa-coc-textarea" class="d-none">{{ $generalSettings['code_of_conduct_content'] ?? '' }}</textarea>
+                <a href="{{ route('settings.index') }}#settings-content" class="d-inline-block mt-3">Edit Court Convenor Guide</a>
               </div>
             </div>
 

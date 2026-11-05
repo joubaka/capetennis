@@ -1256,7 +1256,16 @@ final class EventVenueScheduleService
                         if ($remaining) $placements[$date]['rounds'] = $remaining;
                         else unset($placements[$date]);
                     }
-                    $placements[$saveDate] = ['day' => $day, 'rounds' => $ageRounds->values()->all()];
+                    $placements[$saveDate] = [
+                        'day' => $day,
+                        'rounds' => $ageRounds->values()->all(),
+                        'timing' => [
+                            'duration' => $preview['input']['duration'],
+                            'player_rest' => $preview['input']['playerRest'],
+                            'court_gap' => $preview['input']['courtGap'],
+                            'gender_wave_release' => $preview['input']['gender_wave_release'],
+                        ],
+                    ];
                     $stored['team_programme_days'][$age] = $placements;
                 }
             }

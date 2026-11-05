@@ -381,6 +381,8 @@
         @endforeach
       </select>
 
+      <x-backend.court-convenor-guide class="mt-3" />
+
       <div class="access-window mt-3">
       <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Director access window</span></div>
       <div class="row g-3">

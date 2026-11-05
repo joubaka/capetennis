@@ -19,14 +19,14 @@ async function run() {
       const warmRequests = [];
       const errors = [];
       let failActivity = true;
+      let finishActivityWarmup;
+      const activityWarmup = new Promise(resolve => { finishActivityWarmup = resolve; });
       let finishFailedActivity;
       const failedActivity = new Promise(resolve => { finishFailedActivity = resolve; });
       let finishActivityRetry;
       const activityRetry = new Promise(resolve => { finishActivityRetry = resolve; });
       let finishRatingWarmup;
       const ratingWarmup = new Promise(resolve => { finishRatingWarmup = resolve; });
-      let finishPathwayWarmup;
-      const pathwayWarmup = new Promise(resolve => { finishPathwayWarmup = resolve; });
       let documentLoads = 0;
       let ratingFragmentLoads = 0;
       page.on('pageerror', error => errors.push(error.message));
@@ -45,10 +45,12 @@ async function run() {
           assert.ok(tab, url.href);
           if (request.headers().purpose === 'prefetch') {
             warmRequests.push(tab);
-            if (tab === 'activity') return route.fulfill({ status: 503 });
+            if (tab === 'activity') {
+              await activityWarmup;
+              return route.fulfill({ status: 503 });
+            }
             if (tab === 'rating') await ratingWarmup;
             await route.fulfill({ contentType: 'text/html', body: fixture('ajax-' + tab) });
-            if (tab === 'pathway') finishPathwayWarmup();
             return;
           }
           requests.push(tab);
@@ -69,6 +71,8 @@ async function run() {
         if (!asset.startsWith(publicRoot + path.sep) || !fs.existsSync(asset) || !fs.statSync(asset).isFile()) return route.abort();
         return route.fulfill({ path: asset });
       });
+      const pathwayWarmup = page.waitForResponse(response => response.url().endsWith('/pathway')
+        && response.request().headers().purpose === 'prefetch', {timeout: 10000});
       await page.goto('http://localhost/my-tennis?player=1&tab=profile');
       const workspace = page.locator('[data-my-tennis-workspace]');
       const nav = workspace.getByRole('navigation', { name: 'My Tennis views' });
@@ -102,6 +106,9 @@ async function run() {
       };
       await active('Profile');
       await pathwayWarmup;
+      // Both earlier tabs are still waiting. Later tabs must already be able
+      // to load, without requiring either earlier tab to finish.
+      finishActivityWarmup();
       const activityTab = nav.getByRole('link', { name: 'Activity', exact: true });
       const activitySpinner = activityTab.locator('[data-my-tennis-tab-spinner]');
       await activityTab.click();

@@ -18,6 +18,22 @@ class SiteSetting extends Model
 
     public const DISCIPLINARY_SYSTEM_ENABLED = 'disciplinary_system_enabled';
 
+    public const COURT_CONVENOR_GUIDE = 'court_convenor_guide_content';
+
+    public static function courtConvenorGuide(): string
+    {
+        return (string) static::get(self::COURT_CONVENOR_GUIDE, <<<'GUIDE'
+Court Convenor Guide
+
+1. Player conduct. If a player breaches the Code of Conduct, go onto the court and give the player a first warning. Explain that any further breach will result in a further penalty.
+2. Parent or spectator conduct. Give a parent or spectator a first warning if they breach the Code of Conduct.
+3. Report every first warning. As soon as you give a warning to a player, parent or spectator, you must let Alderd know via WhatsApp.
+4. If the behaviour continues or escalates, you may stop play. Tell the player and/or parent or spectator that you are calling the organiser. Phone Alderd for guidance on what action to take next.
+5. Keep spectators clear of the court. If someone is sitting too close and is intimidating players or getting involved in play, ask them to move farther away.
+6. Act early. Address issues promptly and ask for guidance before the situation gets out of hand.
+GUIDE);
+    }
+
     public const AUTOMATED_EMAIL_TOGGLES = [
         'player_email_on_registration',
         'player_email_on_admin_entry',
