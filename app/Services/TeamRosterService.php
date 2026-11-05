@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Domain\Payments\Services\TeamPaymentService;
 use App\Models\{Event, EventRegion, NoProfileTeamPlayer, Player, Team, TeamPlayer, TeamPaymentOrder, TeamSelectionImport, TeamSelectionInvitation, User};
 use App\Services\TeamSelection\{RegionManagerAccessService, TeamSelectionInvitationService, ImportedTeamRosterService};
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -87,8 +88,10 @@ class TeamRosterService
                     if ($player) {
                         try { app(PlayerEligibilityService::class)->assertEligible($player, $event); }
                         catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
-                        if (TeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_id', $player->id)->lockForUpdate()->exists()
-                            || NoProfileTeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $player->id)->lockForUpdate()->exists()) $this->fail('This player is already on a team in this event.');
+                        $eventTeamIds = app(EventTeamScope::class)->query($event)->select('teams.id');
+                        $profilePlaces = TeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_id', $player->id)->lockForUpdate();
+                        $importedPlaces = NoProfileTeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_profile', $player->id)->lockForUpdate();
+                        $this->assertNoRosterConflict($event, $profilePlaces, $importedPlaces, $actor, isset($data['_replacement_rank']));
                         if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$player->id])->lockForUpdate()->exists()
                             || TeamSelectionInvitation::where('event_id', $event->id)->where('player_id', $player->id)->lockForUpdate()->exists()
                             || \App\Models\ClothingOrder::where('event_id', $event->id)->where('player_id', $player->id)->lockForUpdate()->exists()
@@ -105,8 +108,9 @@ class TeamRosterService
                     try { app(\App\Services\PlayerEligibilityService::class)->assertEligible($player, $event); }
                     catch (\RuntimeException $exception) { $this->fail($exception->getMessage()); }
                     $eventTeamIds = app(\App\Services\EventTeamScope::class)->query($event)->select('teams.id');
-                    if (TeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_id', $player->id)->exists()
-                        || NoProfileTeamPlayer::whereIn('team_id', app(\App\Services\EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $player->id)->exists()) $this->fail('This player is already on a team in this event.');
+                    $profilePlaces = TeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_id', $player->id);
+                    $importedPlaces = NoProfileTeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_profile', $player->id);
+                    $this->assertNoRosterConflict($event, $profilePlaces, $importedPlaces, $actor, isset($data['_replacement_rank']));
                     if (TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$player->id])->lockForUpdate()->exists()) $this->fail('This player has checkout history. Ask the event administrator to add them.');
                     if ($managed) {
                         $existing = $import->invitations()->where('team_id', $team->id)->where('player_id', $player->id)->first();
@@ -394,9 +398,35 @@ class TeamRosterService
             || \App\Models\ClothingOrder::where('event_id', $event->id)->where('player_id', $playerId)->lockForUpdate()->exists()
             || \App\Models\CategoryEventRegistration::withTrashed()->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
                 ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))->lockForUpdate()->exists()) $this->fail('This reserve has checkout or registration history. Use the selection workflow.');
-        if (TeamPlayer::withoutGlobalScopes()->whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_id', $playerId)->when($mirror, fn ($query) => $query->where('id', '!=', $mirror->id))->exists()
-            || NoProfileTeamPlayer::whereIn('team_id', app(EventTeamScope::class)->query($event)->select('teams.id'))->where('player_profile', $playerId)
-                ->when($team->noProfile, fn ($query) => $query->where('id', '!=', $source->id))->exists()) $this->fail('This reserve is also assigned to another place in this event.');
+        $eventTeamIds = app(EventTeamScope::class)->query($event)->select('teams.id');
+        $profilePlaces = TeamPlayer::withoutGlobalScopes()->whereIn('team_id', $eventTeamIds)->where('player_id', $playerId)
+            ->when($mirror, fn ($query) => $query->where('id', '!=', $mirror->id));
+        $importedPlaces = NoProfileTeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_profile', $playerId)
+            ->when($team->noProfile, fn ($query) => $query->where('id', '!=', $source->id));
+        $this->assertNoRosterConflict($event, $profilePlaces, $importedPlaces, $actor, true, 'This reserve is also assigned to another place in this event.');
+    }
+
+    private function assertNoRosterConflict(Event $event, Builder $profilePlaces, Builder $importedPlaces, User $actor, bool $describe, string $fallback = 'This player is already on a team in this event.'): void
+    {
+        if (!$profilePlaces->exists() && !$importedPlaces->exists()) return;
+        if (!$describe) $this->fail($fallback);
+
+        $profiles = $profilePlaces->limit(2)->get(['team_id', 'rank']);
+        $imports = $importedPlaces->limit(2)->get(['team_id', 'rank']);
+        if ($profiles->count() > 1 || $imports->count() > 1) $this->fail($fallback);
+        $places = collect([$profiles->first(), $imports->first()])->filter()
+            ->unique(fn ($place) => $place->team_id.':'.$place->rank);
+        if ($places->count() !== 1 || (int) $places->first()->rank < 1) $this->fail($fallback);
+
+        $place = $places->first();
+        $assignedTeam = Team::find($place->team_id);
+        if (!$assignedTeam || !app(RegionManagerAccessService::class)->canManageTeam($actor, $assignedTeam, $event)) {
+            $this->fail($fallback);
+        }
+
+        $teamName = trim((string) $assignedTeam->name);
+        $teamLabel = $teamName === '' ? "team #{$assignedTeam->id}" : "{$teamName} (team #{$assignedTeam->id})";
+        $this->fail("This player is already listed on {$teamLabel} at position {$place->rank} in this event.");
     }
 
     public function confirmMainPlace(Event $event, ?EventRegion $region, Team $team, User $actor, int $slotId, int $expectedRank): void
