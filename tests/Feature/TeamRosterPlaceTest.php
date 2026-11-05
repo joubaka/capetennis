@@ -41,6 +41,33 @@ class TeamRosterPlaceTest extends TestCase
         EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $this->team->region_id, 'imported_by' => $this->actor->id, 'groups' => ['group' => ['team_id' => $this->team->id, 'players' => [['slot_id' => $reserve->id, 'status' => 'reserve', 'profile_id' => (int) $reserve->player_profile]]]], 'imported_at' => now()]);
     }
 
+    public function test_replacement_conflict_shows_team_and_position_only_to_authorized_roster_managers(): void
+    {
+        $outgoing = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Outgoing', 'surname' => 'Player', 'pay_status' => 0]);
+        $player = Player::factory()->create();
+        $otherRegion = TeamRegion::create(['region_name' => 'Other roster region']);
+        $this->event->regions()->attach($otherRegion);
+        $assignedTeam = Team::factory()->create(['name' => 'Other Roster Team', 'category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id, 'noProfile' => true]);
+        TeamPlayer::create(['team_id' => $assignedTeam->id, 'rank' => 3, 'player_id' => $player->id, 'pay_status' => 0]);
+        NoProfileTeamPlayer::create(['team_id' => $assignedTeam->id, 'rank' => 3, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $foreignEvent = Event::factory()->create(['eventType' => 3]);
+        $foreignTeam = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $foreignEvent->id])->id]);
+        TeamPlayer::create(['team_id' => $foreignTeam->id, 'rank' => 5, 'player_id' => $player->id, 'pay_status' => 0]);
+
+        $payload = ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'slot_id' => $outgoing->id, 'expected_rank' => 2, 'expected_player_id' => 0, 'player_id' => $player->id];
+        $route = route('backend.team.changePlayer');
+        $this->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', "This player is already listed on Other Roster Team (team #{$assignedTeam->id}) at position 3 in this event.");
+
+        $manager = User::factory()->create();
+        $region = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->team->region_id)->firstOrFail();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id]);
+        $this->actingAs($manager)->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'This player is already on a team in this event.');
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $outgoing->id, 'rank' => 2]);
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+    }
+
     public function test_replacing_unpaid_main_player_promotes_existing_linked_reserve_once(): void
     {
         $outgoing = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Outgoing', 'surname' => 'Player', 'pay_status' => 0]);
