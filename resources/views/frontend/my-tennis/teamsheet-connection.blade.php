@@ -9,9 +9,9 @@
       <p class="alert alert-danger" role="alert">{{ $message }}</p>
     @enderror
     @if(!$connection['available'])
-      <p class="text-muted mb-0">TeamSheet profile linking will appear here when the secure connection is available.</p>
+      <p class="text-muted mb-0">TeamSheet linking is currently unavailable.</p>
     @elseif($connection['linked'])
-      <p>Connected. Verified TeamSheet singles results can contribute to {{ $selectedPlayer->full_name }}’s rating after the normal match-date checks.</p>
+      <p>Connected · Verified singles results can count toward the player’s rating.</p>
       @if($connection['can_unlink'])
         <form method="post" action="{{ route('my.tennis.teamsheet.unlink', $selectedPlayer) }}">
           @csrf
@@ -22,9 +22,9 @@
         <p class="text-muted mb-0">Contact Cape Tennis support if this connection needs changing.</p>
       @endif
     @else
-      <p>If {{ $selectedPlayer->full_name }} has a TeamSheet profile, sign in there and select the same player. You must be that player or their linked parent on both sites.</p>
       <form method="post" action="{{ route('my.tennis.teamsheet.start', $selectedPlayer) }}">
         @csrf
+        <p class="small text-muted">Sign in to TeamSheet and select the same player. You must be the player or their linked parent on both sites.</p>
         <button class="btn btn-primary" type="submit">Link TeamSheet</button>
       </form>
     @endif

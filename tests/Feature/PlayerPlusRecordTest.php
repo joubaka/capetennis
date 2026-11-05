@@ -159,7 +159,7 @@ class PlayerPlusRecordTest extends TestCase
         try {
             $response = app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $player);
             $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
-            $this->assertStringContainsString('Playing Record', $response->getContent());
+            $this->assertStringContainsString('Results', $response->getContent());
         } finally { \Illuminate\Support\Facades\File::deleteDirectory($path); }
     }
 
@@ -197,15 +197,16 @@ class PlayerPlusRecordTest extends TestCase
             $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => $section, 'record' => $record]);
             $this->assertStringContainsString('&lt;script&gt;unsafe&lt;/script&gt;', $html);
             $this->assertStringNotContainsString('<script>unsafe</script>', $html);
-            $this->assertStringContainsString('event start proxy', $html);
+            $this->assertStringContainsString('Estimated date', $html);
             $this->assertStringContainsString('Some matches may be missing', $html);
             $this->assertStringContainsString('name="opponent" value="43"', $html);
             if ($section === 'opponents') {
                 $this->assertStringContainsString('Across seasons', $html);
-                $this->assertStringContainsString('Estimated dates are marked', $html);
+                $this->assertStringContainsString('Estimated match dates use the event start date.', $html);
             } else {
                 $this->assertStringContainsString('Compare seasons', $html);
-                $this->assertStringContainsString('pp means percentage points', $html);
+                $this->assertLessThan(strpos($html, 'id="season-compare-heading"'), strpos($html, 'class="record-row"'));
+                $this->assertStringContainsString('Win-rate change is shown in percentage points (pp).', $html);
             }
         }
         foreach (['playing-record', 'record-matches', 'record-pagination', 'record-comparison', 'record-opponent-trend', 'index'] as $view) {
@@ -223,10 +224,10 @@ class PlayerPlusRecordTest extends TestCase
         $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
         $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record]);
         $this->assertStringContainsString('Example Player vs Example Opponent', $html);
-        $this->assertLessThan(strpos($html, 'Who you’ve played'), strpos($html, 'id="opponent-meetings"'));
+        $this->assertLessThan(strpos($html, 'class="record-opponent text-decoration-none"'), strpos($html, 'id="opponent-meetings"'));
         $this->assertStringNotContainsString('Recent meetings in this selection', $html);
         $this->assertSame(20, substr_count($html, 'class="record-row"'));
-        $this->assertStringContainsString('View matchup →', $html);
+        $this->assertStringContainsString('aria-label="View matchup: Example Player vs Example Opponent"', $html);
         $this->assertStringContainsString('meeting_page=2#opponent-meetings', $html);
         $this->assertStringContainsString('opponent_page=2', $html);
         $this->assertStringContainsString('compare_first=2025', $html);

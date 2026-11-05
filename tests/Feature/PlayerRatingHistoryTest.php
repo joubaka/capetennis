@@ -249,7 +249,7 @@ class PlayerRatingHistoryTest extends TestCase
         $this->assertStringContainsString('Rating Preview', $response->getContent());
         $this->assertMatchesRegularExpression('/x="45" y="250"[^>]*>Nov<\/text>/', $response->getContent());
         $this->assertStringContainsString('Saved through 2026-10-29', $response->getContent());
-        foreach (['progress', 'compare', 'next', 'understand'] as $section) {
+        foreach (['progress', 'compare', 'understand'] as $section) {
             $this->assertStringContainsString('id="ctr-tab-'.$section.'"', $response->getContent());
             $this->assertStringContainsString('id="ctr-panel-'.$section.'"', $response->getContent());
         }
@@ -257,7 +257,7 @@ class PlayerRatingHistoryTest extends TestCase
         $pending = $controller->rating($request, $player);
         $this->assertSame(200, $pending->getStatusCode());
         $this->assertStringContainsString('Awaiting nightly update at 03:00 SAST', $pending->getContent());
-        $this->assertStringContainsString('id="ctr-panel-next"', $pending->getContent());
+        $this->assertStringNotContainsString('id="ctr-panel-next"', $pending->getContent());
         $this->assertStringContainsString('id="ctr-panel-understand"', $pending->getContent());
     }
 }

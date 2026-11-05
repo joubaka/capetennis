@@ -3,7 +3,6 @@
     <h2 id="upcoming-heading">Upcoming matches</h2>
     @if(!$record['reason'])<a href="#past-opponents">Past opponents ↓</a>@endif
   </div>
-  @if($upcoming['rows'])<p class="record-note">Open an opponent’s name to see how your ratings compare.</p>@endif
   @php($ownRating = $upcoming['ratings'][$recordPlayer->id] ?? null)
   @forelse($upcoming['rows'] as $match)
     @php($matchTime = \Carbon\Carbon::parse($match['date']))
@@ -26,7 +25,7 @@
                   @endif
                 </p>
               @endforeach
-              <p class="record-note mt-2 mb-0">Ratings estimate playing strength and can’t predict who will win. We only show ratings that can be compared.</p>
+              <p class="record-note mt-2 mb-0">CTR estimates playing strength. Only comparable ratings are shown.</p>
               @if($opponent['id'])<a class="d-inline-block mt-2 py-2" href="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => 'opponents', 'opponent' => $opponent['id']]) }}#opponent-meetings">See past meetings →</a>@endif
             </div>
           </details>

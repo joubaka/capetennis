@@ -16,8 +16,12 @@
         <div><dt>Gender</dt><dd>{{ [1 => 'Male', 2 => 'Female'][$selectedPlayer->gender] ?? 'Not added' }}</dd></div>
         <div><dt>Email</dt><dd>{{ $selectedPlayer->email ?: 'Not added' }}</dd></div>
         <div><dt>Mobile number</dt><dd>{{ $selectedPlayer->cellNr ?: 'Not added' }}</dd></div>
-        @if($selectedPlayer->email_2)<div><dt>Additional notification email</dt><dd>{{ $selectedPlayer->email_2 }}</dd></div>@endif
-        @if($selectedPlayer->email_3)<div><dt>Additional notification email</dt><dd>{{ $selectedPlayer->email_3 }}</dd></div>@endif
+        @if($selectedPlayer->email_2 || $selectedPlayer->email_3)
+          <div><dt>Notification emails</dt>
+            @if($selectedPlayer->email_2)<dd>{{ $selectedPlayer->email_2 }}</dd>@endif
+            @if($selectedPlayer->email_3)<dd>{{ $selectedPlayer->email_3 }}</dd>@endif
+          </div>
+        @endif
       </dl>
     </div>
   </section>

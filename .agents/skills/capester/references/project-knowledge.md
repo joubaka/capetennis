@@ -68,8 +68,8 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - The shared My Tennis tab header shows the selected player's authorized saved
   rating summary, including on Results and Opponents. Keep this personal badge
   separate from the published, comparable Overall CTR used in match comparisons.
-- The plain My Tennis landing opens Progress with levels expanded for a linked
-  player with rating access. Profile is the fallback, and explicit player and
+- The plain My Tennis landing opens Next steps for a linked player with rating
+  access. The full level map is available behind a disclosure. Profile is the fallback, and explicit player and
   tab links retain their destinations. Revalidate remembered players against
   the current account relationship before displaying personal details.
   Activity and profile editing are standard features; Plus tabs and private

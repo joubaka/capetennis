@@ -1,7 +1,6 @@
 @if($ratingTopTen['visible'] ?? false)
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
   <h3 class="h5" id="player-top-ten-heading"><x-ctr-mark class="me-2" />Your rating positions</h3>
-  <p class="small text-muted">Your player's rating positions among players in currently published series standings. These estimates are not official rankings. Junior age groups include the selected group and younger, using age reached this calendar year. Both summaries include all genders.</p>
   <style>.ctr-top-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ctr-top-list{min-width:0;border:1px solid #dce7e2;border-radius:14px;padding:1rem;background:#fff}@media(max-width:767.98px){.ctr-top-lists{grid-template-columns:1fr}}</style>
   <div class="ctr-top-lists mb-3">
     @foreach(['age' => 'Overall CTR · '.($ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group').' · all genders', 'overall' => 'Overall CTR · all ages and genders'] as $scope => $label)
@@ -18,7 +17,7 @@
   @if($ratingTopTen['reason'])<p role="status">{{ $ratingTopTen['reason'] }}</p>@endif
   @if(!($ratingTopTen['can_browse'] ?? false))
     <h4 class="h6">Your age-group Top 10</h4>
-    <p class="small text-muted">Overall CTR · {{ $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable' }} · {{ \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable' }}. Only comparable ratings from published standings are included.</p>
+    <p class="small text-muted">Overall CTR · {{ $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable' }} · {{ \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable' }}</p>
     @if($ratingTopTen['selected_age'] === 'unknown')
       <p class="small text-muted">A valid birth date is needed to show your player's age-group Top 10.</p>
     @else
@@ -31,7 +30,6 @@
       </ol>
     @endif
     <h4 class="h6">Check a player's rating</h4>
-    <p class="small text-muted">Search by name, then choose one player to view their Overall CTR. Up to 10 matching names appear alphabetically.</p>
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="d-flex flex-wrap gap-2 mb-3">
       @foreach(['month', 'scope', 'scale'] as $historyFilter)<input type="hidden" name="{{ $historyFilter }}" value="{{ $ratingHistory[$historyFilter] ?? '' }}">@endforeach
       <label class="visually-hidden" for="ctr-player-search">Player name</label>
@@ -61,7 +59,6 @@
     <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE) === $size)>{{ $size }}</option>@endforeach</select></div>
     <noscript><button type="submit" class="btn btn-primary">Show ratings</button></noscript>
   </form>
-  <p class="small text-muted">Red, Orange and Overall are separate ratings. Green/Yellow uses Overall CTR. Red and Orange include all ages. Overall CTR junior age groups include younger players. Age and gender filters change ranking positions, not rating scores.</p>
   <style>.ctr-top-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ctr-top-list{min-width:0;border:1px solid #dce7e2;border-radius:14px;padding:1rem;background:#fff}.ctr-top-list li{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere}.ctr-top-list .ctr-top-score{font-variant-numeric:tabular-nums;color:#004177}.ctr-top-list small{display:block;color:#62766e}@media(max-width:767.98px){.ctr-top-lists{grid-template-columns:1fr}}</style>
   <div class="ctr-top-lists">
     @foreach($ratingTopTen['lists'] as $key => $list)
@@ -97,7 +94,13 @@
       </section>
     @endforeach
   </div>
-  <p class="small text-muted mt-2 mb-0">Browse all matching published-player ratings, {{ $ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE }} players per page. Equal displayed scores share a position and are ordered by name. Within-group-only and nonconverged estimates are excluded.</p>
   @endif
+  <details class="small mt-3">
+    <summary>Who’s included?</summary>
+    <p class="mt-2 mb-1">Positions use comparable ratings from published series standings. They are separate from official rankings. Junior age groups include younger players, based on the age they reach this calendar year.</p>
+    @if($ratingTopTen['can_browse'] ?? false)
+      <p class="mb-0">Red and Orange have separate ratings and include all ages. Green/Yellow uses Overall CTR. Filters change positions without changing rating scores. Players with equal displayed scores share a position.</p>
+    @endif
+  </details>
 </section>
 @endif

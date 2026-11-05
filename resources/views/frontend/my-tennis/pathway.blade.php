@@ -23,20 +23,26 @@
     @media(max-width:991.98px){.ctr-pathway .pathway-grid{grid-template-columns:1fr}.ctr-pathway .pathway-admin form>div{width:100%}.ctr-pathway .pathway-map{grid-template-columns:1fr}.ctr-pathway .pathway-map > li + li::before{content:'↓';left:50%;top:-1.25rem}}
     @media(max-width:575.98px){.ctr-pathway .pathway-stages,.ctr-pathway .pathway-map{grid-template-columns:1fr}.ctr-pathway .pathway-map > li + li::before{content:'↓';left:50%;top:-1.25rem}}
   </style>
-  <div class="ctr-heading"><h3 class="h5 mb-0" id="ctr-pathway-heading">Your tennis pathway</h3></div>
+  <div class="ctr-heading"><h2 class="h5 mb-0" id="ctr-pathway-heading">Next steps</h2></div>
     <div>
-      <h4 class="h6 mt-2">Current level: {{ $pathway['current_stage_label'] }}</h4>
+      <h3 class="h6 mt-2">Current level: {{ $pathway['current_stage_label'] }}</h3>
       <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Wilson B / Wilson A' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
       <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
       @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
     </div>
-  <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
-    <p class="small mb-0 flex-grow-1" role="status"><strong>{{ $pathway['assessment_status'] }}</strong> · {{ $pathway['reason'] }}</p>
+  <div class="mt-3">
+    <h3 class="h6 mb-1">Suggested next step</h3>
+    <p class="small text-muted mb-2" role="status">{{ $pathway['assessment_status'] }}</p>
+    <ul class="small ps-3 mb-3">
+      @foreach($pathway['next_steps'] as $step)
+        <li>{{ $step }}</li>
+      @endforeach
+    </ul>
     <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse events</a>
   </div>
-  <details class="mt-2" @if($expandPathwayLevels ?? false) open @endif>
+  <details class="mt-2">
     <summary>See all levels and targets</summary>
-    <p class="small text-muted mb-0">Red and Orange each have their own rating and event targets. Your rating can help suggest a Wilson division. Ask your coach which events would suit you.</p>
+    <p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>
     <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>
     @foreach(['red' => ['Red ball', '#ed2029', 0], 'orange' => ['Orange ball', '#ed7100', 1]] as $ball => [$label, $ink, $benchmarkIndex])
       <li style="--stage-ink:{{ $ink }}" @if($pathway['current_stage'] === $ball) aria-current="step" @endif>
@@ -63,7 +69,6 @@
           <small>@if($pathway['tsaCutoff'] !== null) CTR above {{ number_format($pathway['tsaCutoff'], 0) }} @else Recommendation awaiting configuration @endif</small>
           <a class="small d-inline-flex align-items-center" style="min-height:44px" href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
         @endif
-        <small>Chat with your coach about events that would suit you.</small>
         @include('frontend.my-tennis.pathway-info-button', ['infoStage' => ['Wilson B' => 'wilson-b', 'Wilson A' => 'wilson-a', 'TSA tournaments' => 'tsa'][$competition], 'infoLabel' => $competition])
       </li>
     @endforeach

@@ -46,6 +46,7 @@ class PlayerRatingHeaderPresentationTest extends TestCase
         $this->assertStringContainsString('66.6', $xpath->query('//*[@data-current-rating-summary]')->item(0)->textContent);
         $this->assertStringContainsString('Medium confidence', $xpath->query('//*[@data-current-rating-summary]')->item(0)->textContent);
         $this->assertStringContainsString('Latest saved month', $html);
+        $this->assertLessThan(strpos($html, 'id="ctr-month"'), strpos($html, 'role="region" aria-label="Rating chart'));
         $this->assertStringNotContainsString('Past-event ratings and badges', $html);
         $this->assertStringNotContainsString('ctr-current-summary', $html);
     }
@@ -65,7 +66,7 @@ class PlayerRatingHeaderPresentationTest extends TestCase
         [$html, $xpath] = $this->renderHeader(11, ['reason' => 'Source publication changed']);
         $this->assertSame(0, $xpath->query('//*[@data-rating-hero]//*[@data-ctr-badge]')->length);
         $this->assertStringContainsString('Source publication changed', $html);
-        $this->assertStringContainsString('Not rated yet', $html);
+        $this->assertStringContainsString('No rating yet.', $html);
     }
 
     public function test_header_keeps_local_finishing_only_and_historical_qualifiers_with_the_badge(): void

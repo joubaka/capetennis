@@ -410,7 +410,7 @@ class PlayerRatingTopTenTest extends TestCase
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $this->build($snapshot, selected: $selected),
             'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertStringContainsString('U10 and younger · born 2016 or later', $html);
-        $this->assertStringContainsString('Red and Orange include all ages.', $html);
+        $this->assertStringContainsString('Red and Orange have separate ratings and include all ages.', $html);
     }
 
     public function test_younger_scope_is_applied_before_pagination_and_tie_positions(): void
@@ -455,7 +455,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertStringContainsString('name="rating_per_page"', $html);
         $this->assertMatchesRegularExpression('/value="500"\\s+selected/', $html);
         $this->assertStringContainsString('rating_per_page=500', $html);
-        $this->assertStringContainsString('500 players per page', $html);
+        $this->assertStringContainsString('Showing 1–500 of 505 players', $html);
 
         foreach ([0, 501, 1000000, '500.5', []] as $invalid) {
             $fallback = $this->build($snapshot, selected: $selected, filters: array_replace($filters, ['rating_per_page' => $invalid]));

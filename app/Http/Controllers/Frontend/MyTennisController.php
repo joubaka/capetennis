@@ -95,7 +95,6 @@ class MyTennisController extends Controller
         return response()->view('frontend.my-tennis.rating', [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
-            'ratingPathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
             'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
                 array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page', 'rating_search', 'rating_search_player'])))),
         ])->header('Cache-Control', 'private, no-store');

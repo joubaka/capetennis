@@ -167,7 +167,7 @@ class PublicFixtureEmptyStateTest extends TestCase
             ->assertSee('aria-label="Full team names"', false)
             ->assertSee('--region-color: #1e40af', false)
             ->assertSee('--region-color: #b45309', false)
-            ->assertSee('Click to show ties')->assertSee('Click to show matches');
+            ->assertSee('Show fixtures')->assertSee('Show matches');
         $html = $response->getContent();
         $this->assertDoesNotMatchRegularExpression('/<details[^>]*\bopen\b[^>]*>/', $html);
         $this->assertStringNotContainsString('section.open = true', $html);

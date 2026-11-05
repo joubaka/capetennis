@@ -9,12 +9,12 @@
     .ctr-history .btn-primary:hover { background:#172e45;border-color:#172e45; }
     .ctr-history .btn-outline-primary { color:#004177;border-color:#a5bcd5; }
     .ctr-history .btn-outline-primary:hover { background:#eef3fa;color:#172e45;border-color:#004177; }
-    .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:.5rem; }
+    .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:1fr;gap:.5rem; }
     .ctr-history .ctr-section-tabs .nav-link { min-height:44px;text-align:center;overflow-wrap:anywhere;white-space:normal;color:#47645c;background:#f1f5fa;border:1px solid #dbe4ef;border-radius:10px;font-weight:600; }
     .ctr-history .ctr-section-tabs .nav-link:hover { background:#e4edf8; }
     .ctr-history .ctr-section-tabs .nav-link.active { background:#004177;border-color:#004177;color:#fff;box-shadow:0 3px 8px #172e4518; }
     .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }
-    @media(max-width:767.98px) { .ctr-history .ctr-section-tabs { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media(max-width:767.98px) { .ctr-history .ctr-section-tabs .nav-link { padding:.4rem .25rem;font-size:.8rem; } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
     .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
     .ctr-history .ctr-stat { border:1px solid #dce6e2;border-radius:14px;padding:1.25rem;min-width:0; }
@@ -66,27 +66,12 @@
   </x-player-workspace-header>
   @endif
   <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
-    @foreach(['progress' => 'My progress', 'compare' => 'Compare players', 'next' => 'My next step', 'understand' => 'How ratings work'] as $section => $label)
+    @foreach(['progress' => 'Rating history', 'compare' => 'Compare players', 'understand' => 'How ratings work'] as $section => $label)
       <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>
     @endforeach
   </div>
   <div class="tab-content ctr-section-content">
   <div class="tab-pane active show" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
-    <h3 class="h5">Am I improving?</h3>
-    <p class="small text-muted">Follow your rating over 12 months. Select a month to explore the change and the results behind it.</p>
-  @if(auth()->user()?->hasRole('super-user'))
-    <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
-      <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>
-      <span class="small text-muted" role="status" data-history-refresh-status>Recalculates saved rating history for all players in the background.</span>
-      <span class="small text-muted w-100" data-history-last-updated>
-        @if($ratingHistory['built_at'] ?? null)
-          Latest saved update for this player: <time datetime="{{ $ratingHistory['built_at'] }}">{{ \Carbon\CarbonImmutable::parse($ratingHistory['built_at'])->setTimezone('Africa/Johannesburg')->format('j M Y, H:i') }} SAST</time>
-        @else
-          No saved update for this player yet.
-        @endif
-      </span>
-    </div>
-  @endif
   @if($ratingHistory['reason'])
     <p role="status" class="alert alert-warning mt-3">{{ $ratingHistory['reason'] }}</p>
   @elseif(!$ratingHistory['series'])
@@ -106,45 +91,11 @@
       $query['rating_page'] = $ratingTopTen['lists'][$ratingTopTen['filters']['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
-    <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }} · updated nightly at 03:00 SAST.@if($ratingHistory['stale']) Showing the latest saved calculation until the next update is ready.@endif</p>
+    <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }}.@if($ratingHistory['stale']) Update pending.@endif</p>
     @if(!$points)<p role="status" class="alert alert-info">No comparable shared rating is available for this player. Suitable recent singles results must connect the player to the reference group.</p>@endif
     @if(!empty($point['historical_connection']))<p role="status" class="alert alert-warning"><strong>Low confidence — historical connection.</strong> The selected estimate needs an older match link dated {{ $point['connection_reference_date'] ?? 'unknown' }} ({{ $point['connection_age_days'] ?? '?' }} days old), even if this player has recent results.</p>@endif
     @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on {{ ($point['evidence_basis'] ?? null) === 'finish_only' ? 'published final placings only' : 'this player’s connected evidence group' }}. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
-    <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters">
-      @foreach($ratingTopTen['filters'] ?? [] as $filter => $value)<input type="hidden" name="{{ $filter }}" value="{{ $value }}">@endforeach
-      <input type="hidden" name="rating_page" value="{{ $query['rating_page'] }}">
-      <div><span class="small text-muted d-block">Current rating group</span><strong data-current-rating-group>{{ $ratingHistory['current_group_label'] ?? 'Not rated yet' }}</strong></div>
-      <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
-        @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }} · {{ $month['date'] }}</option>@endforeach
-      </select></div>
-      <input type="hidden" name="scope" value="{{ $ratingHistory['scope'] }}">
-      <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
-    </form>
-    <div class="ctr-stats">
-      <div class="ctr-stat" data-selected-month-summary><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
-        <div>@if($selectedIsLatest)<p class="mb-0">Latest saved month · estimate shown in the header.</p>@elseif($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
-        @if(($point['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
-        @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p><p class="small text-muted mt-1 mb-0">Results, opponents’ results and older matches losing weight can all move your rating.</p>
-        @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. A like-for-like monthly change is unavailable. The difference does not reliably show improvement or decline.</p>
-        @else<p class="small text-muted mt-2 mb-0">No comparable previous-month estimate.</p>@endif
-      </div>
-      <div class="ctr-stat"><h3>Your singles results included by this month</h3><div class="ctr-stat-value">{{ $evidence['matches'] }} {{ \Illuminate\Support\Str::plural('match', $evidence['matches']) }}</div><p class="mt-2 mb-0">{{ $evidence['wins'] }} won · {{ $evidence['losses'] }} lost</p>
-        @if($evidence['matches'] < 5)<p class="small text-muted mt-1 mb-0">Small sample; treat this estimate cautiously.@if($evidence['finishes']) Also includes finishing-order evidence.@endif</p>@endif
-      </div>
-    </div>
-    @if($point)
-      <div class="small mb-3" aria-label="Selected month evidence summary">
-        <p class="mb-1"><strong>Evidence confidence: {{ $point['confidence_label'] ?? ((!empty($point['historical_connection']) || ($point['connection_status'] ?? '') === 'disconnected') ? 'Low' : 'Not recorded') }}</strong> · as of {{ $point['date'] }}<br><span class="text-muted">Strength and freshness of the supporting results, not an accuracy percentage.</span></p>
-        @if(array_key_exists('last_direct_match', $point))
-          <p class="mb-1">Last included singles result: {{ $point['last_direct_match'] ? \Carbon\CarbonImmutable::parse($point['last_direct_match'])->format('j M Y') : 'None recorded' }}@if(isset($point['recent_played'])) · {{ $point['recent_played'] }} {{ \Illuminate\Support\Str::plural('match', $point['recent_played']) }} in the 90 days before this estimate @endif</p>
-          @if(isset($point['direct_opponents'], $point['played_events']))<p class="mb-1 text-muted">Included results cover {{ $point['direct_opponents'] }} distinct {{ \Illuminate\Support\Str::plural('opponent', $point['direct_opponents']) }} across {{ $point['played_events'] }} {{ \Illuminate\Support\Str::plural('event', $point['played_events']) }}.</p>@endif
-          @if(!empty($point['proxy_dated_matches']))<p class="mb-1 text-muted">Some result dates use the event date where a match date was unavailable.</p>@endif
-        @else
-          <p class="mb-1 text-muted">Detailed confidence and freshness were not recorded in this saved calculation. They will be included in the next nightly update.</p>
-        @endif
-      </div>
-    @endif
-    <div class="ctr-heading mb-2"><h3 class="h5 mb-0">{{ ucfirst($ratingHistory['cohort']) }} progress</h3><span class="small text-muted">Axis {{ $axis['min'] }}–{{ $axis['max'] }} · {{ $axis['step'] }}-point steps · overall scale 0–100</span></div>
+    <div class="ctr-heading mb-2"><h3 class="h5 mb-0">{{ ucfirst($ratingHistory['cohort']) }} progress</h3><span class="small text-muted">CTR out of 100</span></div>
     <p class="small text-muted d-sm-none mb-2">Swipe the chart to see all months. Tap a point to explore its results.</p>
     <div class="ctr-chart-scroll" role="region" aria-label="Rating chart; scroll horizontally on small screens" tabindex="0">
       <svg viewBox="0 0 660 270" role="group" aria-label="{{ ucfirst($ratingHistory['cohort']) }} monthly rating history; axis {{ $axis['min'] }} to {{ $axis['max'] }}" style="width:100%;min-width:660px;max-height:360px">
@@ -162,7 +113,42 @@
       </svg>
     </div>
     <div class="ctr-legend mt-2"><span><i class="ctr-line-key" aria-hidden="true"></i>Same comparison group</span><span><i class="ctr-line-key ctr-line-key-dashed" aria-hidden="true"></i>Group or reference changed</span><span>Missing months remain gaps</span></div>
-    <p class="small text-muted mt-2 mb-0">Dashed lines show a changed comparison group or reference. An upward or downward jump across them does not reliably show improvement or decline.</p>
+    <p class="small text-muted mt-2 mb-0">Dashed lines mark changes in comparison group or reference. Compare changes within solid sections.</p>
+    <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters mt-3">
+      @foreach($ratingTopTen['filters'] ?? [] as $filter => $value)<input type="hidden" name="{{ $filter }}" value="{{ $value }}">@endforeach
+      <input type="hidden" name="rating_page" value="{{ $query['rating_page'] }}">
+      <div><span class="small text-muted d-block">Current rating group</span><strong data-current-rating-group>{{ $ratingHistory['current_group_label'] ?? 'Not rated yet' }}</strong></div>
+      <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
+        @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }}</option>@endforeach
+      </select></div>
+      <input type="hidden" name="scope" value="{{ $ratingHistory['scope'] }}">
+      <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
+    </form>
+    <div class="ctr-stats">
+      <div class="ctr-stat" data-selected-month-summary><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
+        <div>@if($selectedIsLatest)<p class="mb-0">Latest saved month</p>@elseif($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
+        @if(($point['evidence_basis'] ?? null) === 'finish_only')<p class="small mt-2 mb-0">Low confidence · final placings only</p>@endif
+        @if($comparable)<p class="mt-2 mb-0"><strong>{{ sprintf('%+.1f', $point['score'] - $previous['score']) }}</strong> from the previous month · same comparison group</p>
+        @elseif($point && $previous)<p class="small text-muted mt-2 mb-0">Comparison group changed. No like-for-like monthly change.</p>
+        @else<p class="small text-muted mt-2 mb-0">No comparable previous-month estimate.</p>@endif
+      </div>
+      <div class="ctr-stat"><h3>Singles results included</h3><div class="ctr-stat-value">{{ $evidence['matches'] }} {{ \Illuminate\Support\Str::plural('match', $evidence['matches']) }}</div><p class="mt-2 mb-0">{{ $evidence['wins'] }} won · {{ $evidence['losses'] }} lost</p>
+        @if($evidence['matches'] < 5)<p class="small text-muted mt-1 mb-0">Small sample. Use this estimate with care.@if($evidence['finishes']) Also includes finishing-order evidence.@endif</p>@endif
+      </div>
+    </div>
+    @if($point)
+      <details class="small mb-3">
+        <summary>Rating evidence @if(($point['confidence_label'] ?? null) === 'Low') · Low confidence @endif</summary>
+        <p class="mb-1"><strong>Evidence confidence: {{ $point['confidence_label'] ?? ((!empty($point['historical_connection']) || ($point['connection_status'] ?? '') === 'disconnected') ? 'Low' : 'Not recorded') }}</strong> · as of {{ $point['date'] }}<br><span class="text-muted">Strength and freshness of the supporting results, not an accuracy percentage.</span></p>
+        @if(array_key_exists('last_direct_match', $point))
+          <p class="mb-1">Last included singles result: {{ $point['last_direct_match'] ? \Carbon\CarbonImmutable::parse($point['last_direct_match'])->format('j M Y') : 'None recorded' }}@if(isset($point['recent_played'])) · {{ $point['recent_played'] }} {{ \Illuminate\Support\Str::plural('match', $point['recent_played']) }} in the 90 days before this estimate @endif</p>
+          @if(isset($point['direct_opponents'], $point['played_events']))<p class="mb-1 text-muted">Included results cover {{ $point['direct_opponents'] }} distinct {{ \Illuminate\Support\Str::plural('opponent', $point['direct_opponents']) }} across {{ $point['played_events'] }} {{ \Illuminate\Support\Str::plural('event', $point['played_events']) }}.</p>@endif
+          @if(!empty($point['proxy_dated_matches']))<p class="mb-1 text-muted">Some result dates use the event date where a match date was unavailable.</p>@endif
+        @else
+          <p class="mb-1 text-muted">Detailed confidence and freshness were not recorded in this saved calculation. They will be included in the next nightly update.</p>
+        @endif
+      </details>
+    @endif
     <details class="mt-3"><summary>Monthly rating values</summary><div class="table-responsive mt-2"><table class="table table-sm" style="white-space:nowrap"><thead><tr><th>Date</th><th>CTR / 100</th>@if(auth()->user()?->hasRole('super-user'))<th>Monthly change</th><th>Comparison</th>@endif</tr></thead><tbody>
       @foreach($points as $tablePoint)
         @php($before = $points[$loop->index - 1] ?? null)
@@ -171,8 +157,7 @@
       @endforeach
     </tbody></table></div></details>
     <section class="mt-4" aria-labelledby="ctr-results-heading">
-      <div class="ctr-heading"><h3 id="ctr-results-heading" class="h5 mb-0">Your results behind this estimate</h3><span class="small text-muted">{{ $evidence['included'] }} personal evidence records included</span></div>
-      <p class="small text-muted mt-2 mb-3">These saved results contributed to the model. Opponents’ results, network connections and time weighting also matter; a match does not award a fixed number of CTR points.</p>
+      <div class="ctr-heading"><h3 id="ctr-results-heading" class="h5 mb-0">Results used in this estimate</h3><span class="small text-muted">{{ $evidence['included'] }} records</span></div>
       @if($evidence['restricted'] ?? 0)
           <p class="small text-muted">{{ $evidence['restricted'] }} TeamSheet match details restricted to administrators. Their contributions remain included in your rating and match totals.</p>
       @endif
@@ -181,9 +166,9 @@
         <a class="btn btn-sm {{ $ratingHistory['scope'] === 'all' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ $ratingUrl(['scope' => 'all']) }}" data-rating-link @if($ratingHistory['scope'] === 'all') aria-current="true" @endif>All included ({{ $evidence['included'] }})</a>
       </div>
       @if(!$point)<p role="status">No rating was available for this category in the selected month.</p>
-      @elseif(!$evidence['rows'])<p role="status">{{ $ratingHistory['scope'] === 'new' ? 'No new personal results were added since the previous snapshot. A rating can still change through time weighting or opponents’ results.' : 'No direct singles results or retained finishing-order evidence were recorded for this player in this snapshot.' }}</p>
+      @elseif(!$evidence['rows'])<p role="status">{{ $ratingHistory['scope'] === 'new' ? 'No new results since the previous month.' : 'No direct singles results or retained finishing-order evidence were recorded for this player in this snapshot.' }}</p>
       @else
-        <p class="small text-muted">Showing {{ ($evidence['page'] - 1) * 20 + 1 }}–{{ min($evidence['page'] * 20, $evidence['total']) }} of {{ $evidence['total'] }} {{ $ratingHistory['scope'] === 'all' ? 'included' : 'newly included' }} records. Eligible completed matches enter even while an event is running; finishing-order evidence waits until the event end date.</p>
+        <p class="small text-muted">Showing {{ ($evidence['page'] - 1) * 20 + 1 }}–{{ min($evidence['page'] * 20, $evidence['total']) }} of {{ $evidence['total'] }} {{ $ratingHistory['scope'] === 'all' ? 'included' : 'newly included' }} records.</p>
         @foreach($evidence['rows'] as $result)
           <article class="ctr-result">
             <div class="ctr-result-top"><time datetime="{{ $result['date'] }}" class="small text-muted">{{ \Carbon\CarbonImmutable::parse($result['date'])->format('d M Y') }}</time><span class="badge {{ $result['kind'] === 'match' ? ($result['won'] ? 'bg-label-success' : 'bg-label-secondary') : 'bg-label-info' }}">{{ $result['kind'] === 'match' ? ($result['won'] ? 'Won' : 'Lost') : 'Finishing order' }}</span></div>
@@ -210,24 +195,39 @@
   @endif
   </div>
   <div class="tab-pane" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
-    <h3 class="h5">Where do I stand?</h3>
     @include('frontend.my-tennis.rating-top-ten')
     @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
   </div>
-  <div class="tab-pane" id="ctr-panel-next" role="tabpanel" aria-labelledby="ctr-tab-next" tabindex="0">
-    <h3 class="h5">What should I play next?</h3>
-    @php($nextPathway = $ratingPathway ?? \App\Services\Performance\PlayerPathwayService::unrecorded())
-    <p><strong>{{ $nextPathway['assessment_status'] }}</strong> · {{ $nextPathway['reason'] }}</p>
-    @include('frontend.my-tennis.pathway', ['pathway' => $nextPathway])
-  </div>
   <div class="tab-pane" id="ctr-panel-understand" role="tabpanel" aria-labelledby="ctr-tab-understand" tabindex="0">
     <h3 class="h5">What does my rating mean?</h3>
-    <p>CTR estimates singles playing strength from eligible results. Confidence describes the supporting evidence, not an accuracy percentage.</p>
     <x-rating-explanation class="mt-3" />
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
       <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age singles rating uses played results across ages; compare players connected to the same shared reference group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
+      <p>Ratings update nightly at 03:00 SAST. Opponents’ results and the age of your matches affect your estimate. Completed matches can count during an event. Finishing positions, where eligible, are considered after the event ends.</p>
       <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. All ball colours and court formats are included without category-based rating offsets. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
     </div></details>
   </div>
   </div>
+  @if(request()->ajax())
+  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
+    <a data-my-tennis-link href="{{ route('my.tennis.pathway', $ratingPlayer) }}">Next steps</a>
+    <a data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a>
+  </div>
+  @endif
+  @if(auth()->user()?->hasRole('super-user'))
+    <details class="mt-3" data-rating-admin-tools>
+      <summary>Admin tools</summary>
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
+      <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>
+      <span class="small text-muted" role="status" data-history-refresh-status>Recalculates saved rating history for all players in the background.</span>
+      <span class="small text-muted w-100" data-history-last-updated>
+        @if($ratingHistory['built_at'] ?? null)
+          Latest saved update for this player: <time datetime="{{ $ratingHistory['built_at'] }}">{{ \Carbon\CarbonImmutable::parse($ratingHistory['built_at'])->setTimezone('Africa/Johannesburg')->format('j M Y, H:i') }} SAST</time>
+        @else
+          No saved update for this player yet.
+        @endif
+      </span>
+    </div>
+    </details>
+  @endif
 </div></section>

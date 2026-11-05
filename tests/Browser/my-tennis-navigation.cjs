@@ -83,18 +83,18 @@ async function run() {
       await nav.getByRole('link', { name: 'Activity' }).click();
       await workspace.getByRole('button', { name: 'Try again' }).click();
       await active('Activity');
-      await workspace.getByRole('button', { name: 'Upcoming matches', exact: true }).click();
+      await workspace.getByRole('button', { name: 'Match reminders', exact: true }).click();
       const reminder = page.locator('#match-reminder');
       await reminder.getByText('No published, unfinished matches', { exact: false }).waitFor();
       await reminder.getByRole('button', { name: 'Close', exact: true }).last().click();
       await reminder.waitFor({ state: 'hidden' });
-      for (const name of ['Rating', 'Results', 'Opponents', 'Progress']) {
+      for (const name of ['Rating', 'Results', 'Opponents', 'Next steps']) {
         await nav.getByRole('link', { name, exact: true }).click();
         await active(name);
         if (name === 'Rating') {
           await workspace.getByRole('heading', { name: 'Player rating', exact: true }).waitFor();
           await workspace.locator('.ctr-section-tabs .nav-link').first().waitFor();
-          await assertAligned(workspace.locator('.ctr-section-tabs .nav-link'), 4, width < 768 ? 2 : 1);
+          await assertAligned(workspace.locator('.ctr-section-tabs .nav-link'), 3, 1);
           await workspace.getByRole('link', { name: 'Past-event ratings', exact: true }).last().click();
           await workspace.getByRole('heading', { name: 'Past-event ratings', exact: false }).waitFor();
         }
@@ -102,7 +102,11 @@ async function run() {
       await page.goBack();
       await active('Opponents');
       await page.goForward();
-      await active('Progress');
+      await active('Next steps');
+      const levels = workspace.getByText('See all levels and targets', { exact: true });
+      await levels.waitFor();
+      assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);
+      await levels.click();
       await workspace.locator('[data-player-pathway] details[open]').waitFor();
       await nav.getByRole('link', { name: 'Profile' }).click();
       await active('Profile');

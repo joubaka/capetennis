@@ -66,9 +66,10 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->assertTabTargets($plus->getContent());
         $this->export('plus', $plus);
         $this->export('rating', $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']))->assertOk()
-            ->assertSee('data-rating-url', false)->assertSee(route('my.tennis.event-history', $player), false));
+            ->assertSee('data-rating-url', false));
         $this->export('rating-fragment', $this->get(route('my.tennis.rating', $player), ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertSee('data-profile-rating-update', false)
+            ->assertSee(route('my.tennis.event-history', $player), false)
             ->assertDontSee('aria-label="Player Plus views"', false));
         $this->get(route('my.tennis', ['player' => $sibling->id]))->assertOk()
             ->assertSee('second-player@example.test')->assertSee('Explore Player Plus')
@@ -109,8 +110,8 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $dom = new \DOMDocument;
         @$dom->loadHTML($response->getContent());
         $xpath = new \DOMXPath($dom);
-        $this->assertSame('Progress', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
-        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[@open]')->length);
+        $this->assertSame('Next steps', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
+        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[not(@open)]/summary[normalize-space()="See all levels and targets"]')->length);
         $this->export('progress-entry', $response);
 
         $this->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertViewHas('workspaceTab', 'activity');

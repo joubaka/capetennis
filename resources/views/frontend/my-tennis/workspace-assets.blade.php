@@ -89,7 +89,10 @@ function mountMyTennisRating() {
       const html = await response.text();
       if (lifetime.signal.aborted || pendingUrl) return;
       const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
+      const adminToolsOpen = panel.querySelector('[data-rating-admin-tools]')?.open;
       panel.innerHTML = html;
+      const adminTools = panel.querySelector('[data-rating-admin-tools]');
+      if (adminTools && adminToolsOpen) adminTools.open = true;
       const currentBadge = document.querySelector('[data-profile-rating-badge]');
       const updatedBadge = panel.querySelector('[data-profile-rating-update]')?.content.firstElementChild;
       if (currentBadge && updatedBadge) currentBadge.replaceWith(updatedBadge.cloneNode(true));

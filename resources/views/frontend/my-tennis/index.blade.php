@@ -84,7 +84,7 @@
     #my-tennis-page .my-tennis-plus-link { color: #fff; background: #004177; border: 1px solid #004177; font-weight: 600; gap: .5rem; }
     #my-tennis-page .my-tennis-plus-link:hover { color: #fff; background: #172e45; border-color: #172e45; }
     #my-tennis-page .my-tennis-plus-link:focus-visible { outline: 3px solid #b85b00; outline-offset: 3px; }
-    #my-tennis-page .my-tennis-preview-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-bottom: 1rem; font-size: .8rem; }
+    #my-tennis-page .my-tennis-preview-toolbar { margin-bottom: 1rem; font-size: .8rem; }
     #my-tennis-page .my-tennis-preview-toolbar summary { cursor: pointer; padding: .75rem 0; }
     #my-tennis-page .my-tennis-player-summary { padding: 1rem 1.25rem; background: #fff; color: #20384b; border: 1px solid #e5ece9; margin-bottom: 1.25rem; }
     #my-tennis-page .my-tennis-player-summary .text-white { color: #004177 !important; }
@@ -129,12 +129,13 @@
   @include('frontend.my-tennis.profile-header')
 
   @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
-    <div class="my-tennis-preview-toolbar" data-non-plus-preview-control>
+    <details class="my-tennis-preview-toolbar" data-non-plus-preview-control @if($previewNonPlus) open @endif>
+      <summary>Admin preview</summary>
       <a class="btn btn-sm btn-outline-secondary" role="switch" aria-label="Preview without Player Plus" aria-checked="{{ $previewNonPlus ? 'true' : 'false' }}" href="{{ route('my.tennis', ['player' => $ratingPlayer->id, 'tab' => 'profile', 'preview_non_plus' => $previewNonPlus ? null : 1]) }}">Preview without Player Plus · {{ $previewNonPlus ? 'On' : 'Off' }}</a>
       @if($previewNonPlus)
-        <details><summary>About this preview</summary><p class="mb-0" role="status">Non-Plus preview is on. This is the workspace users see before activating Player Plus.</p></details>
+        <p class="mb-0 mt-2" role="status">Viewing as a player without Player Plus.</p>
       @endif
-    </div>
+    </details>
   @endif
 
   @if($workspaceTab === 'profile')
@@ -147,9 +148,6 @@
       @include('frontend.my-tennis.rating-preview')
     @endif
   </section>
-  @if($canViewRating ?? false)
-    <p class="mt-3"><a data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a></p>
-  @endif
   @elseif($workspaceTab === 'activity')
   <div id="my-tennis-overview">
   @if(!$selectedPlayer)
@@ -163,31 +161,11 @@
     </div>
   @else
     @if(($playerCount ?? 0) > \App\Services\MyTennisService::PLAYER_LIMIT)<p class="small text-muted">Use Manage players to open a linked profile that is missing from the player selector.</p>@endif
-    @if($matchReadLimited ?? false)<p class="small text-muted" role="status">This dashboard checks the earliest {{ \App\Services\MyTennisService::MATCH_CANDIDATE_LIMIT }} scheduled fixtures per match type. Counts below cover the matches shown; use the event programme for the full schedule.</p>@endif
+    @if($matchReadLimited ?? false)<p class="small text-muted" role="status">Showing part of the schedule. Check the event programme for all matches.</p>@endif
     <div class="my-tennis-player-summary">
-      <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-1">Your tennis activity</h2><p class="small text-muted mb-0">Upcoming matches, entries, results and rankings.</p></div>
-      <button class="btn btn-outline-light" type="button" data-open-match-reminder aria-controls="match-reminder">Upcoming matches</button>
-      <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Upcoming matches</span></div>
-    </div>
-    @if(($canViewRating ?? false) && ($overviewPathway ?? null))
-      <aside class="card card-body my-tennis-development mb-4" aria-labelledby="overview-development-heading" data-overview-development-comment>
-        <div class="my-tennis-development-heading"><span class="my-tennis-development-icon" aria-hidden="true"><i class="ti ti-target-arrow"></i></span><div><small>Player Plus · Your next step</small><h2 id="overview-development-heading">Your next development target</h2></div></div>
-        @if($overviewPathway['assessed'] && $overviewPathway['target'])
-          <p class="mb-2">
-            {{ $overviewPathway['ready'] ? 'Benchmark achieved:' : 'Aim for' }} <strong>{{ $overviewPathway['ctr_label'] }} {{ number_format($overviewPathway['target']['ctr'], 1) }}</strong>
-            @if($overviewPathway['benchmark_division'])
-              for the Wilson {{ $overviewPathway['benchmark_division'] }} benchmark,
-            @endif
-            with at least {{ $overviewPathway['target']['events'] }} published {{ $overviewPathway['current_stage_label'] }} events.
-          </p>
-        @endif
-        <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
-        <p class="small text-muted mb-2">These are development targets; each tournament has its own entry rules.</p>
-        <a class="btn my-tennis-plus-link align-self-start" data-my-tennis-link href="{{ route('my.tennis.pathway', $selectedPlayer) }}">Explore my tennis pathway <span aria-hidden="true">→</span></a>
-      </aside>
-    @endif
-    <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
-      <h2 class="my-tennis-section-heading mb-0">Upcoming scheduled matches</h2>
+      <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-0">Upcoming matches</h2></div>
+      <button class="btn btn-outline-primary" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminders</button>
+      <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Scheduled</span></div>
     </div>
     @php
       $matchDays = $upcomingMatches->groupBy(fn ($match) => \Carbon\Carbon::parse($match->scheduled_at)->toDateString());
@@ -248,17 +226,36 @@
       <div class="col-12">
         <div class="card border-0 shadow-sm"><div class="card-body">
           <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><h5 class="mb-0">Entries</h5><i class="ti ti-clipboard-list text-primary fs-4" aria-hidden="true"></i></div>
-          <p class="text-muted small mb-3">Only paid entries are confirmed and eligible for an event. An unpaid record is not an event entry until payment is completed.</p>
+          <p class="text-muted small mb-3">Your entry is confirmed once payment is complete.</p>
           <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Event</th><th>Category</th><th>Status</th><th>Payment</th></tr></thead><tbody>
           @forelse($entries as $entry)
-            <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Not paid — entry not confirmed' }}</td></tr>
+            <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Unpaid' }}</td></tr>
           @empty
             <tr><td colspan="4" class="text-muted">No entries found for this player.</td></tr>
           @endforelse
           </tbody></table></div>
-          @if($entries instanceof \Illuminate\Contracts\Pagination\Paginator)<div class="mt-3">{{ $entries->fragment('my-tennis-history')->links() }}</div><p class="small text-muted mb-0">Entries are paginated. Published results and current rankings below show the latest 20 records.</p>@endif
+          @if($entries instanceof \Illuminate\Contracts\Pagination\Paginator)<div class="mt-3">{{ $entries->fragment('my-tennis-history')->links() }}</div>@endif
         </div></div>
       </div>
+      @if(($canViewRating ?? false) && ($overviewPathway ?? null))
+        <div class="col-12">
+          <aside class="card card-body my-tennis-development" aria-labelledby="overview-development-heading" data-overview-development-comment>
+            <div class="my-tennis-development-heading"><span class="my-tennis-development-icon" aria-hidden="true"><i class="ti ti-target-arrow"></i></span><div><h2 id="overview-development-heading">Your next development target</h2></div></div>
+            @if($overviewPathway['assessed'] && $overviewPathway['target'])
+              <p class="mb-2">
+                {{ $overviewPathway['ready'] ? 'Benchmark achieved:' : 'Aim for' }} <strong>{{ $overviewPathway['ctr_label'] }} {{ number_format($overviewPathway['target']['ctr'], 1) }}</strong>
+                @if($overviewPathway['benchmark_division'])
+                  for the Wilson {{ $overviewPathway['benchmark_division'] }} benchmark,
+                @endif
+                with at least {{ $overviewPathway['target']['events'] }} published {{ $overviewPathway['current_stage_label'] }} events.
+              </p>
+            @endif
+            <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
+            <p class="small text-muted mb-2">Each tournament has its own entry rules.</p>
+            <a class="btn my-tennis-plus-link align-self-start" data-my-tennis-link href="{{ route('my.tennis.pathway', $selectedPlayer) }}">See next steps <span aria-hidden="true">→</span></a>
+          </aside>
+        </div>
+      @endif
       <div class="col-12 col-lg-6">
         <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h5>Recent published results</h5>
           @forelse($history['placements'] as $placement)<div class="border-bottom py-2"><div class="fw-semibold">{{ $placement->categoryEvent?->event?->name ?? 'Event' }}</div><div class="small text-muted">{{ $placement->categoryEvent?->category?->name ?? 'Category' }} · Place {{ $placement->position }}</div></div>@empty<p class="text-muted mb-0">No published results yet.</p>@endforelse
