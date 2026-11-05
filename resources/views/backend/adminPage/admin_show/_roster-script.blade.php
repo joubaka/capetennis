@@ -132,11 +132,12 @@ if (!window.teamRosterControls) {
     let feedback = form.nextElementSibling?.matches('[data-team-roster-feedback]') ? form.nextElementSibling : null;
     if (!feedback) { feedback = document.createElement('p'); feedback.dataset.teamRosterFeedback = ''; feedback.setAttribute('role','status'); form.after(feedback); }
     let progressTimer;
-    const showProgress = (message, slowMessage) => {
+    const showProgress = (message, slowMessage, percent) => {
       clearTimeout(progressTimer);
       feedback.className = 'alert alert-info d-flex align-items-center gap-2';
       feedback.setAttribute('aria-live', 'polite');
-      feedback.innerHTML = '<span class="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true"></span><span><span data-roster-progress-message></span><span class="small d-block" aria-hidden="true" data-roster-progress-time></span></span>';
+      feedback.innerHTML = '<span class="spinner-border spinner-border-sm flex-shrink-0" aria-hidden="true"></span><span><span class="fw-semibold" data-roster-progress-percent></span><span data-roster-progress-message></span><span class="small d-block" aria-hidden="true" data-roster-progress-time></span></span>';
+      feedback.querySelector('[data-roster-progress-percent]').textContent = percent === undefined ? '' : `${percent}% · `;
       const label = feedback.querySelector('[data-roster-progress-message]'), clock = feedback.querySelector('[data-roster-progress-time]');
       label.textContent = message;
       const started = Date.now();
@@ -149,7 +150,11 @@ if (!window.teamRosterControls) {
       tick();
     };
     const refreshRoster = async () => {
-      showProgress(form.dataset.saved ? 'Saved. Updating the player list…' : 'Checking the current player list…', 'The player list is taking longer to load. Please wait…');
+      showProgress(
+        form.dataset.saved ? 'Saved. Updating the player list…' : 'Checking the current player list…',
+        form.dataset.saved ? 'Saved. The player list is taking longer to load…' : 'Still checking the player list…',
+        form.dataset.saved ? 50 : undefined,
+      );
       if (refreshOtherRegions) window.invalidateTeamRosterPanels?.(panel, true);
       if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(panel);
       else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
@@ -160,7 +165,7 @@ if (!window.teamRosterControls) {
     let movedInPlace = false;
     try {
       if (!form.dataset.saved && !form.dataset.saveUnconfirmed) {
-        showProgress(form.elements.remove ? 'Removing player…' : 'Saving player change…', 'Saving is taking longer than usual. Please wait; do not submit again…');
+        showProgress(form.elements.remove ? 'Removing player…' : 'Saving player change…', 'Still waiting for save confirmation. Please do not submit again…', 0);
         // A lost response does not prove that the server rolled the mutation back.
         form.dataset.saveUnconfirmed = '1';
         const data = await waitForRosterSave((async () => {
@@ -188,7 +193,9 @@ if (!window.teamRosterControls) {
       if (!movedInPlace) {
         await refreshRoster();
       }
-      window.toastr?.success(form.dataset.successMessage || 'Player list refreshed. Check the player before making another change.');
+      window.toastr?.success(form.dataset.saved || movedInPlace
+        ? `100% · ${form.dataset.successMessage}`
+        : 'Player list refreshed. Check the player before making another change.');
     } catch (error) {
       if (error.confirmedNotSaved) delete form.dataset.saveUnconfirmed;
       clearTimeout(progressTimer);
@@ -208,7 +215,7 @@ if (!window.teamRosterControls) {
         retry.addEventListener('click', async () => {
           retry.disabled = true;
           if (modal) modal.dataset.rosterBusy = '1';
-          try { await refreshRoster(); window.toastr?.success(form.dataset.saved ? 'Player list updated.' : 'Player list refreshed. Check the player before making another change.'); }
+          try { await refreshRoster(); window.toastr?.success(form.dataset.saved ? '100% · Player list updated.' : 'Player list refreshed. Check the player before making another change.'); }
           catch (refreshError) { feedback.className = 'alert alert-danger'; feedback.textContent = refreshError.message; feedback.append(retry); retry.disabled = false; }
           finally { clearTimeout(progressTimer); if (modal) delete modal.dataset.rosterBusy; }
         });

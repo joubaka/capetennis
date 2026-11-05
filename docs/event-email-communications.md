@@ -2,6 +2,8 @@
 
 Team events and Interprovincial Trials have a Communications page available to authorised event managers at every event stage. Regional managers remain limited to their assigned region. Closing registration, unpaid entries and unpublished nominations do not disable general communication.
 
+On the Interprovincial Trials Nominations page, **Email nominated players** opens a subject field and a plain-text message box. The review uses the event’s current nominations across all categories and response statuses. It shows the distinct email addresses that will receive the announcement and flags missing or invalid contacts. One approval queues the reviewed batch. This uses the Trials communications workflow for announcements, separate from actionable registration invitations.
+
 Choose everyone, nominees, a region, a team or an individual, then refine the player status. Interpro teams use category and tier selections. Search the bounded individual selectors by name when needed. Player messages include linked parent contacts; manager messages contain only the selected roster. Missing or invalid contacts appear in the preview.
 
 Review the exact recipients and every message before approving. Contact, roster or message changes invalidate a preview. Approval queues the reviewed snapshot once. Registration, withdrawal and refund messages wait as system drafts for review. Reminder schedules identify when review is due; they never send automatically. Existing managed mail transport and the `outbound-mail` rate limit remain in use.

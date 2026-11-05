@@ -38,6 +38,12 @@ class TrialCommunicationService
             $this->programmes->authorize($event, $actor);
             abort_unless((int) $locked->actor_id === (int) $actor->id, 403);
             if ($locked->committed_at) return ['queued' => 0];
+            if (! empty($locked->options['nominee_email'])) {
+                if ($locked->expires_at->isPast()) {
+                    throw ValidationException::withMessages(['preview' => 'Preview expired. Review the recipients again.']);
+                }
+                abort_if(empty($locked->recipients), 422, 'There are no valid email recipients.');
+            }
             abort_if($locked->expires_at->isPast(), 422, 'Preview expired. Review a new preview.');
             [$current, $excluded] = $this->resolve($event, $locked->options, $locked->subject, $locked->body);
             if (! hash_equals($locked->snapshot_hash, hash('sha256', json_encode(isset($locked->options['from_name']) ? [$current, $excluded, $locked->options['from_name'], $locked->options['reply_to']] : [$current, $excluded])))) {
@@ -86,6 +92,7 @@ class TrialCommunicationService
             $preview = TrialMailPreview::lockForUpdate()->findOrFail($preview->id);
             $event = Event::findOrFail($preview->event_id); $this->programmes->authorize($event, $actor);
             abort_unless((int) $preview->actor_id === (int) $actor->id && ! $preview->committed_at && $preview->expires_at->isFuture(), 422);
+            abort_if(! empty($preview->options['nominee_email']), 422);
             abort_unless($start->isFuture() && ($repeatHours === null || ($repeatHours >= 1 && $repeatHours <= 8760)) && (! $stop || $stop->gte($start)), 422);
             [$current, $excluded] = $this->resolve($event, $preview->options, $preview->subject, $preview->body);
             abort_unless(hash_equals($preview->snapshot_hash, hash('sha256', json_encode(isset($preview->options['from_name']) ? [$current, $excluded, $preview->options['from_name'], $preview->options['reply_to']] : [$current, $excluded]))), 422);
@@ -232,11 +239,16 @@ class TrialCommunicationService
         }
         ksort($groups); $recipients = [];
         foreach ($groups as $email => $players) {
+            $recipient = ['email' => $email, 'name' => collect($players)->pluck('name')->implode(', '), 'players' => $players];
+            if (! empty($options['nominee_email'])) {
+                $recipients[] = $recipient + ['subject' => $subject, 'body' => $body];
+                continue;
+            }
             $variables = ['{event}' => $event->name, '{players}' => collect($players)->map(fn ($p) => $p['name'].' — '.$p['status'].' — '.$p['url'])->implode("\n"),
                 '{fee}' => number_format((float) ($audience === 'teams' ? $programme?->participation_fee : $event->entryFee), 2),
                 '{deadline}' => $audience === 'teams' ? (string) $programme?->response_deadline : (string) $event->registrationClosesAt()?->format('Y-m-d'), '{url}' => route('events.show', $event->id)];
             $renderedSubject = preg_replace('/[\r\n]+/', ' ', strtr($subject, $variables));
-            $recipients[] = ['email' => $email, 'name' => collect($players)->pluck('name')->implode(', '), 'players' => $players, 'subject' => mb_substr($renderedSubject, 0, 255), 'body' => strtr($body, $variables)];
+            $recipients[] = $recipient + ['subject' => mb_substr($renderedSubject, 0, 255), 'body' => strtr($body, $variables)];
         }
         return [$recipients, $excluded];
     }

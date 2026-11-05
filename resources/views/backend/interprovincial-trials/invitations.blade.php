@@ -54,7 +54,10 @@
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
     <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, then remove, decline or mark them paid manually. Publishing names and sending emails are optional separate steps.</p></div>
-    <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-primary" href="{{ route('backend.interprovincial-trials.communications.nominees.compose', $event) }}">Email nominated players</a>
+      <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
+    </div>
   </div>
   @if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
   @if($errors->any()) <div class="alert alert-danger">{{ $errors->first() }}</div> @endif

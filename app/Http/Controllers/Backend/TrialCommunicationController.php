@@ -2,9 +2,11 @@
 namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\{Event, TrialMailPreview, TrialMailSchedule, TrialMessageTemplate, BulkEmailLog};
+use App\Services\CommunicationSender;
 use App\Services\InterprovincialTrials\{TrialCommunicationService, TrialProgrammeService};
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 class TrialCommunicationController extends Controller {
     private const SELECTOR_LIMIT = 500;
 
@@ -41,12 +43,53 @@ class TrialCommunicationController extends Controller {
         }
         return view('backend.interprovincial-trials.communication-preview',compact('event','preview'));
     }
+    public function composeNomineeEmail(Request $request, Event $event, TrialProgrammeService $programmes)
+    {
+        $programmes->authorize($event, $request->user());
+
+        $draft = $request->filled('draft') ? TrialMailPreview::where('event_id', $event->id)
+            ->where('actor_id', $request->user()->id)
+            ->where('options->nominee_email', true)
+            ->findOrFail($request->integer('draft')) : null;
+
+        return view('backend.interprovincial-trials.nominee-email', compact('event', 'draft'));
+    }
+
+    public function previewNomineeEmail(Request $request, Event $event, TrialProgrammeService $programmes, TrialCommunicationService $service)
+    {
+        $programmes->authorize($event, $request->user());
+        $data = $request->validate([
+            'subject' => 'required|string|max:255',
+            'body' => 'required|string|max:50000',
+        ]);
+        $options = [
+            'nominee_email' => true,
+            'audience' => 'nominations',
+            'filter' => 'all',
+            'recipients' => 'players',
+        ] + CommunicationSender::eventDefaults($event, $request->user());
+        $preview = $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
+
+        return view('backend.interprovincial-trials.communication-preview', compact('event', 'preview'));
+    }
+
     private function previewFor(Event $event, Request $request): TrialMailPreview {
         return TrialMailPreview::where('event_id',$event->id)->where('token',$request->input('token'))->firstOrFail();
     }
     public function send(Request $request, Event $event, TrialCommunicationService $service) {
-        $stats=$service->commit($this->previewFor($event,$request),$request->user());
         $preview = $this->previewFor($event,$request);
+        try {
+            $service->commit($preview, $request->user());
+        } catch (ValidationException $exception) {
+            if (empty($preview->options['nominee_email']) || $request->expectsJson()) {
+                throw $exception;
+            }
+
+            return redirect()->route('backend.interprovincial-trials.communications.nominees.compose', [
+                'event' => $event,
+                'draft' => $preview->id,
+            ])->withErrors($exception->errors());
+        }
         $logs = BulkEmailLog::where('payload->event_id',$event->id)->where('payload->preview_id',$preview->id);
         $queued = (clone $logs)->where('payload->queue_state','enqueued')->count();
         $pending = (clone $logs)->where('payload->queue_state','prepared')->count();

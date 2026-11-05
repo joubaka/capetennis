@@ -30,6 +30,66 @@ class TrialCommunicationsTest extends TestCase {
     private function preview(string $filter='all') {
         return app(TrialCommunicationService::class)->preview($this->event,$this->admin,['audience'=>'nominations','filter'=>$filter],'Editable {event}','Only this text: {players} <script>alert(1)</script> {fee} {url}');
     }
+    public function test_nomination_email_reviews_all_current_nominees_and_queues_once(): void
+    {
+        $child = Player::factory()->create(['email' => 'FAMILY@example.test']);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $child->id]);
+        EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'nominee_name' => 'No', 'nominee_surname' => 'Email']);
+
+        $other = Event::factory()->create(['eventType' => $this->event->eventType]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $other->id]);
+        EventNomination::create(['event_id' => $other->id, 'category_event_id' => $otherCategory->id, 'nominee_name' => 'Other', 'nominee_email' => 'other@example.test']);
+        DB::table('event_admins')->insert(['event_id' => $other->id, 'user_id' => $this->admin->id]);
+
+        $this->actingAs($this->admin);
+        $composeUrl = route('backend.interprovincial-trials.communications.nominees.compose', $this->event);
+        $this->get(route('backend.interprovincial-trials.invitations.index', $this->event))
+            ->assertOk()->assertSee('Email nominated players')->assertSee($composeUrl, false);
+        $this->get($composeUrl)->assertOk()->assertSee('Paste your email here')->assertDontSee('Saved template');
+        $body = "Dear players,\nPasted message with literal {players} and <text>.";
+        $response = $this->post(route('backend.interprovincial-trials.communications.nominees.preview', $this->event), [
+            'subject' => 'Nomination update',
+            'body' => $body,
+            'audience' => 'teams',
+            'recipients' => 'managers',
+            'category_ids' => [$otherCategory->id],
+            'schedule_id' => 123,
+            'reply_to' => 'injected@example.test',
+        ])->assertOk()->assertSee('Send 1 email')->assertSee('No valid email')
+            ->assertDontSee('Save a reminder');
+        $preview = $response->viewData('preview');
+        $this->assertSame(['family@example.test'], array_column($preview->recipients, 'email'));
+        $this->assertCount(2, $preview->recipients[0]['players']);
+        $this->assertSame($body, $preview->recipients[0]['body']);
+        $this->assertSame($this->admin->email, $preview->options['reply_to']);
+        $this->assertArrayNotHasKey('_schedule_id', $preview->options);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->get($composeUrl.'?draft='.$preview->id)->assertOk()->assertSee('Nomination update')->assertSee($body);
+
+        $payload = ['token' => $preview->token];
+        $this->post(route('backend.interprovincial-trials.communications.send', $other), $payload)->assertNotFound();
+        $this->post(route('backend.interprovincial-trials.communications.schedules', $this->event), $payload + ['start' => now()->addHour()->toDateTimeString()])->assertUnprocessable();
+        $sendUrl = route('backend.interprovincial-trials.communications.send', $this->event);
+        $this->post($sendUrl, $payload)->assertRedirect();
+        $this->post($sendUrl, $payload)->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->assertSame('family@example.test', BulkEmailLog::sole()->recipient_email);
+    }
+
+    public function test_nomination_email_rejects_unauthorized_actors_and_returns_stale_previews_to_editing(): void
+    {
+        $previewUrl = route('backend.interprovincial-trials.communications.nominees.preview', $this->event);
+        $draft = ['subject' => 'Subject', 'body' => 'Body'];
+        $this->actingAs(User::factory()->create())->post($previewUrl, $draft)->assertForbidden();
+        $preview = $this->actingAs($this->admin)->post($previewUrl, $draft)->assertOk()->viewData('preview');
+        $this->player->update(['email_2' => 'new-contact@example.test']);
+
+        $this->post(route('backend.interprovincial-trials.communications.send', $this->event), ['token' => $preview->token])
+            ->assertRedirect(route('backend.interprovincial-trials.communications.nominees.compose', ['event' => $this->event, 'draft' => $preview->id]))
+            ->assertSessionHasErrors('preview');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
     public function test_combined_family_preview_has_exact_editable_content_and_commit_is_idempotent(): void {
         $child=Player::factory()->create(['email'=>'FAMILY@example.test']);
         EventNomination::create(['event_id'=>$this->event->id,'category_event_id'=>$this->category->id,'player_id'=>$child->id]);

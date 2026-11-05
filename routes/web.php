@@ -495,6 +495,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::get('events/{event}/communications', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'index'])->name('communications.index');
     Route::post('events/{event}/communications/preview', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'preview'])->name('communications.preview');
     Route::post('events/{event}/communications/send', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'send'])->name('communications.send');
+    Route::get('events/{event}/nominations/email', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'composeNomineeEmail'])->name('communications.nominees.compose');
+    Route::post('events/{event}/nominations/email/preview', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'previewNomineeEmail'])->name('communications.nominees.preview');
     Route::post('events/{event}/communications/templates', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'templates'])->name('communications.templates');
     Route::post('events/{event}/communications/schedules', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'schedules'])->name('communications.schedules');
     Route::post('events/{event}/communications/schedules/{schedule}/pause', [\App\Http\Controllers\Backend\TrialCommunicationController::class, 'pause'])->name('communications.pause');
