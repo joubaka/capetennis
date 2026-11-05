@@ -35,10 +35,11 @@ class TeamRosterPlaceTest extends TestCase
         return $this->postJson(route('backend.team.addPlayers'), $source + ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'target_rank' => $rank]);
     }
 
-    private function freezeReserve(NoProfileTeamPlayer $reserve): void
+    private function freezeReserve(NoProfileTeamPlayer $reserve, ?Team $team = null): void
     {
+        $team ??= $this->team;
         $final = EventSelectionFinalization::create(['event_id' => $this->event->id, 'finalized_by' => $this->actor->id, 'draft_versions' => [], 'groups' => [], 'fingerprint' => str_repeat('c', 64), 'team_size' => 3, 'reserve_count' => 1, 'finalized_at' => now()]);
-        EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $this->team->region_id, 'imported_by' => $this->actor->id, 'groups' => ['group' => ['team_id' => $this->team->id, 'players' => [['slot_id' => $reserve->id, 'status' => 'reserve', 'profile_id' => (int) $reserve->player_profile]]]], 'imported_at' => now()]);
+        EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $team->region_id, 'imported_by' => $this->actor->id, 'groups' => ['group' => ['team_id' => $team->id, 'players' => [['slot_id' => $reserve->id, 'status' => 'reserve', 'profile_id' => (int) $reserve->player_profile]]]], 'imported_at' => now()]);
     }
 
     public function test_replacement_conflict_shows_team_and_position_only_to_authorized_roster_managers(): void
@@ -47,9 +48,9 @@ class TeamRosterPlaceTest extends TestCase
         $player = Player::factory()->create();
         $otherRegion = TeamRegion::create(['region_name' => 'Other roster region']);
         $this->event->regions()->attach($otherRegion);
-        $assignedTeam = Team::factory()->create(['name' => 'Other Roster Team', 'category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id, 'noProfile' => true]);
+        $assignedTeam = Team::factory()->create(['name' => 'Other Roster Team', 'category_event_id' => $this->team->category_event_id, 'region_id' => $otherRegion->id, 'noProfile' => true, 'num_team_members' => 3]);
         TeamPlayer::create(['team_id' => $assignedTeam->id, 'rank' => 3, 'player_id' => $player->id, 'pay_status' => 0]);
-        NoProfileTeamPlayer::create(['team_id' => $assignedTeam->id, 'rank' => 3, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $importedPlace = NoProfileTeamPlayer::create(['team_id' => $assignedTeam->id, 'rank' => 3, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
         $foreignEvent = Event::factory()->create(['eventType' => 3]);
         $foreignTeam = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $foreignEvent->id])->id]);
         TeamPlayer::create(['team_id' => $foreignTeam->id, 'rank' => 5, 'player_id' => $player->id, 'pay_status' => 0]);
@@ -58,12 +59,22 @@ class TeamRosterPlaceTest extends TestCase
         $route = route('backend.team.changePlayer');
         $this->postJson($route, $payload)->assertUnprocessable()
             ->assertJsonPath('errors.roster.0', "This player is already listed on Other Roster Team (team #{$assignedTeam->id}) at position 3 in this event.");
+        $this->freezeReserve($importedPlace, $assignedTeam);
+        $this->team->update(['num_team_members' => 1]);
+        $this->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', "This player is already listed on Other Roster Team (team #{$assignedTeam->id}) at reserve position 3 in this event.");
+        $this->team->update(['num_team_members' => 3]);
 
         $manager = User::factory()->create();
         $region = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->team->region_id)->firstOrFail();
         \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id]);
         $this->actingAs($manager)->postJson($route, $payload)->assertUnprocessable()
             ->assertJsonPath('errors.roster.0', 'This player is already on a team in this event.');
+        $assignedTeam->update(['category_event_id' => null]);
+        $this->fill(['player_id' => $player->id], 1)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'This player is already on a team in this event.');
+        $this->assertDatabaseMissing('no_profile_team_players', ['team_id' => $this->team->id, 'rank' => 1]);
+        $this->assertModelExists($importedPlace);
         $this->assertDatabaseHas('no_profile_team_players', ['id' => $outgoing->id, 'rank' => 2]);
         $this->assertDatabaseCount('team_roster_promotions', 0);
     }
@@ -113,6 +124,96 @@ class TeamRosterPlaceTest extends TestCase
         $this->postJson($route, $payload)->assertNotFound();
         $this->assertDatabaseCount('team_roster_promotions', 1);
         $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
+    public function test_cross_team_reserve_replacement_is_age_eligible_and_atomic(): void
+    {
+        $this->event->update(['start_date' => '2030-10-01']);
+        $this->team->category->category->update(['name' => 'u/10 Boys']);
+        $sourceTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id, 'noProfile' => true, 'num_team_members' => 3]);
+        $outgoing = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Outgoing', 'surname' => 'Player', 'pay_status' => 0]);
+        $player = Player::factory()->male()->create(['dateOfBirth' => '2019-12-01']);
+        $source = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $sourceMirror = TeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => $player->id, 'pay_status' => 0]);
+        $payload = ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'slot_id' => $outgoing->id, 'expected_rank' => 2, 'expected_player_id' => 0, 'player_id' => $player->id];
+        $route = route('backend.team.changePlayer');
+        $this->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'The reserve must meet the destination category age eligibility.');
+        $this->assertModelExists($outgoing);
+        $this->assertModelExists($source);
+
+        $player->update(['dateOfBirth' => '2020-12-01']);
+        $order = \App\Models\TeamPaymentOrder::create(['event_id' => $this->event->id, 'team_id' => $sourceTeam->id,
+            'player_id' => $player->id, 'user_id' => $this->actor->id, 'total_amount' => 100, 'wallet_reserved' => 0,
+            'payfast_amount_due' => 100, 'payfast_handed_off_at' => now(), 'pay_status' => false]);
+        $orderBefore = $order->fresh()->getAttributes();
+        $this->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'This reserve has checkout or registration history. Use the selection workflow.');
+        $this->assertModelExists($outgoing);
+        $this->assertModelExists($source);
+        $this->assertSame($orderBefore, $order->fresh()->getAttributes());
+        DB::table('team_payment_orders')->where('id', $order->id)->delete();
+
+        $conflictingName = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 3, 'name' => $player->name, 'surname' => $player->surname, 'pay_status' => 0]);
+        $auditCount = \Spatie\Activitylog\Models\Activity::query()->count();
+        $this->postJson($route, $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'This player is already on the team.');
+        $this->assertModelExists($outgoing);
+        $this->assertModelExists($source);
+        $this->assertDatabaseHas('team_players', ['id' => $sourceMirror->id, 'player_id' => $player->id]);
+        $this->assertSame($auditCount, \Spatie\Activitylog\Models\Activity::query()->count());
+        $conflictingName->delete();
+
+        $this->postJson($route, $payload)->assertOk();
+        $this->assertModelMissing($outgoing);
+        $this->assertModelMissing($source);
+        $this->assertDatabaseHas('team_players', ['id' => $sourceMirror->id, 'team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => 0]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $this->team->id, 'rank' => 2, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', 'changed team roster player')->latest('id')->firstOrFail();
+        $this->assertSame($sourceTeam->id, $audit->properties->get('reserve_origin')['team_id']);
+        $this->assertSame(4, (int) $audit->properties->get('reserve_origin')['rank']);
+        $this->postJson($route, $payload)->assertNotFound();
+    }
+
+    public function test_add_player_can_move_a_cross_team_reserve_into_a_numbered_gap(): void
+    {
+        $this->team->category->category->update(['name' => 'u/10 Boys']);
+        $sourceTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id, 'noProfile' => true, 'num_team_members' => 3]);
+        $route = route('backend.team.addPlayers');
+        foreach ([1 => [], 2 => ['target_rank' => 2]] as $rank => $parameters) {
+            $player = Player::factory()->male()->create(['dateOfBirth' => $this->event->start_date->copy()->subYears(9)->toDateString()]);
+            $source = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+            $sourceMirror = TeamPlayer::where('team_id', $sourceTeam->id)->where('rank', 4)->first();
+            if ($sourceMirror) $sourceMirror->update(['player_id' => $player->id]);
+            else $sourceMirror = TeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => $player->id, 'pay_status' => 0]);
+            $payload = ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_id' => $player->id];
+
+            $this->postJson($route, $payload + ['reserve' => true])->assertUnprocessable();
+            $this->assertModelExists($source);
+            $this->postJson($route, $payload + $parameters)->assertOk();
+            $this->assertModelMissing($source);
+            $this->assertDatabaseHas('team_players', ['id' => $sourceMirror->id, 'team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => 0]);
+            $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => $rank, 'player_id' => $player->id, 'pay_status' => 0]);
+            $this->assertDatabaseHas('no_profile_team_players', ['team_id' => $this->team->id, 'rank' => $rank, 'player_profile' => $player->id, 'pay_status' => 0]);
+        }
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
+    public function test_profile_team_add_fills_a_numbered_gap_with_a_cross_team_reserve(): void
+    {
+        $this->team->update(['noProfile' => false]);
+        $this->team->category->category->update(['name' => 'u/10 Boys']);
+        foreach ([1, 3] as $rank) {
+            TeamPlayer::create(['team_id' => $this->team->id, 'rank' => $rank, 'player_id' => Player::factory()->male()->create()->id, 'pay_status' => 0]);
+        }
+        $sourceTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id, 'region_id' => $this->team->region_id, 'noProfile' => false, 'num_team_members' => 3]);
+        $player = Player::factory()->male()->create(['dateOfBirth' => $this->event->start_date->copy()->subYears(9)->toDateString()]);
+        $source = TeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->postJson(route('backend.team.addPlayers'), ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'player_ids' => [$player->id]])->assertOk();
+        $this->assertDatabaseHas('team_players', ['id' => $source->id, 'team_id' => $sourceTeam->id, 'rank' => 4, 'player_id' => 0]);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $player->id, 'pay_status' => 0]);
     }
 
     public function test_promoted_reserve_can_reorder_with_hidden_overflow_empty_mirror_and_preserve_main_status(): void

@@ -118,6 +118,37 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $this->assertDatabaseCount('team_fixtures', 1);
     }
 
+    public function test_cross_team_reserve_move_preserves_fixture_history_and_updates_the_upcoming_place(): void
+    {
+        [$event, , $team, $fixture] = $this->competition();
+        $team->category->category->update(['name' => 'u/10 Boys']);
+        $outgoing = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $sourceTeam = Team::where('category_event_id', $team->category_event_id)->whereKeyNot($team->id)->firstOrFail();
+        $player = Player::factory()->male()->create(['dateOfBirth' => $event->start_date->copy()->subYears(9)->toDateString()]);
+        $source = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 3, 'name' => $player->name,
+            'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $sourceTeam->id, 'rank' => 3, 'player_id' => $player->id, 'pay_status' => 0]);
+        $fixturePlayer = $fixture->fixturePlayers()->firstOrFail();
+        $originalSnapshot = $fixturePlayer->participant_snapshot;
+        $opponentId = $fixturePlayer->team2_no_profile_id;
+        $snapshot = $originalSnapshot ?? [];
+        $snapshot[2] = ['source_team_id' => $sourceTeam->id, 'imported_id' => $source->id];
+        $fixturePlayer->forceFill(['participant_snapshot' => $snapshot])->save();
+        $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $outgoing->id,
+            'expected_rank' => 1, 'expected_player_id' => 0, 'player_id' => $player->id];
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertUnprocessable()
+            ->assertJsonPath('errors.roster.0', 'This reserve is already assigned to a match in this event. Ask the organiser to review the fixture before moving them.');
+        $this->assertModelExists($source);
+        $this->assertModelExists($outgoing);
+        $fixturePlayer->forceFill(['participant_snapshot' => $originalSnapshot])->save();
+
+        $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
+        $this->assertEquals($player->id, $fixturePlayer->fresh()->team1_id);
+        $this->assertSame($opponentId, $fixturePlayer->fresh()->team2_no_profile_id);
+        $this->assertModelMissing($source);
+        $this->assertDatabaseCount('team_fixtures', 1);
+    }
+
     public function test_open_roster_replacement_preserves_started_profile_match_and_updates_upcoming_match(): void
     {
         foreach ([1, 2] as $status) {

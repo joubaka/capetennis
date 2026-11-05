@@ -152,15 +152,19 @@ test('portalled rank guards and labels update only for the exact team and player
       querySelectorAll: () => [rank]};
   };
   const linked = makeForm('841', '44', '10'), raw = makeForm('841', '0', '11'), foreign = makeForm('842', '44', '99');
+  const readOnly = makeForm('841', '44', '10'), foreignReadOnly = makeForm('842', '44', '10');
   const option = {dataset: {rankSlotId: '10', rankPlayerName: 'Player name'}, textContent: 'Player name · Rank 1'};
   const sourceRank = {value: 'old'}, sourceBadge = {textContent: 'Rank old'};
   const sourceRow = {dataset: {slotId: '10'}, querySelectorAll: () => [sourceRank], querySelector: () => sourceBadge};
   global.document = {querySelectorAll: selector => selector.includes(' form') ? [linked, raw, foreign]
+    : selector === '[data-roster-actions-modal]' ? [readOnly.closest(), foreignReadOnly.closest()]
     : selector === '[data-rank-slot-id]' ? [option] : selector === 'tr[data-slot-id]' ? [sourceRow] : []};
   syncRelated('841', {order_type: 'imported', order: [{slot_id: 10, rank: 2, player_id: 44}, {slot_id: 11, rank: 1, player_id: 0}]});
   assert.equal(linked.rank.value, '2'); assert.equal(linked.label.textContent, '2');
   assert.equal(raw.rank.value, '1');
   assert.equal(foreign.rank.value, 'old');
+  assert.equal(readOnly.label.textContent, '2');
+  assert.equal(foreignReadOnly.label.textContent, 'old');
   assert.equal(option.textContent, 'Player name · Rank 2');
   assert.equal(sourceRank.value, '2'); assert.equal(sourceBadge.textContent, 'Rank 2');
 });

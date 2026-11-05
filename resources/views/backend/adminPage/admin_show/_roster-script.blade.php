@@ -123,6 +123,8 @@ if (!window.teamRosterControls) {
     form.dataset.busy = '1';
     if (modal) modal.dataset.rosterBusy = '1';
     if (panel) panel.dataset.rosterSaving = '1';
+    const selectedPlayer = form.elements.player_id || form.elements['player_ids[]'];
+    const refreshOtherRegions = !!selectedPlayer?.value && !selectedPlayer.disabled;
     const payload = new FormData(form), buttons = [...new Set([
       ...(panel || form).querySelectorAll('button'), ...(modal || form).querySelectorAll('button')
     ])].filter(button => !button.disabled);
@@ -148,6 +150,7 @@ if (!window.teamRosterControls) {
     };
     const refreshRoster = async () => {
       showProgress(form.dataset.saved ? 'Saved. Updating the player list…' : 'Checking the current player list…', 'The player list is taking longer to load. Please wait…');
+      if (refreshOtherRegions) window.invalidateTeamRosterPanels?.(panel, true);
       if (window.refreshTeamRoster && panel) await window.refreshTeamRoster(panel);
       else if (window.refreshTeamWorkspace) await window.refreshTeamWorkspace();
       else throw new Error('Reopen this player list to see the current roster.');

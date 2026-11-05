@@ -146,6 +146,17 @@
                     <div class="dropdown">
                       <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">More</button>
                       <div class="dropdown-menu dropdown-menu-end">
+                        @unless($event->published)
+                          @can('event.settings.manage', $event)
+                            <form method="POST" action="{{ route('admin.events.settings.update', $event) }}"
+                                  onsubmit="return confirm('Publish this event on the public site?');">
+                              @csrf
+                              @method('PATCH')
+                              <input type="hidden" name="published" value="1">
+                              <button class="dropdown-item" type="submit"><i class="ti ti-world me-2" aria-hidden="true"></i>Publish event</button>
+                            </form>
+                          @endcan
+                        @endunless
                         @can('event-finance.view', $event)
                           <a class="dropdown-item" href="{{ route('admin.events.finances', $event) }}"><i class="ti ti-report-money me-2"></i>Finances</a>
                         @endcan

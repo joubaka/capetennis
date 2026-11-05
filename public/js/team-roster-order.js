@@ -32,6 +32,11 @@
     if (!teamId || !Array.isArray(data.order)) return;
     const byPlayer = new Map(data.order.filter(item => item.player_id > 0).map(item => [String(item.player_id), item.rank]));
     const bySlot = new Map(data.order.map(item => [String(item.slot_id), item.rank]));
+    root.document.querySelectorAll('[data-roster-actions-modal]').forEach(modal => {
+      if (String(modal.dataset.teamId) !== String(teamId) || modal.dataset.slotType !== data.order_type) return;
+      const rank = bySlot.get(String(modal.dataset.slotId));
+      if (rank) modal.querySelectorAll('[data-current-roster-rank]').forEach(label => { label.textContent = String(rank); });
+    });
     root.document.querySelectorAll('[data-roster-modal-portal] form, [data-roster-actions-modal] form').forEach(form => {
       const modal = form.closest('.modal');
       const scope = form.querySelector('[name="expected_team_id"]')?.value || form.querySelector('[name="team_id"]')?.value || modal?.dataset.teamId;

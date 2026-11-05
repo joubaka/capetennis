@@ -360,9 +360,9 @@
   // Reconcile one region from the existing authorized fragment endpoint. Keep the
   // controls, selected filters and Result Ranks draft outside this list intact.
   const rosterRefreshes = new Map();
-  window.invalidateTeamRosterPanels = function (panel) {
+  window.invalidateTeamRosterPanels = function (panel, includeOtherRegions = false) {
     document.querySelectorAll('[data-roster-panel]').forEach(other => {
-      if (other.dataset.regionId === panel?.dataset.regionId) {
+      if (includeOtherRegions || other.dataset.regionId === panel?.dataset.regionId) {
         other.dataset.rosterRevision = String(Number(other.dataset.rosterRevision || 0) + 1);
         requests.get(other.dataset.rosterPanel + ':' + other.dataset.regionId)?.abort();
         if (other !== panel) delete other.dataset.loaded;

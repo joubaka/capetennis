@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Domain\Payments\Services\TeamPaymentService;
-use App\Models\{Event, EventRegion, NoProfileTeamPlayer, Player, Team, TeamPlayer, TeamPaymentOrder, TeamSelectionImport, TeamSelectionInvitation, User};
+use App\Models\{Event, EventRegion, NoProfileTeamPlayer, Player, Team, TeamFixturePlayer, TeamPlayer, TeamPaymentOrder, TeamSelectionImport, TeamSelectionInvitation, User};
 use App\Services\TeamSelection\{RegionManagerAccessService, TeamSelectionInvitationService, ImportedTeamRosterService};
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -69,7 +70,8 @@ class TeamRosterService
                     : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->lockForUpdate()->get();
                 if ($slots->count() !== $slots->pluck('rank')->unique()->count()) $this->fail('This roster needs administrator review.');
                 $used = $slots->filter(fn ($slot) => $team->noProfile || (int) $slot->player_id > 0)->pluck('rank')->all();
-                $rank = collect(range(1, max(1, (int) $team->num_team_members)))->first(fn ($rank) => ! in_array($rank, $used));
+                $openMainRank = collect(range(1, max(1, (int) $team->num_team_members)))->first(fn ($rank) => ! in_array($rank, $used));
+                $rank = $openMainRank;
                 if ($fullManager && !$managed && !$team->noProfile && !isset($data['_replacement_rank'])) $rank = max(0, (int) $slots->max('rank')) + 1;
                 if (isset($data['_replacement_rank'])) {
                     $rank = (int) $data['_replacement_rank'];
@@ -78,6 +80,14 @@ class TeamRosterService
                 if ($reserve) $rank = max((int) $team->num_team_members, (int) $slots->max('rank')) + 1;
                 if (((int) $team->num_team_members < 1 || ! $rank) && $fullManager && !$managed && !isset($data['_replacement_rank'])) $rank = max(0, (int) $slots->max('rank')) + 1;
                 if (! $rank || ((int) $team->num_team_members < 1 && !$fullManager && !isset($data['_replacement_rank']))) $this->fail('This team is full. Ask the event administrator to change its size.');
+                if (!$reserve && !isset($data['_replacement_rank']) && !empty($data['player_id'])
+                    && $openMainRank && $openMainRank <= (int) $team->num_team_members) {
+                    $reserveOrigin = $this->removeOtherTeamReserve($event, $team, $actor, (int) $data['player_id']);
+                    if ($reserveOrigin) {
+                        $rank = $openMainRank;
+                        $data['reserve_origin'] = $reserveOrigin;
+                    }
+                }
                 if ($team->noProfile) {
                     $mirror = TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->get();
                     if ($mirror->count() > 1 || $mirror->contains(fn ($slot) => $slot->pay_status || (int) $slot->player_id > 0)) $this->fail('This roster needs administrator review.');
@@ -231,9 +241,14 @@ class TeamRosterService
             }
             $mirror = $team->noProfile ? TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->first() : $slot;
             $paid = (int) $slot->pay_status === 1 || (int) $mirror?->pay_status === 1;
+            $reserveOrigin = null;
             $reserve = null;
-            if (!$paid && !empty($data['player_id']) && $rank > 0 && $rank <= (int) $team->num_team_members) {
+            $numberedUnpaidPlace = !$paid && $rank > 0 && $rank <= (int) $team->num_team_members;
+            if ($numberedUnpaidPlace && !empty($data['player_id']) && empty($data['refund_action'])) {
                 $reserve = $this->replacementReserve($event, $team, (int) $data['player_id']);
+                if (!$reserve) {
+                    $reserveOrigin = $this->removeOtherTeamReserve($event, $team, $actor, (int) $data['player_id'], $slot);
+                }
             }
             $fundReplacement = in_array($data['refund_action'] ?? null, ['replacement', 'transfer'], true);
             if ($fundReplacement
@@ -279,10 +294,87 @@ class TeamRosterService
                 ? app(TeamPaymentService::class)->applyRefundToReplacement($withdrawnOrder, Player::findOrFail($data['player_id']), $actor) : null;
             $after->refresh();
             activity('team-roster')->performedOn($team)->causedBy($actor)
-                ->withProperties(['event_id' => $event->id, 'rank' => $rank, 'before' => $before, 'after' => $after->getAttributes(), 'replacement_order_id' => $replacementOrder?->id, 'refund_action' => $data['refund_action'] ?? null, 'reason' => $data['reason'] ?? null])
+                ->withProperties(['event_id' => $event->id, 'rank' => $rank, 'before' => $before, 'after' => $after->getAttributes(), 'reserve_origin' => $reserveOrigin, 'replacement_order_id' => $replacementOrder?->id, 'refund_action' => $data['refund_action'] ?? null, 'reason' => $data['reason'] ?? null])
                 ->log('changed team roster player');
             return $replacementOrder;
         });
+    }
+
+    private function removeOtherTeamReserve(Event $event, Team $destination, User $actor, int $playerId, NoProfileTeamPlayer|TeamPlayer|null $outgoing = null): ?array
+    {
+        $access = app(RegionManagerAccessService::class);
+        if (!$event->isTeam() || $event->isInterprovincialTrials() || !$destination->category
+            || !$access->canManageTeam($actor, $destination, $event)) return null;
+
+        $eventTeamIds = app(EventTeamScope::class)->query($event)->select('teams.id');
+        $profileTeams = TeamPlayer::withoutGlobalScopes()->whereIn('team_id', $eventTeamIds)->where('player_id', $playerId)->distinct()->limit(2)->pluck('team_id');
+        $importedTeams = NoProfileTeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_profile', $playerId)->distinct()->limit(2)->pluck('team_id');
+        $teamIds = $profileTeams->concat($importedTeams)->unique()->values();
+        $sourceTeam = $teamIds->count() === 1 && (int) $teamIds->first() !== (int) $destination->id
+            ? Team::query()->lockForUpdate()->find($teamIds->first()) : null;
+        if (!$sourceTeam || !$access->canManageTeam($actor, $sourceTeam, $event)) return null;
+        $source = $this->replacementReserve($event, $sourceTeam, $playerId);
+        if (!$source || (int) $source->rank < 1) return null;
+
+        app(TeamSelectionInvitationService::class)->assertRosterEditable($destination);
+        if ($destination->category->locked_at) $this->fail('The destination category is locked.');
+        if ($outgoing) {
+            $outgoingPlayerId = (int) ($destination->noProfile ? $outgoing->player_profile : $outgoing->player_id);
+            $status = app(SelectedTeamRosterStatus::class)->classify($event, collect([$destination]));
+            if ($destination->noProfile ? isset($status['imported'][$destination->id][$outgoing->id]) : isset($status['profile'][$destination->id][$outgoingPlayerId])) {
+                $this->fail('Choose a main roster place to move a reserve from another team.');
+            }
+            if ($outgoingPlayerId && TeamSelectionInvitation::where('event_id', $event->id)->where('player_id', $outgoingPlayerId)->exists()) {
+                $this->fail('The player being replaced has selection history. Use the selection workflow.');
+            }
+            if ($outgoingPlayerId && TeamPaymentOrder::where('event_id', $event->id)->forPlayerHistory([$outgoingPlayerId])->lockForUpdate()->exists()) {
+                $this->fail('The player being replaced has checkout history. Resolve it through the payment workflow before moving the reserve.');
+            }
+        }
+        if ($sourceTeam->category?->locked_at) $this->fail('The reserve’s current category is locked.');
+        $this->assertReservePromotionAllowed($event, $sourceTeam, $source, $actor);
+        if (TeamSelectionInvitation::where('event_id', $event->id)->where('player_id', $playerId)->exists()) {
+            $this->fail('This reserve has selection history. Use the selection workflow.');
+        }
+        $this->assertReserveMatchesDestination($event, $destination, Player::query()->lockForUpdate()->findOrFail($playerId));
+
+        $importedId = $source instanceof NoProfileTeamPlayer ? $source->id : null;
+        $profileSlotId = $importedId ? $sourceTeam->team_players->firstWhere('player_id', $playerId)?->id : $source->id;
+        if (TeamFixturePlayer::whereHas('fixture.draw', fn ($query) => $query->where('event_id', $event->id))
+            ->where(function ($query) use ($playerId, $importedId, $profileSlotId, $sourceTeam) {
+                $query->where('team1_id', $playerId)->orWhere('team2_id', $playerId);
+                if ($importedId) $query->orWhere('team1_no_profile_id', $importedId)->orWhere('team2_no_profile_id', $importedId);
+                foreach ([1, 2] as $side) {
+                    $path = "participant_snapshot->{$side}";
+                    $query->orWhere("{$path}->profile_id", $playerId)->orWhere("{$path}->linked_profile_id", $playerId);
+                    if ($importedId) $query->orWhere("{$path}->imported_id", $importedId);
+                    foreach (array_filter(['imported' => $importedId, 'profile' => $profileSlotId]) as $type => $anchorId) {
+                        $query->orWhere(fn ($snapshot) => $snapshot->where("{$path}->source_team_id", $sourceTeam->id)
+                            ->where("{$path}->anchor_type", $type)->where("{$path}->anchor_id", $anchorId));
+                    }
+                }
+            })->exists()) {
+            $this->fail('This reserve is already assigned to a match in this event. Ask the organiser to review the fixture before moving them.');
+        }
+
+        $this->change($event, null, $sourceTeam, $actor, 'remove', [
+            'slot_id' => $source->id, 'expected_rank' => $source->rank, 'expected_player_id' => $playerId,
+        ]);
+
+        return ['team_id' => $sourceTeam->id, 'rank' => $source->rank, 'slot_id' => $source->id, 'player_id' => $playerId];
+    }
+
+    private function assertReserveMatchesDestination(Event $event, Team $destination, Player $player): void
+    {
+        $category = $destination->category->category;
+        if (!$category) $this->fail('Set the destination category before moving the reserve.');
+        $key = app(TeamDrawSideResolver::class)->categoryKey($category->name);
+        $gender = in_array($player->gender, [1, '1', 'male'], true) ? 'boys' : (in_array($player->gender, [2, '2', 'female'], true) ? 'girls' : null);
+        if ($key['gender'] && $gender !== $key['gender']) $this->fail('The reserve must meet the destination category gender eligibility.');
+        if (preg_match('/^u\s*\/?\s*(\d+)\b/', $key['group'], $age)
+            && (!$player->dateOfBirth || !$event->start_date || Carbon::parse($event->start_date)->year - Carbon::parse($player->dateOfBirth)->year > (int) $age[1])) {
+            $this->fail('The reserve must meet the destination category age eligibility.');
+        }
     }
 
     private function replacementReserve(Event $event, Team $team, int $playerId): NoProfileTeamPlayer|TeamPlayer|null
@@ -361,7 +453,14 @@ class TeamRosterService
                 ]);
             } else {
                 $player = Player::query()->lockForUpdate()->findOrFail($data['player_id']);
-                if ($team->noProfile) {
+                $reserveOrigin = $this->removeOtherTeamReserve($event, $team, $actor, (int) $player->id);
+                if ($reserveOrigin) {
+                    $this->change($event, $region, $team, $actor, 'add', ['player_id' => $player->id, '_replacement_rank' => $rank, 'reserve_origin' => $reserveOrigin]);
+                } elseif ($team->noProfile) {
+                    $eventTeamIds = app(EventTeamScope::class)->query($event)->select('teams.id');
+                    $profilePlaces = TeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_id', $player->id)->lockForUpdate();
+                    $importedPlaces = NoProfileTeamPlayer::whereIn('team_id', $eventTeamIds)->where('player_profile', $player->id)->lockForUpdate();
+                    $this->assertNoRosterConflict($event, $profilePlaces, $importedPlaces, $actor, true);
                     $this->change($event, $region, $team, $actor, 'add', ['name' => $player->name, 'surname' => $player->surname, '_replacement_rank' => $rank]);
                     $newSlot = NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $rank)->firstOrFail();
                     app(ImportedTeamRosterService::class)->relink($event, $newSlot, $player->id, 0, $rank, $actor);
@@ -411,8 +510,8 @@ class TeamRosterService
         if (!$profilePlaces->exists() && !$importedPlaces->exists()) return;
         if (!$describe) $this->fail($fallback);
 
-        $profiles = $profilePlaces->limit(2)->get(['team_id', 'rank']);
-        $imports = $importedPlaces->limit(2)->get(['team_id', 'rank']);
+        $profiles = $profilePlaces->limit(2)->get(['id', 'team_id', 'rank', 'player_id']);
+        $imports = $importedPlaces->limit(2)->get(['id', 'team_id', 'rank']);
         if ($profiles->count() > 1 || $imports->count() > 1) $this->fail($fallback);
         $places = collect([$profiles->first(), $imports->first()])->filter()
             ->unique(fn ($place) => $place->team_id.':'.$place->rank);
@@ -426,7 +525,13 @@ class TeamRosterService
 
         $teamName = trim((string) $assignedTeam->name);
         $teamLabel = $teamName === '' ? "team #{$assignedTeam->id}" : "{$teamName} (team #{$assignedTeam->id})";
-        $this->fail("This player is already listed on {$teamLabel} at position {$place->rank} in this event.");
+        $status = app(SelectedTeamRosterStatus::class)->classify($event, collect([$assignedTeam]));
+        $importedPlace = $imports->first();
+        $isReserve = $importedPlace
+            ? isset($status['imported'][$assignedTeam->id][$importedPlace->id])
+            : isset($status['profile'][$assignedTeam->id][$place->player_id]);
+        $positionLabel = $isReserve ? 'reserve position' : 'position';
+        $this->fail("This player is already listed on {$teamLabel} at {$positionLabel} {$place->rank} in this event.");
     }
 
     public function confirmMainPlace(Event $event, ?EventRegion $region, Team $team, User $actor, int $slotId, int $expectedRank): void

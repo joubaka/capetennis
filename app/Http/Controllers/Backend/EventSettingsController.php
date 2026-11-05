@@ -75,7 +75,6 @@ class EventSettingsController extends Controller
 
     Log::info('🛠 Event settings update START', [
       'event_id' => $event->id,
-      'payload' => $request->all(),
       'user_id' => auth()->id(),
     ]);
 
@@ -364,6 +363,10 @@ class EventSettingsController extends Controller
     Log::info('✅ Event settings update COMPLETE', [
       'event_id' => $event->id,
     ]);
+
+    if (! $request->expectsJson()) {
+      return back()->with('success', 'Event settings saved.');
+    }
 
     return response()->json([
       'success' => true,

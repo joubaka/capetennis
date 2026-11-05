@@ -501,6 +501,8 @@ class RegionalRosterTest extends TestCase
         $this->assertSame($menu->getAttribute('id').'-title', $menu->getAttribute('aria-labelledby'));
         $this->assertStringContainsString('Player actions', $menu->textContent);
         $this->assertStringContainsString('Menu Player', $menu->textContent);
+        $this->assertStringContainsString($team->name.' #'.$team->id, $menu->textContent);
+        $this->assertSame('1', $xpath->query('.//*[@data-current-roster-rank]', $menu)->item(0)->textContent);
         $actions = [];
         foreach ($xpath->query('.//form', $menu) as $form) $actions[] = $form->getAttribute('action');
         $this->assertContains(route('backend.team.changePlayer'), $actions);
