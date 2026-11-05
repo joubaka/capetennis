@@ -6,21 +6,27 @@
   .event-play-card > .card-header + .card-body { padding: 24px; }
   .event-play-title { margin: 0; color: #243b55; font-size: 1.125rem; font-weight: 700; line-height: 1.4; }
   .event-play-section-title { color: #243b55; font-size: .9375rem; font-weight: 700; margin-bottom: 12px; }
-  .event-play-group-title { margin: 18px 0 8px; color: #617287; font-size: .8125rem; font-weight: 600; }
-  .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 10px; }
-  .event-published-draw-row { --draw-accent: #344d69; --draw-tint: #edf2f7; --draw-edge: #cbd5e1; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--draw-edge); border-left: 5px solid var(--draw-accent); border-radius: 10px; overflow: hidden; background: #fff; }
+  .event-play-group-title, .event-published-draw-list { --format-accent: #475569; --format-tint: #f1f5f9; }
+  .event-published-draw-list + .event-play-group-title { margin-top: 24px; }
+  .event-play-card .format-singles { --format-accent: #233d66; --format-tint: #eef3fa; }
+  .event-play-card .format-reverse-singles { --format-accent: #854315; --format-tint: #fff3df; }
+  .event-play-card .format-doubles { --format-accent: #15594c; --format-tint: #e7f6ef; }
+  .event-play-card .format-mixed-doubles { --format-accent: #762a54; --format-tint: #fbedf5; }
+  .event-play-group-title { margin: 0 0 10px; padding: 10px 14px; border-radius: 8px; background: var(--format-accent); color: #fff; font-size: .9375rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
+  .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 6px; }
+  .event-published-draw-row { --draw-accent: #344d69; --draw-tint: #edf2f7; --draw-edge: #cbd5e1; display: flex; min-width: 0; border: 1px solid var(--draw-edge); border-radius: 7px; overflow: hidden; }
   .event-published-draw-row.draw-cobalt { --draw-accent: #184a9c; --draw-tint: #edf3ff; --draw-edge: #bfd0ed; }
   .event-published-draw-row.draw-plum { --draw-accent: #733b83; --draw-tint: #f7effa; --draw-edge: #dbc5e2; }
   .event-published-draw-row.draw-teal { --draw-accent: #11665e; --draw-tint: #eaf7f4; --draw-edge: #b9dbd4; }
-  .event-play-card .event-published-draw-link.btn { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 10px; padding: 16px; color: var(--draw-accent); background: var(--draw-tint); border: 0; border-radius: 0; font-size: .9375rem; font-weight: 600; line-height: 1.5; min-height: 44px; min-width: 0; width: 100%; white-space: normal; text-align: left; }
-  .event-play-card .event-published-draw-link.btn:hover { color: var(--draw-accent); background: var(--draw-tint); filter: brightness(.97); }
-  .event-draw-category { display: inline-flex; border: 1px solid var(--draw-edge); border-radius: 20px; padding: 2px 9px; background: #fff; font-size: .6875rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
-  .event-published-draw-name { overflow-wrap: anywhere; font-size: 1.125rem; font-weight: 700; line-height: 1.35; }
-  .event-published-draw-time { color: #40536b; font-size: .8125rem; font-weight: 400; }
-  .event-draw-open { display: flex; align-items: center; justify-content: space-between; gap: 16px; width: 100%; margin-top: 4px; font-size: .8125rem; font-weight: 700; }
-  .event-draw-footer { display: flex; justify-content: flex-end; padding: 4px 10px; border-top: 1px solid var(--draw-edge); }
-  .event-play-card .event-draw-score { min-height: 44px; padding: 10px 8px; color: var(--draw-accent); border: 0; background: transparent; font-size: .8125rem; white-space: normal; }
-  .event-play-card .event-draw-score:hover { background: var(--draw-tint); color: var(--draw-accent); }
+  .event-published-draw-row.is-scheduled { border-left: 3px solid var(--draw-accent); background: var(--draw-tint); }
+  .event-published-draw-row.is-unscheduled { --draw-accent: #475569; --draw-edge: #94a3b8; border-style: dashed; background: #fff; }
+  .event-play-card .event-published-draw-link.btn { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; color: var(--draw-accent); border: 0; border-radius: 0; min-height: 44px; min-width: 0; white-space: normal; text-align: left; }
+  .event-draw-summary { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+  .event-published-draw-name { font-size: .875rem; font-weight: 700; line-height: 1.25; }
+  .event-draw-details { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: #40536b; font-size: .75rem; line-height: 1.3; }
+  .event-draw-format { border-radius: 3px; padding: 1px 4px; background: var(--format-tint); color: var(--format-accent); font-size: .6875rem; font-weight: 700; }
+  .event-play-card .event-draw-score.btn { display: inline-flex; align-items: center; flex-shrink: 0; min-height: 44px; padding: 0 8px; color: var(--draw-accent); border: 0; border-left: 1px solid var(--draw-edge); border-radius: 0; font-size: .75rem; }
+  .event-play-card .event-published-draw-link.btn:hover, .event-play-card .event-draw-score.btn:hover { color: var(--draw-accent); background: rgba(15, 23, 42, .06); }
   .event-play-card .event-published-draw-link.btn, .event-play-card .event-draw-score.btn { box-shadow: none; }
   .event-play-card a:focus-visible { outline: 3px solid #6b9cd3; outline-offset: 3px; }
   .event-play-card .event-published-draw-row a:focus-visible { outline: 3px solid var(--draw-accent); outline-offset: -4px; }
@@ -53,16 +59,22 @@
   <h6 class="event-play-section-title">Published draws</h6>
 
   @php
-    $drawTypePriority = function ($typeName) {
-        $name = strtolower(trim(preg_replace('/^team\s*[-–]\s*/iu', '', $typeName)));
-        return match ($name) {
-            'singles' => 0,
-            'singles reverse', 'reverse singles' => 1,
-            'doubles' => 2,
-            'mixed doubles' => 3,
-            default => 4,
-        };
+    $drawTypeKey = fn ($typeName) => match (strtolower(trim(preg_replace('/^team\s*[-–]\s*/iu', '', $typeName)))) {
+        'singles' => 'singles',
+        'singles reverse', 'reverse singles' => 'reverse-singles',
+        'doubles' => 'doubles',
+        'mixed doubles' => 'mixed-doubles',
+        default => 'other',
     };
+    // Insertion order sets the display priority for the recognised disciplines.
+    $drawFormatLabels = [
+        'singles' => 'Singles',
+        'reverse-singles' => 'Singles Reverse',
+        'doubles' => 'Doubles',
+        'mixed-doubles' => 'Mixed Doubles',
+    ];
+    $drawFormatPriorities = array_flip(array_keys($drawFormatLabels));
+    $drawTypePriority = fn ($typeName) => $drawFormatPriorities[$drawTypeKey($typeName)] ?? count($drawFormatPriorities);
     $publicRowsByDraw = $event->exists
         ? app(\App\Services\Scheduling\SchedulePublicationService::class)->publishedRows($event, includeParticipants: false)->groupBy('draw_id')
         : collect();
@@ -102,9 +114,12 @@
       $publishedDrawGroups
       as $typeName => $draws
   )
-    <h6 class="event-play-group-title">{{ $typeName }}</h6>
+    @php
+      $drawFormat = $drawTypeKey($typeName);
+    @endphp
+    <h6 class="event-play-group-title format-{{ $drawFormat }}">{{ $typeName }}</h6>
 
-    <div class="event-published-draw-list">
+    <div class="event-published-draw-list format-{{ $drawFormat }}">
       @foreach($draws as $draw)
         @php
           $publishedDays = $publishedDayLabels->get($draw->id, '');
@@ -118,32 +133,37 @@
               default => 'neutral',
           };
         @endphp
-        <article class="event-published-draw-row draw-{{ $drawPalette }}">
+        <article class="event-published-draw-row draw-{{ $drawPalette }} {{ $publishedDays !== '' ? 'is-scheduled' : 'is-unscheduled' }}">
           <a href="{{ $draw->usesFlexibleMonrad() ? route('public.flexible-monrad.show', $draw) : route('frontend.fixtures.index', $draw->id) }}"
              class="btn btn-sm event-published-draw-link">
-            @if($drawCategory)
-              <span class="event-draw-category">{{ ucfirst($drawCategory) }}</span>
-            @endif
-            <span class="event-published-draw-name">{{ $draw->drawName }}</span>
-            @if($publishedDays !== '')
-              <span class="event-published-draw-time">
-                <i class="ti ti-clock me-1" aria-hidden="true"></i>{{ $publishedDays }}
+            <span class="event-draw-summary">
+              <span class="visually-hidden">View draw:</span>
+              <span class="event-published-draw-name">{{ $draw->drawName }}</span>
+              <span class="event-draw-details">
+                <span class="event-published-draw-time">
+                  @if($publishedDays !== '')
+                    <i class="ti ti-clock me-1" aria-hidden="true"></i>{{ $publishedDays }}
+                  @else
+                    Times not published
+                  @endif
+                </span>
+                @if(isset($drawFormatLabels[$drawFormat]))
+                  <span class="event-draw-format">{{ $drawFormatLabels[$drawFormat] }}</span>
+                @endif
               </span>
-            @endif
-            <span class="event-draw-open">View draw<i class="ti ti-arrow-right" aria-hidden="true"></i></span>
+            </span>
+            <i class="ti ti-arrow-right" aria-hidden="true"></i>
           </a>
           @php
 
             $canScoreEvent = $canScoreEvent ?? (auth()->check() && auth()->user()->can('event.score', $event));
           @endphp
           @if($canScoreEvent)
-            <div class="event-draw-footer">
             <a href="{{ route('frontend.scoring.workspace', ['event' => $event, 'draw' => $draw->id]) }}"
                class="btn btn-sm event-draw-score"
                title="Score {{ $draw->drawName }}">
-              <i class="ti ti-clipboard-check me-1" aria-hidden="true"></i>Score draw<span class="visually-hidden">: {{ $draw->drawName }}</span>
+              <i class="ti ti-clipboard-check me-1" aria-hidden="true"></i>Score<span class="visually-hidden"> draw: {{ $draw->drawName }}</span>
             </a>
-            </div>
           @endif
         </article>
       @endforeach

@@ -69,6 +69,78 @@ class RankVenuePreferencesTest extends TestCase
             'wave_minutes' => 60, 'court_gap' => 0, 'player_rest' => 0, 'draw_ids' => $draws->take(2)->pluck('id')->all(), 'allow_partial' => true];
     }
 
+    public function test_friday_batch_keeps_saved_round_bands_and_releases_boys_on_the_first_free_court(): void
+    {
+        [$event, $draws, $venues] = $this->setupEvent();
+        $selectedDraws = $draws->take(2);
+        $boys = $selectedDraws[0];
+        $girls = $selectedDraws[1];
+        $fixtures = collect([
+            'boyA' => $this->rubber($boys, [1], [1]),
+            'girlA' => $this->rubber($girls, [1], [1]),
+            'girlB' => $this->rubber($girls, [2], [2]),
+            'boyOtherVenue' => $this->rubber($boys, [5], [5]),
+            'girlOtherVenue' => $this->rubber($girls, [5], [5]),
+        ]);
+        $weekend = $this->rubber($girls, [3], [3]);
+        $weekend->update(['scheduled_at' => '2026-10-10 08:00', 'venue_id' => $venues[0]->id, 'court_label' => '1', 'duration_min' => 45]);
+        $before = $weekend->fresh()->getAttributes();
+        $sharedSetup = [
+            'court_allocations' => [
+                ['venue_id' => $venues[0]->id, 'court_labels' => ['1', '2']],
+                ['venue_id' => $venues[1]->id, 'court_labels' => ['2']],
+            ],
+            'rank_venue_preferences' => [
+                ['min_rank' => 1, 'max_rank' => 4, 'venue_id' => $venues[0]->id],
+                ['min_rank' => 5, 'max_rank' => 10, 'venue_id' => $venues[1]->id],
+            ],
+        ];
+        $girlsOverride = ['draw_id' => $girls->id, 'round' => 1, 'venue_ids' => $venues->take(2)->pluck('id')->all()] + $sharedSetup;
+        $girlsOverride['court_allocations'][1]['court_labels'] = ['1'];
+        $girlsOverride['rank_venue_preferences'] = array_map(fn ($band) => ['draw_ids' => [$girls->id]] + $band, $girlsOverride['rank_venue_preferences']);
+        DB::table('event_venue_schedule_drafts')->insert([
+            'event_id' => $event->id, 'options' => json_encode([
+                'team_age_venue_setups' => ['10' => $sharedSetup], 'round_venue_setups' => [$girlsOverride],
+            ], JSON_THROW_ON_ERROR),
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $options = [
+            'day_batch' => true, 'full_day_scope' => '2026-10-09',
+            'start' => '2026-10-09 08:30', 'end' => '2026-10-09 18:00',
+            'duration' => 45, 'player_rest' => 15, 'court_gap' => 0, 'wave_minutes' => 90,
+            'gender_waves' => 'girls_then_boys', 'gender_wave_release' => 'court_ready',
+            'draw_order' => $selectedDraws->pluck('id')->all(),
+            'draw_ids' => $selectedDraws->pluck('id')->all(),
+            'draw_rounds' => $selectedDraws->map(fn ($draw) => ['draw_id' => $draw->id, 'rounds' => [1]])->all(),
+            'selected_fixture_keys' => $fixtures->map(fn ($fixture) => 'team:'.$fixture->id)->values()->all(),
+            'venue_ids' => $venues->pluck('id')->all(),
+            'day_court_labels' => $venues->mapWithKeys(fn ($venue) => [$venue->id => ['1', '2']])->all(),
+            'full_day_court_starts' => [$venues[0]->id => [['court' => '2', 'start' => '2026-10-09 09:00', 'end' => '2026-10-09 18:00']]],
+        ];
+        $preview = $this->postJson(route('backend.event-venue-schedule.preview', $event), $options)
+            ->assertOk()->assertJsonCount(5, 'matches')->assertJsonCount(0, 'unscheduled')->json();
+        $matches = collect($preview['matches'])->keyBy('fixture_id');
+        $this->assertSame('2026-10-09 08:30:00', $matches[$fixtures['girlA']->id]['scheduled_at']);
+        $this->assertSame('2026-10-09 09:00:00', $matches[$fixtures['girlB']->id]['scheduled_at']);
+        $this->assertSame('2026-10-09 09:15:00', $matches[$fixtures['boyA']->id]['scheduled_at']);
+        $this->assertSame('1', $matches[$fixtures['boyA']->id]['court']);
+        foreach (['boyOtherVenue' => '2', 'girlOtherVenue' => '1'] as $label => $court) {
+            $this->assertSame($venues[1]->id, $matches[$fixtures[$label]->id]['venue_id']);
+            $this->assertSame($court, $matches[$fixtures[$label]->id]['court']);
+        }
+        $this->assertSame(1, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertSame($before, $weekend->fresh()->getAttributes());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        app(EventVenueScheduleService::class)->apply($event, $options, $preview['revision']);
+        $stored = json_decode(DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true);
+        $this->assertSame([$girlsOverride], $stored['round_venue_setups']);
+        $this->assertSame([
+            ['venue_id' => $venues[1]->id, 'court_labels' => ['2']],
+        ], $stored['day_batch_allocations']['team:'.$fixtures['boyOtherVenue']->id]['court_allocations']);
+        $this->assertSame($before, $weekend->fresh()->getAttributes());
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
     public function test_venue_change_warning_explains_rank_assignment_and_excluding_that_venue_blocks_placement(): void
     {
         [$event, $draws, $venues] = $this->setupEvent();

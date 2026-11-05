@@ -40,8 +40,10 @@ test('draw order is preserved in the request and modes do not mutate selection',
  const s=state();s.selectAll();s.moveDraw(3,'up');s.moveDraw(3,'up');s.moveDraw(3,'up');
  assert.deepEqual(s.selectedDrawIds,[3,1,2]);
  for(const mode of ['sequential','mixed']){
-  const p=buildPayload(s,{draw_order_mode:mode,gender_waves:'boys_then_girls'});
-  assert.deepEqual(p.draw_order,[3,1,2]);assert.deepEqual(p.draw_ids,[3,1,2]);assert.equal(p.draw_order_mode,mode);assert.equal(p.gender_waves,'combined');
+  const p=buildPayload(s,{draw_order_mode:mode,gender_waves:'girls_then_boys',gender_wave_release:'court_ready'});
+  assert.deepEqual(p.draw_order,[3,1,2]);assert.deepEqual(p.draw_ids,[3,1,2]);assert.equal(p.draw_order_mode,mode);
+  assert.equal(p.gender_waves,mode==='mixed'?'girls_then_boys':'combined');
+  assert.equal(p.gender_wave_release,'court_ready');
  }
  assert.throws(()=>buildPayload(s,{draw_order_mode:'unknown'}),/order/i);
 });
@@ -185,6 +187,22 @@ test('changing day never carries an earlier opt-in to replan saved matches',()=>
  const app=mounted();app.get('day-batch-replan').checked=true;
  app.change({id:'day-batch-date',value:days[1],matches:()=>false});
  assert.equal(app.get('day-batch-replan').checked,false);
+});
+
+test('the one-day team control previews girls first using newly free courts',async()=>{
+ let payload;
+ const app=mounted({draws:draws.map(draw=>({...draw,is_team:true})),onPreview:value=>{payload=value;}});
+ assert.equal(app.get('day-batch-gender-order').hidden,false);
+ app.get('day-batch-gender-waves').value='girls_then_boys';
+ const button=app.get('day-batch-preview');
+ await button.listeners.click({currentTarget:button});
+ assert.equal(payload.gender_waves,'girls_then_boys');
+ assert.equal(payload.gender_wave_release,'court_ready');
+ app.get('day-batch-order-mode').value='sequential';
+ app.change({id:'day-batch-order-mode',matches:()=>false});
+ assert.equal(app.get('day-batch-gender-order').hidden,true);
+ await button.listeners.click({currentTarget:button});
+ assert.equal(payload.gender_waves,'combined');
 });
 
 test('saved-day replan opens exact selection and settings without unscheduled matches or implicit date takeover',()=>{

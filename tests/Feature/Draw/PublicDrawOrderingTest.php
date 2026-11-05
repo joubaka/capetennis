@@ -28,14 +28,16 @@ class PublicDrawOrderingTest extends TestCase
             foreach (['Mixed Doubles', 'Doubles', 'Singles Reverse', 'Singles'] as $index => $discipline) {
                 $draw = new Draw(['drawName' => 'Example '.$discipline, 'published' => $published, 'drawType_id' => $index + 1]);
                 $draw->id = $draws->count() + 1;
-                $draw->setRelation('draw_types', new DrawType(['drawTypeName' => 'Team - '.$discipline]));
+                $draw->setRelation('draw_types', (new DrawType)->forceFill(['drawTypeName' => 'Team - '.$discipline]));
                 $draw->setRelation('flexibleMonrad', null);
                 $draw->setRelation('settings', null);
                 $draws->push($draw);
             }
         }
+        $event = new Event;
+        $event->id = 1;
         $html = view('frontend.event.partials._draws_and_order_of_play', [
-            'event' => new Event(['id' => 1]), 'eventDraws' => $draws,
+            'event' => $event, 'eventDraws' => $draws,
         ])->render();
         foreach (explode('Unpublished Draws</h6>', $html) as $section) {
             $previous = -1;
@@ -47,6 +49,9 @@ class PublicDrawOrderingTest extends TestCase
             }
         }
         $this->assertStringContainsString('Unpublished Draws</h6>', $html);
+        $this->assertStringContainsString('event-play-group-title format-singles">Team - Singles</h6>', $html);
+        $this->assertStringContainsString('event-play-group-title format-reverse-singles">Team - Singles Reverse</h6>', $html);
+        $this->assertStringContainsString('event-draw-format">Singles Reverse</span>', $html);
     }
 
     public function test_published_draws_sort_by_numeric_age_and_name_without_exposing_unpublished_draws(): void
@@ -110,6 +115,15 @@ class PublicDrawOrderingTest extends TestCase
             'match_nr' => 1, 'fixture_type' => 1, 'scheduled_at' => '2026-10-08 05:00:00', 'venue_id' => $venue->id, 'court_label' => '2']);
         $draws = Draw::whereKey($draws->pluck('id'))->with(['draw_types', 'settings', 'flexibleMonrad'])->get();
         $html = view('frontend.event.partials._draws_and_order_of_play', ['event' => $event, 'eventDraws' => $draws])->render();
+        preg_match_all('/<article class="event-published-draw-row[^>]*>.*?<\/article>/s', $html, $cards);
+        $earlyCard = collect($cards[0])->first(fn ($card) => str_contains($card, 'u/13 Early'));
+        $privateCard = collect($cards[0])->first(fn ($card) => str_contains($card, 'u/8 Private only'));
+        $this->assertNotNull($earlyCard);
+        $this->assertNotNull($privateCard);
+        $this->assertStringContainsString('is-scheduled', $earlyCard);
+        $this->assertStringContainsString('Friday from 08:00', $earlyCard);
+        $this->assertStringContainsString('is-unscheduled', $privateCard);
+        $this->assertStringContainsString('Times not published', $privateCard);
         $this->assertLessThan(strpos($html, '>Team - Reverse Singles</h6>'), strpos($html, '>Team - Singles</h6>'));
         $this->assertLessThan(strpos($html, '>Team - No published times</h6>'), strpos($html, '>Team - Reverse Singles</h6>'));
         $previous = -1;

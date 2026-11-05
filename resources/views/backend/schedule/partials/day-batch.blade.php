@@ -27,6 +27,14 @@
       <label class="d-block mb-2"><input id="day-batch-limit" class="form-check-input me-2" type="checkbox" @checked($scheduleDraft['limit_daily_matches'])>Optional: maximum 3 matches per player per day, including conditional play-offs</label>
       <div class="d-flex flex-wrap gap-2 align-items-center mb-3"><button type="button" id="day-batch-save-timing" class="btn btn-sm btn-outline-secondary">Save timing settings</button><span class="small text-muted">Save settings to enable or disable the event's daily limit. This does not change existing match times.</span></div>
       <label class="d-block mb-3"><input id="day-batch-replan" class="form-check-input me-2" type="checkbox">Also replan selected saved matches on this day</label>
+      <div class="mb-3" id="day-batch-gender-order" hidden>
+        <label class="form-label" for="day-batch-gender-waves">Gender order within each team round</label>
+        <select id="day-batch-gender-waves" class="form-select">
+          <option value="combined">Together</option>
+          <option value="girls_then_boys">Girls first · boys use courts as they free up</option>
+          <option value="boys_then_girls">Boys first · girls use courts as they free up</option>
+        </select>
+      </div>
       <details id="day-batch-team-options" class="mb-3" hidden><summary>Team scheduling options</summary><p class="small mt-2">Saved position bands remain in force. Without position bands, each team tie stays at one venue and court group. Use Advanced tools to change position bands or custom tie destinations.</p><div class="row g-2"><label class="col-md-6">Round progression<select id="day-batch-progression" class="form-select"><option value="team_ready">Next round when the team's preceding tie is ready</option><option value="all_round">Finish the whole preceding team round first</option></select></label><label class="col-md-6">Tie allocation<select id="day-batch-tie-allocation" class="form-select"><option value="balanced">Balance available team ties</option><option value="complete_tie">Prefer completing the current tie</option></select></label></div></details>
       <button type="button" id="day-batch-next-rounds" class="btn btn-primary">Continue to rounds</button>
     </section>

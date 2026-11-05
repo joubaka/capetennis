@@ -136,7 +136,8 @@
       draw_order_mode:mode, draw_rounds:drawRounds, selected_fixture_keys:keys, venue_ids:Object.keys(courts).map(Number), day_court_labels:courts,
       start:stamp(config.start_time||config.start||'08:00'), end:stamp(config.end_time||config.end||'18:00'),
       duration:Number(config.duration??60), player_rest:Number(config.player_rest??30), court_gap:Number(config.court_gap??5),wave_minutes:90,
-      gender_waves:'combined', reschedule_existing:Boolean(config.reschedule_existing), allow_partial:false, replan_venue_ids:[],
+      gender_waves:mode==='mixed' ? config.gender_waves||'combined' : 'combined',
+      reschedule_existing:Boolean(config.reschedule_existing), allow_partial:false, replan_venue_ids:[],
     };
     ['programme','day_scope','draw_starts','venue_starts','apply_venue_ids'].forEach(key=>delete payload[key]);
     return payload;
@@ -158,6 +159,10 @@
     const label=date=>new Date(date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
     const status=(message,error=false)=>{get('day-batch-status').textContent=message;get('day-batch-status').className='mt-3 '+(error?'text-danger':'text-muted');if(error)options.notify?.(message,'danger');};
     const changed=()=>{options.onChange?.(state);};
+    const updateGenderOrder=()=>{
+      const teamSelected=state.draws.some(draw=>state.selectedDrawIds.includes(Number(draw.id))&&draw.is_team);
+      get('day-batch-gender-order').hidden=!teamSelected||get('day-batch-order-mode').value==='sequential';
+    };
     if(options.initialDay && state.dates.includes(options.initialDay))state.setDay(options.initialDay);
     (options.initialDrawIds||[]).forEach(id=>state.selectDraw(id,true));
     const saved=()=>options.savedByDay?.[state.day];
@@ -172,6 +177,7 @@
       get('day-batch-order').innerHTML=state.selectedDrawIds.length?'<div class="small fw-semibold mb-1">Selected draw order</div>'+state.selectedDrawIds.map((id,index)=>`<div class="d-flex gap-2 align-items-center mb-1"><span class="flex-grow-1">${index+1}. ${escape(state.draws.find(draw=>Number(draw.id)===id)?.name)}</span><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="up" ${index?'':'disabled'} aria-label="Move draw up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="down" ${index<state.selectedDrawIds.length-1?'':'disabled'} aria-label="Move draw down">Down</button></div>`).join(''):'';
       get('day-batch-next-courts').disabled=!state.selectedDrawIds.length;
       get('day-batch-team-options').hidden=!state.draws.some(draw=>state.selectedDrawIds.includes(Number(draw.id))&&draw.is_team);
+      updateGenderOrder();
     };
     const renderVenues=()=>{
       get('day-batch-venues').innerHTML=state.venues.length?state.venues.map(venue=>{
@@ -196,19 +202,23 @@
     };
     const applySavedControls=()=>{
       get('day-batch-replan').checked=false;
+      get('day-batch-gender-waves').value=saved()?.gender_waves||'combined';
       const prefs=saved(); if(!prefs)return;
       [['duration','duration'],['player_rest','rest'],['court_gap','gap']].forEach(([key,suffix])=>{if(prefs[key]!==undefined)get('day-batch-'+suffix).value=prefs[key];});
       get('day-batch-start').value=String(prefs.start||'').slice(11,16)||'08:00';get('day-batch-end').value=String(prefs.end||'').slice(11,16)||'18:00';
       get('day-batch-order-mode').value=prefs.draw_order_mode||'mixed';get('day-batch-progression').value=prefs.round_progression||'team_ready';get('day-batch-tie-allocation').value=prefs.tie_allocation||'balanced';
       get('day-batch-replan').checked=false;
+      updateGenderOrder();
     };
     const updateBooking=state.updateBooking;
     state.updateBooking=(key,scheduledAt)=>{updateBooking(key,scheduledAt);renderRounds();};
     const readOptions=()=>{
+      const genderWaves=get('day-batch-gender-order').hidden ? 'combined' : get('day-batch-gender-waves').value;
       const config={...(options.getConfig?.()||{}), start_time:get('day-batch-start').value,end_time:get('day-batch-end').value,
         duration:Number(get('day-batch-duration').value),player_rest:Number(get('day-batch-rest').value),court_gap:Number(get('day-batch-gap').value),
         limit_daily_matches:get('day-batch-limit').checked,reschedule_existing:get('day-batch-replan').checked,
         draw_order_mode:get('day-batch-order-mode').value,round_progression:get('day-batch-progression').value,tie_allocation:get('day-batch-tie-allocation').value,
+        gender_waves:genderWaves, gender_wave_release:genderWaves==='combined' ? 'whole_wave' : 'court_ready',
         day_venue_groups:{},full_day_venue_windows:{},full_day_court_starts:{}};
       state.courts.forEach((courts,id)=>{
         const section=get('day-batch-venues').querySelector(`[data-day-venue="${id}"]`);
@@ -236,6 +246,7 @@
     get('day-batch-clear').addEventListener('click',()=>{state.clear();renderDraws();renderRounds();changed();});
     get('day-batch-workflow').addEventListener('change',event=>{
       const input=event.target;
+      if(input.id==='day-batch-order-mode')updateGenderOrder();
       if(input.matches('.day-batch-draw')){state.selectDraw(input.value,input.checked);renderDraws();renderRounds();}
       else if(input.id==='day-batch-date'){state.setDay(input.value);state.courts.clear();state.restore(saved());applySavedControls();renderVenues();renderRounds();}
       else if(input.matches('.day-batch-court')){state.setCourt(input.dataset.venue,input.value,input.checked);const section=input.closest('[data-day-venue]');section.querySelector('.day-batch-venue').checked=Boolean(state.courts.get(Number(input.dataset.venue))?.size);}
