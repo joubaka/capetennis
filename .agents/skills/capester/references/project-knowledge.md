@@ -68,6 +68,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Keep Player Plus navigation separate from rating data. Use
   `PlayerWorkspaceContext` without a snapshot on detail pages that do not show
   one; retain the publication checks for the results those pages do show.
+- My Tennis starts on the player's profile. Revalidate remembered players
+  against the current account relationship before displaying personal details.
+  Activity and profile editing are standard features; Plus tabs and private
+  ratings follow the selected player's entitlement.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.

@@ -24,7 +24,7 @@ class PlayerRatingHistoryService
     }
 
     /** Page reads never calculate, enqueue, or update ratings. */
-    public function forPlayer(Player $player, array $filters = []): array
+    public function forPlayer(Player $player, array $filters = [], bool $summaryOnly = false): array
     {
         $saved = $this->store->read();
         if ($saved === null) return ['series' => [], 'reason' => 'Rating history is awaiting its first saved calculation. Updates run nightly at 03:00 SAST.'];
@@ -62,12 +62,16 @@ class PlayerRatingHistoryService
         $month = max(0, min(11, (int) ($filters['month'] ?? 11)));
         $scope = ($filters['scope'] ?? 'new') === 'all' ? 'all' : 'new';
         $points = $series[$cohort] ?? [];
+        $stale = $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString();
+        if ($summaryOnly) {
+            return ['points' => $points, 'ball_stage' => $currentStage, 'as_of' => $saved['as_of'], 'stale' => $stale];
+        }
         $point = collect($points)->firstWhere('index', $month);
         $previous = collect($points)->firstWhere('index', $month - 1);
         $evidence = $this->evidence($saved['evidence'], $player, $cohort, $month, $scope, (int) ($filters['page'] ?? 1), $point !== null);
         $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $series[AllAgeRatingModel::COHORT] ?? [], $pending);
         return ['series' => $series, 'reason' => null, 'as_of' => $saved['as_of'], 'built_at' => $saved['built_at'],
-            'stale' => $pending || $saved['as_of'] < CarbonImmutable::today('Africa/Johannesburg')->toDateString(),
+            'stale' => $stale,
             'cohort' => $cohort, 'current_group_label' => $currentStage ? BallRatingModel::LABELS[$currentStage] : 'Not rated yet',
             'ball_stage' => $currentStage, 'rating_scope' => 'ball', 'shared_available' => $hasSharedProjection,
             'ball_series' => array_intersect_key($series, array_flip(array_values(BallRatingModel::COHORTS))), 'points' => $points, 'month' => $month, 'months' => $saved['months'], 'scope' => $scope,

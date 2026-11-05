@@ -38,7 +38,7 @@ class MyTennisService
             ->orWhereHas('users', fn ($users) => $users->whereKey($user->id)));
     }
 
-    public function dashboard(User $user, ?int $playerId = null): array
+    public function dashboard(User $user, ?int $playerId = null, bool $includeActivity = true, bool $selectUpcoming = true): array
     {
         $players = $this->playersFor($user);
         $linkedPlayerPage = $this->playerPage($user);
@@ -51,7 +51,7 @@ class MyTennisService
             : $players->first();
         if ($player && !$players->contains('id', $player->id)) $players->push($player);
 
-        if ($playerId === null) {
+        if ($includeActivity && $selectUpcoming && $playerId === null) {
             foreach ($players->take(self::DEFAULT_PLAYER_SCAN_LIMIT) as $candidate) {
                 $candidateMatches = $this->upcomingScheduledMatchesFor($candidate);
                 if ($candidateMatches->isNotEmpty()) {
@@ -66,15 +66,15 @@ class MyTennisService
             if ($matches?->isEmpty()) $matches = null;
         }
 
-        if (! $player) {
+        if (! $player || ! $includeActivity) {
             return [
                 'players' => $players,
                 'playerCount' => $playerCount,
                 'linkedPlayerIds' => $linkedPlayerIds,
                 'linkedPlayerPage' => $linkedPlayerPage,
                 'accountUser' => $user,
-                'selectedPlayer' => null,
-                'profile' => null,
+                'selectedPlayer' => $player,
+                'profile' => $player?->getProfileStatus(),
                 'entries' => collect(),
                 'upcomingMatches' => collect(),
                 'history' => [
@@ -91,13 +91,13 @@ class MyTennisService
             ->with(['categoryEvent.event', 'categoryEvent.category', 'registration.players'])
             ->whereHas('players', fn ($query) => $query->whereKey($player->id))
             ->latest('id')
-            ->paginate(25, ['*'], 'entries_page')->appends(['player' => $player->id]);
+            ->paginate(25, ['*'], 'entries_page')->appends(['player' => $player->id, 'tab' => 'activity']);
 
         $matches ??= $this->upcomingScheduledMatchesFor($player);
         $page = max(1, (int) request()->query('matches_page', 1));
         $upcomingMatchPage = new \Illuminate\Pagination\LengthAwarePaginator(
             $matches->forPage($page, 25)->values(), $matches->count(), 25, $page,
-            ['path' => route('my.tennis'), 'pageName' => 'matches_page', 'query' => ['player' => $player->id]],
+            ['path' => route('my.tennis'), 'pageName' => 'matches_page', 'query' => ['player' => $player->id, 'tab' => 'activity']],
         );
 
         return [

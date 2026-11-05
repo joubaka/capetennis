@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Frontend;
 
 use App\Http\Controllers\Controller;
+use App\Models\Player;
 use App\Services\MyTennisService;
+use App\Services\PlayerRelationshipAccess;
 use Illuminate\Http\Request;
 
 class MyTennisController extends Controller
@@ -15,28 +17,51 @@ class MyTennisController extends Controller
 
     public function index(Request $request)
     {
+        $user = $request->user();
+        $explicitPlayerId = $request->integer('player') ?: null;
+        $playerId = $explicitPlayerId;
+        $remembered = $request->session()->get('my_tennis.selected_player');
+        if (!$playerId && $remembered) {
+            $rememberedPlayer = Player::find($remembered);
+            if ($rememberedPlayer && app(PlayerRelationshipAccess::class)->related($user, $rememberedPlayer)) {
+                $playerId = $rememberedPlayer->id;
+            }
+        }
+        $tab = $request->query('tab');
+        if (!in_array($tab, ['profile', 'activity', 'manage', 'rating'], true)) {
+            $tab = match (true) {
+                $request->hasAny(['matches_page', 'entries_page']) => 'activity',
+                $request->hasAny(['feature', 'preview_non_plus']) => 'rating',
+                default => 'profile',
+            };
+        }
         $data = $this->myTennis->dashboard(
-            $request->user(),
-            $request->integer('player') ?: null,
+            $user,
+            $playerId,
+            includeActivity: $tab === 'activity',
+            selectUpcoming: false,
         );
+        $data['workspaceTab'] = $tab;
+        if ($data['selectedPlayer']) {
+            $request->session()->put('my_tennis.selected_player', $data['selectedPlayer']->id);
+        }
         // A super admin may preview another player's rating without granting ownership.
-        if (!$data['selectedPlayer'] && $request->user()->hasRole('super-user') && $request->integer('player')) {
-            $data['ratingPreviewPlayer'] = \App\Models\Player::findOrFail($request->integer('player'));
+        if (!$data['selectedPlayer'] && $user->hasRole('super-user') && $explicitPlayerId) {
+            $data['ratingPreviewPlayer'] = Player::findOrFail($explicitPlayerId);
         }
         $ratingPlayer = $data['ratingPreviewPlayer'] ?? $data['selectedPlayer'];
         $data['ratingPlayer'] = $ratingPlayer;
         $data['canPreviewNonPlus'] = $request->user()->hasRole('super-user');
         $data['previewNonPlus'] = $data['canPreviewNonPlus'] && $request->boolean('preview_non_plus');
         $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
-        $data['overviewBadge'] = null;
         $data['overviewPathway'] = null;
         $data['ratingSnapshot'] = null;
         if ($ratingPlayer && $data['canViewRating']) {
-            $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($ratingPlayer);
+            $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)
+                ->forPlayer($ratingPlayer, summaryOnly: $tab !== 'activity');
             $data['ratingSnapshot'] = \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($history);
-            if ($data['selectedPlayer']) {
+            if ($data['selectedPlayer'] && $tab === 'activity') {
                 $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
-                $data['overviewBadge'] = $data['overviewPathway']['badge'];
             }
         }
         return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
@@ -78,7 +103,7 @@ class MyTennisController extends Controller
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
         return response()->view('frontend.my-tennis.pathway-page', [
-            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, includeSnapshot: false),
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, $history),
             'ratingPlayer' => $player,
             'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');

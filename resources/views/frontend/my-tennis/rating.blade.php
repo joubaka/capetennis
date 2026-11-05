@@ -38,6 +38,19 @@
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
+  @if(request()->ajax())
+    <h2 id="player-rating-heading" class="h5">Player rating</h2>
+    <template data-profile-rating-update>
+      @include('frontend.my-tennis.profile-rating-badge', [
+        'badgeSnapshot' => \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($ratingHistory),
+        'badgeUrl' => route('my.tennis', ['player' => $ratingPlayer->id, 'tab' => 'rating']),
+      ])
+    </template>
+    <details class="ct-workspace-rating-details">
+      <summary>Latest rating and trend</summary>
+      @include('frontend.my-tennis.rating-snapshot')
+    </details>
+  @else
   <x-player-workspace-header compact title="Player rating" :subtitle="$ratingPlayer->full_name" heading="h2" heading-id="player-rating-heading" data-rating-hero>
       @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
     <x-slot:summary>
@@ -47,9 +60,11 @@
       </details>
     </x-slot:summary>
     <x-slot:navigation>
+    <a href="{{ route('my.tennis', ['player' => $ratingPlayer->id]) }}">Back to My Tennis profile</a>
     @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true, 'compactNavigation' => true])
     </x-slot:navigation>
   </x-player-workspace-header>
+  @endif
   <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
     @foreach(['progress' => 'My progress', 'compare' => 'Compare players', 'next' => 'My next step', 'understand' => 'How ratings work'] as $section => $label)
       <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>

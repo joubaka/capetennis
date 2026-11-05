@@ -21,8 +21,8 @@
       .ct-record .record-upcoming-row .record-fixture-link { justify-self:start; }
     }
   </style>
-  <x-player-workspace-header compact :workspace="$workspace ?? null" :title="$recordSection === 'opponents' ? 'Opponent Insights' : 'Playing Record'" :subtitle="$recordPlayer->full_name">
-  </x-player-workspace-header>
+  @include('frontend.my-tennis.profile-header', ['workspaceTab' => $recordSection, 'ratingPlayer' => $recordPlayer])
+  <h2 class="h5">{{ $recordSection === 'opponents' ? 'Opponent Insights' : 'Playing Record' }}</h2>
   @if($recordSection === 'opponents' && isset($upcoming))
     @include('frontend.my-tennis.record-upcoming')
   @endif

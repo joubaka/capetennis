@@ -23,7 +23,7 @@ class PlayerWorkspaceHeaderTest extends TestCase
         foreach (['frontend/my-tennis/rating', 'frontend/my-tennis/pathway-page', 'frontend/my-tennis/event-rating-history',
             'frontend/player-plus/index', 'frontend/player-plus/player', 'frontend/player-plus/orders', 'frontend/player-plus/order', 'frontend/player-plus/terms'] as $view) {
             $source = file_get_contents(resource_path('views/'.$view.'.blade.php'));
-            $this->assertStringContainsString('<x-player-workspace-header', $source, $view);
+            $this->assertMatchesRegularExpression('/<x-player-workspace-header|frontend\.my-tennis\.profile-header/', $source, $view);
             $this->assertNotEmpty(token_get_all(app('blade.compiler')->compileString($source), TOKEN_PARSE));
         }
     }

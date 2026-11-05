@@ -2,8 +2,8 @@
 @section('title', 'Your tennis pathway')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-player-pathway-page>
-  <x-player-workspace-header compact :workspace="$workspace ?? null" title="Your next steps" :subtitle="$ratingPlayer->full_name">
-  </x-player-workspace-header>
+  @include('frontend.my-tennis.profile-header', ['workspaceTab' => 'pathway'])
+  <h2 class="h5">Progress</h2>
   @include('frontend.my-tennis.pathway', ['hidePathwayAdmin' => true])
 </div>
 @endsection

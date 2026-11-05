@@ -92,7 +92,7 @@
           <p id="match-reminder-timing-help">After a snooze ends, the automatic reminder can appear at your next login. Next match day uses midnight in South Africa, or the next match time if only today’s matches remain. Reopen anytime using Upcoming matches in My Tennis.</p>
         </details>
         <div class="reminder-actions">
-          <a href="{{ route('my.tennis') }}" class="reminder-all">View all in My Tennis</a>
+          <a href="{{ route('my.tennis', ['tab' => 'activity']) }}" class="reminder-all">View all in My Tennis</a>
           <button type="button" class="btn reminder-close" data-bs-dismiss="modal">Close</button>
         </div>
       </div>

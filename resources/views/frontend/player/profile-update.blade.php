@@ -83,9 +83,15 @@
         </div>
 
         <div class="card-body">
+          @php
+            $myTennisReturn = request()->query('from') === 'my-tennis'
+                ? route('my.tennis', ['player' => $player->id])
+                : null;
+          @endphp
           <form action="{{ route('player.profile.update', $player) }}" method="POST" id="profileForm">
             @csrf
             @method('PUT')
+            @if($myTennisReturn)<input type="hidden" name="from" value="my-tennis">@endif
 
             <div class="row">
               {{-- Name --}}
@@ -200,8 +206,8 @@
             {{-- Actions --}}
             <div class="d-flex gap-2 justify-content-between">
               <div>
-                @if($player->isProfileComplete() && !$player->needsProfileUpdate())
-                  <a href="{{ route('home') }}" class="btn btn-outline-secondary">
+                @if($myTennisReturn || ($player->isProfileComplete() && !$player->needsProfileUpdate()))
+                  <a href="{{ $myTennisReturn ?? route('home') }}" class="btn btn-outline-secondary">
                     <i class="ti ti-arrow-left me-1"></i> Back
                   </a>
                 @endif
@@ -344,7 +350,7 @@ $(document).ready(function() {
 
         // Redirect after delay or stay on page
         setTimeout(function() {
-          window.location.href = '{{ session()->pull('url.intended', route('home')) }}';
+          window.location.href = @js($myTennisReturn ?? session()->pull('url.intended', route('home')));
         }, 1500);
       },
       error: function(xhr) {
@@ -391,7 +397,7 @@ $(document).ready(function() {
         showAlert('success', '<i class="ti ti-check me-1"></i> ' + (response.message || 'Profile confirmed as current!'));
 
         setTimeout(function() {
-          window.location.href = '{{ session()->pull('url.intended', route('home')) }}';
+          window.location.href = @js($myTennisReturn ?? session()->pull('url.intended', route('home')));
         }, 1500);
       },
       error: function(xhr) {

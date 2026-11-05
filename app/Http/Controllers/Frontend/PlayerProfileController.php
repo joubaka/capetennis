@@ -231,7 +231,9 @@ class PlayerProfileController extends Controller
         }
 
         // Redirect to intended URL or home
-        $intended = session()->pull('url.intended', route('home'));
+        $intended = $request->input('from') === 'my-tennis'
+            ? route('my.tennis', ['player' => $player->id])
+            : session()->pull('url.intended', route('home'));
 
         return redirect($intended)
             ->with('success', 'Player profile for "' . $player->full_name . '" has been updated successfully.');

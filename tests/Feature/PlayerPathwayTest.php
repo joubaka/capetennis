@@ -23,6 +23,9 @@ class PlayerPathwayTest extends TestCase
         Schema::create('user_players', function (Blueprint $table) {
             $table->unsignedBigInteger('user_id'); $table->unsignedBigInteger('player_id');
         });
+        Schema::create('users', function (Blueprint $table) {
+            $table->id();
+        });
         Schema::create('site_settings', function (Blueprint $table) {
             $table->id(); $table->string('key'); $table->string('value'); $table->string('group')->nullable(); $table->string('label')->nullable(); $table->timestamps();
         });
@@ -108,7 +111,7 @@ class PlayerPathwayTest extends TestCase
 
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $response = $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Current rated level: Wilson B / Wilson A')->assertSee('Your latest saved badge is used automatically');
+        $response = $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Current level: Wilson B / Wilson A');
         $this->assertMatchesRegularExpression('/data-pathway-top-badge>.*?aria-label="CTR 67\\.9 · Wilson B \/ Wilson A"/s', $response->getContent());
         $response->assertDontSee('a starting stage must be recorded')->assertSee('Wilson A suggested')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
         $response->assertSee('What should I play next?')->assertSee(route('my.tennis.pathway', 1), false)
@@ -262,26 +265,27 @@ class PlayerPathwayTest extends TestCase
         $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
         $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
         $history = $this->mock(PlayerRatingHistoryService::class);
-        $history->shouldReceive('forPlayer')->once()->with(Mockery::on(fn ($candidate) => $candidate->id === 1))
-            ->andReturn(['reason' => null, 'pathway_metrics' => $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 6])]);
+        $history->shouldReceive('forPlayer')->once()->with(Mockery::on(fn ($candidate) => $candidate->id === 1), [], true)
+            ->andReturn(['ball_stage' => 'standard', 'points' => [
+                ['index' => 11, 'date' => '2026-10-01', 'score' => 67.9],
+            ]]);
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
         $entitled = false;
         Gate::define('player-premium-rating', function ($user, $candidate) use (&$entitled) { return $entitled && $candidate->id === 1; });
         $this->actingAs($this->actor(10, false));
         $locked = $this->get(route('my.tennis', ['player' => 1]))->assertOk()
-            ->assertSee('data-overview-rating-badge', false)->assertSee('Unlock CTR')->assertSee('filter:blur(5px)', false)->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false)
-            ->assertSee('id="my-tennis-rating-tab"', false)->assertSee('data-rating-preview', false)
-            ->assertSee('Illustration only')->assertSee(route('player-plus.player', $player), false)
+            ->assertSee('data-profile-plus-preview', false)->assertSee('Explore Player Plus')->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false)
+            ->assertDontSee('id="my-tennis-rating-tab"', false)->assertDontSee('data-rating-preview', false)
             ->assertDontSee('data-rating-url=', false);
         $this->assertTrue($locked->headers->hasCacheControlDirective('private'));
         $this->assertTrue($locked->headers->hasCacheControlDirective('no-store'));
         $entitled = true;
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('aria-label="CTR 67.9 · Green/Yellow ball"', false)
-            ->assertDontSee('Unlock CTR')->assertSee('#rating', false)->assertDontSee('data-rating-preview', false)
-            ->assertSee('data-rating-url=', false);
+            ->assertDontSee('Explore Player Plus')->assertSee('tab=rating', false)->assertDontSee('data-rating-preview', false)
+            ->assertDontSee('data-rating-url=', false);
         // Entitlement to this player does not allow an unlinked viewer to load the badge.
         $this->actingAs($this->actor(30, false));
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Unlock CTR')->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false);
+        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false);
     }
 
     public function test_profile_development_comment_uses_latest_evidence_and_stays_hidden_in_locked_preview(): void
@@ -305,20 +309,20 @@ class PlayerPathwayTest extends TestCase
             return ['reason' => null, 'pathway_metrics' => $metrics];
         });
         $this->actingAs($this->actor(10));
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()
             ->assertSee('data-overview-development-comment', false)->assertSee('Your next development target')
             ->assertDontSee('points to the benchmark')
             ->assertSee('Wilson A')->assertSee(route('my.tennis.pathway', $player), false);
         $metrics['stale'] = true;
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('When your current comparable rating is ready')
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('When your current comparable rating is ready')
             ->assertDontSee('2.1 points to the benchmark')->assertDontSee('Aim for');
         $metrics = $this->metrics(75, ['red' => 0, 'orange' => 0, 'standard' => 3]);
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
             ->assertDontSee('Benchmark achieved:')->assertDontSee('points to the benchmark');
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
             ->assertDontSee('data-overview-development-comment', false)->assertDontSee('Benchmark achieved:');
         $allowed = false;
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertDontSee('data-overview-development-comment', false);
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertDontSee('data-overview-development-comment', false);
     }
     public function test_only_super_users_can_toggle_the_non_plus_preview_without_loading_private_history(): void
     {
@@ -331,17 +335,18 @@ class PlayerPathwayTest extends TestCase
         $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
         $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->twice()
-            ->andReturn(['reason' => null, 'pathway_metrics' => $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 6])]);
+            ->andReturn(['ball_stage' => 'standard', 'points' => [
+                ['index' => 11, 'date' => '2026-10-01', 'score' => 67.9],
+            ]]);
         $this->actingAs($this->actor(10));
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
             ->assertSee('data-non-plus-preview-control', false)->assertSee('aria-checked="true"', false)
             ->assertSee('Non-Plus preview is on.')->assertSee('data-rating-preview', false)
             ->assertSee('name="preview_non_plus" value="1"', false)
-            ->assertSee(route('my.tennis', ['player' => 1]).'#rating', false)
             ->assertDontSee('data-rating-url=', false)->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false);
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()
             ->assertSee('aria-checked="false"', false)->assertDontSee('data-rating-preview', false)
-            ->assertSee('data-rating-url=', false)->assertSee('67.9');
+            ->assertDontSee('data-rating-url=', false)->assertSee('67.9');
         // Ordinary entitled viewers cannot enable the administrative preview by submitting its parameter.
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
         Gate::define('player-premium-rating', fn () => true);
@@ -571,8 +576,8 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame('A', $summary['suggestedDivision']);
         $this->assertFalse($summary['ready']);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
-        $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Wilson A suggested')->assertSee('Current rated level: Wilson B / Wilson A')
-            ->assertSee('Your latest saved badge is used automatically')->assertDontSee('data-pathway-form', false);
+        $this->get(route('my.tennis.rating', 1))->assertOk()->assertSee('Wilson A suggested')->assertSee('Current level: Wilson B / Wilson A')
+            ->assertDontSee('data-pathway-form', false);
         $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => 'red', 'wilson_division' => 'B']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
 
@@ -675,9 +680,9 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor(10, false));
         $page = $this->get(route('my.tennis.pathway', 1))->assertOk()
             ->assertSee('data-player-pathway-page', false)->assertSee('data-pathway-snapshot', false)
-            ->assertSee('Current rated level: Wilson B / Wilson A')->assertSee('You are here')
+            ->assertSee('Current level: Wilson B / Wilson A')->assertSee('You are here')
             ->assertSeeInOrder(['Red ball', 'Academy events', 'TSA Rainbow Kids events', 'School leagues', 'Orange ball', 'U/9 B events', 'Academy events', 'TSA Rainbow Kids events', 'School leagues', 'data-pathway-competition="Wilson B"', 'data-pathway-competition="Wilson A"', 'data-pathway-competition="TSA tournaments"'], false)
-            ->assertSee(route('my.tennis', ['player' => 1]).'#rating', false)
+            ->assertSee(e(route('my.tennis', ['player' => 1, 'tab' => 'rating'])), false)
             ->assertDontSee('data-pathway-form', false);
         $this->assertTrue($page->headers->hasCacheControlDirective('private'));
         $this->assertTrue($page->headers->hasCacheControlDirective('no-store'));

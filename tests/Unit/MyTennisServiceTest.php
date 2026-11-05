@@ -476,7 +476,7 @@ class MyTennisServiceTest extends TestCase
         $this->assertNotContains($unscheduledPlayer->full_name, $matches[1]->profile_match_players['home']);
         $user = User::factory()->create();
         $user->players()->attach($player);
-        $this->actingAs($user)->get(route('my.tennis'))->assertOk()->assertSee($partner->full_name)->assertSee($opponent->full_name)->assertSee($opponentPartner->full_name)->assertDontSee($secondPlayer->full_name)
+        $this->actingAs($user)->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertSee($partner->full_name)->assertSee($opponent->full_name)->assertSee($opponentPartner->full_name)->assertDontSee($secondPlayer->full_name)
             ->assertDontSee($unscheduledPlayer->full_name)->assertSee('Match players for', false)->assertSee('Team fixture - players to be confirmed');
     }
 

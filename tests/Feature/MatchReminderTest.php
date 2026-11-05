@@ -136,7 +136,7 @@ class MatchReminderTest extends TestCase
         $service = app(\App\Services\MyTennisService::class);
         $this->assertSame($ids, $service->upcomingScheduledMatchesFor($player)->pluck('id')->all());
         $this->assertSame($ids[0], $service->nextScheduledMatchFor($player)->sole()->id);
-        $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id]))
+        $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id, 'tab' => 'activity']))
             ->assertOk()->assertSee('Upcoming scheduled matches')
             ->assertViewHas('upcomingMatches', fn ($matches) => $matches->pluck('id')->all() === array_slice($ids, 0, 25))
             ->assertViewHas('upcomingMatchPage', fn ($page) => $page->total() === 27 && str_contains($page->nextPageUrl(), 'player='.$player->id));

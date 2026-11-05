@@ -75,7 +75,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
         $response = $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id, 'feature' => 'opponents']))->assertOk();
         $this->export('standard', $response);
-        $response->assertSee('data-plus-feature="opponents"', false)->assertSee('id="plus-feature-opponents"', false)
+        $response->assertSee('id="plus-feature-opponents"', false)
             ->assertSee(route('player-plus.player', $player), false);
         $this->assertMatchesRegularExpression('/id="plus-feature-opponents"[^>]+data-plus-feature-panel="opponents"\s*>/', $response->getContent());
         $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id, 'feature' => ['invalid']]))->assertOk();
@@ -90,7 +90,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->mock(\App\Services\Performance\PlayerPathwayService::class)->shouldReceive('summary')->once()->andReturn(\App\Services\Performance\PlayerPathwayService::unrecorded());
         $response = $this->actingAs($user)->get(route('my.tennis.pathway', $player).'?player='.$other->id)->assertOk();
         $this->assertSame($player->id, $response->viewData('workspace')['player']->id);
-        $response->assertDontSee('data-rating-snapshot', false)->assertSee('data-workspace-player-selector', false);
+        $response->assertDontSee('data-rating-snapshot', false)->assertSee('data-profile-rating-badge', false)->assertSee('data-workspace-player-selector', false);
         $this->export('pathway', $response);
     }
 
