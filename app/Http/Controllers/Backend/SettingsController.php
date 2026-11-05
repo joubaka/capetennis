@@ -100,11 +100,8 @@ class SettingsController extends Controller
                 $set($key, $request->boolean($key) ? '1' : '0', SiteSetting::GROUP_EMAIL);
             }
 
-            // Registration & withdrawal behaviour
-            $set('registration_open', $request->boolean('registration_open') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
-            $set('withdrawal_allowed', $request->boolean('withdrawal_allowed') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
+            // Registration and withdrawal switches are saved only through storeSingle().
             $set('withdrawal_deadline_days', (string) max(0, (int) $request->input('withdrawal_deadline_days', 7)), SiteSetting::GROUP_REGISTRATION);
-            $set('profile_required_for_registration', $request->boolean('profile_required_for_registration') ? '1' : '0', SiteSetting::GROUP_REGISTRATION);
         });
 
         if ($request->ajax() || $request->expectsJson()) {

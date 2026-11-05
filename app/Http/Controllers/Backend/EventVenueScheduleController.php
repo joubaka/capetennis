@@ -1244,9 +1244,12 @@ final class EventVenueScheduleController extends Controller
                             ->report($event, $options, $current, $data['preview_move'], $exception->getMessage())], 422);
                 }
             }
+            if (array_key_exists('draft_age_setups', $options) && empty($options['programme'])) throw new \InvalidArgumentException('Unsaved age setups require a complete programme preview.');
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->preview($event->fresh(), $options));
+        } catch (\DomainException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 409);
         } catch (\InvalidArgumentException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
@@ -1259,6 +1262,7 @@ final class EventVenueScheduleController extends Controller
         $request->validate(['revision' => ['required', 'string', 'size:64']]);
         try {
             $options = $this->validatedOptions($request);
+            if ($request->has('draft_age_setups')) throw new \InvalidArgumentException('Unsaved age setup previews cannot save match times. Save setup and generate a new preview first.');
             if (empty($options['programme']) && empty($options['day_batch'])) $playoffs->prepareEvent($event, $options['draw_ids'] ?? []);
 
             return response()->json($scheduler->apply($event->fresh(), $options, (string) $request->string('revision')));
@@ -1595,6 +1599,17 @@ final class EventVenueScheduleController extends Controller
             'draw_rounds.*.draw_id' => ['required', 'integer', 'distinct'],
             'draw_rounds.*.rounds' => ['required', 'array', 'min:1', 'max:100'],
             'draw_rounds.*.rounds.*' => ['required', 'integer', 'min:1'],
+            'draft_age_setups' => ['sometimes', 'array', 'min:1', 'max:100'],
+            'draft_age_setups.*.age' => ['required', 'integer', 'min:1', 'max:100', 'distinct'],
+            'draft_age_setups.*.revision' => ['required', 'string', 'size:64'],
+            'draft_age_setups.*.court_allocations' => ['required', 'array', 'min:1', 'max:100'],
+            'draft_age_setups.*.court_allocations.*.venue_id' => ['required', 'integer'],
+            'draft_age_setups.*.court_allocations.*.court_labels' => ['required', 'array', 'min:1', 'max:100'],
+            'draft_age_setups.*.court_allocations.*.court_labels.*' => ['required', 'string', 'max:50'],
+            'draft_age_setups.*.rank_venue_preferences' => ['present', 'array', 'max:50'],
+            'draft_age_setups.*.rank_venue_preferences.*.min_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'draft_age_setups.*.rank_venue_preferences.*.max_rank' => ['required', 'integer', 'min:1', 'max:100'],
+            'draft_age_setups.*.rank_venue_preferences.*.venue_id' => ['required', 'integer'],
             'rank_venue_preferences' => ['sometimes', 'array', 'max:50'],
             'rank_venue_preferences.*.draw_ids' => ['required', 'array', 'min:1', 'max:200'],
             'rank_venue_preferences.*.draw_ids.*' => ['integer'],

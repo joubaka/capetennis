@@ -43,3 +43,10 @@ test('stepper validates courts before numbers and review and Back retains select
  app.get('age-setup-next').listeners.click();assert.equal(app.get('age-setup-step-4').hidden,false);assert.match(app.get('age-setup-review').innerHTML,/Under 10/);assert.match(app.get('age-setup-review').innerHTML,/Ten courts.*Courts 1/);assert.match(app.get('age-setup-review').innerHTML,/All playing-order numbers/);
  app.get('age-setup-back').listeners.click();app.get('age-setup-back').listeners.click();assert.equal(app.get('age-setup-step-2').hidden,false);app.get('age-setup-next').listeners.click();app.get('age-setup-next').listeners.click();assert.match(app.get('age-setup-review').innerHTML,/Ten courts.*Courts 1/);
 });
+
+test('preview payloads include only dirty selected ages without saving or clearing drafts',()=>{
+ const app=harness();app.get('age-venue-setup').listeners.change();
+ const preview=app.controller.previewDrafts([1]);assert.equal(preview.length,1);assert.equal(preview[0].age,10);assert.deepEqual(preview[0].court_allocations,[{venue_id:7,court_labels:['1']}]);
+ assert.deepEqual(app.controller.previewDrafts([2]),[]);assert.equal(app.controller.isDirty(),true);assert.equal(app.posted(),undefined);
+ app.age.value='bulk';app.age.listeners.change();assert.equal(app.controller.previewDrafts([1,2]).length,1);assert.equal(app.controller.isDirty(),true);
+});

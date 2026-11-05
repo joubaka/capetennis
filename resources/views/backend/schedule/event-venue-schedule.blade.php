@@ -1723,10 +1723,10 @@
     const applyPreview = document.getElementById('apply-preview');
     applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${result.input.programme?.days?.length ? 'Save complete event schedule' : 'Save matches that fit'}`;
     const continueToDraws = document.getElementById('continue-to-draws');
-    applyPreview.disabled = !hasSuggestions || ((!!result.input.programme?.days?.length || !!result.input.day_batch) && result.unscheduled.length > 0);
+    applyPreview.disabled = !!result.preview_only || !hasSuggestions || ((!!result.input.programme?.days?.length || !!result.input.day_batch) && result.unscheduled.length > 0);
     applyPreview.classList.toggle('d-none', scheduleComplete);
     continueToDraws.classList.toggle('d-none', !scheduleComplete);
-    const previewMessage = result.unscheduled.length
+    const previewMessage = result.preview_only ? 'Preview only — uses unsaved age setup. Nothing has been saved or published. Save age setup and generate a new preview before saving match times.' : result.unscheduled.length
       ? 'Preview needs attention. Resolve every unscheduled match before applying.'
       : scheduleComplete
         ? 'Schedule already saved. Continue to the tournament draws.'
@@ -2536,7 +2536,7 @@
     });
   });
   document.getElementById('apply-preview').addEventListener('click', async event => {
-    if (!payload || !revision) return;
+    if (!payload || !revision || payload.draft_age_setups) return;
     const button = event.currentTarget;
     const originalButtonHtml = button.innerHTML;
     const submittedAge = selectedProgrammeAge;
@@ -3142,7 +3142,6 @@
     finally { button.disabled = false; }
   });
   const refreshProgrammePreview = async (showReview = true) => {
-    if (typeof ageSetupController !== 'undefined' && ageSetupController?.isDirty()) return programmeStatus('Save each edited age setup before generating match times.', 'warning');
     const button = document.getElementById('programme-create');
     const group = programmeGroup();
     if (!programmeDayCount) return programmeStatus('Set valid event start and end dates in Settings before scheduling.', 'danger');
@@ -3156,11 +3155,15 @@
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
     programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[days.length - 1].end, programme:{days,rounds,matches:readProgrammeMatchOverrides()}, allow_partial:false, cross_band_policy:'highest_ranked'};
+    try {
+      const drafts = typeof ageSetupController !== 'undefined' ? ageSetupController?.previewDrafts(group.map(draw => draw.id)) || [] : [];
+      if(drafts.length)programmePayload.draft_age_setups=drafts;
+    } catch(error) { return programmeStatus(error.message,'danger'); }
     payload = buildPayload(); revision = null; button.disabled = true;
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating event schedule preview…';
     programmeStatus('Checking every round, court, player rest and daily window. Your saved schedule stays in place while the preview is created.');
-    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `${programmeDayLabel(index + 1)}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. Review before saving.`, result.unscheduled.length ? 'warning' : 'success'); }
+    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `${programmeDayLabel(index + 1)}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. ${result.preview_only ? 'Preview only: unsaved age setup. Nothing saved or published.' : 'Review before saving.'}`, result.unscheduled.length ? 'warning' : 'success'); }
     catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
     finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = typeof programmeDayBoxMode !== 'undefined' && programmeDayBoxMode ? 'Generate suggested schedule' : programmeCreateLabel; } }
   };
@@ -3313,8 +3316,8 @@
     post:body => post(assignmentUrl, body),
     onDirty:dirty => {
       programmePayload=null; ++programmeRefreshVersion;
-      invalidatePreview(dirty ? 'Age setup has unsaved changes. Save it before generating match times.' : 'Age setup saved. Generate a new preview.');
-      document.getElementById('programme-create').disabled=dirty;
+      invalidatePreview(dirty ? 'Age setup has unsaved changes. Generate a preview to test without saving.' : 'Age setup saved. Generate a new preview.');
+      document.getElementById('programme-create').disabled=false;
     },
     onSaved:result => {
       roundVenueSetups=result.round_venue_setups;

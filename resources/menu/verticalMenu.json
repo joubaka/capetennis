@@ -84,7 +84,7 @@
           "slug": "backend.disciplinary.cases.index"
         },
         {
-          "url": "backend/settings",
+          "url": "backend/superadmin/workspace?tab=settings",
           "name": "Site Settings",
           "icon": "circle",
           "slug": "settings.index"

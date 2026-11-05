@@ -23,6 +23,9 @@ final class EventVenueScheduleService
 
     public function preview(Event $event, array $options): array
     {
+        if (array_key_exists('draft_age_setups', $options) && (empty($options['programme']) || empty($options['draft_age_setups']))) {
+            throw new \InvalidArgumentException('Unsaved age setups require a complete programme preview.');
+        }
         $roundProgression = $options['round_progression'] ?? 'team_ready';
         if (! in_array($roundProgression, ['team_ready', 'all_round'], true)) throw new \InvalidArgumentException('Choose a valid round progression rule.');
         $genderWaves = $options['gender_waves'] ?? 'combined';
@@ -116,6 +119,21 @@ final class EventVenueScheduleService
         }
 
         $storedRoundDraft = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        $draftRoundRows = []; $draftAges = [];
+        foreach ($options['draft_age_setups'] ?? [] as $draft) {
+            $age = (int) ($draft['age'] ?? 0);
+            if (isset($draftAges[$age])) throw new \InvalidArgumentException('Preview each age setup only once.');
+            $draftAges[$age] = true;
+            $rows = app(TeamAgeVenueSetup::class)->previewRows($event, $draft);
+            if (array_diff(array_column($rows, 'draw_id'), $draws->pluck('id')->all())) throw new \InvalidArgumentException('Include every discipline of each draft age in the selected programme.');
+            $draftRoundRows = array_merge($draftRoundRows, $rows);
+        }
+        if ($draftRoundRows) {
+            $draftIds = array_unique(array_column($draftRoundRows, 'draw_id'));
+            $savedRows = collect($storedRoundDraft['round_venue_setups'] ?? [])->reject(fn ($row) => in_array((int) $row['draw_id'], $draftIds, true));
+            $storedRoundDraft['round_venue_setups'] = $savedRows->concat($draftRoundRows)->values()->all();
+            $storedRoundDraft['day_batch_allocations'] = collect($storedRoundDraft['day_batch_allocations'] ?? [])->reject(fn ($row, $key) => str_starts_with((string) $key, 'team:') && in_array((int) ($row['draw_id'] ?? 0), $draftIds, true))->all();
+        }
         $limitDailyMatches = ! empty($options['limit_daily_matches']) || ! empty($storedRoundDraft['limit_daily_matches']);
         $roundSetups = collect($storedRoundDraft['round_venue_setups'] ?? [])->whereIn('draw_id', $draws->pluck('id'))->keyBy(fn ($row) => $row['draw_id'].'|'.$row['round']);
         if (($dayScope || $fullDay) && $draws->contains('locked', true)) throw new \InvalidArgumentException('Unlock selected draws before editing their day schedule.');
@@ -928,6 +946,7 @@ final class EventVenueScheduleService
             return $kept;
         }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
+            ...(! empty($options['draft_age_setups']) ? ['draft_age_setups' => $options['draft_age_setups']] : []),
             'match_timing' => collect($nodes)->map(fn ($node) => ['duration' => $node['duration'], 'court_gap' => $node['court_gap']])->all(),
             'preview_moves' => array_values($previewMoves),
             'preview_frozen_keys' => $frozenKeys,
@@ -956,6 +975,7 @@ final class EventVenueScheduleService
         ];
 
         return [
+            'preview_only' => ! empty($options['draft_age_setups']),
             'event' => ['id' => $event->id, 'name' => $event->name],
             'venues' => $venues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name,
                 'courts' => count($courtLabels[$venue->id]), 'court_labels' => $courtLabels[$venue->id]])->values()->all(),
@@ -969,6 +989,7 @@ final class EventVenueScheduleService
 
     public function apply(Event $event, array $options, string $expectedRevision): array
     {
+        if (array_key_exists('draft_age_setups', $options)) throw new \InvalidArgumentException('Unsaved age setup previews cannot save match times. Save age setup and generate a new preview first.');
         return DB::transaction(function () use ($event, $options, $expectedRevision) {
             if (! empty($options['full_day_scope'])) $options['allow_partial'] = false;
             $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));

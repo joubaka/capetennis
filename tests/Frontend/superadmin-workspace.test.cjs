@@ -4,6 +4,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const template = fs.readFileSync('resources/views/backend/superadmin/index.blade.php', 'utf8');
 
+test('both Site Settings menus open the full Settings workspace', () => {
+  for (const layout of ['vertical', 'horizontal']) {
+    const {menu} = JSON.parse(fs.readFileSync(`resources/menu/${layout}Menu.json`, 'utf8'));
+    const siteSettings = menu.flatMap(item => item.submenu ?? []).find(item => item.name === 'Site Settings');
+    assert.equal(siteSettings?.url, 'backend/superadmin/workspace?tab=settings');
+  }
+});
+
 function harness() {
   const handlers = new Map(), nodes = new Map(), requests = [];
   const document = {getElementById: id => ({id, value: 'Reviewed terms', reportValidity: () => true})};
@@ -17,7 +25,7 @@ function harness() {
       is() {return this.checked;},
       hasClass(value) {return this.classes.has(value);},
       find(selector) {return node(selector);},
-      serialize() {assert.equal(node(':input:enabled').disabled, false); return 'registration_open=1';},
+      serialize() {assert.equal(node(':input:enabled').disabled, false); return 'withdrawal_deadline_days=7';},
       attr() {return '/settings';},
       html(value) {this.content = value; return this;},
       text(value) {this.content = value; return this;},
@@ -39,18 +47,29 @@ function harness() {
   return {handlers, node, requests, context, slice};
 }
 
-test('full save waits for an in-flight toggle and then includes its enabled value', () => {
+test('full save waits for a dedicated registration toggle request', () => {
   const h = harness(), toggle = h.node('toggle');
   toggle.values['setting-key'] = 'registration_open';
   h.handlers.get('[object Object]:change:.sa-toggle-setting').call(toggle);
   h.handlers.get('#sa-settings-form:submit:').call(h.node('#sa-settings-form'), {preventDefault() {}});
   assert.equal(h.requests.length, 1);
+  assert.equal(h.requests[0].data.key, 'registration_open');
+  assert.equal(h.requests[0].data.value, '1');
   h.requests[0].complete();
   h.handlers.get('#sa-settings-form:submit:').call(h.node('#sa-settings-form'), {preventDefault() {}});
-  assert.equal(h.requests[1].data, 'registration_open=1');
+  assert.equal(h.requests[1].data, 'withdrawal_deadline_days=7');
   assert.equal(h.node(':input:enabled').disabled, true);
   h.requests[1].complete();
   assert.equal(h.node(':input:enabled').disabled, false);
+});
+
+test('registration and withdrawal switches are excluded from bulk form submission', () => {
+  const inputs = template.match(/<input\b[^>]*>/g);
+  for (const key of ['registration_open', 'withdrawal_allowed', 'profile_required_for_registration']) {
+    const switchMarkup = inputs.find(input => input.includes(`data-setting-key="${key}"`));
+    assert.match(switchMarkup, /\bsa-toggle-setting\b/);
+    assert.doesNotMatch(switchMarkup, /\bname=/);
+  }
 });
 
 test('duplicate full save and toggle changes cannot overlap a full save', () => {

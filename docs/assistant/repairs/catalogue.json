@@ -290,11 +290,11 @@
     {
       "id": "RK-007",
       "title": "Super Admin workspace save feedback and toggle overlap",
-      "scope": "Legacy Super Admin workspace browser handlers; no settings, ledger or production repair action.",
+      "scope": "Super Admin workspace save handlers and the bulk settings endpoint shared with the standalone Site Settings page.",
       "symptoms": "Conduct or terms save buttons remain disabled, dismissed feedback stops appearing, or Save All overwrites an autosaving checkbox.",
-      "cause": "Content callbacks referenced a notifier outside its lexical scope; Bootstrap dismissal removed its reusable node; disabled in-flight checkbox controls were omitted from form serialization and missing booleans were saved as false.",
-      "fix": "Keep content callbacks and notifier in the same ready closure, hide rather than remove reusable feedback, block full-form save while toggle, annual-price, template or content requests are pending, serialize before disabling the form, and restore only previously enabled controls in completion callbacks. Main destinations now use server-selected GET pages; initialize only present, visible local tables and editors. Preserve dedicated settings endpoints and server authorization.",
-      "verification": "Nine executable JavaScript handler/navigation regressions passed locally on 2026-11-02. Authenticated presentation/access checks also passed within the 130-test isolated MySQL dashboard suite. These checks do not establish live settings behavior.",
+      "cause": "Content callbacks referenced a notifier outside its lexical scope. Bootstrap dismissal removed its reusable node. The bulk endpoint treated omitted booleans as false, and the standalone form omitted the registration, withdrawal and registration profile switches.",
+      "fix": "Keep content callbacks and notifier in the same ready closure, hide reusable feedback, and coordinate pending toggle, annual-price, template and content requests with bulk saves. Serialize before disabling controls and restore only previously enabled controls. Change registration_open, withdrawal_allowed and profile_required_for_registration only through the audited single-setting endpoint. The bulk endpoint ignores these keys even when sent by an older or stale form. Preserve server authorization.",
+      "verification": "On 2026-11-05 the local SQLite settings audit suite passed 11 tests, including omitted and stale bulk values, and 10 JavaScript workspace regressions passed. The code fix was verified locally.",
       "limits": "No automatic settings mutation or production action. Monthly-only fields remain independent of the full-form payload. Preserve user-owned worktree changes and verify current owning handlers before applying the procedure.",
       "assistant_action": "guide_only",
       "sources": [
@@ -302,7 +302,9 @@
         "docs/superadmin-dashboard-audit.md"
       ],
       "tests": [
-        "tests/Feature/SuperAdminWorkspacePresentationTest.php"
+        "tests/Feature/SuperAdminWorkspacePresentationTest.php",
+        "tests/Feature/SettingsMutationAuditTest.php",
+        "tests/Frontend/superadmin-workspace.test.cjs"
       ]
     },
     {

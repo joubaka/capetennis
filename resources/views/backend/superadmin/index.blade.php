@@ -1235,9 +1235,9 @@
                       </div>
                       <div class="form-check form-switch ms-3">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
-                               id="sa-registration-open" name="registration_open" value="1"
+                               id="sa-registration-open"
                                data-setting-key="registration_open"
-                               {{ old('registration_open', $registrationSettings['registration_open'] ?? '1') == '1' ? 'checked' : '' }}>
+                               @checked(($registrationSettings['registration_open'] ?? '1') === '1')>
                       </div>
                     </div>
                   </div>
@@ -1250,9 +1250,9 @@
                       </div>
                       <div class="form-check form-switch ms-3">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
-                               id="sa-withdrawal-allowed" name="withdrawal_allowed" value="1"
+                               id="sa-withdrawal-allowed"
                                data-setting-key="withdrawal_allowed"
-                               {{ old('withdrawal_allowed', $registrationSettings['withdrawal_allowed'] ?? '1') == '1' ? 'checked' : '' }}>
+                               @checked(($registrationSettings['withdrawal_allowed'] ?? '1') === '1')>
                       </div>
                     </div>
                   </div>
@@ -1276,9 +1276,9 @@
                       </div>
                       <div class="form-check form-switch ms-3">
                         <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch"
-                               id="sa-profile-required" name="profile_required_for_registration" value="1"
+                               id="sa-profile-required"
                                data-setting-key="profile_required_for_registration"
-                               {{ old('profile_required_for_registration', $registrationSettings['profile_required_for_registration'] ?? '1') == '1' ? 'checked' : '' }}>
+                               @checked(($registrationSettings['profile_required_for_registration'] ?? '1') === '1')>
                       </div>
                     </div>
                   </div>
@@ -1306,6 +1306,10 @@
                         <span class="form-check-label">Player Plus · accept new purchases</span>
                       </label>
                       <small class="text-muted d-block">Off by default. Pausing sales keeps existing verified memberships accessible until expiry. Super Admin can always preview players.</small>
+                      <label class="form-check form-switch mt-2">
+                        <input class="form-check-input sa-toggle-setting" type="checkbox" role="switch" data-setting-key="player_plus_coming_soon_enabled" @checked(($generalSettings['player_plus_coming_soon_enabled'] ?? '1') === '1')>
+                        <span class="form-check-label">Show Coming Soon marketing while sales are paused</span>
+                      </label>
                       <label class="form-label mt-3" for="sa-plus-price">Annual price per player (R)</label>
                       <div class="d-flex flex-wrap gap-2">
                         <input class="form-control" style="max-width:12rem;min-height:44px" id="sa-plus-price" name="player_plus_annual_price" type="number" min="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MIN_PRICE_CENTS) }}" max="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::MAX_PRICE_CENTS) }}" step="0.01" value="{{ \App\Services\Performance\PlayerPlusService::amount(\App\Services\Performance\PlayerPlusService::priceCents()) }}" required>

@@ -91,7 +91,16 @@
       finally {saving=false;save.innerHTML=saveLabel;save.setAttribute('aria-busy','false');controls.forEach((control,index)=>control.disabled=prior[index]);if(active!==age)render();}
     });
     render();
-    return {isDirty:() => dirty.size>0};
+    return {
+      isDirty:() => dirty.size>0,
+      previewDrafts:drawIds => {
+        if(active)drafts.set(active,read());
+        return [...dirty].filter(age => states[age].draw_ids.some(id => drawIds.map(Number).includes(Number(id)))).map(age => {
+          const draft=drafts.get(age);
+          return payload(age,states[age],draft.court_allocations,draft.rank_venue_preferences);
+        });
+      },
+    };
   }
   root.TeamAgeVenueSetup={payload,mount};
   if(typeof module !== 'undefined')module.exports=root.TeamAgeVenueSetup;

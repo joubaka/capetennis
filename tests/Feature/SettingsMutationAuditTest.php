@@ -46,15 +46,40 @@ class SettingsMutationAuditTest extends TestCase
 
     public function test_bulk_save_is_one_atomic_operation_with_true_before_values(): void
     {
-        SiteSetting::set('registration_open', '1', SiteSetting::GROUP_REGISTRATION);
+        SiteSetting::set('withdrawal_deadline_days', '7', SiteSetting::GROUP_REGISTRATION);
         $payload = $this->bulkPayload() + ['withdrawal_deadline_days' => '12', 'admin_notification_email' => 'private-ops@example.test'];
         $this->actingAs($this->admin)->postJson(route('settings.store'), $payload)->assertOk();
         $record = AuditEvent::where('action', 'settings.updated')->sole();
-        $this->assertSame('1', $record->before['registration_open']['value']);
-        $this->assertSame('0', $record->after['registration_open']['value']);
+        $this->assertSame('7', $record->before['withdrawal_deadline_days']['value']);
+        $this->assertSame('12', $record->after['withdrawal_deadline_days']['value']);
         $this->assertSame('12', SiteSetting::get('withdrawal_deadline_days'));
         $this->assertGreaterThan(10, $record->metadata['changed_count']);
         $this->assertStringNotContainsString('private-ops@example.test', $this->allAuditJson());
+    }
+
+    public function test_bulk_save_preserves_registration_and_withdrawal_switches_when_omitted_or_stale(): void
+    {
+        $keys = ['registration_open', 'withdrawal_allowed', 'profile_required_for_registration'];
+        foreach ([['1', null, '12'], ['1', '0', '13'], ['0', '1', '14']] as [$current, $submitted, $deadline]) {
+            $payload = $this->bulkPayload() + ['withdrawal_deadline_days' => $deadline];
+            foreach ($keys as $key) {
+                SiteSetting::set($key, $current, SiteSetting::GROUP_REGISTRATION);
+            }
+            if ($submitted !== null) {
+                $payload += array_fill_keys($keys, $submitted);
+            }
+
+            $this->actingAs($this->admin)->postJson(route('settings.store'), $payload)->assertOk();
+
+            $this->assertSame($deadline, SiteSetting::get('withdrawal_deadline_days'));
+            $record = AuditEvent::where('action', 'settings.updated')->latest('id')->firstOrFail();
+            foreach ($keys as $key) {
+                $this->assertSame($current, SiteSetting::get($key));
+                $this->assertArrayNotHasKey($key, $record->before);
+                $this->assertArrayNotHasKey($key, $record->after);
+            }
+        }
+        $this->assertSame(3, AuditEvent::where('action', 'settings.updated')->count());
     }
 
     public function test_template_and_legal_content_are_hashed_in_business_history_and_absent_from_request_logs(): void

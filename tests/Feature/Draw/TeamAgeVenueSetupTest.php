@@ -171,4 +171,52 @@ class TeamAgeVenueSetupTest extends TestCase
         $this->assertTrue($service->state($event,10)['exceptions']);
         $this->assertSame($saved['state']['setup'],$service->state($event,10)['setup']);
     }
+    private function draftPreviewScenario(): array
+    {
+        [$event,$draws,$venue,$other,$data]=$this->scenario();
+        $rounds=[];
+        foreach($draws as $index=>$draw) foreach([1,2] as $round) $rounds[]=['draw_id'=>$draw->id,'round'=>$round,'day'=>1,'sequence'=>($index%4)*2+$round];
+        $options=['draw_ids'=>$draws->pluck('id')->all(),'start'=>'2026-11-06 08:30','end'=>'2026-11-08 22:00',
+            'duration'=>45,'wave_minutes'=>45,'court_gap'=>0,'player_rest'=>15,
+            'programme'=>['days'=>array_map(fn($date)=>['start'=>$date.' 08:30','end'=>$date.' 22:00'],['2026-11-06','2026-11-07','2026-11-08']),'rounds'=>$rounds],
+            'draft_age_setups'=>[$data]];
+        return [$event,$draws,$venue,$other,$options];
+    }
+
+    public function test_unsaved_age_preview_overlays_only_its_age_without_any_writes_and_cannot_apply(): void
+    {
+        [$event,$draws,$venue,$other,$options]=$this->draftPreviewScenario();
+        $before=[];
+        foreach(['team_fixtures','event_venue_schedule_drafts','draw_audit_logs','published_schedule_assignments','order_of_plays'] as $table) $before[$table]=DB::table($table)->get()->toJson();
+        $writes=[];DB::listen(function($query)use(&$writes){if(preg_match('/^\s*(insert|update|delete|replace|alter|create|drop)\b/i',$query->sql))$writes[]=$query->sql;});
+        $result=$this->postJson(route('backend.event-venue-schedule.preview',$event),$options)->assertOk()->assertJsonPath('preview_only',true)->json();
+        $this->assertCount(16,$result['matches'],json_encode($result['unscheduled']));
+        foreach($result['matches'] as $row) $this->assertSame($draws->take(4)->contains('id',$row['draw_id'])?$venue->id:$other->id,$row['venue_id']);
+        $this->assertSame($options['draft_age_setups'],$result['input']['draft_age_setups']);
+        $this->postJson(route('backend.event-venue-schedule.apply',$event),$options+['revision'=>$result['revision']])->assertStatus(422);
+        $this->expectException(\InvalidArgumentException::class);
+        try { app(EventVenueScheduleService::class)->apply($event,$options,$result['revision']); }
+        finally {
+            $this->assertSame([],$writes);
+            foreach($before as $table=>$snapshot)$this->assertSame($snapshot,DB::table($table)->get()->toJson(),$table);
+        }
+    }
+
+    public function test_draft_preview_requires_complete_programme_and_rejects_invalid_stale_or_foreign_setup(): void
+    {
+        [$event,$draws,$venue,$other,$options]=$this->draftPreviewScenario();
+        $without=$options;unset($without['programme']);
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),$without)->assertStatus(422);
+        $invalid=$options;$invalid['draft_age_setups'][0]['court_allocations'][0]['court_labels']=['999'];
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),$invalid)->assertStatus(422);
+        $invalid=$options;$invalid['draft_age_setups'][0]['rank_venue_preferences'][]=$invalid['draft_age_setups'][0]['rank_venue_preferences'][0];
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),$invalid)->assertStatus(422);
+        $invalid=$options;$invalid['draft_age_setups'][0]['court_allocations'][0]['venue_id']=Venue::forceCreate(['name'=>'Foreign venue'])->id;
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),$invalid)->assertStatus(422);
+        $invalid=$options;$invalid['draft_age_setups'][0]['revision']=str_repeat('0',64);
+        $this->postJson(route('backend.event-venue-schedule.preview',$event),$invalid)->assertStatus(409);
+        $this->assertDatabaseCount('event_venue_schedule_drafts',0);$this->assertDatabaseCount('draw_audit_logs',0);
+        $this->assertSame(0,TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
 }

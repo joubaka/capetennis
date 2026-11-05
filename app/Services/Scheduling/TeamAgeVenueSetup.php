@@ -35,22 +35,31 @@ final class TeamAgeVenueSetup
             'exceptions' => (bool) $exceptions, 'locked' => $draws->contains('locked', true)];
     }
 
+    /** Expand and validate one complete age setup in memory only. */
+    public function previewRows(Event $event, array $data): array
+    {
+    $state = $this->state($event, (int) $data['age']);
+    if (! hash_equals($state['revision'], $data['revision'])) throw new \DomainException('This age group changed. Reload the scheduling page before previewing or saving its setup.');
+    if (! $state['draw_ids'] || $state['locked']) throw new \InvalidArgumentException('Choose an age group with unlocked team draws in this event.');
+    $rows = [];
+    foreach ($state['draw_ids'] as $id) {
+        if (empty($state['rounds'][$id])) throw new \InvalidArgumentException('Generate every discipline in this age group before saving its shared setup.');
+        foreach ($state['rounds'][$id] as $round) $rows[] = ['draw_id' => $id, 'round' => $round,
+            'venue_ids' => array_column($data['court_allocations'], 'venue_id'),
+            'court_allocations' => $data['court_allocations'], 'rank_venue_preferences' => $data['rank_venue_preferences']];
+    }
+
+        return array_values(app(RoundVenueSetup::class)->normalize($event, $rows));
+    }
+
     public function save(Event $event, array $data, ?int $actor): array
     {
         return DB::transaction(function () use ($event, $data, $actor) {
             DB::table('venues')->orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $event->draws()->orderBy('id')->lockForUpdate()->get();
+            $rows = $this->previewRows($event, $data);
             $state = $this->state($event, (int) $data['age']);
-            if (! hash_equals($state['revision'], $data['revision'])) throw new \DomainException('This age group changed. Reload the scheduling page before saving its setup.');
-            if (! $state['draw_ids'] || $state['locked']) throw new \InvalidArgumentException('Choose an age group with unlocked team draws in this event.');
-            $rows = [];
-            foreach ($state['draw_ids'] as $id) {
-                if (empty($state['rounds'][$id])) throw new \InvalidArgumentException('Generate every discipline in this age group before saving its shared setup.');
-                foreach ($state['rounds'][$id] as $round) $rows[] = ['draw_id' => $id, 'round' => $round,
-                    'venue_ids' => array_column($data['court_allocations'], 'venue_id'),
-                    'court_allocations' => $data['court_allocations'], 'rank_venue_preferences' => $data['rank_venue_preferences']];
-            }
             $rounds = app(RoundVenueSetup::class)->save($event, $rows, $actor);
             $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
             $saved = collect($rounds)->first(fn ($row) => in_array($row['draw_id'], $state['draw_ids'], true));
