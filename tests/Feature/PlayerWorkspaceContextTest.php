@@ -90,7 +90,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->mock(\App\Services\Performance\PlayerPathwayService::class)->shouldReceive('summary')->once()->andReturn(\App\Services\Performance\PlayerPathwayService::unrecorded());
         $response = $this->actingAs($user)->get(route('my.tennis.pathway', $player).'?player='.$other->id)->assertOk();
         $this->assertSame($player->id, $response->viewData('workspace')['player']->id);
-        $response->assertSee('data-rating-snapshot', false)->assertSee('data-workspace-player-selector', false);
+        $response->assertDontSee('data-rating-snapshot', false)->assertSee('data-workspace-player-selector', false);
         $this->export('pathway', $response);
     }
 
@@ -115,7 +115,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $user = User::factory()->create(); $player = Player::factory()->create(['name' => 'Example', 'surname' => 'Player', 'userId' => $user->id]);
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
-        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->times(5)->andReturn($this->history());
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->times(3)->andReturn($this->history());
         $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic saved record unavailable.']);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic event history unavailable.', 'events' => [], 'pages' => 1]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistoryRefresh::class)->shouldReceive('status')->once()->andReturn(['state' => 'idle', 'message' => 'No update requested.']);
@@ -124,7 +124,13 @@ class PlayerWorkspaceContextTest extends TestCase
             'offer' => route('player-plus.player', $player), 'orders' => route('player-plus.orders.index', ['player' => $player->id]),
             'terms' => route('player-plus.terms', ['player' => $player->id])] as $name => $url) {
             $response = $this->actingAs($user)->get($url)->assertOk();
-            $response->assertSee('data-rating-snapshot', false)->assertSee('data-workspace-player-selector', false);
+            if (in_array($name, ['record', 'events'], true)) {
+                $response->assertDontSee('data-rating-snapshot', false);
+                $this->assertTrue($response->viewData('workspace')['canViewRating']);
+            } else {
+                $response->assertSee('data-rating-snapshot', false);
+            }
+            $response->assertSee('data-workspace-player-selector', false);
             $this->assertSame($player->id, $response->viewData('workspace')['player']->id);
             $this->export($name, $response);
         }
@@ -139,5 +145,30 @@ class PlayerWorkspaceContextTest extends TestCase
         $response = $this->actingAs($user)->get(route('player-plus.player', $player))->assertOk();
         $response->assertSee('data-rating-snapshot', false);
         $this->assertSame(66.6, $response->viewData('workspace')['snapshot']['points'][0]['score']);
+    }
+
+    public function test_opponents_loads_schedule_and_record_without_building_header_rating_history(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id, 'name' => 'Jamie', 'surname' => 'Example']);
+        PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldNotReceive('forPlayer');
+        $history->shouldReceive('recordSource')->once()->andReturn(['reason' => null, 'as_of' => '2026-11-03', 'evidence' => [[
+            'source_id' => 'match:1', 'kind' => 'match', 'months' => 1, 'event_id' => 1, 'event' => 'Example Open',
+            'date' => '2026-10-30', 'date_basis' => 'Match date', 'players' => [$player->id, 700], 'names' => [$player->full_name, 'Taylor Example'],
+            'winner_side' => 1, 'score' => '6-3 6-4',
+        ]]]);
+        $this->mock(\App\Services\Performance\PlayerUpcomingMatchInsights::class)->shouldReceive('forPlayer')->once()->andReturn([
+            'rows' => [['date' => '2026-11-07 09:00:00', 'event' => 'Example Saturday Open', 'draw' => 'Singles', 'venue' => 'Example Courts',
+                'court' => '2', 'team' => null, 'opponents' => [['id' => 700, 'name' => 'Taylor Example']], 'url' => '/example-draw']],
+            'ratings' => [$player->id => ['score' => 74.0, 'confidence' => 'Medium'], 700 => ['score' => 71.5, 'confidence' => 'Low']],
+            'total' => 1, 'page' => 1, 'pages' => 1,
+        ]);
+        $response = $this->actingAs($user)->get(route('my.tennis.record', ['player' => $player, 'section' => 'opponents', 'opponent' => 700]))->assertOk();
+        $response->assertSeeInOrder(['Upcoming matches', 'Example Saturday Open', 'Past opponents', '6-3 6-4'])
+            ->assertDontSee('data-rating-snapshot', false);
+        $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>Opponents\s*<\/a>/', $response->getContent());
+        $this->export('opponents', $response);
     }
 }

@@ -9,7 +9,7 @@
   }
 @endphp
 <section class="ct-rating-snapshot" aria-label="Latest saved rating summary" data-rating-snapshot data-current-rating-summary>
-  <h3>Latest saved estimate</h3>
+  <h3>Latest saved rating</h3>
   @if($snapshotLatest)
     <div class="ct-rating-snapshot-score">
       <x-ctr-badge size="small" :stage="$snapshot['stage']" :overall="empty($snapshot['stage'])" :score="$snapshotLatest['score']" :local="$snapshotLatest['connection_status'] === 'disconnected'" />
@@ -27,13 +27,13 @@
           <circle cx="{{ 10 + $savedPoint['index'] * 260 / 11 }}" cy="{{ 80 - $savedPoint['score'] * .7 }}" r="{{ $loop->last ? 4 : 2.5 }}" fill="{{ $loop->last ? '#ff9f43' : '#d8edff' }}" data-snapshot-point><title>{{ $savedPoint['date'] }} · {{ number_format($savedPoint['score'], 1) }} CTR</title></circle>
         @endforeach
       </svg>
-      <figcaption>Saved trend · 0–100 · gaps retained.@if($snapshotChanged) Dashed links: group changed, not like-for-like progress.@endif</figcaption>
+      <figcaption>Ratings are out of 100. Gaps show months without a saved rating.@if($snapshotChanged) A dashed line shows a change in the group used for comparison.@endif</figcaption>
     </figure>
     @if($snapshotLatest['evidence_basis'] === 'finish_only')<p>Low confidence · final placings only</p>@endif
     @if($snapshotLatest['connection_status'] === 'disconnected')<p>Provisional within-group estimate; not calibrated against other groups.</p>@endif
     @if($snapshotLatest['historical_connection'])<p>Low confidence — historical connection. Link dated {{ $snapshotLatest['connection_reference_date'] ?? 'unknown' }}.</p>@endif
   @else
-    <p>Not rated yet. Suitable eligible results are needed to estimate playing strength.</p>
+    <p>No rating yet. A rating needs enough suitable results.</p>
     @if($snapshot['reason'])<p role="status">{{ $snapshot['reason'] }}</p>@endif
   @endif
   <p class="ct-rating-snapshot-note">Provisional estimate, not an official ranking.@if($snapshot['as_of']) Saved through {{ $snapshot['as_of'] }}.@endif @if($snapshot['stale']) An update is pending.@endif</p>

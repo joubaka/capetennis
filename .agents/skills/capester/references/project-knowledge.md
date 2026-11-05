@@ -65,6 +65,9 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   cannot remain indefinitely. A loading indicator is not evidence of performance.
 - Show the latest saved rating update when relevant; distinguish saved evidence
   from a refresh in progress. Verify timestamps against the application timezone.
+- Keep Player Plus navigation separate from rating data. Use
+  `PlayerWorkspaceContext` without a snapshot on detail pages that do not show
+  one; retain the publication checks for the results those pages do show.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.

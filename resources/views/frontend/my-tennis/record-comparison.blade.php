@@ -1,7 +1,7 @@
 <section class="record-sheet" aria-labelledby="season-compare-heading">
   <style>.ct-record .record-comparison-table{min-width:420px;font-size:.85rem}.ct-record .record-comparison-table th,.ct-record .record-comparison-table td{white-space:nowrap;overflow-wrap:normal;letter-spacing:normal;text-transform:none;padding:.5rem .35rem}.ct-record .record-comparison-table caption{white-space:normal;overflow-wrap:normal}</style>
-  <h2 id="season-compare-heading">Season check</h2>
-  <p class="record-note">Compare two calendar years across the available archive, independently of the match-register season filter. A current year may be incomplete, and earlier years may have gaps. Different opponents, formats and coverage can change these totals; they do not measure a change in playing strength.</p>
+  <h2 id="season-compare-heading">Compare seasons</h2>
+  <p class="record-note">Choose two years to compare saved results. Some results may be missing, and you may have played different opponents each year.</p>
   <form method="get" class="record-filter mb-3" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id]) }}">
     @if($record['year'] !== '')<input type="hidden" name="year" value="{{ $record['year'] }}">@endif
     @foreach(['first' => 'Starting season', 'second' => 'Comparison season'] as $side => $label)

@@ -9,6 +9,17 @@ use Tests\TestCase;
 
 class PlayerUpcomingMatchInsightsTest extends TestCase
 {
+    public function test_empty_schedule_does_not_load_the_saved_ratings_directory(): void
+    {
+        $user = new User;
+        $player = new Player;
+        $this->mock(MyTennisService::class)->shouldReceive('upcomingScheduledMatchesFor')->once()->with($player)->andReturn(collect());
+        $this->mock(PlayerRatingTopTen::class)->shouldNotReceive('forMatchPlayers');
+
+        $this->assertSame(['rows' => [], 'ratings' => [], 'total' => 0, 'page' => 1, 'pages' => 1],
+            app(PlayerUpcomingMatchInsights::class)->forPlayer($user, $player));
+    }
+
     public function test_published_fixture_projection_is_paginated_and_ratings_only_use_page_identities(): void
     {
         $user = new User;

@@ -32,8 +32,9 @@ class PlayerUpcomingMatchInsights
                 'opponents' => $opponents->values()->all(),
                 'url' => route($team ? 'frontend.fixtures.show' : 'frontend.showDraw', $fixture->draw_id)];
         })->values()->all();
-        $ids = collect($rows)->pluck('opponents')->flatten(1)->pluck('id')->filter()->push((int) $player->id)->all();
-        $ratings = app(PlayerRatingTopTen::class)->forMatchPlayers($user, $player, $ids);
+        $opponents = collect($rows)->pluck('opponents')->flatten(1);
+        $ratings = $opponents->isEmpty() ? [] : app(PlayerRatingTopTen::class)
+            ->forMatchPlayers($user, $player, $opponents->pluck('id')->filter()->push((int) $player->id)->all());
         return ['rows' => $rows, 'ratings' => $ratings, 'total' => $fixtures->count(), 'page' => $page, 'pages' => $pages];
     }
 }

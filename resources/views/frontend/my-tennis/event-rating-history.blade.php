@@ -2,11 +2,14 @@
 @section('title', 'Past-event player ratings')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-event-rating-history="v1">
-    <x-player-workspace-header :workspace="$workspace ?? null" :title="$ratingPlayer->full_name.' · Past-event ratings'" eyebrow="Player Plus · Match by match">
+    <x-player-workspace-header compact :workspace="$workspace ?? null" title="Past-event ratings" :subtitle="$ratingPlayer->full_name">
     </x-player-workspace-header>
     <div class="card"><div class="card-body">
-        <p>Reconstructed as of each event’s completion date, using only eligible results dated on or before that date. These are retrospective estimates, not ratings originally published at the time.</p>
-        <p>Red, Orange and Green/Yellow are independent. Each date uses the normal {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }}-day evidence window looking backwards from that date. Valid published final placings provide weaker evidence than scored matches. Results dated after the cutoff are excluded.</p>
+        <p>See your estimated rating at the end of each event.</p>
+        <details class="mb-3">
+            <summary>How these estimates are worked out</summary>
+            <p class="small text-muted mb-0 mt-2">These ratings were calculated later using eligible results from the {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days up to each event’s end. Each ball level has its own rating. Published final placings carry less weight than scored singles matches.</p>
+        </details>
         @if(session('event_history_status'))
             <p class="alert alert-info" role="status">{{ session('event_history_status') }}</p>
         @endif

@@ -150,7 +150,7 @@ class PlayerPlusRecordTest extends TestCase
         $service = Mockery::mock(PlayerPlusRecordService::class);
         $service->shouldReceive('forPlayer')->once()->with($player, ['year' => 2026], false)->andReturn($this->record([$this->row()]));
         $this->app->instance(PlayerPlusRecordService::class, $service);
-        $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
+        $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player, null, false)->andReturn([]);
         $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
         \Illuminate\Support\Facades\File::ensureDirectoryExists($path.'/layouts');
         file_put_contents($path.'/layouts/contentNavbarLayout.blade.php', '@yield("content")');
@@ -198,13 +198,13 @@ class PlayerPlusRecordTest extends TestCase
             $this->assertStringContainsString('&lt;script&gt;unsafe&lt;/script&gt;', $html);
             $this->assertStringNotContainsString('<script>unsafe</script>', $html);
             $this->assertStringContainsString('event start proxy', $html);
-            $this->assertStringContainsString('not a complete career archive', $html);
+            $this->assertStringContainsString('Some matches may be missing', $html);
             $this->assertStringContainsString('name="opponent" value="43"', $html);
             if ($section === 'opponents') {
                 $this->assertStringContainsString('Across seasons', $html);
-                $this->assertStringContainsString('no streak is inferred', $html);
+                $this->assertStringContainsString('Estimated dates are marked', $html);
             } else {
-                $this->assertStringContainsString('Season check', $html);
+                $this->assertStringContainsString('Compare seasons', $html);
                 $this->assertStringContainsString('pp means percentage points', $html);
             }
         }
@@ -223,7 +223,7 @@ class PlayerPlusRecordTest extends TestCase
         $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
         $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record]);
         $this->assertStringContainsString('Example Player vs Example Opponent', $html);
-        $this->assertLessThan(strpos($html, 'Your matchups'), strpos($html, 'id="opponent-meetings"'));
+        $this->assertLessThan(strpos($html, 'Who you’ve played'), strpos($html, 'id="opponent-meetings"'));
         $this->assertStringNotContainsString('Recent meetings in this selection', $html);
         $this->assertSame(20, substr_count($html, 'class="record-row"'));
         $this->assertStringContainsString('View matchup →', $html);

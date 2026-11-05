@@ -186,7 +186,7 @@ class PlayerEventRatingHistoryTest extends TestCase
         Gate::define('player-premium-rating', fn (User $actor, Player $target) => $actor->id === $parent->id && $target->id === $player->id);
         $this->mock(PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()->withArgs(fn ($p, $page) => $p->id === $player->id && $page === 1)
             ->andReturn(['events' => $this->saved($player->id, str_repeat('a', 64))['events'], 'reason' => null, 'total' => 1, 'page' => 1, 'pages' => 1, 'as_of' => '2026-11-01']);
-        $this->get($url)->assertOk()->assertSee('Reconstructed as of each event')->assertSee('Fictional Red event')->assertSee('2023-05-01')->assertSee('62.5')->assertSee('Not rated at this date');
+        $this->get($url)->assertOk()->assertSee('See your estimated rating at the end of each event.')->assertSee('Fictional Red event')->assertSee('2023-05-01')->assertSee('62.5')->assertSee('Not rated at this date');
         $this->mock(PlayerEventRatingHistoryRefresh::class)->shouldReceive('request')->once()->with($player->id)->andReturn(['state' => 'pending', 'message' => 'Background request accepted.']);
         $this->post($refresh)->assertRedirect($url);
         $this->actingAs($other)->get($url)->assertForbidden();

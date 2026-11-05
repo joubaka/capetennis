@@ -78,7 +78,7 @@ class MyTennisController extends Controller
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
         return response()->view('frontend.my-tennis.pathway-page', [
-            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, $history),
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, includeSnapshot: false),
             'ratingPlayer' => $player,
             'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
         ])->header('Cache-Control', 'private, no-store');
@@ -94,7 +94,7 @@ class MyTennisController extends Controller
             ->forPlayer($request->user(), $player, (int) ($filters['upcoming_page'] ?? 1)) : null;
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
             'upcoming' => $upcoming,
-            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, includeSnapshot: false),
             'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
             ->header('Cache-Control', 'private, no-store');
     }

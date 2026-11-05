@@ -16,11 +16,10 @@
     #my-tennis-page { min-width: 0; overflow-x: clip; }
     #my-tennis-page [data-rating-hero][data-embedded-rating-hero]{display:none}
     #my-tennis-page .ct-workspace-header #my-tennis-tabs{border:0;gap:.4rem;margin:0}
-    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link{color:#fff;border:1px solid #ffffff75;border-radius:.5rem;background:#ffffff0d}
-    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link.active{color:#fff;border-color:#fff;background:#ffffff25}
+    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link{color:#172e45;border:1px solid #dce5ef;border-radius:.5rem;background:#fff}
+    #my-tennis-page .ct-workspace-header #my-tennis-tabs .nav-link.active{color:#172e45;border-color:#deb17e;background:#fff4e7;font-weight:700}
     #my-tennis-page .ct-workspace-header .ct-player-navigation{margin-top:.65rem!important}
     #my-tennis-page .ct-workspace-player-selector{width:min(100%,18rem)}
-    #my-tennis-page .ct-workspace-player-selector label{color:#fff}
     #my-tennis-page .row, #my-tennis-page .card, #my-tennis-page .card-body { min-width: 0; }
     #my-tennis-page .table-responsive { max-width: 100%; }
     #my-tennis-page .my-tennis-heading { padding: .5rem 0 1.25rem; gap: 1rem; }
@@ -146,18 +145,21 @@
   @php
     $headerPlayer = $selectedPlayer ?? ($ratingPlayer ?? null);
     $headerSubtitle = $headerPlayer
-      ? ($selectedPlayer ? $profile['message'].' · ' : 'Admin preview · ').(($canViewRating ?? false) ? 'Player Plus views available' : 'Standard dashboard · Player Plus is optional')
-      : 'Your players, entries and published match information.';
+      ? ($selectedPlayer ? $profile['message'] : 'Admin preview')
+      : 'Find your players, entries and matches.';
   @endphp
-    <x-player-workspace-header :title="$headerPlayer?->full_name ?? 'My Tennis'" eyebrow="Cape Tennis · My Tennis" heading="h1" heading-id="my-tennis-player-heading" :subtitle="$headerSubtitle" data-player-profile-header>
+    <x-player-workspace-header compact :title="$headerPlayer?->full_name ?? 'My Tennis'" eyebrow="My Tennis" heading="h1" heading-id="my-tennis-player-heading" :subtitle="$headerSubtitle" data-player-profile-header>
       <x-slot:summary>
-        <div data-rating-header-snapshot-host>
-          @if($canViewRating ?? false)
-            @include('frontend.my-tennis.rating-snapshot', ['ratingSnapshot' => $ratingSnapshot ?? null])
-          @else
-            @include('frontend.my-tennis.locked-rating-snapshot')
-          @endif
-        </div>
+        <details class="ct-workspace-rating-details">
+          <summary>{{ ($canViewRating ?? false) ? 'Latest rating and trend' : 'Preview a rating' }}</summary>
+          <div data-rating-header-snapshot-host>
+            @if($canViewRating ?? false)
+              @include('frontend.my-tennis.rating-snapshot', ['ratingSnapshot' => $ratingSnapshot ?? null])
+            @else
+              @include('frontend.my-tennis.locked-rating-snapshot')
+            @endif
+          </div>
+        </details>
       </x-slot:summary>
       <x-slot:actions>
         @include('frontend.my-tennis.player-selector')
@@ -166,7 +168,7 @@
       <x-slot:navigation>
         @include('frontend.my-tennis.dashboard-tabs')
         @if($ratingPlayer ?? null)
-          @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true, 'locked' => !($canViewRating ?? false)])
+          @include('frontend.my-tennis.player-navigation', ['navigationPlayer' => $ratingPlayer, 'embeddedDashboard' => true, 'locked' => !($canViewRating ?? false), 'compactNavigation' => true])
         @endif
       </x-slot:navigation>
     </x-player-workspace-header>
