@@ -81,6 +81,8 @@
         ], fn($v) => $v !== null && $v !== '');
     @endphp
     <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
+    <p>Opening PayFast for secure payment…</p>
+    <button type="submit">Continue to PayFast</button>
 </form>
 
 <script>
@@ -90,11 +92,11 @@
         form.querySelectorAll('input[type=hidden]').forEach(function(el) {
             fields[el.name] = el.value;
         });
-        // DEBUG MODE: hold for 10 seconds so you can read console, then submit
-        var debugHold = {{ app()->isLocal() ? 'true' : 'false' }};
         var hasCreds  = fields.merchant_id && fields.merchant_key;
+        var button = form.querySelector('button[type="submit"]');
 
         if (!hasCreds) {
+            button.disabled = true;
             console.error('[PayFast] MISSING CREDENTIALS — form will NOT submit. Check config/services.payfast');
             document.body.insertAdjacentHTML('afterbegin',
                 '<div style="background:red;color:#fff;padding:16px;font-size:16px;z-index:9999;position:fixed;top:0;left:0;right:0">'
@@ -104,17 +106,26 @@
             return; // stop — do not submit broken form
         }
 
-        if (navigator.sendBeacon && {{ \Illuminate\Support\Facades\Route::has('audit.interactions.store') ? 'true' : 'false' }}) {
-            var auditPayload = new FormData();
-            auditPayload.append('_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
-            auditPayload.append('action', 'payment.payfast-submit');
-            auditPayload.append('label', 'Pay with PayFast');
-            auditPayload.append('element', 'form');
-            auditPayload.append('page_path', window.location.pathname);
-            auditPayload.append('order_id', fields.custom_int5 || '');
-            navigator.sendBeacon(@json(\Illuminate\Support\Facades\Route::has('audit.interactions.store') ? route('audit.interactions.store') : null), auditPayload);
-        }
-        form.submit();
+        form.addEventListener('submit', function(event) {
+            if (button.disabled) {
+                event.preventDefault();
+                return;
+            }
+            button.disabled = true;
+            button.hidden = true;
+
+            if (navigator.sendBeacon && {{ \Illuminate\Support\Facades\Route::has('audit.interactions.store') ? 'true' : 'false' }}) {
+                var auditPayload = new FormData();
+                auditPayload.append('_token', document.querySelector('meta[name="csrf-token"]')?.content || '');
+                auditPayload.append('action', 'payment.payfast-submit');
+                auditPayload.append('label', 'Pay with PayFast');
+                auditPayload.append('element', 'form');
+                auditPayload.append('page_path', window.location.pathname);
+                auditPayload.append('order_id', fields.custom_int5 || '');
+                navigator.sendBeacon(@json(\Illuminate\Support\Facades\Route::has('audit.interactions.store') ? route('audit.interactions.store') : null), auditPayload);
+            }
+        });
+        form.requestSubmit();
     })();
 </script>
 

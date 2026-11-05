@@ -180,9 +180,30 @@ class RegistrationPaymentService
 
     public function expireUnpaidCheckout(RegistrationOrder $order, ?\Illuminate\Support\Carbon $cutoff = null): bool
     {
-        return DB::transaction(function () use ($order, $cutoff): bool {
+        return $this->closeUnpaidCheckout($order, $cutoff);
+    }
+
+    /** The ordinary registration cart may replace its own exact PayFast attempt. */
+    public function supersedePayfastCartCheckout(RegistrationOrder $order, User $payer, array $cart): bool
+    {
+        if (DB::transactionLevel() === 0) {
+            throw new \LogicException('A PayFast cart checkout must be superseded within the replacement transaction.');
+        }
+
+        return $this->closeUnpaidCheckout($order, null, $payer, $cart);
+    }
+
+    private function closeUnpaidCheckout(
+        RegistrationOrder $order,
+        ?\Illuminate\Support\Carbon $cutoff,
+        ?User $replacementPayer = null,
+        array $cart = [],
+    ): bool {
+        return DB::transaction(function () use ($order, $cutoff, $replacementPayer, $cart): bool {
             $locked = RegistrationOrder::with('items')->lockForUpdate()->findOrFail($order->id);
-            if (!CheckoutExpiryPolicy::isExpired($locked, $cutoff)
+            if (($replacementPayer
+                ? !$this->matchesSupersededPayfastCart($locked, $replacementPayer, $cart)
+                : !CheckoutExpiryPolicy::isExpired($locked, $cutoff))
                 || $this->hasSettlementEvidence($locked)
                 || $locked->items->isEmpty()
                 || (int) round((float) $locked->items->sum('item_price') * 100) !== (int) round((float) $locked->total_fee * 100)
@@ -226,10 +247,41 @@ class RegistrationPaymentService
             app(\App\Services\Masters\MastersInvitationService::class)->resetCancelledPayment($cancelled, $payer);
             app(\App\Services\InterprovincialTrials\InvitationService::class)->resetCancelledPayment($cancelled, $payer);
             app(\App\Domain\Entries\Services\EntryService::class)->removeUnpaidCheckoutEntries($cancelled);
-            activity('registration-payment')->performedOn($cancelled)->withProperties(['payer_id' => $payer->id, 'timeout_minutes' => CheckoutExpiryPolicy::MINUTES])
-                ->log('Unpaid registration checkout expired; reservation released');
+            $audit = activity('registration-payment')->performedOn($cancelled);
+            if ($replacementPayer) {
+                $audit->causedBy($payer)->withProperties(['payer_id' => $payer->id])
+                    ->log('Unpaid PayFast checkout superseded by confirmed registration cart');
+            } else {
+                $audit->withProperties(['payer_id' => $payer->id, 'timeout_minutes' => CheckoutExpiryPolicy::MINUTES])
+                    ->log('Unpaid registration checkout expired; reservation released');
+            }
             return true;
         }, 3);
+    }
+
+    private function matchesSupersededPayfastCart(RegistrationOrder $order, User $payer, array $cart): bool
+    {
+        if ((int) $order->user_id !== (int) $payer->id || !$order->payfast_handed_off_at
+            || $order->status !== 'pending' || $order->items->isEmpty()) {
+            return false;
+        }
+
+        $order->loadMissing('items.category_event.event.eventTypeModel');
+        $event = $order->items->first()?->category_event?->event;
+        if (!$event?->isIndividual() || $event->isMasters() || $event->isInterprovincialTrials()
+            || !$event->published || $event->status === 'draft' || !$event->registrationIsOpen()
+            || !$order->items->every(fn ($item) => (int) $item->category_event?->event_id === (int) $event->id)
+            || \App\Models\RegistrationPaymentRecovery::where('registration_order_id', $order->id)->exists()
+            || \App\Models\MastersInvitation::where('order_id', $order->id)->exists()
+            || \App\Models\InterprovincialTrialInvitation::where('order_id', $order->id)->exists()) {
+            return false;
+        }
+
+        $orderCart = $order->items->map(fn ($item) => $item->category_event_id.':'.$item->player_id)->all();
+        sort($orderCart);
+        sort($cart);
+
+        return $cart === $orderCart;
     }
 
     private function assertSafeEvidenceReference(string $evidenceReference): void

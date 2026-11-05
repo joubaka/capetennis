@@ -243,6 +243,8 @@
         @foreach($transactions as $tx)
           @php
             $payload = collect();
+            $awaitingReconciliation = ($tx->subtype ?? null) === 'superseded_payfast_receipt';
+            $netToEvent = $awaitingReconciliation ? 0 : $tx->net;
 
             if ($tx->type === 'payment' && isset($tx->order)) {
               $payload = collect([
@@ -255,7 +257,7 @@
                   'wallet_used'    => number_format($tx->walletUsed ?? 0, 2),
                   'pf_fee'         => number_format(abs($tx->fee), 2),
                   'cape_fee'       => number_format(abs($tx->capeFee), 2),
-                  'net'            => number_format($tx->net, 2),
+                  'net'            => number_format($netToEvent, 2),
                 ]
               ])->merge(
                 collect($tx->registrationDetails ?? collect($tx->order->items ?? [])->map(fn ($item) => [
@@ -346,7 +348,11 @@
                   default      => ucfirst($tx->type),
                 };
               @endphp
-              <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
+              @if($awaitingReconciliation)
+                <span class="badge bg-warning text-dark">{{ $tx->status_label }}</span>
+              @else
+                <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
+              @endif
               @if($tx->type === 'refund' && ($tx->refund_status ?? '') === 'pending')
                 <span class="badge bg-warning text-dark ms-1"><i class="ti ti-clock me-1"></i>Bank Pending</span>
               @endif
@@ -411,8 +417,8 @@
               @endif
             </td>
 
-            <td class="text-end {{ $tx->net < 0 ? 'text-danger' : 'text-success' }}">
-              {{ $tx->net < 0 ? '− ' : '' }} R {{ number_format(abs($tx->net), 2) }}
+            <td class="text-end {{ $netToEvent < 0 ? 'text-danger' : 'text-success' }}">
+              {{ $netToEvent < 0 ? '− ' : '' }} R {{ number_format(abs($netToEvent), 2) }}
             </td>
             <td class="text-center">
               @if($tx->type === 'withdrawal' && ($tx->original_gross ?? 0) > 0 && ($tx->cer_id ?? null))

@@ -502,6 +502,18 @@ class RegistrationPaymentController extends Controller
       $this->reconcilePaymentRecovery($order);
 
     } catch (\Throwable $e) {
+      // Confirmation of a replacement cart can retire the old order between
+      // the first receipt check and the locked payment finalization.
+      $current = $order->fresh();
+      if ($current?->status === 'cancelled') {
+        try {
+          if (app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($current, $payfastData)) {
+            return true;
+          }
+        } catch (\RuntimeException $reconciliationError) {
+          $e = $reconciliationError;
+        }
+      }
 
       Log::error('PAYFAST ITN FAILED', [
         'order_id' => $orderId,

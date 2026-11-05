@@ -371,7 +371,8 @@
               </td>
               <td>
                 <span class="badge bg-label-{{ $transaction->status_colour ?? 'secondary' }}">
-                  {{ $transaction->type === 'payment' ? 'Registration payment' : ($transaction->status_label ?? ucfirst($transaction->type)) }}
+                  {{ $transaction->type === 'payment' && ($transaction->subtype ?? null) !== 'superseded_payfast_receipt'
+                    ? 'Registration payment' : ($transaction->status_label ?? ucfirst($transaction->type)) }}
                 </span>
               </td>
               <td>{{ $transaction->method ?? $transaction->payment_method ?? '—' }}</td>

@@ -147,7 +147,9 @@
   @include('layouts.sections.loading')
   @include('layouts/sections/scripts')
 
-  @include('layouts.sections.pwa-install')
+  @unless(View::hasSection('hidePwaInstall'))
+    @include('layouts.sections.pwa-install')
+  @endunless
   @include('layouts.sections.audit-interactions')
   @auth
     @include('layouts.sections.match-reminder')

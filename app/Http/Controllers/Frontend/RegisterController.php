@@ -1324,16 +1324,15 @@ class RegisterController extends Controller
     // ----------------------------
     // Validate players/categories
     // ----------------------------
-    foreach ($request->player as $player) {
-      if ($player == 0) {
-        return back()->withErrors([
-          'msg' => 'Please confirm that you have selected a player and category for each player!'
-        ]);
-      }
+    $playerIds = $request->input('player');
+    $categoryIds = $request->input('category');
+    if (!is_array($playerIds) || !is_array($categoryIds) || !array_is_list($playerIds) || !array_is_list($categoryIds)
+        || !$playerIds || count($playerIds) !== count($categoryIds)) {
+      return back()->withErrors(['msg' => 'Please select a player and category for each entry.']);
     }
 
-    foreach ($request->category as $cat) {
-      if ($cat == 0) {
+    foreach (array_merge($playerIds, $categoryIds) as $id) {
+      if ((!is_string($id) && !is_int($id)) || filter_var($id, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) === false) {
         return back()->withErrors([
           'msg' => 'Please confirm that you have selected a player and category for each player!'
         ]);
@@ -1341,13 +1340,14 @@ class RegisterController extends Controller
     }
 
     $authUser = Auth::user();
+    $cart = array_map(fn ($category, $player) => (int) $category.':'.(int) $player, $categoryIds, $playerIds);
+    if (count($cart) !== count(array_unique($cart))) {
+      return back()->withErrors(['msg' => 'A player can only be entered once in each category.']);
+    }
 
     // ----------------------------
     // Pre-flight: duplicate checks (outside transaction, fail fast)
     // ----------------------------
-    $playerIds  = $request->player;
-    $categoryIds = $request->category;
-
     $duplicateErrors = [];
 
     $entryEligibility = app(\App\Domain\Entries\Services\EntryEligibilityService::class);
@@ -1389,7 +1389,7 @@ class RegisterController extends Controller
 
       $duplicate = \App\Models\CategoryEventRegistration::where('category_event_id', $categoryEventId)
         ->where('payment_status_id', 1)
-        ->whereNotIn('status', $activeStatuses)
+        ->where(fn ($query) => $query->whereNull('status')->orWhereNotIn('status', $activeStatuses))
         ->whereHas('registration.players', fn($q) => $q->where('players.id', $playerId))
         ->exists();
 
@@ -1403,27 +1403,46 @@ class RegisterController extends Controller
       return back()->withErrors(['msg' => implode(' ', $duplicateErrors)]);
     }
 
-    // Resolve an earlier draft through its payment service before starting a
-    // replacement. Keep active or provider-protected checkouts resumable.
-    for ($i = 0; $i < count($playerIds); $i++) {
-      $previousItems = RegistrationOrderItems::where('category_event_id', (int) $categoryIds[$i])
-        ->where('player_id', (int) $playerIds[$i])->where('user_id', $authUser->id)
-        ->whereHas('order', fn ($query) => $query->where('pay_status', 0)->where(fn ($query) => $query->whereNull('status')->orWhere('status', '!=', 'cancelled')))
-        ->orderByDesc('id')->get();
-      foreach ($previousItems as $previousItem) {
-        $previousOrder = $previousItem->order;
-        if (!app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->expireUnpaidCheckout($previousOrder)) {
-          return redirect()->route('registration.checkout', $previousOrder);
-        }
-      }
-    }
-
     // ----------------------------
     // Create order + registrations inside a single transaction
     // ----------------------------
-    $regorder = DB::transaction(function () use ($request, $authUser, $playerIds, $categoryIds) {
+    $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart) {
 
       CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get();
+
+      $previousOrderIds = RegistrationOrderItems::where('user_id', $authUser->id)
+        ->whereIn('category_event_id', $categoryIds)->whereIn('player_id', $playerIds)
+        ->whereHas('order', fn ($query) => $query->where('user_id', $authUser->id)
+          ->where(fn ($query) => $query->whereNull('status')->orWhere('status', '!=', 'cancelled')))
+        ->get(['order_id', 'category_event_id', 'player_id'])
+        ->filter(fn ($item) => in_array($item->category_event_id.':'.$item->player_id, $cart, true))
+        ->pluck('order_id')->unique();
+      $previousOrders = RegistrationOrder::whereIn('id', $previousOrderIds)
+        ->where('user_id', $authUser->id)->orderBy('id')->lockForUpdate()->get();
+
+      // Check current entry rows after acquiring order locks, since an earlier
+      // checkout can settle while this confirmation waits for its order lock.
+      foreach ($cart as $pair) {
+        [$categoryEventId, $playerId] = explode(':', $pair);
+        if (CategoryEventRegistration::where('category_event_id', $categoryEventId)->where('payment_status_id', 1)
+          ->where(fn ($query) => $query->whereNull('status')
+            ->orWhereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled']))
+          ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))
+          ->lockForUpdate()->first(['id'])) {
+          throw \Illuminate\Validation\ValidationException::withMessages(['msg' => 'You are already registered in this category.']);
+        }
+      }
+
+      $payments = app(\App\Domain\Payments\Services\RegistrationPaymentService::class);
+      $previousOrders = $previousOrders->filter(fn ($order) => !$order->pay_status && $order->status !== 'cancelled');
+      $supersededOrderId = null;
+      foreach ($previousOrders as $previousOrder) {
+        if ($previousOrders->count() === 1 && $payments->supersedePayfastCartCheckout($previousOrder, $authUser, $cart)) {
+          $supersededOrderId = $previousOrder->id;
+        } elseif (!$payments->expireUnpaidCheckout($previousOrder)) {
+          throw new \Illuminate\Http\Exceptions\HttpResponseException(redirect()->route('registration.checkout', $previousOrder));
+        }
+      }
 
       $regorder           = new RegistrationOrder();
       $regorder->user_id  = $authUser->id;
@@ -1473,8 +1492,14 @@ class RegisterController extends Controller
           ->reservePayment($regorder, 0, round((float) $totalFee, 2));
       }
 
+      if ($supersededOrderId) {
+        activity('registration-payment')->performedOn($regorder)->causedBy($authUser)
+          ->withProperties(['previous_order_id' => $supersededOrderId])
+          ->log('Replacement registration checkout created');
+      }
+
       return $regorder;
-    });
+    }, 3);
 
     $totalFee = $regorder->total_fee ?? $regorder->payfast_amount_due ?? 0;
 

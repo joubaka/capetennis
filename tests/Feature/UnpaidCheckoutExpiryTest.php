@@ -168,6 +168,57 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
+    public function test_confirm_order_replaces_handoff_and_late_charge_is_flagged_without_second_entry_or_wallet_debit(): void
+    {
+        [$old, $entry, $event, $category, $player] = $this->registration();
+        $type = new \App\Models\EventType();
+        $type->forceFill(['name' => 'Individual registration test', 'type' => \App\Models\EventType::INDIVIDUAL])->save();
+        $event->update(['eventType' => $type->id]);
+        $category->update(['entry_fee' => 100]);
+        $old->forceFill(['payfast_handed_off_at' => now()->subMinute()])->save();
+        $handoff = $old->fresh()->payfast_handed_off_at->toIso8601String();
+        config(['services.payfast.merchant_id' => 'test-merchant', 'services.payfast.merchant_key' => 'test-key']);
+        $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
+        $this->actingAs($old->user)->post(route('pay.now.payfast'), [
+            'player' => [$player->id], 'category' => [$category->id], 'terms_accepted' => '1',
+        ])->assertSuccessful();
+
+        $new = RegistrationOrder::where('id', '!=', $old->id)->sole();
+        $this->assertSame('cancelled', $old->fresh()->status);
+        $this->assertSame(0.0, $old->fresh()->wallet_reserved);
+        $this->assertSoftDeleted('category_event_registrations', ['id' => $entry->id]);
+        $handoffAudit = \Spatie\Activitylog\Models\Activity::where('subject_id', $old->id)
+            ->where('description', 'Expired unresolved PayFast handoff retained for reconciliation')->sole();
+        $this->assertSame($handoff, $handoffAudit->properties['handed_off_at']);
+        $this->assertFalse($new->pay_status);
+        $this->assertSame(100.0, $new->payfast_amount_due);
+        app(RegistrationPaymentService::class)->preparePayfastHandoff($new, $old->user, 0, 100);
+
+        $metadata = ['payment_status' => 'COMPLETE', 'custom_int1' => $category->id,
+            'custom_int2' => $player->id, 'custom_int3' => $event->id, 'custom_int4' => $old->user_id];
+        $this->sendExpiredCallback('notify', $metadata + [
+            'custom_int5' => $new->id, 'pf_payment_id' => 'PF-REPLACEMENT', 'amount_gross' => '100.00',
+        ])->assertOk();
+        $late = $metadata + ['custom_int5' => $old->id, 'pf_payment_id' => 'PF-SUPERSEDED', 'amount_gross' => '75.00'];
+        $this->sendExpiredCallback('notify', array_replace($late, ['amount_gross' => '100.00']))->assertStatus(400);
+        $this->sendExpiredCallback('notify', array_replace($late, ['custom_int3' => Event::factory()->create()->id]))->assertStatus(400);
+        $this->sendExpiredCallback('notify', $late)->assertOk();
+        $this->sendExpiredCallback('notify', $late)->assertOk();
+
+        $this->assertSame('PF-REPLACEMENT', $new->fresh()->payfast_pf_payment_id);
+        $this->assertFalse($old->fresh()->pay_status);
+        $this->assertSame(1, CategoryEventRegistration::count());
+        $this->assertSame('PF-REPLACEMENT', CategoryEventRegistration::sole()->pf_transaction_id);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('transactions_pf', 2);
+        $rows = app(\App\Domain\Finance\Services\FinancialLedgerService::class)->buildPaymentRows($event, 10);
+        $reconciliation = $rows->where('pf_payment_id', 'PF-SUPERSEDED')->sole();
+        $this->assertSame('superseded_payfast_receipt', $reconciliation->subtype);
+        $this->assertSame(0, $reconciliation->entryCount);
+        $this->assertSame(0.0, $reconciliation->walletUsed);
+        $this->assertSame(0.0, $reconciliation->capeFee);
+    }
+
     public function test_scheduler_prioritises_new_drafts_and_advances_over_inconsistent_legacy_backlog(): void
     {
         $payer = User::factory()->create();

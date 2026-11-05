@@ -38,12 +38,19 @@ class PayfastCheckoutRecoveryTest extends TestCase
 
     public function test_payer_status_and_repeated_payment_post_do_not_resend_or_change_money(): void
     {
+        $this->travelTo($this->order->payfast_handed_off_at->copy()->addMinute());
+        $this->actingAs($this->payer)->get(route('registration.checkout', $this->order))
+            ->assertOk()->assertSee('check automatically five minutes')
+            ->assertDontSee('Install Cape Tennis');
+        $this->travelBack();
+
         $handoff = $this->order->payfast_handed_off_at->toISOString();
         $response = $this->actingAs($this->payer)->get(route('registration.checkout', $this->order));
         $this->saveSnapshot('pending', $response->getContent());
         $response
-            ->assertOk()->assertSee('We are waiting for your payment result')
-            ->assertSee('This does not mean payment was completed.')
+            ->assertOk()->assertSee('Payment pending')
+            ->assertSee('still can’t pay after five minutes')
+            ->assertDontSee('check automatically five minutes')
             ->assertSee('Check payment status')->assertDontSee('id="hybridPayForm"', false);
         $this->post(route('registration.hybrid.pay'), ['custom_int5' => $this->order->id])
             ->assertRedirect(route('registration.checkout', $this->order));
