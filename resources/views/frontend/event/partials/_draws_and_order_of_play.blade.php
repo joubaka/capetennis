@@ -12,7 +12,8 @@
   .event-play-card .format-reverse-singles { --format-accent: #854315; --format-tint: #fff3df; }
   .event-play-card .format-doubles { --format-accent: #15594c; --format-tint: #e7f6ef; }
   .event-play-card .format-mixed-doubles { --format-accent: #762a54; --format-tint: #fbedf5; }
-  .event-play-group-title { margin: 0 0 10px; padding: 10px 14px; border-radius: 8px; background: var(--format-accent); color: #fff; font-size: .9375rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
+  .event-play-group-title { margin: 0 0 10px; padding: 10px 14px; border-radius: 8px; background: var(--format-accent); font-size: .9375rem; font-weight: 700; line-height: 1.4; overflow-wrap: anywhere; }
+  .event-play-card h6.event-play-group-title { color: #fff; }
   .event-published-draw-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 6px; }
   .event-published-draw-row { --draw-accent: #344d69; --draw-tint: #edf2f7; --draw-edge: #cbd5e1; display: flex; min-width: 0; border: 1px solid var(--draw-edge); border-radius: 7px; overflow: hidden; }
   .event-published-draw-row.draw-cobalt { --draw-accent: #184a9c; --draw-tint: #edf3ff; --draw-edge: #bfd0ed; }
