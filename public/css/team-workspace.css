@@ -296,9 +296,7 @@
 .roster-player-form > button, .roster-player-form form > button { margin-top:.5rem; }
 .roster-player-form .select2-container { max-width:100%; }
 .roster-player-actions-modal .modal-title { overflow-wrap:anywhere; }
-.roster-player-actions-body > details { margin-bottom:1rem; }
-.roster-player-actions-body > form { margin:1rem 0; }
-.roster-player-actions-body .roster-replacement-form { margin-bottom:1rem; }
+.roster-player-actions-body > .alert { margin-bottom:0; }
 .roster-player-actions-body [data-team-roster-remove-confirm]:not([hidden]) { display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.5rem; }
 .roster-player-actions-body [data-team-roster-remove-confirm] > .small { flex-basis:100%; }
 @media (max-width:991px) {

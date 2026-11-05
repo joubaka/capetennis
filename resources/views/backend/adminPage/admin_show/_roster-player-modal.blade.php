@@ -10,10 +10,13 @@
   <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="{{ $modalId }}-title">Player actions · {{ $name }}</h5>
+        <div>
+          <div class="small text-muted">Player actions</div>
+          <h5 class="modal-title" id="{{ $modalId }}-title">{{ $name }}</h5>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body roster-player-actions-body">{{ $slot }}</div>
+      <div class="modal-body roster-player-actions-body d-grid gap-3">{{ $slot }}</div>
       <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
     </div>
   </div>

@@ -6,6 +6,11 @@
   @if($compactRoster)
     @include('backend.adminPage.admin_show._roster-order-buttons')
     @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $identity, 'name' => $name, 'event' => $event])
+      @if(!($rosterOnly ?? false) && $slot->exists && (int) $slot->player_id > 0 && (int) $slot->pay_status === 1)
+        @role('super-user')
+          @include('backend.adminPage.admin_show._roster-withdrawal-action', ['slot' => $slot])
+        @endrole
+      @endif
   @endif
   @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
     <details class="roster-replacement">
@@ -42,7 +47,7 @@
               <option value="transfer">Move full payment to replacement</option>
               <option value="replacement">Use refund toward replacement player</option>
             @endif
-            <option value="waive">Waive refund — no money returned</option>
+            <option value="waive">Keep the original payment (no refund)</option>
           </select></label>
           @if(\App\Models\SiteSetting::get('withdrawal_allowed', '1') !== '1')
             <label class="form-check mb-2">
@@ -59,9 +64,17 @@
             <p class="small text-muted">To return or move payment after the deadline, explicitly confirm this override and explain why in Reason. Leave it unchecked when waiving the refund. The normal refund fee still applies to wallet refunds and refund-funded replacements; moving the full payment waives that fee.</p>
           @endif
           <label class="form-label w-100">Reason<textarea class="form-control" name="reason" required maxlength="1000"></textarea></label>
-          <p class="small text-muted">Move full payment to replacement waives the withdrawal fee and uses the original paid amount. Wallet refunds and Use refund toward replacement player deduct the normal refund fee. The replacement starts unpaid unless the available funds cover their current entry and regional fee. Any shortfall must be paid by the original payer within five minutes or they must restart; unused or released funds stay in their wallet. Original payment history stays with the original payer and player.</p>
+          <details class="small mb-3">
+            <summary>How payment options work</summary>
+            <ul class="mb-0 mt-2">
+              <li>Moving the full payment to the replacement waives the withdrawal fee.</li>
+              <li>Wallet refunds and refunds used toward a replacement deduct the withdrawal fee.</li>
+              <li>The replacement stays unpaid until their entry and regional fees are covered. The original payer has five minutes to pay any shortfall before they need to restart checkout.</li>
+              <li>Unused or released funds stay in the original payer’s wallet. The original payment record stays with the payer and the original player.</li>
+            </ul>
+          </details>
         @endif
-        <button class="btn btn-primary">Save player</button>
+        <button class="btn btn-primary">Save replacement</button>
         <p class="small text-muted mt-1">The current player stays in place until you save.</p>
       </form>
     </details>
@@ -76,7 +89,7 @@
       <input type="hidden" name="remove" value="1">
       <input type="hidden" name="slot_id" value="{{ $identity->id }}"><input type="hidden" name="expected_rank" value="{{ $identity->rank }}">
       <input type="hidden" name="expected_player_id" value="{{ $team->noProfile ? (int) $identity->player_profile : $identity->player_id }}">
-        <button type="button" class="btn btn-sm btn-outline-danger" data-team-roster-remove-toggle aria-expanded="false">Remove</button>
+        <button type="button" class="btn btn-sm btn-outline-danger" data-team-roster-remove-toggle aria-expanded="false">Remove from roster</button>
         <span data-team-roster-remove-confirm hidden role="group" aria-label="Confirm player removal">
           <span class="small">Remove this player?</span>
           <button class="btn btn-sm btn-danger">Confirm remove</button>
@@ -85,11 +98,6 @@
     </form>
   @include('backend.adminPage.admin_show._roster-name-form')
   @if($compactRoster)
-    @if(!($rosterOnly ?? false) && $slot->exists && (int) $slot->player_id > 0 && (int) $slot->pay_status === 1)
-      @role('super-user')
-        <a class="btn btn-sm btn-outline-warning mt-2" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
-      @endrole
-    @endif
     @endcomponent
   @endif
 </div>

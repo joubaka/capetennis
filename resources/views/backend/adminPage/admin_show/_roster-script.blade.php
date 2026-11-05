@@ -191,6 +191,15 @@ if (!window.teamRosterControls) {
       clearTimeout(progressTimer);
       feedback.className = 'alert alert-danger';
       feedback.textContent = form.dataset.saveUnconfirmed ? 'The save has not been confirmed. It may still complete. Refresh the player list to check before making another change.' : error.message;
+      const withdrawalLink = modal?.querySelector('[data-roster-withdrawal-link]');
+      if (error.confirmedNotSaved && form.elements.remove && withdrawalLink
+          && error.message === 'This checkout has payment or settlement evidence and cannot be reset.') {
+        feedback.textContent = 'There is a payment record for this player. To remove them from the team, use ';
+        const link = document.createElement('a');
+        link.href = withdrawalLink.href;
+        link.textContent = withdrawalLink.textContent.trim();
+        feedback.append(link, '.');
+      }
       if (form.dataset.saved || form.dataset.saveUnconfirmed) {
         const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-outline-secondary ms-2'; retry.textContent = 'Refresh player list';
         retry.addEventListener('click', async () => {

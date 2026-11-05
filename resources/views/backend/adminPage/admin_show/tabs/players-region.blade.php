@@ -147,7 +147,7 @@
               @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
                 @role('super-user')
                   @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $slot->noProfile ?? $slot, 'name' => $name, 'event' => $event])
-                    <a class="btn btn-sm btn-outline-warning" href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
+                    @include('backend.adminPage.admin_show._roster-withdrawal-action', ['slot' => $slot])
                   @endcomponent
                 @endrole
               @endif

@@ -112,7 +112,8 @@ class RegionalRosterTest extends TestCase
         $manager->assignRole('super-user');
         $this->actingAs($manager->fresh())->get(route('admin.events.teams', $event).'?roster_region='.$team->region_id.'&panel=players', ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertSee('name="refund_action"', false)
-            ->assertSee('Refund original payer')->assertSee('Waive refund')->assertSee('Use refund toward replacement player')->assertSee('The replacement starts unpaid');
+            ->assertSee('Refund original payer')->assertSee('Keep the original payment (no refund)')
+            ->assertSee('Use refund toward replacement player')->assertSee('The replacement stays unpaid');
     }
 
     public function test_linked_imported_slots_keep_mirrors_and_block_inflight_then_release_unpaid_reservation(): void
