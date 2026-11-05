@@ -27,7 +27,7 @@ class TeamFixtureScoreService
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
 
-            abort_if($canonical && (!$tie->published_at || !in_array($tie->status, [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true)),
+            abort_if(app(TeamDrawScoringPublicationService::class)->blocksScoring($draw, $tie, locked: true),
                 409, 'Validate and publish the tie before entering scores.');
 
             if ($canonical) {
@@ -86,7 +86,13 @@ class TeamFixtureScoreService
             abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and qualifiers before play; qualified round-robin results are frozen.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
-            TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
+            $removedScores = TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
+            if ($removedScores > 0 || (int) $current->match_status !== FixtureState::STATUS_PENDING) {
+                \App\Models\DrawAuditLog::record($draw->id, 'team_scores_cleared', $current->id, [
+                    'fixture_type' => 'team',
+                    'venue_id' => $current->venue_id,
+                ]);
+            }
             app(MatchResultNotificationService::class)->invalidate($current);
             TeamFixture::whereKey($fixture->id)->update([
                 'match_status' => FixtureState::STATUS_PENDING,

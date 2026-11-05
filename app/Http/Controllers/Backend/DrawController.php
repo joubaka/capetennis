@@ -401,6 +401,17 @@ class DrawController extends Controller
       'scoring' => app(\App\Services\TeamDrawScoringPublicationService::class)->state($draw->fresh())]);
   }
 
+  public function disableScoring(Draw $draw)
+  {
+    $this->authorize('publish', $draw);
+    $scoring = app(\App\Services\TeamDrawScoringPublicationService::class);
+    $scoring->disable($draw);
+    $draw->refresh();
+
+    return response()->json(['success' => true, 'id' => $draw->id, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
+      'message' => 'Scoring disabled. The draw and fixtures are still saved.', 'scoring' => $scoring->state($draw)]);
+  }
+
   public function scoringReadiness(Draw $draw)
   {
     $this->authorize('publish', $draw);

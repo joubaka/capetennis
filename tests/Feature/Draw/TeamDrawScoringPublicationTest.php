@@ -94,6 +94,81 @@ class TeamDrawScoringPublicationTest extends TestCase
         $this->assertTrue((bool) $draw->fresh()->oop_published);
     }
 
+    public function test_hidden_unplayed_draw_can_disable_scoring_and_pass_bulk_delete_preview(): void
+    {
+        $draw = $this->readyDraw();
+        $draw->update(['published' => true]);
+        $this->postJson(route('draw.enable-scoring', $draw))->assertOk();
+        $draw->update(['published' => false]);
+        $preview = route('backend.event-draws.delete-preview', $this->event);
+        $this->postJson($preview, ['draw_ids' => [$draw->id]])->assertUnprocessable();
+        $url = route('draw.disable-scoring', $draw);
+        $this->get(route('headOffice.show', $this->event))->assertOk()->assertSee($url, false);
+        $this->postJson($url)->assertOk()->assertJsonPath('scoring.ready', false)->assertJsonPath('scoring.can_disable', false);
+        $this->postJson($url)->assertOk();
+        $this->assertSame(2, $draw->teamTies()->where('status', TeamTie::STATUS_VALIDATED)->whereNull('published_at')->count());
+        $this->assertSame(2, $draw->fixtures()->count());
+        $this->assertSame(1, DrawAuditLog::where('draw_id', $draw->id)->where('action', 'scoring_disabled')->count());
+        $this->postJson($preview, ['draw_ids' => [$draw->id]])->assertOk();
+
+        // Snapshot-only legacy draws must stop accepting scores after explicit disable.
+        $fixture = $draw->fixtures()->first();
+        $this->assertNull($draw->team_scoring_rules);
+        $this->assertFalse($this->admin->can('team-fixture.saveScore', $fixture));
+        try {
+            app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2]);
+            $this->fail('A disabled tie accepted a score.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) {
+            $this->assertSame(409, $error->getStatusCode());
+        }
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'))
+            ->postJson(route('frontend.scoring.team-fixtures.playing', [$this->event, $fixture]))
+            ->assertConflict()->assertJsonPath('message', 'Validate and publish the tie before starting play.');
+        $this->assertSame(0, $fixture->fresh()->match_status);
+        $this->assertDatabaseCount('team_fixture_results', 0);
+    }
+
+    public function test_disable_scoring_rejects_public_draws_unauthorized_users_and_play_history(): void
+    {
+        $draw = $this->readyDraw();
+        $draw->update(['published' => true]);
+        $this->postJson(route('draw.enable-scoring', $draw))->assertOk();
+        $url = route('draw.disable-scoring', $draw);
+        $this->postJson($url)->assertUnprocessable();
+        $draw->update(['published' => false]);
+        $this->actingAs(User::factory()->create())->postJson($url)->assertForbidden();
+        $this->actingAs($this->admin);
+
+        $fixture = $draw->fixtures()->first();
+        $fixture->update(['match_status' => 2]);
+        $this->postJson($url)->assertUnprocessable();
+        $fixture->update(['match_status' => 0]);
+        $result = $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+        $this->postJson($url)->assertUnprocessable();
+        $result->delete();
+        DrawAuditLog::record($draw->id, 'match_started', $fixture->id, ['fixture_type' => 'team']);
+        $this->postJson($url)->assertUnprocessable();
+        $this->assertSame(2, $draw->teamTies()->where('status', TeamTie::STATUS_PUBLISHED)->whereNotNull('published_at')->count());
+        $this->assertDatabaseMissing('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'scoring_disabled']);
+    }
+
+    public function test_clearing_a_team_score_retains_history_that_blocks_disabling_scoring(): void
+    {
+        $draw = $this->readyDraw();
+        $draw->update(['published' => true]);
+        $this->postJson(route('draw.enable-scoring', $draw))->assertOk();
+        $draw->update(['published' => false]);
+        $fixture = $draw->fixtures()->first();
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
+
+        app(\App\Services\TeamFixtureScoreService::class)->delete($fixture);
+
+        $this->assertDatabaseCount('team_fixture_results', 0);
+        $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'action' => 'team_scores_cleared']);
+        $this->postJson(route('draw.disable-scoring', $draw))->assertUnprocessable();
+    }
+
     public function test_bulk_reconciles_public_draft_ties_and_reports_invalid_draw_without_partial_ties(): void
     {
         $ready = $this->readyDraw();

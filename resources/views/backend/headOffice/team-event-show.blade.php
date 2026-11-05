@@ -37,7 +37,7 @@
   .event-draw-next-step { margin-top: .625rem; color: var(--ct-ink, #172e45); }
   .event-draw-card[data-scoring-undecided] .event-draw-quick-publication:not(.btn-outline-danger) { background: transparent; color: var(--ct-ink, #172e45); border-color: var(--ct-border, #e4eaf0); box-shadow: none; }
   .event-draw-schedule .draw-card-publication { margin-top: .5rem !important; padding-block: 0; border: 0; }
-  .event-draw-scoring-actions:has([data-enable-scoring]:not([hidden])) { margin-top: .75rem; }
+  .event-draw-scoring-actions:has([data-enable-scoring]:not([hidden]), [data-disable-scoring]:not([hidden])) { margin-top: .75rem; }
   .ct-backend .event-draw-tabs { display: flex; flex-direction: row; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--ct-border, #e4eaf0); }
   .ct-backend .event-draw-tabs .nav-link { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; flex: 0 0 auto; width: auto; min-height: 44px; padding: .625rem .875rem; border: 1px solid var(--ct-border, #e4eaf0); white-space: normal; text-align: left; }
   .ct-backend .nav-pills.event-draw-tabs .nav-link.active { background: var(--ct-ink, #172e45); color: #fff; border-color: var(--ct-ink, #172e45); }

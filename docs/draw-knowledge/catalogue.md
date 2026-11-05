@@ -332,6 +332,8 @@ Saved schedule preferences are pruned by draw identity and kind-qualified fixtur
 
 When the tie or fixture lifecycle check blocks deletion, the preview identifies each affected draw and separates internal scoring publication, started play, and saved score rows. A draw can be hidden publicly while its team ties are enabled for scoring. Protected statuses and recorded outcomes without score rows are reported separately so automatic advancements are not described as played matches.
 
+For a hidden, unlocked team draw with scoring enabled, expand the draw and choose **Disable scoring**. The action returns enabled ties to validated under the event lock, retains the draw and fixtures, and records the transition. Started matches, recorded scores or outcomes, play/score audit history, linked placement programmes and inconsistent fixture relationships block the action. Bulk deletion is a separate preview and confirmation.
+
 **Sources:** `app/Services/Draw/BulkDrawDeletionService.php`, `app/Http/Controllers/Backend/BulkDrawDeletionController.php`, `public/js/bulk-draw-deletion.js`, and the head-office team-event view.
 
 **Regression:** `tests/Feature/Draw/BulkDrawDeletionTest.php` and `DrawLifecycleHardeningTest.php` passed locally on 4 November 2026: 15 tests, 123 assertions on each of isolated SQLite and MySQL. The six `tests/Frontend/bulk-draw-deletion.test.cjs` cases passed, including exact selection, cancellation, malformed responses, duplicate requests and no automatic mutation retry. These results do not establish deployment of later changes.

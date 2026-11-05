@@ -212,9 +212,8 @@ class AuthServiceProvider extends ServiceProvider
                 return false;
             }
 
-            if ($subject instanceof \App\Models\TeamFixture && $draw->team_scoring_rules !== null
-                && (!$subject->teamTie?->published_at || !in_array($subject->teamTie->status,
-                    [\App\Models\TeamTie::STATUS_PUBLISHED, \App\Models\TeamTie::STATUS_COMPLETED], true))) {
+            if ($subject instanceof \App\Models\TeamFixture
+                && app(\App\Services\TeamDrawScoringPublicationService::class)->blocksScoring($draw, $subject->teamTie)) {
                 return false;
             }
 

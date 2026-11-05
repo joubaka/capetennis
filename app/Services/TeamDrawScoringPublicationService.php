@@ -2,10 +2,15 @@
 
 namespace App\Services;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
+use App\Models\Fixture;
+use App\Models\TeamFixture;
 use App\Models\TeamFixturePlayer;
 use App\Models\TeamTie;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /** Called only while the publication service holds the event and draw locks. */
 final class TeamDrawScoringPublicationService
@@ -23,9 +28,56 @@ final class TeamDrawScoringPublicationService
         return [
             'canonical' => $canonical,
             'ready' => !$draw->isPlacementDraft() && !($draw->team_scoring_rules['undecided'] ?? false) && ($canonical ? $total > 0 && $pending === 0 && ! $orphaned : $draw->fixtures()->exists()),
+            'can_disable' => !$draw->published && !$draw->locked && empty($draw->team_draw_selection['competition']) && $total > 0 && $draw->teamTies()
+                ->where(fn ($query) => $query->where('status', TeamTie::STATUS_PUBLISHED)->orWhereNotNull('published_at'))->exists(),
             'pending' => $pending,
             'total' => $total,
         ];
+    }
+
+    public function disable(Draw $draw): void
+    {
+        DB::transaction(function () use ($draw) {
+            app(TeamDrawAdaptationService::class)->lockEvent($draw->event_id);
+            $current = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            abort_unless($current->event_id === $draw->event_id, 409, 'Draw event changed. Refresh before disabling scoring.');
+            Gate::authorize('publish', $current);
+            abort_if(!$current->isTeamDraw() || $current->published || $current->locked, 422,
+                'Only a hidden, unlocked team draw can have scoring disabled.');
+            abort_if(!empty($current->team_draw_selection['competition']), 422, 'Scoring cannot be disabled for a linked placement programme.');
+
+            $ties = $current->teamTies()->orderBy('id')->lockForUpdate()->get();
+            $fixtures = $current->fixtures()->lockForUpdate()->get();
+            $enabled = $ties->filter(fn ($tie) => $tie->status === TeamTie::STATUS_PUBLISHED || $tie->published_at);
+            if ($enabled->isEmpty()) return;
+
+            abort_if($fixtures->contains(fn ($fixture) => !$ties->contains('id', $fixture->team_tie_id))
+                || TeamFixture::whereIn('team_tie_id', $ties->modelKeys())
+                    ->where(fn ($query) => $query->where('draw_id', '!=', $current->id)->orWhereNull('draw_id'))->exists()
+                || Fixture::where('draw_id', $current->id)->exists(), 422, 'Review inconsistent match and tie assignments before disabling scoring.');
+            abort_if($ties->contains(fn ($tie) => !in_array($tie->status, [TeamTie::STATUS_DRAFT, TeamTie::STATUS_VALIDATED, TeamTie::STATUS_PUBLISHED], true) || $tie->winner_team_id)
+                || $fixtures->contains(fn ($fixture) => (int) $fixture->match_status !== FixtureState::STATUS_PENDING)
+                || DB::table('team_fixture_results')->whereIn('team_fixture_id', $fixtures->modelKeys())->lockForUpdate()->first(['id'])
+                || DrawAuditLog::where('draw_id', $current->id)->whereIn('action', ['match_started', 'match_stopped', 'score_saved', 'score_corrected', 'score_deleted', 'team_scores_cleared'])
+                    ->lockForUpdate()->first(['id']),
+                422, 'Scoring cannot be disabled because this draw has started play or has score history.');
+
+            foreach ($enabled as $tie) {
+                $tie->update(['status' => TeamTie::STATUS_VALIDATED, 'published_at' => null]);
+            }
+            DrawAuditLog::record($current->id, 'scoring_disabled', null, ['tie_ids' => $enabled->modelKeys()]);
+        });
+    }
+
+    public function blocksScoring(Draw $draw, ?TeamTie $tie, bool $locked = false): bool
+    {
+        if ($tie?->published_at && in_array($tie->status, [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED], true)) {
+            return false;
+        }
+
+        // Preserve scoring on older tied draws unless an administrator explicitly disabled it.
+        return $draw->team_scoring_rules !== null || ($tie && DrawAuditLog::where('draw_id', $draw->id)
+            ->where('action', 'scoring_disabled')->when($locked, fn ($query) => $query->lockForUpdate())->first(['id']) !== null);
     }
 
     public function enableLocked(Draw $draw): array

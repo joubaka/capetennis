@@ -2,6 +2,7 @@
   'use strict';
   var paused = new Set();
   function buttons(id) { return document.querySelectorAll('[data-enable-scoring][data-draw-id="' + id + '"]'); }
+  function disableButtons(id) { return document.querySelectorAll('[data-disable-scoring][data-draw-id="' + id + '"]'); }
   function apply(id, state, published, locked) {
     if (!state || typeof state.ready !== 'boolean' || typeof published !== 'boolean' || typeof locked !== 'boolean') throw new Error('Scoring status could not be confirmed.');
     document.querySelectorAll('[data-scoring-status][data-draw-id="' + id + '"]').forEach(function (badge) {
@@ -13,6 +14,12 @@
       button.textContent = 'Enable scoring';
       button.hidden = !published || state.ready;
       button.disabled = Boolean(locked);
+      button.dataset.locked = locked ? 'true' : 'false';
+    });
+    disableButtons(id).forEach(function (button) {
+      button.textContent = 'Disable scoring';
+      button.hidden = !state.can_disable;
+      button.disabled = locked;
       button.dataset.locked = locked ? 'true' : 'false';
     });
     paused.delete(Number(id));
@@ -29,13 +36,16 @@
     }
   });
   document.addEventListener('click', async function (event) {
-    var button = event.target.closest('[data-enable-scoring]');
+    var disable = event.target.closest('[data-disable-scoring]');
+    var button = disable || event.target.closest('[data-enable-scoring]');
     if (!button) return;
     event.preventDefault(); event.stopPropagation();
     if (button.disabled || window.HeadOfficeDrawPublicationPending || window.HeadOfficeDrawPublicationUnconfirmed) return;
     var id = Number(button.dataset.drawId);
+    var action = disable ? 'disabling' : 'enabling';
     var feedback = document.querySelector('[data-scoring-feedback][data-draw-id="' + id + '"]');
-    buttons(id).forEach(function (item) { item.disabled = true; });
+    var controls = Array.from(buttons(id)).concat(Array.from(disableButtons(id)));
+    controls.forEach(function (item) { item.disabled = true; });
     window.HeadOfficeDrawPublicationPending = true;
     feedback.textContent = 'Validating team ties…';
     try {
@@ -44,18 +54,17 @@
         var current = await check.json();
         if (!check.ok || !current.success || Number(current.id) !== id) throw new Error('Scoring status could not be confirmed.');
         apply(id, current.scoring, current.published, current.locked);
-        button.textContent = 'Enable scoring';
-        feedback.textContent = 'Current scoring status confirmed. Review before enabling scoring.';
+        feedback.textContent = 'Current scoring status confirmed. Review before ' + action + ' scoring.';
         return;
       }
       var response = await window.fetch(button.dataset.url, { method: 'POST', credentials: 'same-origin',
         headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content } });
       var result = await response.json();
-      if (response.status === 422 && result.success === false) {
-        feedback.textContent = result.message || 'Review team ties before enabling scoring.';
+      if (response.status === 422) {
+        feedback.textContent = result.message || 'Review team ties before ' + action + ' scoring.';
         return;
       }
-      if (!response.ok || !result.success || Number(result.id) !== id) throw new Error(result.message || 'Could not enable scoring.');
+      if (!response.ok || !result.success || Number(result.id) !== id) throw new Error(result.message || 'Could not update scoring.');
       apply(id, result.scoring, result.published, result.locked);
       feedback.textContent = result.message;
     } catch (error) {
@@ -72,7 +81,7 @@
       }
     } finally {
       window.HeadOfficeDrawPublicationPending = false;
-      buttons(id).forEach(function (item) { item.disabled = item.dataset.locked === 'true'; });
+      controls.forEach(function (item) { item.disabled = item.dataset.locked === 'true'; });
     }
   });
 })(window, document);

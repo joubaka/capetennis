@@ -8,11 +8,16 @@ function harness(responses = []) {
   const badges = [0, 1].map(() => ({ textContent: '', classList: { toggle() {} } }));
   const buttons = [0, 1].map(() => ({ disabled: false, hidden: false, textContent: 'Enable scoring',
     dataset: { drawId: '7', url: '/draw/7/enable-scoring', statusUrl: '/draw/7/scoring-status', locked: 'false' } }));
+  const disableButtons = [{ disabled: false, hidden: true, textContent: 'Disable scoring',
+    dataset: { ...buttons[0].dataset, url: '/draw/7/disable-scoring' } }];
   const feedback = { textContent: '' };
   let click;
   const calls = [];
   const document = {
-    querySelectorAll(selector) { return selector.startsWith('[data-scoring-status]') ? badges : buttons; },
+    querySelectorAll(selector) {
+      if (selector.startsWith('[data-scoring-status]')) return badges;
+      return selector.startsWith('[data-disable-scoring]') ? disableButtons : buttons;
+    },
     querySelector(selector) { return selector.startsWith('meta') ? { content: 'token' } : feedback; },
     addEventListener(name, listener) { if (name === 'click') click = listener; },
   };
@@ -23,8 +28,11 @@ function harness(responses = []) {
     return typeof response === 'function' ? response() : response;
   } };
   vm.runInNewContext(source, { window, document, Set, Number, Boolean, Error });
-  return { window, badges, buttons, feedback, calls,
-    click: (index = 0) => click({ target: { closest: () => buttons[index] }, preventDefault() {}, stopPropagation() {} }) };
+  return { window, badges, buttons, disableButtons, feedback, calls,
+    click: (index = 0, selector = '[data-enable-scoring]') => click({
+      target: { closest: query => query === selector ? (selector === '[data-disable-scoring]' ? disableButtons : buttons)[index] : null },
+      preventDefault() {}, stopPropagation() {}
+    }) };
 }
 
 function response(ready = true, extra = {}) {
@@ -40,6 +48,17 @@ test('successful enable updates duplicate badges and hides every enable action',
   assert.ok(h.buttons.every(button => button.hidden));
   assert.equal(h.feedback.textContent, 'Scoring ready.');
   assert.equal(h.window.HeadOfficeDrawPublicationPending, false);
+});
+
+test('disable scoring posts once and refreshes badges and actions for a hidden draw', async () => {
+  const h = harness([response(false, { published: false, scoring: { ready: false, can_disable: false }, message: 'Scoring disabled.' })]);
+  h.window.TeamDrawScoringReadiness.apply(7, { ready: true, can_disable: true }, false, false);
+  assert.equal(h.disableButtons[0].hidden, false);
+  await h.click(0, '[data-disable-scoring]');
+  assert.deepEqual(h.calls, [{ url: '/draw/7/disable-scoring', method: 'POST' }]);
+  assert.ok(h.badges.every(badge => badge.textContent === 'Scoring not ready'));
+  assert.equal(h.disableButtons[0].hidden, true);
+  assert.equal(h.feedback.textContent, 'Scoring disabled.');
 });
 
 test('validation failure explains blocking tie and permits a deliberate retry', async () => {

@@ -2036,6 +2036,7 @@ Route::delete(
   //draw
   Route::post('draw/publishToggle/{id}', [DrawController::class, 'togglePublish'])->name('draw.toggle.publish');
   Route::post('draw/{draw}/enable-scoring', [DrawController::class, 'enableScoring'])->name('draw.enable-scoring');
+  Route::post('draw/{draw}/disable-scoring', [DrawController::class, 'disableScoring'])->name('draw.disable-scoring');
   Route::get('draw/{draw}/scoring-readiness', [DrawController::class, 'scoringReadiness'])->name('draw.scoring-readiness');
   Route::post('draw/publishToggleSchedule/{id}', [DrawController::class, 'togglePublishSchedule'])->name('draw.toggle.publish.schedule');
   Route::post('draw/registration/addPlayer/{id}', [DrawController::class, 'add_draw_registration'])->name('add.draw.registration');

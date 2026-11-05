@@ -397,7 +397,7 @@ class VenueScoringController extends Controller
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
             $fixture = TeamFixture::query()->lockForUpdate()->findOrFail($fixture->id);
-            abort_if($fixture->draw_id !== $draw->id || $fixture->team_tie_id !== $tie?->id, 409, 'Fixture relationships changed.');
+            abort_if($fixture->draw_id !== $draw->id || $fixture->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
             $fixture->setRelation('draw', $draw);
             $fixture->setRelation('fixtureResults', $fixture->fixtureResults()->lockForUpdate()->get());
             app(\App\Services\TeamParticipantHistoryService::class)->assertRevision($fixture, (int) $draw->event_id, $request->input('participant_revision'));
@@ -405,6 +405,8 @@ class VenueScoringController extends Controller
             abort_unless((int) $fixture->draw?->event_id === (int) $event->id, 404);
             $this->authorize('team-fixture.saveScore', $fixture);
             abort_if($fixture->draw->locked, 403, 'Draw is locked.');
+            abort_if($playing && app(\App\Services\TeamDrawScoringPublicationService::class)->blocksScoring($draw, $tie, locked: true),
+                409, 'Validate and publish the tie before starting play.');
             abort_if($fixture->fixtureResults->isNotEmpty(), 422, 'A completed match cannot be moved on or off court.');
 
             $this->requireAssignedVenue($request, $event, $fixture->venue_id === null ? null : (int) $fixture->venue_id);
