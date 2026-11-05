@@ -12,6 +12,21 @@
     <button class="btn btn-primary" type="submit">Compare seasons</button>
   </form>
   @if($record['comparison']['reason'])<p class="record-note mb-0" role="status">{{ $record['comparison']['reason'] }}</p>@endif
+  @if($record['comparison']['delta'] !== null)
+    <div class="row g-3 mb-3" aria-hidden="true">
+      @foreach(['played' => 'Recorded matches', 'rate' => 'Win rate'] as $metric => $label)
+        @php($maximum = $metric === 'rate' ? 100 : max($record['comparison']['first']['played'], $record['comparison']['second']['played']))
+        <div class="col-sm-6">
+          <strong>{{ $label }}</strong>
+          @foreach(['first', 'second'] as $side)
+            @php($value = $record['comparison'][$side][$metric])
+            <div class="record-note mt-2">{{ $record['comparison'][$side.'_year'] }} · {{ $value }}{{ $metric === 'rate' ? '%' : '' }}</div>
+            <div class="rounded" style="height:.5rem;background:#e8eef5"><div class="rounded h-100" style="width:{{ 100 * $value / $maximum }}%;background:{{ $side === 'first' ? '#004177' : '#f4a340' }}"></div></div>
+          @endforeach
+        </div>
+      @endforeach
+    </div>
+  @endif
   <p class="record-note d-sm-none mb-2">Scroll across to see both seasons and the change.</p>
   <div class="table-responsive" role="region" aria-label="Season comparison table; scroll horizontally on small screens" tabindex="0"><table class="table table-sm mb-0 record-comparison-table">
     <caption>Win-rate change is shown in percentage points (pp).</caption>

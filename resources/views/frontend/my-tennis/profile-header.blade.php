@@ -3,9 +3,9 @@
   $headerCanViewRating = $canViewRating ?? ($workspace['canViewRating'] ?? false);
   $headerSnapshot = $ratingSnapshot ?? ($workspace['snapshot'] ?? null);
   $headerRelated = $workspace['related'] ?? isset($selectedPlayer);
-  $headerSubtitle = $headerRelated
-      ? ($profile['message'] ?? $headerPlayer?->getProfileStatus()['message'])
-      : ($headerPlayer && ($headerCanViewRating || isset($ratingPreviewPlayer)) ? 'Admin preview' : null);
+  $headerSubtitle = !$headerRelated && $headerPlayer && ($headerCanViewRating || isset($ratingPreviewPlayer))
+      ? 'Admin preview'
+      : null;
   $headerQuery = ['player' => $headerPlayer?->id, 'preview_non_plus' => ($previewNonPlus ?? false) ? 1 : null];
   $headerRatingUrl = route('my.tennis', $headerQuery + ['tab' => 'rating']);
 @endphp
@@ -18,7 +18,7 @@
     @elseif(in_array($workspaceTab ?? 'profile', ['profile', 'activity', 'manage'], true))
       <div class="ct-my-tennis-rating-badge" data-profile-plus-preview>
         <x-ctr-mark size="heading" />
-        <span><strong>CTR · Player Plus</strong><br><a href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => $headerPlayer->id]) : route('player-plus.player', $headerPlayer) }}">Explore Player Plus</a></span>
+        <a href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => $headerPlayer->id]) : route('player-plus.player', $headerPlayer) }}">Explore Player Plus</a>
       </div>
     @endif
   @endif
@@ -30,7 +30,7 @@
         'ratingPreviewPlayer' => !$headerRelated && $headerCanViewRating ? $headerPlayer : ($ratingPreviewPlayer ?? null),
       ])
     @endif
-    <div class="d-flex flex-wrap gap-2">
+    <div class="ct-my-tennis-utilities">
       <a data-my-tennis-link href="{{ route('my.tennis', $headerQuery + ['tab' => 'manage']) }}" class="ct-my-tennis-secondary-link" @if(($workspaceTab ?? null) === 'manage') aria-current="page" @endif>Manage players</a>
       @if($headerPlayer && $headerCanViewRating)
         <a href="{{ route('player-plus.player', $headerPlayer) }}" class="ct-my-tennis-secondary-link">Plus membership</a>

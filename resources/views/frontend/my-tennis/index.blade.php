@@ -162,9 +162,16 @@
     @if(($playerCount ?? 0) > \App\Services\MyTennisService::PLAYER_LIMIT)<p class="small text-muted">Use Manage players to open a linked profile that is missing from the player selector.</p>@endif
     @if($matchReadLimited ?? false)<p class="small text-muted" role="status">Showing part of the schedule. Check the event programme for all matches.</p>@endif
     <div class="my-tennis-player-summary">
-      <div class="my-tennis-player-details"><h2 class="my-tennis-section-heading mb-0">Upcoming matches</h2></div>
-      <button class="btn btn-outline-primary" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminders</button>
-      <div class="my-tennis-upcoming-total"><strong>{{ $upcomingMatchPage->total() }}</strong><span>Scheduled</span></div>
+      <div class="my-tennis-player-details">
+        <h2 class="my-tennis-section-heading mb-0">Upcoming matches</h2>
+        <p class="small text-muted mb-0">{{ $upcomingMatchPage->total() }} scheduled</p>
+      </div>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-outline-primary" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminders</button>
+        @if(($canViewRating ?? false) && $upcomingMatchPage->total() > 0)
+          <a class="btn btn-outline-primary" data-my-tennis-link href="{{ route('my.tennis.record', ['player' => $selectedPlayer, 'section' => 'opponents']) }}">Prepare for a matchup</a>
+        @endif
+      </div>
     </div>
     @php
       $matchDays = $upcomingMatches->groupBy(fn ($match) => \Carbon\Carbon::parse($match->scheduled_at)->toDateString());
@@ -224,9 +231,9 @@
     <div class="row g-4 mb-4">
       <div class="col-12">
         <div class="card border-0 shadow-sm"><div class="card-body">
-          <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><h5 class="mb-0">Entries</h5><i class="ti ti-clipboard-list text-primary fs-4" aria-hidden="true"></i></div>
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><h2 class="h5 mb-0">Entries</h2><i class="ti ti-clipboard-list text-primary fs-4" aria-hidden="true"></i></div>
           <p class="text-muted small mb-3">Your entry is confirmed once payment is complete.</p>
-          <div class="table-responsive"><table class="table align-middle mb-0"><thead><tr><th>Event</th><th>Category</th><th>Status</th><th>Payment</th></tr></thead><tbody>
+          <div class="table-responsive" role="region" aria-label="Entries table" tabindex="0"><table class="table align-middle mb-0"><thead><tr><th scope="col">Event</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Payment</th></tr></thead><tbody>
           @forelse($entries as $entry)
             <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Unpaid' }}</td></tr>
           @empty
@@ -234,6 +241,16 @@
           @endforelse
           </tbody></table></div>
           @if($entries instanceof \Illuminate\Contracts\Pagination\Paginator)<div class="mt-3">{{ $entries->fragment('my-tennis-history')->links() }}</div>@endif
+        </div></div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h2 class="h5">Recent published results</h2>
+          @forelse($history['placements'] as $placement)<div class="border-bottom py-2"><div class="fw-semibold">{{ $placement->categoryEvent?->event?->name ?? 'Event' }}</div><div class="small text-muted">{{ $placement->categoryEvent?->category?->name ?? 'Category' }} · Place {{ $placement->position }}</div></div>@empty<p class="text-muted mb-0">No published results yet.</p>@endforelse
+        </div></div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h2 class="h5">Current rankings</h2>
+          @forelse($history['seriesRankings'] as $ranking)<div class="border-bottom py-2"><div class="fw-semibold">{{ $ranking->series?->name ?? 'Series' }}</div><div class="small text-muted">{{ $ranking->category?->name ?? 'Category' }} · #{{ $ranking->rank_position }} · {{ $ranking->total_points }} points</div></div>@empty<p class="text-muted mb-0">No published series ranking yet.</p>@endforelse
         </div></div>
       </div>
       @if(($canViewRating ?? false) && ($overviewPathway ?? null))
@@ -251,20 +268,10 @@
             @endif
             <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
             <p class="small text-muted mb-2">Each tournament has its own entry rules.</p>
-            <a class="btn my-tennis-plus-link align-self-start" data-my-tennis-link href="{{ route('my.tennis.pathway', $selectedPlayer) }}">See next steps <span aria-hidden="true">→</span></a>
+            <a class="btn my-tennis-plus-link align-self-start" data-my-tennis-link href="{{ route('my.tennis.pathway', $selectedPlayer) }}">See tournament options <span aria-hidden="true">→</span></a>
           </aside>
         </div>
       @endif
-      <div class="col-12 col-lg-6">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h5>Recent published results</h5>
-          @forelse($history['placements'] as $placement)<div class="border-bottom py-2"><div class="fw-semibold">{{ $placement->categoryEvent?->event?->name ?? 'Event' }}</div><div class="small text-muted">{{ $placement->categoryEvent?->category?->name ?? 'Category' }} · Place {{ $placement->position }}</div></div>@empty<p class="text-muted mb-0">No published results yet.</p>@endforelse
-        </div></div>
-      </div>
-      <div class="col-12 col-lg-6">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h5>Current rankings</h5>
-          @forelse($history['seriesRankings'] as $ranking)<div class="border-bottom py-2"><div class="fw-semibold">{{ $ranking->series?->name ?? 'Series' }}</div><div class="small text-muted">{{ $ranking->category?->name ?? 'Category' }} · #{{ $ranking->rank_position }} · {{ $ranking->total_points }} points</div></div>@empty<p class="text-muted mb-0">No published series ranking yet.</p>@endforelse
-        </div></div>
-      </div>
     </div>
   </div>
   @endif

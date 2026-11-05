@@ -591,7 +591,9 @@ class PlayerPlusLaunchTest extends TestCase
         $this->export('orders', $this->get(route('player-plus.orders.index'))->assertOk());
         $this->export('order', $this->get(route('player-plus.orders.show', $order))->assertOk());
         $order = $this->activate($order);
-        $this->export('player-active', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('View tennis pathway')->assertDontSee('data-plus-stepper', false));
+        $this->export('player-active', $this->get(route('player-plus.player', $player))->assertOk()
+            ->assertSee('Back to My Tennis')->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']))
+            ->assertDontSee('data-plus-stepper', false));
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
         $this->export('paused', $this->get(route('player-plus.index'))->assertOk()->assertSee('purchases are currently paused'));
         $this->export('player-paused', $this->get(route('player-plus.player', Player::factory()->create()))->assertOk()->assertSee('Purchases are paused'));

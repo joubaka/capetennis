@@ -39,17 +39,16 @@
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
   @if(($embeddedRating ?? false) || request()->ajax())
-    <h2 id="player-rating-heading" class="h5">Player rating</h2>
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <h2 id="player-rating-heading" class="h5 mb-0">Player rating</h2>
+      <a class="btn btn-sm btn-outline-primary" data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a>
+    </div>
     <template data-profile-rating-update>
       @include('frontend.my-tennis.profile-rating-badge', [
         'badgeSnapshot' => \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($ratingHistory),
         'badgeUrl' => route('my.tennis', ['player' => $ratingPlayer->id, 'tab' => 'rating']),
       ])
     </template>
-    <details class="ct-workspace-rating-details">
-      <summary>Latest rating and trend</summary>
-      @include('frontend.my-tennis.rating-snapshot')
-    </details>
   @else
   <x-player-workspace-header compact title="Player rating" :subtitle="$ratingPlayer->full_name" heading="h2" heading-id="player-rating-heading" data-rating-hero>
       @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
@@ -209,10 +208,10 @@
   </div>
   </div>
   @if(($embeddedRating ?? false) || request()->ajax())
-  <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
-    <a data-my-tennis-link href="{{ route('my.tennis.pathway', $ratingPlayer) }}">Next steps</a>
-    <a data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a>
-  </div>
+    <details class="ct-workspace-rating-details mt-3">
+      <summary>Latest saved rating details</summary>
+      @include('frontend.my-tennis.rating-snapshot')
+    </details>
   @endif
   @if(auth()->user()?->hasRole('super-user'))
     <details class="mt-3" data-rating-admin-tools>

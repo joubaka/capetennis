@@ -64,15 +64,16 @@ const fixtureRoot = path.join(root, 'storage/framework/testing');
           assert.equal(await summary.evaluate(el => el.parentElement.open), !wasOpen, `${name}: disclosure responds`);
         }
         if (name === 'player') {
-          const confirm = content.locator('input[name=confirm]');
-          if (await confirm.count()) {
+          for (const confirm of await content.locator('input[name=confirm]').all()) {
             assert.notEqual(await confirm.getAttribute('required'), null);
-            await confirm.check();
-            assert.equal(await confirm.isChecked(), true);
+            if (await confirm.isVisible()) {
+              await confirm.check();
+              assert.equal(await confirm.isChecked(), true);
+            }
           }
           assert.match(await content.innerText(), /pathway/i);
         }
-        if (name === 'player-active') assert.equal(await content.getByRole('link', { name: 'View tennis pathway', exact: true }).isVisible(), true);
+        if (name === 'player-active') assert.equal(await content.getByRole('link', { name: /Back to My Tennis/ }).isVisible(), true);
         if (name === 'orders-empty') assert.match(await content.innerText(), /no Player Plus orders/i);
         if (name === 'paused') assert.match(await content.innerText(), /purchases are currently paused/i);
         if (name === 'settings') {

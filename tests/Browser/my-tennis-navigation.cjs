@@ -129,6 +129,13 @@ async function run() {
           finishRatingWarmup();
         }
         await active(name);
+        if (name === 'Results') {
+          const chart = workspace.getByRole('region', { name: 'Recorded matches by month' });
+          await chart.getByText('Monthly counts and match links').click();
+          const october = chart.getByRole('link', { name: 'Oct 2026' });
+          assert.match(await october.getAttribute('href'), /record_month=2026-10#match-results$/);
+          assert.equal(await chart.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+        }
         if (name === 'Rating') {
           await workspace.getByRole('heading', { name: 'Player rating', exact: true }).waitFor();
           await workspace.locator('.ctr-section-tabs .nav-link').first().waitFor();
@@ -143,6 +150,8 @@ async function run() {
       await active('Tournament options');
       const levels = workspace.getByText('See all levels and targets', { exact: true });
       await levels.waitFor();
+      assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);
+      await levels.click();
       assert.equal(await levels.evaluate(summary => summary.parentElement.open), true);
       await levels.click();
       assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);

@@ -113,7 +113,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
         @$dom->loadHTML($response->getContent());
         $xpath = new \DOMXPath($dom);
         $this->assertSame('Tournament options', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
-        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[@open]/summary[normalize-space()="See all levels and targets"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[not(@open)]/summary[normalize-space()="See all levels and targets"]')->length);
         $this->export('progress-entry', $response);
 
         $this->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertViewHas('workspaceTab', 'activity');
@@ -134,7 +134,14 @@ class MyTennisDashboardIntegrationTest extends TestCase
             'reason' => null, 'series' => [], 'as_of' => '2026-11-03', 'ball_stage' => 'standard',
             'points' => [['index' => 11, 'date' => '2026-11-03', 'score' => 91.1]],
         ]);
-        $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->twice()->andReturn(['reason' => 'No saved results.']);
+        $this->app->make(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->twice()->andReturn([
+            'reason' => null, 'as_of' => '2026-11-03', 'built_at' => '2026-11-03', 'evidence' => [
+                ['source_id' => 'match:1', 'kind' => 'match', 'months' => 1, 'event_id' => 1,
+                    'event' => 'Example Open', 'date' => '2026-10-01', 'date_basis' => 'event start proxy',
+                    'players' => [$player->id, $other->id], 'names' => [$player->full_name, $other->full_name],
+                    'winner_side' => 1, 'score' => '6-3 6-4'],
+            ],
+        ]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()
             ->andReturn(['reason' => 'No event ratings.', 'events' => [], 'pages' => 1]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistoryRefresh::class)->shouldReceive('status')->once()
@@ -155,8 +162,10 @@ class MyTennisDashboardIntegrationTest extends TestCase
             $response = $this->get($url, $headers)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
                 ->assertSee('data-my-tennis-workspace', false)->assertSee('data-my-tennis-link', false)
                 ->assertDontSee('my-tennis-navigation.js', false)
-                ->assertSee('id="my-tennis-player"', false)->assertSee('91.1')
-                ->assertSee($player->getProfileStatus()['message']);
+                ->assertSee('id="my-tennis-player"', false)->assertSee('91.1');
+            if ($name === 'profile') $response->assertSee($player->getProfileStatus()['message']);
+            if ($name === 'record') $response->assertSee('Recorded matches by month')->assertSee('record_month=2026-10', false);
+            if ($name === 'opponents') $response->assertDontSee('Recorded matches by month');
             $this->export('ajax-'.$name, $response);
         }
         $this->get(route('my.tennis.pathway', $other), $headers)->assertForbidden();

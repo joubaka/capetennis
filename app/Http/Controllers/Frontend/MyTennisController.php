@@ -124,6 +124,7 @@ class MyTennisController extends Controller
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $filters = $request->validate(['year' => 'nullable|integer|min:1900|max:2100', 'compare_first' => 'nullable|integer|min:1900|max:2100',
+            'record_month' => 'nullable|date_format:Y-m',
             'compare_second' => 'nullable|integer|min:1900|max:2100', 'opponent' => 'nullable|integer|min:1',
             'page' => 'nullable|integer|min:1|max:2500', 'upcoming_page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
         $upcoming = $section === 'opponents' ? app(\App\Services\Performance\PlayerUpcomingMatchInsights::class)

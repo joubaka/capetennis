@@ -19,7 +19,7 @@
       || ($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture());
   @endphp
   <x-player-workspace-header :workspace="$workspace ?? null" :title="'Player Plus for '.$player->full_name" eyebrow="Cape Tennis · Optional Player Plus">
-    <p>@if($canViewRating)Your player views are available below. Check membership status and follow their progress.@elseif($membershipStatusOnly)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before paying.@endif</p><p class="small">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
+    <p>@if($membershipStatusOnly || $canViewRating)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before paying.@endif</p><p class="small">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
     <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">← Choose another player</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">My Plus orders →</a></nav></x-slot:navigation>
   </x-player-workspace-header>
   @unless($membershipStatusOnly)<x-player-plus-stepper :current="3" />@endunless
@@ -122,17 +122,8 @@
     </section>
   </div>
   <p class="small">To stop a PayFast subscription, open <strong>My Plus orders</strong> from My Profile or your player dashboard, choose the order, then <strong>Stop automatic renewal</strong>. Only the payer can cancel. Paid access continues until expiry. Once-off wallet purchases have no renewal to cancel.</p>
-  @if($canViewRating)
-    <section class="pp-actions" aria-labelledby="pp-explore-heading"><h2 id="pp-explore-heading">Follow {{ $player->name }}’s progress</h2><p>Your available player views, together in one place.</p><div class="pp-action-links">
-      <a class="btn btn-primary" href="{{ route('my.tennis', ['player' => $player->id]) }}#rating">View rating and progress <span class="ms-2" aria-hidden="true">→</span></a>
-      <a class="btn btn-outline-primary" data-pathway-navigation href="{{ route('my.tennis.pathway', $player) }}">View tennis pathway</a>
-      <a class="btn btn-outline-primary" href="{{ route('my.tennis.record', $player) }}">Playing Record</a>
-      <a class="btn btn-outline-primary" href="{{ route('my.tennis.record', ['player' => $player, 'section' => 'opponents']) }}">Opponent Insights</a>
-      <a class="btn btn-outline-primary" href="{{ route('my.tennis.event-history', $player) }}">Past-event ratings</a>
-    </div></section>
-  @endif
   <script src="{{ asset('assets/js/player-plus-stepper.js') }}" defer></script>
   <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}" defer></script>
-  <p class="pp-footer"><a href="{{ route('my.tennis') }}">← Back to My Tennis</a></p>
+  <p class="pp-footer"><a class="{{ $canViewRating ? 'btn btn-primary' : '' }}" href="{{ route('my.tennis', ['player' => ($linked || $canViewRating) ? $player->id : null, 'tab' => $canViewRating ? 'rating' : null]) }}">← Back to My Tennis</a></p>
 </div>
 @endsection

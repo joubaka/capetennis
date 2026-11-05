@@ -23,7 +23,14 @@
     .ct-record .record-rating-mark { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.2rem .4rem; }
     .ct-record .record-rating-mark > .small { max-width:5rem; }
     .ct-record .record-ball-label { color:#095c60; font-size:.65rem; }
+    .ct-record #match-results { scroll-margin-top:6rem; }
+    .ct-record .record-month-chart { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:.25rem; text-align:center; }
+    .ct-record .record-month-column { height:7rem; display:flex; flex-direction:column; justify-content:flex-end; border-bottom:1px solid #a5b5c6; }
+    .ct-record .record-month-column span { display:block; }
+    .ct-record .record-month-chart small { font-size:.65rem; }
+    .ct-record .record-key { display:inline-block; width:.7rem; height:.7rem; border-radius:2px; }
     @media(max-width:575px) {
+      .ct-record .record-month-chart > div:nth-child(even) small { visibility:hidden; }
       .ct-record .record-upcoming-row { grid-template-columns:minmax(0,1fr); gap:.25rem; }
       .ct-record .record-upcoming-row .record-fixture-link { justify-self:start; }
       .ct-record .record-rating-comparison-side > .record-note { margin-inline-start:0; }
@@ -35,7 +42,10 @@
     @include('frontend.my-tennis.record-upcoming')
   @endif
   @if($recordSection === 'opponents')
-    <h2 id="past-opponents" class="h5">Past opponents</h2>
+    <div class="record-section-heading mb-2">
+      <h2 id="past-opponents" class="h5">Past opponents</h2>
+      @isset($upcoming)<a href="#upcoming-heading">Back to upcoming matches ↑</a>@endisset
+    </div>
   @endif
   @if($record['reason'])
     <div class="record-sheet" role="status">{{ $record['reason'] }}</div>
@@ -55,14 +65,22 @@
           <span class="record-note">· {{ $record['events'] }} {{ \Illuminate\Support\Str::plural('event', $record['events']) }} · {{ $record['opponent_count'] }} {{ \Illuminate\Support\Str::plural('opponent', $record['opponent_count']) }}</span>
         </p>
       @endif
-      <section class="record-sheet"><h2>Match results</h2>@include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page'])</section>
-      @include('frontend.my-tennis.record-comparison')
       @if($record['form'])<section class="record-sheet"><h2>Latest five results</h2><div class="d-flex flex-wrap gap-2">@foreach($record['form'] as $formMatch)<span class="badge p-2" style="background:{{ $formMatch['won'] ? '#004177' : '#172e45' }};color:#fff" aria-label="{{ $formMatch['won'] ? 'Win' : 'Loss' }} against {{ $formMatch['opponent'] }} on {{ $formMatch['date'] }}">{{ $formMatch['won'] ? 'W' : 'L' }}</span>@endforeach</div><p class="record-note mt-2 mb-0">Approximate order when dates are estimated or shared.</p></section>@endif
+      <section class="record-sheet" id="match-results">
+        <h2>Match results</h2>
+        @if(!empty($record['record_month']))
+          <p class="record-note">{{ \Carbon\CarbonImmutable::createFromFormat('!Y-m', $record['record_month'])->format('F Y') }} · <a href="{{ request()->fullUrlWithQuery(['record_month' => null, 'page' => null]) }}#match-results">Clear month filter</a></p>
+          @if(!$record['results']['total'])<p class="record-note" role="status">No saved match results for this month.</p>@endif
+        @endif
+        @include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page'])
+      </section>
+      @include('frontend.my-tennis.record-monthly')
+      @include('frontend.my-tennis.record-comparison')
       @if($record['first'])
       <section class="record-sheet"><h2>First recorded matches</h2><p><strong>Earliest recorded match:</strong> {{ $record['first']['date'] }} · {{ $record['first']['opponent'] }} · {{ $record['first']['event'] }}</p>
       <p class="record-note">{{ $record['first']['date_basis'] }}. This covers all seasons with saved results.</p>
       @if($record['first_win'])<p class="mb-0"><strong>Earliest recorded win:</strong> {{ $record['first_win']['date'] }} · {{ $record['first_win']['opponent'] }} <span class="record-note">({{ $record['first_win']['date_basis'] }})</span></p>@endif</section>
-      <section class="record-sheet"><h2>Results by season</h2>@foreach($record['seasons'] as $season)<div class="record-season"><a href="{{ request()->fullUrlWithQuery(['year' => $season['year'], 'page' => null]) }}">{{ $season['year'] }}</a><div style="flex:1;max-width:30rem"><span>{{ $season['played'] }} matches · {{ $season['wins'] }} wins · {{ $season['played'] - $season['wins'] }} losses</span><div aria-hidden="true" style="display:flex;height:8px;border-radius:5px;overflow:hidden;background:#ff9f43;margin-top:.5rem"><span style="background:#004177;width:{{ 100 * $season['wins'] / $season['played'] }}%"></span></div></div></div>@endforeach</section>
+      <section class="record-sheet"><h2>Results by season</h2>@foreach($record['seasons'] as $season)<div class="record-season"><a href="{{ request()->fullUrlWithQuery(['year' => $season['year'], 'record_month' => null, 'page' => null]) }}">{{ $season['year'] }}</a><div style="flex:1;max-width:30rem"><span>{{ $season['played'] }} matches · {{ $season['wins'] }} wins · {{ $season['played'] - $season['wins'] }} losses</span><div aria-hidden="true" style="display:flex;height:8px;border-radius:5px;overflow:hidden;background:#ff9f43;margin-top:.5rem"><span style="background:#004177;width:{{ 100 * $season['wins'] / $season['played'] }}%"></span></div></div></div>@endforeach</section>
       @endif
     @else
       @if($record['opponent'])

@@ -62,6 +62,25 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertSame(0, $this->record($rows, ['year' => 2000])['played']);
     }
 
+    public function test_monthly_counts_use_the_full_eligible_record_and_month_only_filters_the_register(): void
+    {
+        $rows = [];
+        for ($i = 0; $i < 22; $i++) $rows[] = $this->row('match:'.$i);
+        $rows[] = $rows[0];
+        $rows[] = $this->row('match:loss', ['date' => '2026-03-01', 'winner_side' => 2]);
+        $rows[] = $this->row('match:prior', ['date' => '2025-12-01']);
+        $rows[] = $this->row('teamsheet:restricted');
+        $rows[] = $this->row('match:future', ['date' => '2026-12-01']);
+        $record = $this->record($rows, ['year' => '2026', 'record_month' => '2026-03']);
+
+        $this->assertCount(12, $record['monthly']);
+        $this->assertSame(['label' => 'Feb 2026', 'wins' => 22, 'losses' => 0], $record['monthly']['2026-02']);
+        $this->assertSame(['label' => 'Mar 2026', 'wins' => 0, 'losses' => 1], $record['monthly']['2026-03']);
+        $this->assertSame(23, $record['played']);
+        $this->assertSame(1, $record['results']['total']);
+        $this->assertSame('match:loss', $record['results']['rows'][0]['id']);
+    }
+
     public function test_season_comparison_uses_two_distinct_years_independent_of_match_register_scope(): void
     {
         $rows = [$this->row('match:1', ['date' => '2025-01-01']),

@@ -3,6 +3,7 @@
 namespace App\Services\Performance;
 
 use App\Models\Player;
+use Carbon\CarbonImmutable;
 
 /** A bounded display projection, never a new rating calculation. */
 class PlayerPlusRecordService
@@ -33,6 +34,22 @@ class PlayerPlusRecordService
         $coverageStart = $first['date'] ?? null;
         $year = (string) ($filters['year'] ?? '');
         $selected = array_values(array_filter($matches, fn ($row) => $year === '' || substr($row['date'], 0, 4) === $year));
+        $monthly = [];
+        if ($selected) {
+            $start = $year === ''
+                ? CarbonImmutable::parse($source['as_of'])->startOfMonth()->subMonths(11)
+                : CarbonImmutable::create((int) $year, 1, 1);
+            for ($i = 0; $i < 12; $i++) {
+                $date = $start->addMonths($i);
+                $monthly[$date->format('Y-m')] = ['label' => $date->format('M Y'), 'wins' => 0, 'losses' => 0];
+            }
+            foreach ($selected as $match) {
+                $key = substr($match['date'], 0, 7);
+                if (isset($monthly[$key])) $monthly[$key][$match['won'] ? 'wins' : 'losses']++;
+            }
+        }
+        $recordMonth = (string) ($filters['record_month'] ?? '');
+        $register = $recordMonth === '' ? $selected : array_values(array_filter($selected, fn ($row) => substr($row['date'], 0, 7) === $recordMonth));
         $seasons = [];
         foreach ($matches as $match) {
             $key = substr($match['date'], 0, 4);
@@ -74,7 +91,8 @@ class PlayerPlusRecordService
             'played' => count($selected), 'wins' => count(array_filter($selected, fn ($row) => $row['won'])),
             'form' => array_slice(array_reverse($selected), 0, 5),
             'events' => count(array_unique(array_column($selected, 'event_id'))), 'opponent_count' => count($opponents),
-            'results' => $this->page(array_reverse($selected), (int) ($filters['page'] ?? 1)),
+            'monthly' => $monthly, 'record_month' => $recordMonth,
+            'results' => $this->page(array_reverse($register), (int) ($filters['page'] ?? 1)),
             'opponents' => $this->page(array_values($opponents), (int) ($filters['opponent_page'] ?? 1)),
             'opponent' => $opponent, 'meetings' => $this->page(array_reverse($meetings), (int) ($filters['meeting_page'] ?? 1))];
     }

@@ -5,13 +5,13 @@ const vm = require('node:vm');
 const source = fs.readFileSync('resources/views/frontend/my-tennis/workspace-assets.blade.php', 'utf8');
 const script = source.match(/<script>\s*(function mountMyTennisRating\([\s\S]*?)<\/script>/)[1];
 function harness() {
-  let ready, shown, unmount, status, content = '', requests = 0, settle, timer, focusRestored = false, sectionRestored = false;
+  let ready, refresh, unmount, status, content = '<p>Initial saved ratings</p>', requests = 0, settle, timer, focusRestored = false, sectionRestored = false;
   const dialog = {open: false, shows: 0, closes: 0, addEventListener() {}, showModal() {this.open = true; this.shows++;}, close() {this.open = false; this.closes++;}};
   const age = {hidden: false}, level = {value: 'overall'};
   const urls = [], options = [];
   const focused = {id: 'ctr-rating-gender', focus() {focusRestored = true;}};
   const activeSection = {dataset: {ratingSection: 'explore'}};
-  const listeners = {}, attributes = {}, placeholder = {hidden: false};
+  const listeners = {}, attributes = {};
   const element = () => ({dataset: {}, children: [], setAttribute() {},
     set textContent(value) {this.text = value; this.children = [];},
     get textContent() {return this.text || '';}, append(...children) {this.children.push(...children);} });
@@ -24,7 +24,7 @@ function harness() {
       return status;
     },
     contains(element) {return element === focused;},
-    querySelectorAll(selector) {return selector.includes('placeholder') ? [placeholder] : [];},
+    querySelectorAll() {return [];},
     setAttribute(name, value) {attributes[name] = value;}, removeAttribute(name) {delete attributes[name];},
     prepend(value) {status = value;}, addEventListener(name, callback) {listeners[name] = callback;},
     set innerHTML(value) {content = value; status = undefined;}, get innerHTML() {return content;}
@@ -34,15 +34,15 @@ function harness() {
     if (name === 'my-tennis:unmounting') unmount = callback;
   },
     activeElement: focused,
-    getElementById(id) {return id === 'my-tennis-rating-loading' ? dialog : id === focused.id ? focused : id.endsWith('-tab') ? {id, addEventListener(name, callback) {shown = callback;}} : panel;}, querySelector() {return null;}};
-  const context = {document, window: {CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {sync() {}}},
+    getElementById(id) {return id === focused.id ? focused : id.endsWith('-tab') ? {id} : panel;}, querySelector() {return null;}};
+  const context = {document, window: {CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {constructor(panel, callback) {refresh = callback;} sync() {}}},
     URL, URLSearchParams, AbortController,
     setTimeout(callback, delay) {assert.equal(delay, 30000); timer = callback; return 1;}, clearTimeout() {timer = null;},
     FormData: class {constructor(form) {this.values = Object.entries(form.values);} [Symbol.iterator]() {return this.values[Symbol.iterator]();}},
     bootstrap: {Tab: {getOrCreateInstance() {return {show() {sectionRestored = true;}};}}},
     fetch(url, requestOptions) {requests++; urls.push(url); options.push(requestOptions); return new Promise((resolve, reject) => {settle = resolve; requestOptions.signal.addEventListener('abort', () => reject(new Error('Timed out')));});}};
   vm.runInNewContext(script, context); ready();
-  return {start: () => shown(), status: () => status, placeholder, attributes, panel, urls, options, dialog, age, level, requests: () => requests,
+  return {start: () => refresh(), status: () => status, attributes, panel, urls, options, dialog, age, level, requests: () => requests,
     focusRestored: () => focusRestored, sectionRestored: () => sectionRestored,
     expireTimeout() {timer();}, hasTimeout: () => timer !== null, unmount: () => unmount(),
     change(values, name, hidden = []) {const form = {action: 'https://ct.test/rating', values, elements: {namedItem(key) {return {type: hidden.includes(key) ? 'hidden' : 'select-one'};}}}; listeners.change({target: {name, closest() {return form;}}});},
@@ -50,13 +50,15 @@ function harness() {
     paginate(url) {let prevented = false; listeners.click({button: 0, preventDefault() {prevented = true;}, target: {closest(selector) {return selector === '[data-rating-link]' ? {getAttribute() {return url;}} : null;}}}); return prevented;},
     retry() {return listeners.click({target: {closest(selector) {return selector === '[data-rating-retry]' ? {} : null;}}});}};
 }
-test('loading displays a spinner and hides placeholder until successful response', async () => {
-  const h = harness(); const request = h.start();
-  assert.equal(h.attributes['aria-busy'], 'true'); assert.equal(h.placeholder.hidden, true);
+test('the initial panel is already present; refresh displays a spinner until successful response', async () => {
+  const h = harness();
+  assert.equal(h.requests(), 0);
+  const request = h.start();
+  assert.equal(h.attributes['aria-busy'], 'true'); assert.match(h.panel.innerHTML, /Initial saved ratings/);
   assert.equal(h.dialog.open, true);
   assert.match(h.status().children[0].className, /spinner-border/);
   assert.match(h.status().children[1], /Loading saved rating history/);
-  await h.start(); assert.equal(h.requests(), 1);
+  assert.equal(h.requests(), 1);
   h.respond(true); await request;
   assert.equal(h.status(), undefined); assert.equal(h.attributes['aria-busy'], undefined);
   assert.match(h.panel.innerHTML, /Saved ratings/);

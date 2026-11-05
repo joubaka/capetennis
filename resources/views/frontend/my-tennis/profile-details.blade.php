@@ -6,8 +6,13 @@
   @endphp
   <section class="card mb-4" aria-labelledby="my-tennis-profile-details">
     <div class="card-body">
-      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
-        <h2 id="my-tennis-profile-details" class="h5 mb-0">Player details</h2>
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+        <div>
+          <h2 id="my-tennis-profile-details" class="h5 mb-1">Player details</h2>
+          @if($profile['message'] ?? null)
+            <p class="small text-muted mb-0">{{ $profile['message'] }}</p>
+          @endif
+        </div>
         <a class="btn btn-primary" href="{{ route('player.profile.edit', ['player' => $selectedPlayer, 'from' => 'my-tennis']) }}">Edit profile</a>
       </div>
       <dl class="ct-my-tennis-profile-fields mb-0">

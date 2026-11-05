@@ -35,6 +35,9 @@
                   @endif
                 </div>
               @endforeach
+              @if($personalRating && $opponentRating)
+                <p class="record-note mt-2">These are saved singles ratings. Ratings from different ball levels or disconnected comparison groups cannot be compared directly.</p>
+              @endif
               @if($opponent['id'])<a class="record-fixture-link mt-1" href="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => 'opponents', 'opponent' => $opponent['id']]) }}#opponent-meetings">See past meetings →</a>@endif
             </div>
           </details>

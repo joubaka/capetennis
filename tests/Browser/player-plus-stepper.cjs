@@ -55,7 +55,9 @@ const fixture = name => fs.readFileSync(path.join(root, `storage/framework/testi
         assert.equal(await page.locator('[data-plus-plan-choices]').count(), 0);
         assert.equal(await page.locator('[data-plus-plan]').count(), 0);
         if (name === 'player-active') {
-          assert.equal(await page.getByRole('link', { name: /View rating and progress/ }).isVisible(), true);
+          const returnLink = page.getByRole('link', { name: /Back to My Tennis/ });
+          assert.equal(await returnLink.isVisible(), true);
+          assert.equal(new URL(await returnLink.getAttribute('href')).searchParams.get('tab'), 'rating');
           assert.equal(await page.locator('[data-plus-stepper]').count(), 0, 'members bypass purchase steps');
         }
       }

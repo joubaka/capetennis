@@ -24,6 +24,11 @@ the selected player's eligible meetings, without granting access to the
 opponent's private profile.
 
 Dates retain their source basis, including schedule/event-date estimates.
+The Results month chart counts the full authorized match set before pagination,
+using the selected calendar year or the 12 months ending at the saved archive
+date. A month link filters only the match register; season totals, recent form
+and season comparison retain their existing scopes. An empty month describes
+the saved archive, not whether the player played any matches.
 Earliest-match and earliest-win markers refer only to available evidence.
 Season totals, recent form and head-to-head counts describe recorded outcomes;
 they do not estimate strength or change CTR. Results, opponent lists and

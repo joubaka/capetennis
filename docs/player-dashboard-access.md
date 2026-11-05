@@ -47,6 +47,13 @@ player's active entitlement and relationship. Super-user previews do not create
 ownership. Private navigation targets require that access gate. Standard accounts
 use the same header and navigation positions with labelled marketing targets and
 an illustrative locked snapshot; real private data is never rendered under blur.
+
+Keep Activity and Plus Opponents separate. Activity owns the published schedule,
+reminders and entry actions for related accounts. Opponents adds eligible match
+preparation and private saved meetings under the selected player's Plus access.
+Link from the schedule to Opponents when eligible; do not put private comparison
+or head-to-head data in Activity. Profile completeness belongs beside Edit
+profile; the shared tab header keeps the selected player and authorized badge.
 The four locked player-view buttons open dedicated feature marketing pages,
 with navigation back to the dashboard and membership availability. Those pages
 check the existing relationship (or super-user preview authority) and never read
