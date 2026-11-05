@@ -1475,6 +1475,7 @@ class RegisterController extends Controller
           $categoryEvent->id => [
             'payment_status_id' => 0,
             'user_id'           => $authUser->id,
+            'refund_status'     => CategoryEventRegistration::REFUND_NOT_REFUNDED,
           ],
         ]);
 

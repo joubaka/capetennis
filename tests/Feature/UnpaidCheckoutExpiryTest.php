@@ -179,9 +179,15 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $handoff = $old->fresh()->payfast_handed_off_at->toIso8601String();
         config(['services.payfast.merchant_id' => 'test-merchant', 'services.payfast.merchant_key' => 'test-key']);
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
-        $this->actingAs($old->user)->post(route('pay.now.payfast'), [
+        $cart = [
             'player' => [$player->id], 'category' => [$category->id], 'terms_accepted' => '1',
-        ])->assertSuccessful();
+        ];
+        $entry->update(['refund_status' => CategoryEventRegistration::REFUND_PENDING]);
+        $this->actingAs($old->user)->post(route('pay.now.payfast'), $cart)
+            ->assertRedirect(route('registration.checkout', $old));
+        $this->assertDatabaseCount('registration_orders', 1);
+        $entry->update(['refund_status' => "'not_refunded'"]);
+        $this->post(route('pay.now.payfast'), $cart)->assertSuccessful();
 
         $new = RegistrationOrder::where('id', '!=', $old->id)->sole();
         $this->assertSame('cancelled', $old->fresh()->status);
@@ -209,6 +215,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $this->assertFalse($old->fresh()->pay_status);
         $this->assertSame(1, CategoryEventRegistration::count());
         $this->assertSame('PF-REPLACEMENT', CategoryEventRegistration::sole()->pf_transaction_id);
+        $this->assertSame('not_refunded', CategoryEventRegistration::sole()->refund_status);
         $this->assertDatabaseCount('wallet_transactions', 0);
         $this->assertDatabaseCount('transactions_pf', 2);
         $rows = app(\App\Domain\Finance\Services\FinancialLedgerService::class)->buildPaymentRows($event, 10);

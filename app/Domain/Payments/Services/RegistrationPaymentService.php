@@ -2,6 +2,7 @@
 
 namespace App\Domain\Payments\Services;
 
+use App\Models\CategoryEventRegistration;
 use App\Models\Registration;
 use App\Models\RegistrationOrder;
 use App\Models\RegistrationOrderItems;
@@ -325,7 +326,7 @@ class RegistrationPaymentService
                         ->orWhere('admin_payment_status', 'paid')
                         ->orWhere(function ($refundQuery): void {
                             $refundQuery->whereNotNull('refund_status')
-                                ->whereNotIn('refund_status', ['', 'not_refunded']);
+                                ->whereNotIn('refund_status', CategoryEventRegistration::NO_REFUND_STATUSES);
                         });
                 })->exists();
 

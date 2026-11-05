@@ -12,6 +12,10 @@ class CategoryEventRegistration extends Model
   public const REFUND_PENDING = 'pending';
   public const REFUND_COMPLETED = 'completed';
   public const REFUND_WAIVED = 'waived';
+  public const REFUND_NOT_REFUNDED = 'not_refunded';
+
+  // Older schemas stored the SQL quotes as part of the default value.
+  public const NO_REFUND_STATUSES = ['', self::REFUND_NOT_REFUNDED, "'not_refunded'"];
 
   use HasFactory;
   use SoftDeletes;

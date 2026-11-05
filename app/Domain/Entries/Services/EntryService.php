@@ -74,7 +74,7 @@ class EntryService
                     && (int) $item->user_id === (int) $locked->user_id
                     && !$entry->payment_status_id && !$entry->pf_transaction_id && !$entry->wallet_transaction_id
                     && !$entry->withdrawn_at && !$entry->refunded_at && $entry->admin_payment_status !== 'paid'
-                    && in_array($entry->refund_status, [null, '', 'not_refunded'], true)
+                    && ($entry->refund_status === null || in_array($entry->refund_status, CategoryEventRegistration::NO_REFUND_STATUSES, true))
                     && !in_array($entry->status, ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded'], true), 422);
                 $entry->delete();
             }

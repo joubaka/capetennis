@@ -6,12 +6,12 @@
       "title": "Confirm Order returns an individual registration to a pending PayFast attempt",
       "scope": "An ordinary public individual registration cart that exactly matches one unresolved PayFast handoff owned by the signed-in payer.",
       "symptoms": "Confirm Order opens the earlier payment status page instead of a checkout the payer can use.",
-      "cause": "The registration cart previously resumed any matching handoff that had not reached the five-minute expiry boundary.",
-      "fix": "On Confirm Order, lock the divisions and previous order, recheck paid entries and proofs, then close an eligible exact cart through RegistrationPaymentService and create the replacement in the same transaction. Reuse a fresh replacement on a repeated confirmation. Retain the original handoff and keep a verified late charge in finance reconciliation under the original PayFast reference, separate from the replacement registration and its wallet.",
+      "cause": "The cart previously resumed an unexpired handoff. Some older databases also stored literal single quotes around the not_refunded default, causing both payment and entry cleanup to treat an unpaid entry as protected.",
+      "fix": "On Confirm Order, lock the divisions and previous order, recheck paid entries and proofs, then close an eligible exact cart through RegistrationPaymentService and create the replacement in the same transaction. Recognize the exact legacy no-refund value in the settlement and entry cleanup checks, and write the canonical value on new cart entries. Reuse a fresh replacement on repeated confirmation. Retain the original handoff and keep a verified late charge in finance reconciliation under its original PayFast reference.",
       "verification": "The local signed notification regression verified the new registration settles once and a delayed original charge is retained once for reconciliation with zero entry, wallet or Cape Tennis fee attribution. An authorized live test reproduced the pre-fix redirect on the deployed build; the fix has not been verified in production.",
       "limits": "Opening the cart is read-only. This guide does not replace another payer's order, change invitation or recovery checkout protections, authorize a refund, or execute a production data change.",
       "assistant_action": "guide_only",
-      "sources": ["app/Http/Controllers/Frontend/RegisterController.php", "app/Domain/Payments/Services/RegistrationPaymentService.php", "app/Domain/Payments/Services/ExpiredPayfastHandoffService.php"],
+      "sources": ["app/Http/Controllers/Frontend/RegisterController.php", "app/Domain/Payments/Services/RegistrationPaymentService.php", "app/Domain/Payments/Services/ExpiredPayfastHandoffService.php", "app/Domain/Entries/Services/EntryService.php"],
       "tests": ["tests/Feature/RegistrationCartPayfastRestartTest.php", "tests/Feature/UnpaidCheckoutExpiryTest.php"]
     },
     {
