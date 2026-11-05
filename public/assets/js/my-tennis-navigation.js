@@ -18,7 +18,7 @@
     return status;
   }
 
-  async function open(url, {back = false, focus = false} = {}) {
+  async function open(url, {back = false, focus = false, tab = null} = {}) {
     const workspace = document.querySelector(workspaceSelector);
     if (!workspace) return;
 
@@ -28,6 +28,13 @@
     const timeout = window.setTimeout(() => request.abort(), 30000);
     workspace.setAttribute('aria-busy', 'true');
     const status = showStatus(workspace, 'Loading My Tennis…');
+    workspace.querySelector('[data-my-tennis-tab-spinner]')?.remove();
+    status.classList.toggle('visually-hidden', Boolean(tab));
+    const spinner = document.createElement('span');
+    spinner.className = 'spinner-border spinner-border-sm flex-shrink-0 me-1';
+    spinner.dataset.myTennisTabSpinner = '';
+    spinner.setAttribute('aria-hidden', 'true');
+    (tab || status).prepend(spinner);
 
     try {
       const response = await fetch(url, {
@@ -69,15 +76,17 @@
         window.location.reload();
         return;
       }
+      status.classList.remove('visually-hidden');
       status.textContent = 'This view could not be loaded. ';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'btn btn-sm btn-outline-secondary';
       retry.textContent = 'Try again';
-      retry.addEventListener('click', () => open(url, {focus: true}), {once: true});
+      retry.addEventListener('click', () => open(url, {focus: true, tab}), {once: true});
       status.append(retry);
       if (focus) retry.focus({preventScroll: true});
     } finally {
+      spinner.remove();
       window.clearTimeout(timeout);
       if (pending === request) {
         pending = null;
@@ -95,7 +104,8 @@
     if (url.origin !== window.location.origin) return;
 
     event.preventDefault();
-    open(url, {focus: true});
+    const tab = link.closest('#my-tennis-tabs') ? link : null;
+    open(url, {focus: true, tab});
   });
 
   window.addEventListener('popstate', () => {

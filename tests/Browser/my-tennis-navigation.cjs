@@ -18,6 +18,10 @@ async function run() {
       const requests = [];
       const errors = [];
       let failActivity = true;
+      let finishFailedActivity;
+      const failedActivity = new Promise(resolve => { finishFailedActivity = resolve; });
+      let finishActivityRetry;
+      const activityRetry = new Promise(resolve => { finishActivityRetry = resolve; });
       let documentLoads = 0;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', async route => {
@@ -36,8 +40,10 @@ async function run() {
           requests.push(tab);
           if (tab === 'activity' && failActivity) {
             failActivity = false;
+            await failedActivity;
             return route.fulfill({ status: 503 });
           }
+          if (tab === 'activity') await activityRetry;
           return route.fulfill({ contentType: 'text/html', body: fixture('ajax-' + tab) });
         }
         if (url.pathname.endsWith('/rating') && request.headers()['x-requested-with'] === 'XMLHttpRequest') {
@@ -80,9 +86,20 @@ async function run() {
         navigationBounds = bounds;
       };
       await active('Profile');
-      await nav.getByRole('link', { name: 'Activity' }).click();
+      const activityTab = nav.getByRole('link', { name: 'Activity', exact: true });
+      const activitySpinner = activityTab.locator('[data-my-tennis-tab-spinner]');
+      await activityTab.click();
+      await activitySpinner.waitFor();
+      assert.equal(await workspace.getAttribute('aria-busy'), 'true');
+      assert.equal(await activityTab.getAttribute('aria-current'), null);
+      finishFailedActivity();
+      await activitySpinner.waitFor({ state: 'detached' });
       await workspace.getByRole('button', { name: 'Try again' }).click();
+      await activitySpinner.waitFor();
+      finishActivityRetry();
       await active('Activity');
+      await activitySpinner.waitFor({ state: 'detached' });
+      assert.equal(await workspace.getAttribute('aria-busy'), null);
       await workspace.getByRole('button', { name: 'Match reminders', exact: true }).click();
       const reminder = page.locator('#match-reminder');
       await reminder.getByText('No published, unfinished matches', { exact: false }).waitFor();
