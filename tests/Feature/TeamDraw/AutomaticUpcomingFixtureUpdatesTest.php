@@ -100,6 +100,24 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
+    public function test_open_roster_replacement_promotes_linked_reserve_into_upcoming_fixture(): void
+    {
+        [$event, , $team, $fixture] = $this->competition();
+        $outgoing = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
+        $player = Player::factory()->create();
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $team->id, 'rank' => 3, 'name' => $player->name,
+            'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        TeamPlayer::create(['team_id' => $team->id, 'rank' => 3, 'player_id' => $player->id, 'pay_status' => 0]);
+
+        $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
+            'slot_id' => $outgoing->id, 'expected_rank' => 1, 'expected_player_id' => 0, 'player_id' => $player->id])->assertOk();
+
+        $this->assertEquals($player->id, $fixture->fixturePlayers()->firstOrFail()->team1_id);
+        $this->assertDatabaseHas('team_roster_promotions', ['event_id' => $event->id, 'team_id' => $team->id,
+            'no_profile_slot_id' => $reserve->id, 'source_rank' => 3, 'target_rank' => 1]);
+        $this->assertDatabaseCount('team_fixtures', 1);
+    }
+
     public function test_open_roster_replacement_preserves_started_profile_match_and_updates_upcoming_match(): void
     {
         foreach ([1, 2] as $status) {

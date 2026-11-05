@@ -41,6 +41,53 @@ class TeamRosterPlaceTest extends TestCase
         EventSelectionRosterImport::create(['event_id' => $this->event->id, 'finalization_id' => $final->id, 'region_id' => $this->team->region_id, 'imported_by' => $this->actor->id, 'groups' => ['group' => ['team_id' => $this->team->id, 'players' => [['slot_id' => $reserve->id, 'status' => 'reserve', 'profile_id' => (int) $reserve->player_profile]]]], 'imported_at' => now()]);
     }
 
+    public function test_replacing_unpaid_main_player_promotes_existing_linked_reserve_once(): void
+    {
+        $outgoing = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Outgoing', 'surname' => 'Player', 'pay_status' => 0]);
+        $vacatedMirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => 0, 'pay_status' => 0]);
+        $player = Player::factory()->create();
+        $reserve = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'name' => $player->name, 'surname' => $player->surname, 'player_profile' => $player->id, 'pay_status' => 0]);
+        $mirror = TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->freezeReserve($reserve);
+
+        $payload = ['team_id' => $this->team->id, 'event_id' => $this->event->id, 'slot_id' => $outgoing->id, 'expected_rank' => 2, 'expected_player_id' => 0, 'player_id' => $player->id];
+        $route = route('backend.team.changePlayer');
+        $manager = User::factory()->create();
+        $region = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->team->region_id)->firstOrFail();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id]);
+        $this->actingAs(User::factory()->create())->postJson($route, $payload)->assertForbidden();
+        $this->actingAs($manager);
+
+        $otherTeam = Team::factory()->create(['category_event_id' => $this->team->category_event_id]);
+        $duplicate = TeamPlayer::create(['team_id' => $otherTeam->id, 'rank' => 1, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->postJson($route, $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $outgoing->id, 'rank' => 2]);
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $reserve->id, 'rank' => 4]);
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+        $duplicate->delete();
+
+        $order = \App\Models\TeamPaymentOrder::create(['event_id' => $this->event->id, 'team_id' => $this->team->id,
+            'player_id' => $player->id, 'user_id' => $this->actor->id, 'total_amount' => 100, 'wallet_reserved' => 0,
+            'payfast_amount_due' => 100, 'payfast_handed_off_at' => now(), 'pay_status' => false]);
+        $orderBefore = $order->fresh()->getAttributes();
+        $this->postJson($route, $payload)->assertUnprocessable();
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $outgoing->id, 'rank' => 2]);
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $reserve->id, 'rank' => 4]);
+        $this->assertSame($orderBefore, $order->fresh()->getAttributes());
+        $this->assertDatabaseCount('team_roster_promotions', 0);
+        DB::table('team_payment_orders')->where('id', $order->id)->delete();
+
+        $this->postJson($route, $payload)->assertOk();
+        $this->assertModelMissing($outgoing);
+        $this->assertDatabaseHas('no_profile_team_players', ['id' => $reserve->id, 'rank' => 2, 'player_profile' => $player->id]);
+        $this->assertDatabaseHas('team_players', ['id' => $mirror->id, 'rank' => 2, 'player_id' => $player->id, 'pay_status' => 0]);
+        $this->assertDatabaseHas('team_players', ['id' => $vacatedMirror->id, 'rank' => 4, 'player_id' => 0]);
+        app(SelectedTeamRosterStatus::class)->assertMainSlot($this->event, $this->team, $reserve->fresh());
+        $this->postJson($route, $payload)->assertNotFound();
+        $this->assertDatabaseCount('team_roster_promotions', 1);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+    }
+
     public function test_promoted_reserve_can_reorder_with_hidden_overflow_empty_mirror_and_preserve_main_status(): void
     {
         $main = NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Main', 'surname' => 'Player', 'pay_status' => 0]);

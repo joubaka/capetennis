@@ -227,6 +227,10 @@ class TeamRosterService
             }
             $mirror = $team->noProfile ? TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->lockForUpdate()->first() : $slot;
             $paid = (int) $slot->pay_status === 1 || (int) $mirror?->pay_status === 1;
+            $reserve = null;
+            if (!$paid && !empty($data['player_id']) && $rank > 0 && $rank <= (int) $team->num_team_members) {
+                $reserve = $this->replacementReserve($event, $team, (int) $data['player_id']);
+            }
             $fundReplacement = in_array($data['refund_action'] ?? null, ['replacement', 'transfer'], true);
             if ($fundReplacement
                 && TeamSelectionInvitation::where('team_id', $team->id)
@@ -256,7 +260,15 @@ class TeamRosterService
                 if (!empty($data['refund_action'])) $this->fail('Refresh the player list: this player is unpaid and needs no refund decision.');
                 $this->change($event, $region, $team, $actor, 'remove', $data);
             }
-            $this->change($event, $region, $team, $actor, 'add', array_replace($data, ['_replacement_rank' => $rank]));
+            if ($reserve) {
+                $this->fillEmptyPlace($event, $region, $team, $actor, [
+                    'target_rank' => $rank,
+                    'reserve_slot_id' => $reserve->id,
+                    'expected_reserve_rank' => $reserve->rank,
+                ]);
+            } else {
+                $this->change($event, $region, $team, $actor, 'add', array_replace($data, ['_replacement_rank' => $rank]));
+            }
             $after = $team->noProfile ? NoProfileTeamPlayer::where('team_id', $team->id)->where('rank', $rank)->firstOrFail()
                 : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('rank', $rank)->firstOrFail();
             $replacementOrder = $fundReplacement
@@ -267,6 +279,22 @@ class TeamRosterService
                 ->log('changed team roster player');
             return $replacementOrder;
         });
+    }
+
+    private function replacementReserve(Event $event, Team $team, int $playerId): NoProfileTeamPlayer|TeamPlayer|null
+    {
+        $matches = $team->noProfile
+            ? NoProfileTeamPlayer::where('team_id', $team->id)->where('player_profile', $playerId)->lockForUpdate()->get()
+            : TeamPlayer::withoutGlobalScopes()->where('team_id', $team->id)->where('player_id', $playerId)->lockForUpdate()->get();
+        if ($matches->count() !== 1) return null;
+
+        $source = $matches->first();
+        $status = app(SelectedTeamRosterStatus::class)->classify($event, collect([$team]));
+        $isReserve = $team->noProfile
+            ? isset($status['imported'][$team->id][$source->id])
+            : isset($status['profile'][$team->id][$playerId]);
+
+        return $isReserve ? $source : null;
     }
 
     public function fillEmptyPlace(Event $event, ?EventRegion $region, Team $team, User $actor, array $data): void
