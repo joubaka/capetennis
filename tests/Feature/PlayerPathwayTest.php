@@ -335,7 +335,7 @@ class PlayerPathwayTest extends TestCase
         $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
         $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->twice()
-            ->andReturn(['ball_stage' => 'standard', 'points' => [
+            ->andReturn(['reason' => null, 'series' => [], 'ball_stage' => 'standard', 'points' => [
                 ['index' => 11, 'date' => '2026-10-01', 'score' => 67.9],
             ]]);
         $this->actingAs($this->actor(10));

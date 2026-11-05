@@ -12,7 +12,9 @@
       status.dataset.myTennisNavigationStatus = '';
       status.className = 'small mt-2 mb-2';
       status.setAttribute('role', 'status');
-      workspace.prepend(status);
+      const tabs = workspace.querySelector('#my-tennis-tabs');
+      if (tabs) tabs.after(status);
+      else workspace.prepend(status);
     }
     status.textContent = message;
     return status;
@@ -29,12 +31,18 @@
     workspace.setAttribute('aria-busy', 'true');
     const status = showStatus(workspace, 'Loading My Tennis…');
     workspace.querySelector('[data-my-tennis-tab-spinner]')?.remove();
-    status.classList.toggle('visually-hidden', Boolean(tab));
+    workspace.querySelector('[data-my-tennis-tab-pending]')?.removeAttribute('data-my-tennis-tab-pending');
+    tab?.setAttribute('data-my-tennis-tab-pending', '');
+    status.classList.add('visually-hidden');
     const spinner = document.createElement('span');
     spinner.className = 'spinner-border spinner-border-sm flex-shrink-0 me-1';
     spinner.dataset.myTennisTabSpinner = '';
     spinner.setAttribute('aria-hidden', 'true');
-    (tab || status).prepend(spinner);
+    const spinnerDelay = window.setTimeout(() => {
+      if (pending !== request) return;
+      (tab || status).prepend(spinner);
+      if (!tab) status.classList.remove('visually-hidden');
+    }, 180);
 
     try {
       const response = await fetch(url, {
@@ -77,7 +85,7 @@
         return;
       }
       status.classList.remove('visually-hidden');
-      status.textContent = 'This view could not be loaded. ';
+      status.textContent = tab ? `${tab.textContent.trim()} could not be loaded. ` : 'This view could not be loaded. ';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'btn btn-sm btn-outline-secondary';
@@ -87,8 +95,10 @@
       if (focus) retry.focus({preventScroll: true});
     } finally {
       spinner.remove();
+      window.clearTimeout(spinnerDelay);
       window.clearTimeout(timeout);
       if (pending === request) {
+        tab?.removeAttribute('data-my-tennis-tab-pending');
         pending = null;
         workspace.removeAttribute('aria-busy');
       }

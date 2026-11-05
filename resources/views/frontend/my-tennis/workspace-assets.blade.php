@@ -30,7 +30,7 @@ function mountMyTennisRating() {
     if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
     return;
   }
-  let loaded = false, loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
+  let loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
   let loadingHandle = null;
   let controller = null;
   const lifetime = new AbortController();
@@ -58,21 +58,20 @@ function mountMyTennisRating() {
     if (loading) { refreshPending = true; return; }
     return load(lastUrl);
   }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '', signal: lifetime.signal });
-  const load = async (url = null) => {
+  const load = async (url) => {
     if (lifetime.signal.aborted) return;
     if (loading) {
       if (url) { lastUrl = url; pendingUrl = url; }
       return;
     }
-    if (loaded && !url) return;
-    lastUrl = url || lastUrl;
+    lastUrl = url;
     const requestUrl = lastUrl;
     loading = true;
     if (!loadingHandle) {
       focusId = panel.contains(document.activeElement) ? document.activeElement.id : button.id;
       loadingHandle = window.CapeLoading.show({title: 'Loading ratings', message: 'Please wait while we load your saved rating history.'});
     }
-    panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
+    panel.querySelectorAll('[data-rating-retry]').forEach(element => { element.hidden = true; });
     panel.setAttribute('aria-busy', 'true');
     let status = panel.querySelector('[data-rating-load-status]');
     if (!status) { status = document.createElement('p'); status.dataset.ratingLoadStatus = ''; status.setAttribute('role', 'status'); status.className = 'small text-muted d-flex align-items-center gap-2'; panel.prepend(status); }
@@ -99,7 +98,6 @@ function mountMyTennisRating() {
       syncAgeFilter();
       const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
       if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
-      loaded = true;
       refreshUI.sync();
     } catch (error) {
       if (lifetime.signal.aborted || pendingUrl) return;
@@ -120,7 +118,6 @@ function mountMyTennisRating() {
       }
     }
   };
-  button.addEventListener('shown.bs.tab', () => load());
   panel.addEventListener('click', event => {
     const link = event.target.closest('[data-rating-link]');
     if (link && (event.button === undefined || event.button === 0) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); load(link.getAttribute('href')); }
@@ -153,8 +150,8 @@ function mountMyTennisRating() {
     const form = event.target.closest('[data-rating-filters]');
     if (form) { event.preventDefault(); load(filterUrl(form)); }
   });
-  if (panel.dataset.ratingPage !== undefined) load();
-  else if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
+  syncAgeFilter();
+  refreshUI.sync();
 }
 
 document.addEventListener('DOMContentLoaded', mountMyTennisRating);

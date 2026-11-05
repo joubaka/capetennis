@@ -44,6 +44,7 @@ class PlayerUpcomingMatchInsightsTest extends TestCase
         $this->assertCount(1, $result['rows']);
         $this->assertSame([['id' => 121, 'name' => 'Opponent 21']], $result['rows'][0]['opponents']);
         $this->assertSame('3', $result['rows'][0]['court']);
+        $this->assertSame(route('public.roundrobin.show', 5), $result['rows'][0]['url']);
         $this->assertSame([], $result['ratings']);
     }
 }

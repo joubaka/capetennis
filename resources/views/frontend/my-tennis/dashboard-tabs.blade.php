@@ -9,7 +9,7 @@
           'rating' => ['Rating', $headerRatingUrl],
           'record' => ['Results', route('my.tennis.record', $headerPlayer)],
           'opponents' => ['Opponents', route('my.tennis.record', ['player' => $headerPlayer, 'section' => 'opponents'])],
-          'pathway' => ['Next steps', route('my.tennis.pathway', $headerPlayer)],
+          'pathway' => ['Tournament options', route('my.tennis.pathway', $headerPlayer)],
       ];
   }
 @endphp

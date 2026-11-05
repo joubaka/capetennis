@@ -151,6 +151,7 @@ class PlayerPlusRecordTest extends TestCase
         $service->shouldReceive('forPlayer')->once()->with($player, ['year' => 2026], false)->andReturn($this->record([$this->row()]));
         $this->app->instance(PlayerPlusRecordService::class, $service);
         $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldNotReceive('forMatchPlayers');
         $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
         \Illuminate\Support\Facades\File::ensureDirectoryExists($path.'/layouts');
         file_put_contents($path.'/layouts/contentNavbarLayout.blade.php', '@yield("content")');
@@ -160,6 +161,35 @@ class PlayerPlusRecordTest extends TestCase
             $response = app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $player);
             $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
             $this->assertStringContainsString('Results', $response->getContent());
+        } finally { \Illuminate\Support\Facades\File::deleteDirectory($path); }
+    }
+
+    public function test_opponent_rating_lookup_uses_resolved_record_ids_instead_of_requested_id(): void
+    {
+        $player = $this->player();
+        $user = Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->once()->andReturn(false);
+        $this->mock(PlayerRatingAccess::class)->shouldReceive('allows')->once()->with($user, $player)->andReturn(true);
+        $filters = ['opponent' => 999];
+        $record = $this->record([$this->row()], $filters);
+        $this->mock(PlayerPlusRecordService::class)->shouldReceive('forPlayer')->once()
+            ->with($player, $filters, false)->andReturn($record);
+        $this->mock(\App\Services\Performance\PlayerUpcomingMatchInsights::class)->shouldReceive('forPlayer')
+            ->once()->with($user, $player, 1)->andReturn(['rows' => [], 'ratings' => [], 'page' => 1, 'pages' => 1]);
+        $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldReceive('forMatchPlayers')->once()
+            ->with($user, $player, [43])->andReturn([43 => ['score' => 71.4]]);
+
+        $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
+        \Illuminate\Support\Facades\File::ensureDirectoryExists($path.'/layouts');
+        file_put_contents($path.'/layouts/contentNavbarLayout.blade.php', '@yield("content")');
+        app('view')->getFinder()->prependLocation($path);
+        $request = Request::create('/my-tennis/players/42/record/opponents', 'GET', $filters);
+        $request->setUserResolver(fn () => $user);
+        try {
+            $response = app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $player, 'opponents');
+            $this->assertNull($response->original->getData()['record']['opponent']);
+            $this->assertSame([43 => ['score' => 71.4]], $response->original->getData()['pastRatings']);
         } finally { \Illuminate\Support\Facades\File::deleteDirectory($path); }
     }
 
@@ -223,7 +253,7 @@ class PlayerPlusRecordTest extends TestCase
         $record = $this->record($rows, ['year' => 2026, 'opponent' => 43]);
         $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
         $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record]);
-        $this->assertStringContainsString('Example Player vs Example Opponent', $html);
+        $this->assertMatchesRegularExpression('/id="matchup-heading"[^>]*>.*Example Player.*<span>vs<\/span>.*Example Opponent.*<\/h2>/sU', $html);
         $this->assertLessThan(strpos($html, 'class="record-opponent text-decoration-none"'), strpos($html, 'id="opponent-meetings"'));
         $this->assertStringNotContainsString('Recent meetings in this selection', $html);
         $this->assertSame(20, substr_count($html, 'class="record-row"'));
@@ -232,6 +262,26 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertStringContainsString('opponent_page=2', $html);
         $this->assertStringContainsString('compare_first=2025', $html);
         $this->assertStringContainsString('year=2026', $html);
+    }
+
+    public function test_past_opponents_render_only_available_badges_with_distinct_rating_scales(): void
+    {
+        $record = $this->record([$this->row(), $this->row('match:2', [
+            'players' => [42, 44], 'names' => ['Example Player', 'Unrated Opponent'],
+        ])], ['opponent' => 43]);
+        $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
+        $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', [
+            'recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record,
+            'workspace' => ['canViewRating' => true, 'snapshot' => [
+                'stage' => 'standard', 'label' => 'Green/Yellow ball', 'points' => [['score' => 87.6, 'date' => '2026-11-03']],
+            ]],
+            'pastRatings' => [43 => ['score' => 71.4]],
+        ]);
+
+        $this->assertMatchesRegularExpression('/id="matchup-heading"[^>]*>(?:(?!<\/h2>).)*aria-label="CTR 87.6 · Green\/Yellow ball"/s', $html);
+        $this->assertSame(3, substr_count($html, 'aria-label="CTR 71.4 · Overall CTR · all ball levels"'));
+        $this->assertStringContainsString('aria-label="View matchup: Example Player vs Example Opponent, Overall CTR 71.4"', $html);
+        $this->assertMatchesRegularExpression('/<strong>Unrated Opponent<\/strong>\s*<\/span>/', $html);
     }
 
     public function test_upcoming_matches_precede_unavailable_history_and_names_open_comparison_details(): void
@@ -248,10 +298,43 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertStringContainsString('<details', $html);
         $this->assertStringContainsString('Overall CTR 80.0', $html);
         $this->assertStringContainsString('Overall CTR 75.0', $html);
+        $this->assertStringContainsString('Overall CTR gap: <strong>5.0 points</strong>', $html);
         $this->assertStringContainsString('Moderate confidence', $html);
         $this->assertStringContainsString('Court 2', $html);
+        $this->assertStringContainsString('href="/published-draw" class="record-fixture-link">View draw', $html);
         $this->assertStringContainsString('&lt;script&gt;Opponent&lt;/script&gt;', $html);
         $this->assertStringNotContainsString('<script>Opponent</script>', $html);
         $this->assertStringContainsString('opponent=43#opponent-meetings', $html);
+    }
+
+    public function test_upcoming_comparison_displays_personal_ball_rating_separately_from_missing_overall_ratings(): void
+    {
+        $upcoming = ['rows' => [['date' => '2026-11-05 09:00:00', 'event' => 'Upcoming Open', 'draw' => 'Singles',
+            'venue' => 'Example courts', 'court' => '2', 'team' => null,
+            'opponents' => [['id' => 43, 'name' => 'Opponent']], 'url' => '/published-draw']],
+            'ratings' => [], 'total' => 1, 'page' => 1, 'pages' => 1];
+        $data = [
+            'recordPlayer' => $this->player(), 'record' => $this->record([]), 'upcoming' => $upcoming,
+            'workspace' => ['canViewRating' => true, 'snapshot' => [
+                'stage' => 'standard', 'label' => 'Green/Yellow ball', 'points' => [['score' => 87.6]],
+            ]],
+        ];
+        $template = file_get_contents(resource_path('views/frontend/my-tennis/record-upcoming.blade.php'));
+        $html = \Illuminate\Support\Facades\Blade::render($template, $data);
+        $this->assertStringContainsString('Personal Green/Yellow ball rating', $html);
+        $this->assertStringContainsString('<strong>87.6</strong>', $html);
+        $this->assertStringContainsString('Overall CTR unavailable for comparison', $html);
+        $this->assertStringContainsString('No published Overall CTR available for comparison', $html);
+        $this->assertStringNotContainsString('Overall CTR gap', $html);
+
+        $data['upcoming']['ratings'][43] = ['score' => 75.0, 'confidence' => 'Moderate'];
+        $html = \Illuminate\Support\Facades\Blade::render($template, $data);
+        $this->assertStringContainsString('Overall CTR 75.0', $html);
+        $this->assertStringNotContainsString('Overall CTR gap', $html);
+
+        $data['workspace']['canViewRating'] = false;
+        $html = \Illuminate\Support\Facades\Blade::render($template, $data);
+        $this->assertStringNotContainsString('Personal Green/Yellow ball rating', $html);
+        $this->assertStringNotContainsString('87.6', $html);
     }
 }

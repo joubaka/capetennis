@@ -39,13 +39,13 @@ function partial(params = new URLSearchParams()) {
     for (const width of [390, 1440]) {
       const page = await browser.newPage({ viewport: {width, height: 900} });
       const errors = [], requests = [];
-      let hold = true, release, fail = false, navigations = 0;
+      let hold = false, release, fail = false, navigations = 0;
       page.on('pageerror', error => errors.push(error.message));
       page.on('framenavigated', () => navigations++);
       await page.route('http://ct-rating.test/**', async route => {
         const url = new URL(route.request().url());
         if (url.pathname === '/fixture') return route.fulfill({contentType: 'text/html', body: `<!doctype html><html><body style="padding:16px">
-          <button id="my-tennis-rating-tab">Rating</button><section id="my-tennis-rating" data-rating-url="http://ct-rating.test/rating"><p data-rating-placeholder>Open rating</p></section>${dialog}
+          <button id="my-tennis-rating-tab">Rating</button><section id="my-tennis-rating" data-rating-url="http://ct-rating.test/rating">${partial()}</section>${dialog}
           <script>window.PlayerPathwayUI = class {}; window.PlayerRatingHistoryRefreshUI = class {sync() {}};
           window.bootstrap = {Tab: {getOrCreateInstance(element) {return {show() {element.classList.add('active'); element.dispatchEvent(new Event('shown.bs.tab'));}};}}};</script><script>${script}</script></body></html>`});
         assert.equal(route.request().headers()['x-requested-with'], 'XMLHttpRequest');
@@ -55,12 +55,9 @@ function partial(params = new URLSearchParams()) {
         return route.fulfill({contentType: 'text/html', body: partial(url.searchParams)});
       });
       await page.goto('http://ct-rating.test/fixture');
-      await page.locator('#my-tennis-rating-tab').dispatchEvent('shown.bs.tab');
-      await page.locator('#ct-loading-dialog[open]').waitFor();
-      while (!release) await new Promise(resolve => setTimeout(resolve, 10));
-      release();
       await page.locator('[data-saved-result]').waitFor();
       await page.locator('#ct-loading-dialog[open]').waitFor({state: 'hidden'});
+      assert.equal(requests.length, 0, 'Initial ratings are already rendered');
       assert.equal(await page.locator('#ctr-rating-gender').inputValue(), 'girls');
       assert.equal(await page.locator('[data-rating-age-filter]').isVisible(), true);
       hold = true;
@@ -76,7 +73,7 @@ function partial(params = new URLSearchParams()) {
       release();
       await page.waitForFunction(() => document.querySelector('[data-saved-result]').textContent === 'Saved red ratings; gender=; month=3');
       await page.locator('#ct-loading-dialog[open]').waitFor({state: 'hidden'});
-      assert.equal(requests.length, 3, 'Rapid changes collapse into one follow-up request');
+      assert.equal(requests.length, 2, 'Rapid changes collapse into one follow-up request');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'ctr-rating-gender');
       assert.equal(await page.locator('[data-rating-section="explore"].active').count(), 1);
       fail = true;

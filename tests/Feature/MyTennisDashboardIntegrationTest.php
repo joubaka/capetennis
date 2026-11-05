@@ -66,7 +66,9 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->assertTabTargets($plus->getContent());
         $this->export('plus', $plus);
         $this->export('rating', $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']))->assertOk()
-            ->assertSee('data-rating-url', false));
+            ->assertSee('data-rating-url', false)->assertSee('id="ctr-panel-progress"', false)
+            ->assertSee(route('my.tennis.event-history', $player), false)
+            ->assertDontSee('data-rating-placeholder', false));
         $this->export('rating-fragment', $this->get(route('my.tennis.rating', $player), ['X-Requested-With' => 'XMLHttpRequest'])
             ->assertOk()->assertSee('data-profile-rating-update', false)
             ->assertSee(route('my.tennis.event-history', $player), false)
@@ -110,8 +112,8 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $dom = new \DOMDocument;
         @$dom->loadHTML($response->getContent());
         $xpath = new \DOMXPath($dom);
-        $this->assertSame('Next steps', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
-        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[not(@open)]/summary[normalize-space()="See all levels and targets"]')->length);
+        $this->assertSame('Tournament options', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
+        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[@open]/summary[normalize-space()="See all levels and targets"]')->length);
         $this->export('progress-entry', $response);
 
         $this->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertViewHas('workspaceTab', 'activity');
@@ -129,7 +131,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->get(route('my.tennis.record', $player), $headers)->assertForbidden();
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn([
-            'reason' => null, 'as_of' => '2026-11-03', 'ball_stage' => 'standard',
+            'reason' => null, 'series' => [], 'as_of' => '2026-11-03', 'ball_stage' => 'standard',
             'points' => [['index' => 11, 'date' => '2026-11-03', 'score' => 91.1]],
         ]);
         $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->twice()->andReturn(['reason' => 'No saved results.']);

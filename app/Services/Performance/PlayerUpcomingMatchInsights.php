@@ -30,7 +30,7 @@ class PlayerUpcomingMatchInsights
                 'court' => $team ? $fixture->court_label : $fixture->orderOfPlay?->court,
                 'team' => $team ? implode(' vs ', $fixture->tie_display ?? []) : null,
                 'opponents' => $opponents->values()->all(),
-                'url' => route($team ? 'frontend.fixtures.show' : 'frontend.showDraw', $fixture->draw_id)];
+                'url' => route($team ? 'frontend.fixtures.show' : 'public.roundrobin.show', $fixture->draw_id)];
         })->values()->all();
         $opponents = collect($rows)->pluck('opponents')->flatten(1);
         $ratings = $opponents->isEmpty() ? [] : app(PlayerRatingTopTen::class)

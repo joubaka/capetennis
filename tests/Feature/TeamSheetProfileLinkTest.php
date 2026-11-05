@@ -140,9 +140,25 @@ class TeamSheetProfileLinkTest extends TestCase
         $this->actingAs($user);
         $html = Blade::render('@include("frontend.my-tennis.teamsheet-connection")', ['selectedPlayer' => $player, 'errors' => new \Illuminate\Support\ViewErrorBag]);
         $this->assertStringContainsString('Link TeamSheet', $html); $this->assertStringNotContainsString('synthetic-server-only-token', $html);
+        $this->assertStringContainsString('href="https://www.teamsheet.co.za/"', $html);
         [$data] = $this->start($user, $player); $this->claim($data['state']);
         $this->assertSame($player->id, app(TeamSheetProfileLinkService::class)->complete($this->request($user), $data['state'], str_repeat('c', 64)));
         $this->assertDatabaseCount('user_players', 0);
+    }
+
+    public function test_profile_card_links_to_teamsheet_when_profile_linking_is_unavailable(): void
+    {
+        [$user, $player] = $this->actor();
+        config(['teamsheet.token' => null]);
+        $this->actingAs($user);
+
+        $html = Blade::render('@include("frontend.my-tennis.teamsheet-connection")', [
+            'selectedPlayer' => $player, 'errors' => new \Illuminate\Support\ViewErrorBag,
+        ]);
+
+        $this->assertStringContainsString('Profile linking is currently unavailable', $html);
+        $this->assertStringContainsString('href="https://www.teamsheet.co.za/"', $html);
+        $this->assertStringNotContainsString(route('my.tennis.teamsheet.start', $player), $html);
     }
 
     public function test_invalid_claim_or_redirect_does_not_follow_or_create_mapping_and_error_is_private(): void

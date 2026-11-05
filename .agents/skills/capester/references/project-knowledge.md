@@ -77,6 +77,8 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - My Tennis tab fragments use the same authorized GET routes as direct links.
   Preserve full-page fallback, rebind controls on workspace mount, and cancel
   transient rating and pathway reads when leaving a view.
+  Render the initial authorized Rating panel with its tab response. Use the
+  rating fragment endpoint for subsequent filters and refreshes.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.

@@ -40,7 +40,7 @@
     </ul>
     <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse events</a>
   </div>
-  <details class="mt-2">
+  <details class="mt-2" open>
     <summary>See all levels and targets</summary>
     <p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>
     <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>

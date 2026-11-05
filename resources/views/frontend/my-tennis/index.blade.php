@@ -55,7 +55,6 @@
     #my-tennis-page .my-tennis-fixture-vs { line-height: 1.2; margin: .15rem 0; }
     #my-tennis-page .my-tennis-fixture-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: #456356; font-size: .8rem; text-decoration: underline; text-underline-offset: 3px; }
     #my-tennis-page .btn { min-height: 44px; }
-    #my-tennis-page [data-rating-placeholder][hidden] { display: none !important; }
     @media (max-width: 575.98px) {
       #my-tennis-page .my-tennis-heading form { width: 100%; }
       #my-tennis-page .my-tennis-player-summary { padding: 1rem; gap: .75rem; }
@@ -141,9 +140,9 @@
   @if($workspaceTab === 'profile')
     @include('frontend.my-tennis.profile-details')
   @elseif($workspaceTab === 'rating' && ($ratingPlayer ?? null))
-  <section id="my-tennis-rating" aria-label="Player rating" @if($canViewRating ?? false) data-rating-page data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}" @endif>
+  <section id="my-tennis-rating" aria-label="Player rating" @if($canViewRating ?? false) data-rating-url="{{ route('my.tennis.rating', $ratingPlayer) }}" @endif>
     @if($canViewRating ?? false)
-    <div class="card" data-rating-placeholder><div class="card-body"><p role="status">Loading your saved ratings…</p><noscript><a href="{{ route('my.tennis.rating', $ratingPlayer) }}">Open saved ratings</a></noscript></div></div>
+      @include('frontend.my-tennis.rating', ['embeddedRating' => true])
     @else
       @include('frontend.my-tennis.rating-preview')
     @endif

@@ -19,7 +19,7 @@ class PlayerRatingTopTen
         return $this->project($user, $selected, $filters);
     }
 
-    /** Only call with identities resolved from the authorised player's published fixtures. */
+    /** Only call with identities resolved from the authorised player's published fixtures or saved match record. */
     public function forMatchPlayers(User $user, Player $selected, array $playerIds): array
     {
         $ids = array_slice(array_values(array_unique(array_map('intval', $playerIds))), 0, 100);

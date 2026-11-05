@@ -16,6 +16,11 @@
     .ct-record .record-coverage { margin:0 0 1rem; }
     .ct-record .record-coverage summary { cursor:pointer; padding:.6rem 0; width:fit-content; min-height:44px; color:#004177; }
     .ct-record #past-opponents, .ct-record #opponent-meetings { scroll-margin-top:6rem; }
+    .ct-record .record-matchup-heading, .ct-record .record-player-name { display:flex; flex-wrap:wrap; align-items:center; gap:.25rem .45rem; }
+    .ct-record .record-rating-mark { display:inline-flex; align-items:center; gap:.25rem; }
+    .ct-record .record-rating-mark .ctr-badge { width:2.4rem !important; height:2.4rem !important; }
+    .ct-record .record-rating-mark > .small { max-width:5rem; }
+    .ct-record .record-ball-label { color:#095c60; font-size:.65rem; }
     @media(max-width:575px) {
       .ct-record .record-upcoming-row { grid-template-columns:minmax(0,1fr); gap:.25rem; }
       .ct-record .record-upcoming-row .record-fixture-link { justify-self:start; }
@@ -58,18 +63,38 @@
       @endif
     @else
       @if($record['opponent'])
+      @php
+        $ownSnapshot = ($workspace['canViewRating'] ?? false) ? ($workspace['snapshot'] ?? null) : null;
+        $ownPoints = $ownSnapshot['points'] ?? [];
+        $ownRating = !empty($ownSnapshot['stage']) && $ownPoints ? $ownPoints[array_key_last($ownPoints)] : null;
+      @endphp
       <section class="record-sheet" id="opponent-meetings" tabindex="-1" style="border-top:3px solid #ff9f43" aria-labelledby="matchup-heading">
         <span class="record-note">Selected matchup{{ $record['year'] !== '' ? ' · '.$record['year'] : ' · all available seasons' }}</span>
-        <h2 id="matchup-heading" class="mt-2">{{ $recordPlayer->full_name }} vs {{ $record['opponent']['name'] }}</h2>
+        <h2 id="matchup-heading" class="mt-2 record-matchup-heading">
+          @include('frontend.my-tennis.record-player-name', ['name' => $recordPlayer->full_name, 'rating' => $ownRating, 'stage' => $ownSnapshot['stage'] ?? null])
+          <span>vs</span>
+          @include('frontend.my-tennis.record-player-name', ['name' => $record['opponent']['name'], 'rating' => $pastRatings[$record['opponent']['id']] ?? null])
+        </h2>
         <p><strong>{{ $record['opponent']['wins'] }} wins · {{ $record['opponent']['played'] - $record['opponent']['wins'] }} losses</strong> across {{ $record['opponent']['played'] }} recorded meetings.</p>
         @include('frontend.my-tennis.record-opponent-trend')
         <h3 class="h6 mt-3">Match history</h3>
-        @include('frontend.my-tennis.record-matches', ['matchPage' => $record['meetings'], 'pageKey' => 'meeting_page'])
+        @include('frontend.my-tennis.record-matches', ['matchPage' => $record['meetings'], 'pageKey' => 'meeting_page', 'matchRatings' => $pastRatings ?? []])
       </section>
       @elseif(request()->filled('opponent'))<p id="opponent-meetings" role="status">No saved meetings with this opponent for the selected season.</p>@endif
       @if($record['opponents']['rows'])
       <section class="record-sheet" aria-labelledby="past-opponents">
-        @foreach($record['opponents']['rows'] as $opponent)<a class="record-opponent text-decoration-none" href="{{ request()->fullUrlWithQuery(['opponent' => $opponent['id'], 'meeting_page' => null]) }}#opponent-meetings" aria-label="View matchup: {{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}" @if(($record['opponent']['id'] ?? null) === $opponent['id']) aria-current="true" @endif><div><strong>{{ $opponent['name'] }}</strong><p class="record-note mb-0">{{ $opponent['played'] }} meetings · last played {{ $opponent['last'] }}</p></div><span>{{ $opponent['wins'] }} W · {{ $opponent['played'] - $opponent['wins'] }} L <span aria-hidden="true">→</span></span></a>@endforeach
+        @foreach($record['opponents']['rows'] as $opponent)
+          @php($opponentRating = $pastRatings[$opponent['id']] ?? null)
+          <a class="record-opponent text-decoration-none" href="{{ request()->fullUrlWithQuery(['opponent' => $opponent['id'], 'meeting_page' => null]) }}#opponent-meetings"
+            aria-label="View matchup: {{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}{{ $opponentRating ? ', Overall CTR '.number_format($opponentRating['score'], 1) : '' }}"
+            @if(($record['opponent']['id'] ?? null) === $opponent['id']) aria-current="true" @endif>
+            <div>
+              @include('frontend.my-tennis.record-player-name', ['name' => $opponent['name'], 'rating' => $opponentRating])
+              <p class="record-note mb-0">{{ $opponent['played'] }} meetings · last played {{ $opponent['last'] }}</p>
+            </div>
+            <span>{{ $opponent['wins'] }} W · {{ $opponent['played'] - $opponent['wins'] }} L <span aria-hidden="true">→</span></span>
+          </a>
+        @endforeach
         @include('frontend.my-tennis.record-pagination', ['matchPage' => $record['opponents'], 'pageKey' => 'opponent_page'])
       </section>
       @endif

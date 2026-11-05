@@ -61,8 +61,11 @@ class MyTennisController extends Controller
         $data['ratingSnapshot'] = null;
         if ($ratingPlayer && $data['canViewRating']) {
             $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)
-                ->forPlayer($ratingPlayer, summaryOnly: $tab !== 'activity');
+                ->forPlayer($ratingPlayer, summaryOnly: !in_array($tab, ['activity', 'rating'], true));
             $data['ratingSnapshot'] = \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($history);
+            if ($tab === 'rating') {
+                $data += $this->ratingViewData($request, $ratingPlayer, $history, []);
+            }
             if ($data['selectedPlayer'] && $tab === 'activity') {
                 $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
             }
@@ -92,12 +95,18 @@ class MyTennisController extends Controller
             'rating_search_player' => 'nullable|integer|min:1',
             'rating_page' => 'nullable|integer|min:1|max:200', 'rating_per_page' => 'nullable|integer|in:25,50,100,500']);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
-        return response()->view('frontend.my-tennis.rating', [
+        return response()->view('frontend.my-tennis.rating', $this->ratingViewData($request, $player, $history, $filters))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function ratingViewData(Request $request, Player $player, array $history, array $filters): array
+    {
+        return [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
                 array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page', 'rating_search', 'rating_search_player'])))),
-        ])->header('Cache-Control', 'private, no-store');
+        ];
     }
 
     public function pathway(Request $request, \App\Models\Player $player)
@@ -119,10 +128,20 @@ class MyTennisController extends Controller
             'page' => 'nullable|integer|min:1|max:2500', 'upcoming_page' => 'nullable|integer|min:1|max:2500', 'opponent_page' => 'nullable|integer|min:1|max:2500', 'meeting_page' => 'nullable|integer|min:1|max:2500']);
         $upcoming = $section === 'opponents' ? app(\App\Services\Performance\PlayerUpcomingMatchInsights::class)
             ->forPlayer($request->user(), $player, (int) ($filters['upcoming_page'] ?? 1)) : null;
+        $record = app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'));
+        $pastRatings = [];
+        if ($section === 'opponents') {
+            $opponentIds = collect($record['opponents']['rows'] ?? [])->pluck('id')
+                ->push($record['opponent']['id'] ?? null)->filter()->unique()->values()->all();
+            if ($opponentIds) {
+                $pastRatings = app(\App\Services\Performance\PlayerRatingTopTen::class)
+                    ->forMatchPlayers($request->user(), $player, $opponentIds);
+            }
+        }
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
-            'upcoming' => $upcoming,
+            'upcoming' => $upcoming, 'pastRatings' => $pastRatings,
             'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
-            'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
+            'record' => $record])
             ->header('Cache-Control', 'private, no-store');
     }
 

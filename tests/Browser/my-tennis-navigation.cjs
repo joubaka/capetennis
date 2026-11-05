@@ -23,6 +23,7 @@ async function run() {
       let finishActivityRetry;
       const activityRetry = new Promise(resolve => { finishActivityRetry = resolve; });
       let documentLoads = 0;
+      let ratingFragmentLoads = 0;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', async route => {
         const request = route.request();
@@ -47,6 +48,7 @@ async function run() {
           return route.fulfill({ contentType: 'text/html', body: fixture('ajax-' + tab) });
         }
         if (url.pathname.endsWith('/rating') && request.headers()['x-requested-with'] === 'XMLHttpRequest') {
+          ratingFragmentLoads++;
           return route.fulfill({ contentType: 'text/html', body: fixture('rating-fragment') });
         }
         if (url.pathname.endsWith('/match-reminder')) return route.fulfill({ json: { players: [] } });
@@ -89,6 +91,7 @@ async function run() {
       const activityTab = nav.getByRole('link', { name: 'Activity', exact: true });
       const activitySpinner = activityTab.locator('[data-my-tennis-tab-spinner]');
       await activityTab.click();
+      assert.equal(await activityTab.getAttribute('data-my-tennis-tab-pending'), '');
       await activitySpinner.waitFor();
       assert.equal(await workspace.getAttribute('aria-busy'), 'true');
       assert.equal(await activityTab.getAttribute('aria-current'), null);
@@ -105,7 +108,7 @@ async function run() {
       await reminder.getByText('No published, unfinished matches', { exact: false }).waitFor();
       await reminder.getByRole('button', { name: 'Close', exact: true }).last().click();
       await reminder.waitFor({ state: 'hidden' });
-      for (const name of ['Rating', 'Results', 'Opponents', 'Next steps']) {
+      for (const name of ['Rating', 'Results', 'Opponents', 'Tournament options']) {
         await nav.getByRole('link', { name, exact: true }).click();
         await active(name);
         if (name === 'Rating') {
@@ -119,9 +122,11 @@ async function run() {
       await page.goBack();
       await active('Opponents');
       await page.goForward();
-      await active('Next steps');
+      await active('Tournament options');
       const levels = workspace.getByText('See all levels and targets', { exact: true });
       await levels.waitFor();
+      assert.equal(await levels.evaluate(summary => summary.parentElement.open), true);
+      await levels.click();
       assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);
       await levels.click();
       await workspace.locator('[data-player-pathway] details[open]').waitFor();
@@ -132,6 +137,7 @@ async function run() {
       await workspace.getByRole('button', { name: 'Player access' }).click();
       await workspace.locator('#link-player-panel.show').waitFor();
       assert.equal(documentLoads, 1);
+      assert.equal(ratingFragmentLoads, 0);
       assert.deepEqual(requests, ['activity', 'activity', 'rating', 'events', 'record', 'opponents', 'pathway', 'opponents', 'pathway', 'profile', 'manage']);
       assert.deepEqual(errors, []);
       await page.close();

@@ -9,7 +9,7 @@
       <p class="alert alert-danger" role="alert">{{ $message }}</p>
     @enderror
     @if(!$connection['available'])
-      <p class="text-muted mb-0">TeamSheet linking is currently unavailable.</p>
+      <p class="text-muted mb-0">Profile linking is currently unavailable. You can still sign in to TeamSheet to access your profile there.</p>
     @elseif($connection['linked'])
       <p>Connected · Verified singles results can count toward the player’s rating.</p>
       @if($connection['can_unlink'])
@@ -28,5 +28,6 @@
         <button class="btn btn-primary" type="submit">Link TeamSheet</button>
       </form>
     @endif
+    <a class="btn btn-outline-primary mt-3" href="https://www.teamsheet.co.za/" referrerpolicy="no-referrer">Open TeamSheet</a>
   </div>
 </section>

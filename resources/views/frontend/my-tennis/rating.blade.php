@@ -38,7 +38,7 @@
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
-  @if(request()->ajax())
+  @if(($embeddedRating ?? false) || request()->ajax())
     <h2 id="player-rating-heading" class="h5">Player rating</h2>
     <template data-profile-rating-update>
       @include('frontend.my-tennis.profile-rating-badge', [
@@ -208,7 +208,7 @@
     </div></details>
   </div>
   </div>
-  @if(request()->ajax())
+  @if(($embeddedRating ?? false) || request()->ajax())
   <div class="d-flex flex-wrap align-items-center gap-3 mt-3">
     <a data-my-tennis-link href="{{ route('my.tennis.pathway', $ratingPlayer) }}">Next steps</a>
     <a data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a>
