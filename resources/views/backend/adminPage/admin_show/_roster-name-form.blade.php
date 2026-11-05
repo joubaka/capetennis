@@ -1,6 +1,16 @@
 @if($team->noProfile && $identity && (int) $identity->player_profile === 0)
   <details>
-    <summary class="btn btn-sm btn-outline-secondary">Change name</summary>
+    @if($compactRoster ?? false)
+      <summary class="roster-action-choice">
+        <span>
+          <strong class="d-block">Correct the player’s name</strong>
+          <span class="small text-body">Fix a typo and keep the same player in this spot.</span>
+        </span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+      </summary>
+    @else
+      <summary class="btn btn-sm btn-outline-secondary">Change name</summary>
+    @endif
     <form method="POST" action="{{ route('backend.team.editPlayerName') }}" class="mt-2" data-team-roster-change>
       @csrf
       <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">

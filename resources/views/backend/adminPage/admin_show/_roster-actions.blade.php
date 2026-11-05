@@ -6,15 +6,26 @@
   @if($compactRoster)
     @include('backend.adminPage.admin_show._roster-order-buttons')
     @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $identity, 'name' => $name, 'event' => $event])
-      @if(!($rosterOnly ?? false) && $slot->exists && (int) $slot->player_id > 0 && (int) $slot->pay_status === 1)
-        @role('super-user')
-          @include('backend.adminPage.admin_show._roster-withdrawal-action', ['slot' => $slot])
-        @endrole
-      @endif
   @endif
   @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
     <details class="roster-replacement">
-      <summary class="btn btn-sm btn-outline-primary">Change player</summary>
+      @if($compactRoster)
+        <summary class="roster-action-choice">
+          <span>
+            <strong class="d-block">Replace this player</strong>
+            <span class="small text-body">
+              @if($replacementPaid)
+                Pick a player for the same spot and choose what happens to the original payment before saving.
+              @else
+                Pick a different player to take the same spot in the team.
+              @endif
+            </span>
+          </span>
+          <i class="ti ti-chevron-down" aria-hidden="true"></i>
+        </summary>
+      @else
+        <summary class="btn btn-sm btn-outline-primary">Change player</summary>
+      @endif
     <form method="POST" action="{{ route('backend.team.changePlayer') }}" class="mt-2 roster-replacement-form" data-team-roster-change>
         @csrf
         <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">
@@ -83,20 +94,48 @@
   @unless($compactRoster)
     @include('backend.adminPage.admin_show._roster-order-buttons')
   @endunless
+  @if(!$compactRoster || !$replacementPaid)
     <form method="POST" action="{{ route('backend.team.removePlayer') }}" data-team-roster-change>
       @csrf
       <input type="hidden" name="team_id" value="{{ $team->id }}"><input type="hidden" name="event_id" value="{{ $event->id }}">
       <input type="hidden" name="remove" value="1">
       <input type="hidden" name="slot_id" value="{{ $identity->id }}"><input type="hidden" name="expected_rank" value="{{ $identity->rank }}">
       <input type="hidden" name="expected_player_id" value="{{ $team->noProfile ? (int) $identity->player_profile : $identity->player_id }}">
-        <button type="button" class="btn btn-sm btn-outline-danger" data-team-roster-remove-toggle aria-expanded="false">Remove from roster</button>
+        @if($compactRoster)
+          <button type="button" class="roster-action-choice" data-team-roster-remove-toggle aria-expanded="false">
+            <span>
+              <strong class="d-block">Remove this unpaid player</strong>
+              <span class="small text-body">Leave the spot empty. You’ll be asked to confirm.</span>
+            </span>
+            <i class="ti ti-chevron-down" aria-hidden="true"></i>
+          </button>
+        @else
+          <button type="button" class="btn btn-sm btn-outline-danger" data-team-roster-remove-toggle aria-expanded="false">Remove from roster</button>
+        @endif
         <span data-team-roster-remove-confirm hidden role="group" aria-label="Confirm player removal">
-          <span class="small">Remove this player?</span>
-          <button class="btn btn-sm btn-danger">Confirm remove</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" data-team-roster-remove-cancel>Cancel</button>
+          @if($compactRoster)
+            <span class="small">Remove this player and leave the spot empty?</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-team-roster-remove-cancel>Cancel</button>
+            <button class="btn btn-sm btn-danger">Remove player</button>
+          @else
+            <span class="small">Remove this player?</span>
+            <button class="btn btn-sm btn-danger">Confirm remove</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-team-roster-remove-cancel>Cancel</button>
+          @endif
         </span>
     </form>
-  @include('backend.adminPage.admin_show._roster-name-form')
+  @endif
+  @if($compactRoster && !($rosterOnly ?? false) && $slot->exists && (int) $slot->player_id > 0 && (int) $slot->pay_status === 1)
+    @role('super-user')
+      @include('backend.adminPage.admin_show._roster-withdrawal-action', ['slot' => $slot])
+    @endrole
+  @endif
+  @if($compactRoster && $replacementPaid && !auth()->user()->hasRole('super-user'))
+    <p class="alert alert-secondary">This player has paid. Contact a Super Admin to replace or withdraw them.</p>
+  @endif
+  @if(!$compactRoster || !$replacementPaid)
+    @include('backend.adminPage.admin_show._roster-name-form')
+  @endif
   @if($compactRoster)
     @endcomponent
   @endif

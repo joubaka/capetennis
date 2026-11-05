@@ -166,7 +166,7 @@ class CentralTeamWorkspaceTest extends TestCase
         TeamPlayer::create(['team_id' => $profileTeam->id, 'rank' => 2, 'player_id' => Player::factory()->create(['name' => 'Paid', 'surname' => 'Synthetic'])->id, 'pay_status' => 1]);
         $this->actingAs($manager);
         $page = $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id]))->assertOk();
-        $page->assertSee('Change player')->assertSee('Existing player profile')
+        $page->assertSee('Replace this player')->assertSee('Existing player profile')
             ->assertSee('Player without a profile')->assertSee('Contact')->assertSee('Payment')
             ->assertSee('data-roster-team="'.$this->team->id.'"', false)
             ->assertSee('data-roster-player-column', false)

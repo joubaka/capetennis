@@ -21,11 +21,14 @@
   .section-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .5rem; color: var(--bs-primary); background: rgba(105, 108, 255, .12); flex: 0 0 auto; }
   .logo-preview-wrap { min-height: 152px; background: var(--bs-body-bg); border: 1px dashed var(--bs-border-color); border-radius: .5rem; }
   .logo-preview { max-width: 180px; max-height: 112px; object-fit: contain; }
-  .save-status { min-width: 118px; }
   .settings-toolbar { position: sticky; top: .75rem; z-index: 1015; border: 1px solid var(--bs-border-color); background: rgba(var(--bs-body-bg-rgb), .94); backdrop-filter: blur(12px); }
-  .settings-jump-links { display: flex; flex-wrap: wrap; gap: .35rem; }
-  .settings-jump-links a { padding: .35rem .65rem; border-radius: 999px; color: var(--bs-body-color); font-size: .8125rem; font-weight: 500; }
-  .settings-jump-links a:hover, .settings-jump-links a:focus { color: var(--bs-primary); background: rgba(105, 108, 255, .1); }
+  .settings-section-links { flex-wrap: wrap; gap: .35rem; }
+  .settings-section-links a { display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .75rem; border-radius: .45rem; color: var(--bs-body-color); font-weight: 500; }
+  .settings-section-links a:hover, .settings-section-links a:focus-visible { color: var(--bs-primary); text-decoration: underline; }
+  .settings-section-links a[aria-current] { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); font-weight: 700; }
+  .settings-save-status:empty { display: none; }
+  [data-settings-panel][hidden] { display: none !important; }
+  #settings-section-select { min-height: 44px; }
   #settings-access { scroll-margin-top: 10rem; }
   .access-heading { display: flex; align-items: center; gap: .75rem; margin-top: .25rem; }
   .access-heading::after { content: ''; height: 1px; flex: 1; background: var(--bs-border-color); }
@@ -38,8 +41,6 @@
   @media (max-width: 767.98px) {
     .settings-card .card-body { padding: 1.25rem; }
     .settings-toolbar { top: .35rem; }
-    .settings-toolbar .settings-jump-links { display: none; }
-    .save-status { min-width: 0; }
   }
 </style>
 
@@ -62,100 +63,43 @@
 @php
   $showSelectionCriteriaTab = $event->isTeam() && auth()->user()->can('event.settings.manage', $event);
 @endphp
-@if($showSelectionCriteriaTab)
-<ul class="nav nav-tabs mb-3" role="tablist" aria-label="Event settings">
-  <li class="nav-item" role="presentation"><button type="button" class="nav-link active" id="settings-general-tab" data-bs-toggle="tab" data-bs-target="#settings-general-pane" role="tab" aria-controls="settings-general-pane" aria-selected="true" style="min-height:44px">General settings</button></li>
-  <li class="nav-item" role="presentation"><button type="button" class="nav-link" id="settings-selection-tab" data-bs-toggle="tab" data-bs-target="#settings-selection-pane" role="tab" aria-controls="settings-selection-pane" aria-selected="false" style="min-height:44px">Selection criteria</button></li>
-</ul>
-@endif
-<div class="settings-toolbar rounded-3 d-flex align-items-center justify-content-between gap-3 px-3 py-2 mb-4 no-print">
-  <nav class="settings-jump-links" aria-label="Settings sections">
-    <a href="#settings-basics">Basics</a>
-    <a href="#settings-information">Public information</a>
-    <a href="#settings-schedule">Schedule</a>
-    <a href="#result-controls">Results updates</a>
-    @if($event->isTeam())<a href="#settings-point-sharing">Point sharing</a>@endif
-    @if($showSelectionCriteriaTab)<a href="#settings-team-selection">Selection criteria</a>@endif
-    <a href="#settings-access">Access</a>
+@php
+  $settingsSections = [
+    'basics' => 'Event & registration',
+    'information' => 'Public page',
+    'results' => 'Results & standings',
+  ];
+  if ($showSelectionCriteriaTab) {
+    $settingsSections['selection'] = 'Selection criteria';
+  }
+  $settingsSections['access'] = 'Access';
+  $settingsAnchors = [
+    'basics' => 'settings-basics',
+    'information' => 'settings-information',
+    'results' => 'result-controls',
+    'selection' => 'settings-team-selection',
+    'access' => 'settings-access',
+  ];
+@endphp
+<div class="settings-toolbar rounded-3 px-3 py-2 mb-3 no-print">
+  <nav class="settings-section-links d-none d-md-flex" aria-label="Event settings">
+    @foreach($settingsSections as $key => $label)
+      <a href="#{{ $settingsAnchors[$key] }}" @if($loop->first) aria-current="location" @endif>{{ $label }}</a>
+    @endforeach
   </nav>
-  <div class="d-md-none flex-grow-1">
+  <div class="d-md-none">
     <label for="settings-section-select" class="visually-hidden">Settings section</label>
-    <select id="settings-section-select" class="form-select" style="min-height:44px">
-      <option value="#settings-basics">Basics</option>
-      <option value="#settings-information">Public information</option>
-      <option value="#settings-schedule">Schedule</option>
-      <option value="#result-controls">Results updates</option>
-      @if($event->isTeam())<option value="#settings-point-sharing">Point sharing</option>@endif
-      @if($showSelectionCriteriaTab)<option value="#settings-team-selection">Selection criteria</option>@endif
-      <option value="#settings-access">Access</option>
+    <select id="settings-section-select" class="form-select">
+      @foreach($settingsSections as $key => $label)
+        <option value="#{{ $settingsAnchors[$key] }}">{{ $label }}</option>
+      @endforeach
     </select>
-  </div>
-  <div id="save-status" class="save-status d-flex align-items-center justify-content-end gap-2 text-success ms-auto" role="status" aria-live="polite" aria-atomic="true">
-      <i class="ti ti-circle-check"></i>
-      <span>Up to date</span>
   </div>
 </div>
 
-@if($showSelectionCriteriaTab)
-<div class="tab-content p-0">
-<div class="tab-pane" id="settings-selection-pane" role="tabpanel" aria-labelledby="settings-selection-tab" tabindex="0">
-<div class="row g-4">
-@php
-  $selectionCriteria = app(\App\Services\TeamSelectionCriteria::class)->context($event);
-  $selectionCriteriaLocked = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists();
-@endphp
-<div class="col-12"><section class="card settings-card" id="settings-team-selection"><div class="card-body">
-  <h5>Platteland criteria for selection of teams</h5>
-  <p>Choose this reusable preset for this team event. Other events keep their own selection criteria.</p>
-  <label class="form-label" for="selection-criteria-preset">Selection criteria</label>
-  <select id="selection-criteria-preset" class="form-select mb-3" @disabled($selectionCriteriaLocked)>
-    <option value="legacy" @selected($selectionCriteria['preset'] === 'legacy')>Existing selection criteria</option>
-    <option value="platteland_v1" @selected($selectionCriteria['preset'] === 'platteland_v1')>Platteland criteria for selection of teams (version 1)</option>
-  </select>
-  <ul>
-    <li>Roster bands come first: 1–2, 3–4, 5–6, and subsequent pairs. Count completed singles and reverse singles together.</li>
-    <li>The higher player in each confirmed same-team pair receives one extra win credit. It adds no match or set result.</li>
-    <li>Within a band, total actual wins plus the credit decide the order. Equal totals on the same actual team follow roster position first. Different teams use exact set win percentage, not set difference or head-to-head.</li>
-    <li>An unbeaten lower-band player can be flagged for manual comparison with the adjacent higher band's results. Assess other results and any weak record before changing a private draft. Players never move between bands automatically.</li>
-  </ul>
-  <div class="row g-3 mb-3">
-    <div class="col-md-6"><label class="form-label" for="selection-expected-matches">Expected played matches for unbeaten review (optional)</label><input id="selection-expected-matches" class="form-control" type="number" min="1" max="100" value="{{ $selectionCriteria['expected_matches'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to review any played unbeaten record. For an event with four counted matches, enter 4. Roster credit is not a played match.</p></div>
-    <div class="col-md-6"><label class="form-label" for="selection-weak-wins">Higher-band maximum actual wins for review (optional)</label><input id="selection-weak-wins" class="form-control" type="number" min="0" max="100" value="{{ $selectionCriteria['weak_record_max_wins'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to inspect all played higher-band records manually. Enter a limit only if this event has agreed what a weak record means.</p></div>
-  </div>
-  <fieldset class="mb-3"><legend class="fs-6">Exclude results involving these event regions</legend>
-  @foreach($event->regions()->get() as $region)<label class="d-block mb-2"><input type="checkbox" data-selection-criteria-excluded value="{{ $region->id }}" @checked(in_array((int) $region->id, $selectionCriteria['excluded_result_region_ids'], true)) @disabled($selectionCriteriaLocked)> {{ $region->region_name }}</label>@endforeach
-  <p class="field-help">A checked region removes the whole match when either side represents it. Choose ZF Mcawu here for the 2026 comparison if required; this exclusion is never applied to other events automatically.</p></fieldset>
-  <p class="field-help">Saved drafts and finalized snapshots retain their original evidence. After changing criteria, review the current results and explicitly save a fresh draft.</p>
-  @if($selectionCriteriaLocked)<p class="alert alert-info mb-0">Selection criteria are locked while selections are finalized. Reopen selections before changing them.</p>@else<button type="button" class="btn btn-primary" id="save-selection-criteria">Save selection criteria</button><span id="selection-criteria-status" class="ms-2" role="status" aria-live="polite"></span>@endif
-</div></section></div>
-</div>
-</div>
-<div class="tab-pane active" id="settings-general-pane" role="tabpanel" aria-labelledby="settings-general-tab" tabindex="0">
-@endif
-<div class="row g-4">
-@if($event->isTeam())
-@include('backend.event.partials.point-sharing-settings')
-<div class="col-12"><section class="card settings-card"><div class="card-body">
-  <h5>Main conveners by age group</h5>
-  <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
+<section data-settings-panel="basics" aria-label="{{ $settingsSections['basics'] }}">
+  <p data-settings-status="basics" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
   <div class="row g-3">
-  @forelse($convenerAges as $age)
-    <div class="col-md-6">
-      <label class="form-label" for="age-convener-{{ $age }}">{{ $age }} main convener</label>
-      <select id="age-convener-{{ $age }}" class="form-select age-convener-select" data-age="{{ $age }}">
-        <option value="">No convener assigned</option>
-        @if($account = $users->firstWhere('id', $ageGroupConveners[$age] ?? null))
-          <option value="{{ $account->id }}" selected>{{ $account->name }} ({{ $account->email }})</option>
-        @endif
-      </select>
-    </div>
-  @empty
-    <p class="mb-0">Create age-group draws to assign main conveners.</p>
-  @endforelse
-  </div>
-</div></section></div>
-@endif
-{{-- BASICS --}}
 <div class="col-12">
   <div class="card settings-card" id="settings-basics">
     <div class="card-header d-flex align-items-start gap-3">
@@ -164,7 +108,7 @@
     </div>
     <div class="card-body pt-3">
       <div class="row g-4">
-        <div class="col-lg-8">
+        <div class="col-12">
           <label class="form-label" for="event-name">Event name</label>
           <input id="event-name" class="form-control autosave" name="name" value="{{ $event->name }}">
 
@@ -195,88 +139,12 @@
           </div>
         </div>
 
-        <div class="col-lg-4">
-          <label class="form-label">Event logo</label>
-          <div class="logo-preview-wrap d-flex align-items-center justify-content-center p-3 mb-3">
-        @if($event->logo)
-          <img
-            id="logo-preview"
-            src="{{ asset('assets/img/logos/'.$event->logo) }}"
-            class="logo-preview img-fluid"
-            alt="Current event logo"
-          >
-        @else
-          <img
-            id="logo-preview"
-            src="{{ asset('assets/img/placeholder-logo.png') }}"
-            class="logo-preview img-fluid"
-            alt="No event logo selected"
-          >
-        @endif
-      </div>
-      <label class="form-label" for="logo-existing-select">Choose an existing logo</label>
-      <select
-        class="form-select mb-3"
-        name="logo_existing"
-        id="logo-existing-select">
 
-        <option value="">— No logo —</option>
-
-        @foreach(File::files(public_path('assets/img/logos')) as $file)
-          @php $name = $file->getFilename(); @endphp
-          <option
-            value="{{ $name }}"
-            @selected($event->logo === $name)>
-            {{ $name }}
-          </option>
-        @endforeach
-      </select>
-      <label class="form-label" for="logo-upload">Or upload a new logo</label>
-      <input
-        id="logo-upload"
-        type="file"
-        class="form-control"
-        name="logo_upload"
-        accept="image/*">
-      <div class="field-help">Your selection is applied automatically. Maximum file size: 2 MB.</div>
-        </div>
       </div>
     </div>
   </div>
 </div>
 
-{{-- INFORMATION --}}
-<div class="col-12">
-  <div class="card settings-card" id="settings-information">
-    <div class="card-header d-flex align-items-start gap-3">
-      <span class="section-icon"><i class="ti ti-file-description"></i></span>
-      <div><h5 class="mb-1">Public information</h5><p class="text-muted small mb-0">The description players and parents will see on the event page.</p></div>
-    </div>
-    <div class="card-body pt-3">
-      <div id="info-editor">{!! $event->information !!}</div>
-    </div>
-  </div>
-</div>
-
-{{-- DATES --}}
-<section class="card mb-4 settings-card" id="result-controls" tabindex="-1">
-  <div class="card-body">
-    <h5>Results updates</h5>
-    <p class="small text-muted">On / Off shows your current selection. Changes take effect after saving; unsaved selections are marked below.</p>
-    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-notifications-enabled">
-      <input class="form-check-input autosave" type="checkbox" id="result-notifications-enabled" name="result_notifications_enabled" {{ $event->result_notifications_enabled ? 'checked' : '' }}>
-      <span>Send result emails for this event</span>
-      <span class="badge bg-label-secondary" data-result-state="result-notifications-enabled">{{ $event->result_notifications_enabled ? 'On' : 'Off' }}</span>
-    </label>
-    <p class="small text-muted">Email players and linked parents when a completed, published result is entered or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
-    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
-      <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" {{ ($event->result_auto_refresh_enabled ?? true) ? 'checked' : '' }}>
-      <span>Automatically refresh results and standings pages</span>
-      <span class="badge bg-label-secondary" data-result-state="result-auto-refresh-enabled">{{ ($event->result_auto_refresh_enabled ?? true) ? 'On' : 'Off' }}</span>
-    </label>
-    <p class="small text-muted mb-0">Check for new scores every 30 seconds while a page is open. When disabled, visitors can reload the page to see the latest results. Scores and standings are still saved normally.</p>
-  </div>
-</section>
 <div class="col-12">
   <div class="card settings-card" id="settings-schedule">
     <div class="card-header d-flex align-items-start gap-3">
@@ -332,7 +200,133 @@
     </div>
   </div>
 </div>
+  </div>
+</section>
 
+<section data-settings-panel="information" aria-label="{{ $settingsSections['information'] }}" hidden>
+  <div class="row g-3">
+{{-- INFORMATION --}}
+<div class="col-12">
+  <div class="card settings-card" id="settings-information">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-file-description"></i></span>
+      <div><h5 class="mb-1">Public information</h5><p class="text-muted small mb-0">The description players and parents will see on the event page.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <span data-settings-status="information" class="small text-body-secondary" role="status"></span>
+            <a href="{{ route('events.show', $event) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Preview public page <span class="visually-hidden">(opens in a new tab)</span></a>
+          </div>
+          <div id="info-editor">{!! $event->information !!}</div>
+        </div>
+        <div class="col-lg-4" id="settings-logo">
+          <h3 class="h6">Event logo</h3>
+          <span data-settings-status="logo" class="small text-body-secondary" role="status"></span>
+          <div class="logo-preview-wrap d-flex align-items-center justify-content-center p-3 mb-3">
+            <img id="logo-preview"
+                 src="{{ $event->logo ? asset('assets/img/logos/'.$event->logo) : asset('assets/img/placeholder-logo.png') }}"
+                 class="logo-preview img-fluid"
+                 alt="{{ $event->logo ? 'Current event logo' : 'No event logo selected' }}">
+          </div>
+          <label class="form-label" for="logo-existing-select">Choose an existing logo</label>
+          <select class="form-select mb-3" name="logo_existing" id="logo-existing-select">
+            <option value="">— No logo —</option>
+            @foreach(File::files(public_path('assets/img/logos')) as $file)
+              @php
+                $name = $file->getFilename();
+              @endphp
+              <option value="{{ $name }}" @selected($event->logo === $name)>{{ $name }}</option>
+            @endforeach
+          </select>
+          <label class="form-label" for="logo-upload">Or upload a new logo</label>
+          <input id="logo-upload" type="file" class="form-control" name="logo_upload" accept="image/*">
+          <div class="field-help">Your selection is applied automatically. Maximum file size: 2 MB.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  </div>
+</section>
+
+<section data-settings-panel="results" aria-label="{{ $settingsSections['results'] }}" hidden>
+  <p data-settings-status="results" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
+  <div class="row g-3">
+<div class="col-12">
+<section class="card settings-card" id="result-controls" tabindex="-1">
+  <div class="card-body">
+    <h5>Results updates</h5>
+    <p class="small text-muted">On / Off shows your current selection. Changes take effect after saving; unsaved selections are marked below.</p>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-notifications-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-notifications-enabled" name="result_notifications_enabled" {{ $event->result_notifications_enabled ? 'checked' : '' }}>
+      <span>Send result emails for this event</span>
+      <span class="badge bg-label-secondary" data-result-state="result-notifications-enabled">{{ $event->result_notifications_enabled ? 'On' : 'Off' }}</span>
+    </label>
+    <p class="small text-muted">Email players and linked parents when a completed, published result is entered or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" {{ ($event->result_auto_refresh_enabled ?? true) ? 'checked' : '' }}>
+      <span>Automatically refresh results and standings pages</span>
+      <span class="badge bg-label-secondary" data-result-state="result-auto-refresh-enabled">{{ ($event->result_auto_refresh_enabled ?? true) ? 'On' : 'Off' }}</span>
+    </label>
+    <p class="small text-muted mb-0">Check for new scores every 30 seconds while a page is open. When disabled, visitors can reload the page to see the latest results. Scores and standings are still saved normally.</p>
+  </div>
+</section>
+</div>
+@if($event->isTeam())
+@include('backend.event.partials.point-sharing-settings')
+@endif
+  </div>
+</section>
+@if($showSelectionCriteriaTab)
+
+<section data-settings-panel="selection" aria-label="{{ $settingsSections['selection'] }}" hidden>
+  <div class="row g-3">
+@php
+  $selectionCriteria = app(\App\Services\TeamSelectionCriteria::class)->context($event);
+  $selectionCriteriaLocked = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists();
+@endphp
+<div class="col-12"><section class="card settings-card" id="settings-team-selection"><div class="card-body">
+  <h3 class="h5">Selection preset</h3>
+  @if($selectionCriteriaLocked)
+    <p class="alert alert-info">Selection criteria are locked while selections are finalized. Reopen selections before changing them.</p>
+  @endif
+  <p>Choose this reusable preset for this team event. Other events keep their own selection criteria.</p>
+  <label class="form-label" for="selection-criteria-preset">Selection criteria</label>
+  <select id="selection-criteria-preset" class="form-select mb-3" @disabled($selectionCriteriaLocked)>
+    <option value="legacy" @selected($selectionCriteria['preset'] === 'legacy')>Existing selection criteria</option>
+    <option value="platteland_v1" @selected($selectionCriteria['preset'] === 'platteland_v1')>Platteland criteria for selection of teams (version 1)</option>
+  </select>
+  <details class="mb-3">
+    <summary class="fw-semibold">How the Platteland preset works</summary>
+    <ul class="mt-2 mb-0">
+    <li>Roster bands come first: 1–2, 3–4, 5–6, and subsequent pairs. Count completed singles and reverse singles together.</li>
+    <li>The higher player in each confirmed same-team pair receives one extra win credit. It adds no match or set result.</li>
+    <li>Within a band, total actual wins plus the credit decide the order. Equal totals on the same actual team follow roster position first. Different teams use exact set win percentage, not set difference or head-to-head.</li>
+    <li>An unbeaten lower-band player can be flagged for manual comparison with the adjacent higher band's results. Assess other results and any weak record before changing a private draft. Players never move between bands automatically.</li>
+    </ul>
+  </details>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6"><label class="form-label" for="selection-expected-matches">Expected played matches for unbeaten review (optional)</label><input id="selection-expected-matches" class="form-control" type="number" min="1" max="100" value="{{ $selectionCriteria['expected_matches'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to review any played unbeaten record. For an event with four counted matches, enter 4. Roster credit is not a played match.</p></div>
+    <div class="col-md-6"><label class="form-label" for="selection-weak-wins">Higher-band maximum actual wins for review (optional)</label><input id="selection-weak-wins" class="form-control" type="number" min="0" max="100" value="{{ $selectionCriteria['weak_record_max_wins'] }}" @disabled($selectionCriteriaLocked)><p class="field-help">Leave blank to inspect all played higher-band records manually. Enter a limit only if this event has agreed what a weak record means.</p></div>
+  </div>
+  <fieldset class="mb-3"><legend class="fs-6">Exclude results involving these event regions</legend>
+  @foreach($event->regions()->get() as $region)<label class="d-block mb-2"><input type="checkbox" data-selection-criteria-excluded value="{{ $region->id }}" @checked(in_array((int) $region->id, $selectionCriteria['excluded_result_region_ids'], true)) @disabled($selectionCriteriaLocked)> {{ $region->region_name }}</label>@endforeach
+  <p class="field-help">A checked region removes the whole match when either side represents it. Choose ZF Mcawu here for the 2026 comparison if required; this exclusion is never applied to other events automatically.</p></fieldset>
+  <p class="field-help">Saved drafts and finalized snapshots retain their original evidence. After changing criteria, review the current results and explicitly save a fresh draft.</p>
+  @unless($selectionCriteriaLocked)
+    <button type="button" class="btn btn-primary" id="save-selection-criteria">Save selection criteria</button>
+    <span id="selection-criteria-status" class="ms-2" role="status" aria-live="polite"></span>
+  @endunless
+</div></section></div>
+  </div>
+</section>
+@endif
+
+<section data-settings-panel="access" aria-label="{{ $settingsSections['access'] }}" hidden>
+  <p data-settings-status="access" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
+  <div class="row g-3">
 {{-- ADMINS --}}
 <div class="col-12" id="settings-access">
   <div class="access-heading">
@@ -531,11 +525,29 @@
   </div>
 </div>
 
-</div>
-@if($showSelectionCriteriaTab)
-</div>
-</div>
+@if($event->isTeam())
+<div class="col-12"><section class="card settings-card"><div class="card-body">
+  <h5>Main conveners by age group</h5>
+  <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
+  <div class="row g-3">
+  @forelse($convenerAges as $age)
+    <div class="col-md-6">
+      <label class="form-label" for="age-convener-{{ $age }}">{{ $age }} main convener</label>
+      <select id="age-convener-{{ $age }}" class="form-select age-convener-select" data-age="{{ $age }}">
+        <option value="">No convener assigned</option>
+        @if($account = $users->firstWhere('id', $ageGroupConveners[$age] ?? null))
+          <option value="{{ $account->id }}" selected>{{ $account->name }} ({{ $account->email }})</option>
+        @endif
+      </select>
+    </div>
+  @empty
+    <p class="mb-0">Create age-group draws to assign main conveners.</p>
+  @endforelse
+  </div>
+</div></section></div>
 @endif
+  </div>
+</section>
 </form>
 </div>
 @endsection
@@ -551,30 +563,56 @@ $(function () {
   const scoringVenues = @json($scoringVenues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values());
   const initialScoringVenueAssignments = @json($scoringAccounts->mapWithKeys(fn ($account) => [(string) $account->user_id => $account->venue_id]));
   const feedback = window.AppFeedback;
+  const sharingFields = '#point-sharing-enabled, [data-sharing-active], [data-sharing-mode], [data-sharing-region]';
+  let sharingVersion = 0;
   $('#save-point-sharing').on('click', function () {
     const button = $(this).prop('disabled', true);
-    $('#point-sharing-status').text('Saving…');
+    const version = sharingVersion;
+    $('#point-sharing-status').text('Saving point sharing…');
     const rules = $('[data-point-sharing-team]').map(function () {
-      return {team_id: Number(this.dataset.pointSharingTeam), enabled: $(this).find('[data-sharing-active]').prop('checked'),
-        mode: $(this).find('[data-sharing-mode]').val(),
-        region_ids: $(this).find('[data-sharing-region]:checked').map(function () { return Number(this.value); }).get()};
+      const row = $(this);
+      const enabled = row.find('[data-sharing-active]').prop('checked');
+      const mode = row.find('[data-sharing-mode]').val();
+      const regionIds = row.find('[data-sharing-region]:checked').map(function () { return Number(this.value); }).get();
+      if (this.dataset.sharingSaved !== 'true' && !enabled && mode === 'full' && !regionIds.length) return null;
+      return {team_id: Number(this.dataset.pointSharingTeam), enabled, mode, region_ids: regionIds};
     }).get();
+    const enabled = $('#point-sharing-enabled').prop('checked');
     $.ajax({url: @json(route('admin.events.point-sharing.update', $event)), method:'PUT', headers:{'X-CSRF-TOKEN':csrf},
-      contentType:'application/json', data: JSON.stringify({enabled: $('#point-sharing-enabled').prop('checked'), rules})})
-      .done(function (data) { $('#point-sharing-status').text(data.message); })
+      contentType:'application/json', data: JSON.stringify({enabled, rules})})
+      .done(function (data) {
+        const persisted = new Set(rules.map(rule => rule.team_id));
+        $('[data-point-sharing-team]').each(function () {
+          this.dataset.sharingSaved = String(persisted.has(Number(this.dataset.pointSharingTeam)));
+        });
+        const dirty = version !== sharingVersion;
+        if (!dirty) $('#point-sharing-status').text(data.message);
+        document.getElementById('settings-point-sharing').dispatchEvent(new CustomEvent('point-sharing:saved', {detail: {enabled, dirty}}));
+      })
       .fail(function (xhr) { $('#point-sharing-status').text(Object.values(xhr.responseJSON?.errors || {}).flat().join(' ') || xhr.responseJSON?.message || 'Could not save point sharing.'); })
       .always(function () { button.prop('disabled', false); });
   });
-  $('#settings-point-sharing').on('change', 'input, select', function () { $('#point-sharing-status').text('Unsaved point-sharing changes. Use Save point sharing.'); });
+  $('#settings-point-sharing').on('change', sharingFields, function () {
+    sharingVersion += 1;
+    $('#point-sharing-status').text('Unsaved point-sharing changes. Use Save point sharing.');
+  });
+  let selectionVersion = 0;
+  $('#settings-team-selection').on('change input', 'input, select', function () {
+    selectionVersion += 1;
+    $('#selection-criteria-status').text('Unsaved selection criteria. Use Save selection criteria.');
+  });
   $('#save-selection-criteria').on('click', function () {
     const button = $(this).prop('disabled', true);
+    const version = selectionVersion;
     $('#selection-criteria-status').text('Saving…');
     $.ajax({url: @json(route('backend.team-selection-criteria.store', $event)), method:'PUT', headers:{'X-CSRF-TOKEN':csrf}, contentType:'application/json', data:JSON.stringify({
       criteria_preset: $('#selection-criteria-preset').val(),
       criteria_expected_matches: $('#selection-expected-matches').val() || null,
       criteria_weak_max_wins: $('#selection-weak-wins').val() || null,
       excluded_result_region_ids: $('[data-selection-criteria-excluded]:checked').map(function(){return Number(this.value);}).get()
-    })}).done(function(){ $('#selection-criteria-status').text('Selection criteria saved. Review the current results before saving a fresh draft.'); })
+    })}).done(function(){
+      if (version === selectionVersion) $('#selection-criteria-status').text('Selection criteria saved. Review the current results before saving a fresh draft.');
+    })
       .fail(function(xhr){$('#selection-criteria-status').text(xhr.responseJSON?.message || 'Could not save selection criteria.');})
       .always(function(){button.prop('disabled',false);});
   });
@@ -588,20 +626,24 @@ $(function () {
   let saveQueued = false;
   let registrationControlDirty = false;
   let registrationControlVersion = 0;
+  const pendingSections = new Set();
 
-  function setSaveStatus(state, message) {
+  function setSaveStatus(section, state, message) {
     const states = {
-      saved:  { className: 'text-success', icon: 'ti-circle-check' },
-      saving: { className: 'text-primary', icon: 'ti-loader-2' },
-      error:  { className: 'text-danger', icon: 'ti-alert-circle' }
+      saved: 'text-success',
+      saving: 'text-primary',
+      error: 'text-danger'
     };
-    const status = states[state] || states.saved;
-    $('#save-status')
-      .removeClass('text-success text-primary text-danger')
-      .addClass(status.className)
-      .find('i')
-      .attr('class', `ti ${status.icon}${state === 'saving' ? ' ti-spin' : ''}`);
-    $('#save-status span').text(message);
+    $('[data-settings-status="' + section + '"]')
+      .removeClass('text-body-secondary text-success text-primary text-danger')
+      .addClass(states[state])
+      .text(message);
+  }
+
+  function focusSettingsField(field) {
+    const panel = field?.closest('[data-settings-panel]');
+    if (panel?.hidden) openSettingsSection('#' + panel.querySelector('[id]').id, true, false);
+    field?.focus();
   }
 
   /* =========================
@@ -632,7 +674,7 @@ $(function () {
     (messages.length ? messages : [xhr.responseJSON?.message || fallback]).forEach(function (message) {
       feedback.error(message);
     });
-    $('.is-invalid').first().trigger('focus');
+    focusSettingsField($('.is-invalid')[0]);
   }
 
   function accessWindowsAreValid() {
@@ -649,9 +691,9 @@ $(function () {
       if (start && end && new Date(end) <= new Date(start)) {
         const field = $('[name="' + pair[1] + '"]').addClass('is-invalid');
         $('<div class="invalid-feedback settings-validation d-block"></div>').text(pair[2]).insertAfter(field);
-        setSaveStatus('error', 'Fix access window');
+        setSaveStatus('access', 'error', 'Fix the access window before settings can be saved.');
         feedback.warning(pair[2]);
-        field.trigger('focus');
+        focusSettingsField(field[0]);
         return false;
       }
     }
@@ -688,7 +730,7 @@ $(function () {
       scoringVenues.forEach(function (venue) {
         select.append($('<option></option>').val(venue.id).text(venue.name));
       });
-      select.val(assignments[String(userId)] || '').on('change', autosave).appendTo(row);
+      select.val(assignments[String(userId)] || '').on('change', () => autosave('access')).appendTo(row);
       row.appendTo(container);
     });
   }
@@ -696,15 +738,19 @@ $(function () {
   /* =========================
      AUTOSAVE
   ========================= */
-  function autosave() {
+  function autosave(section) {
 
     console.log('⏳ Autosave triggered (debounced)');
-    setSaveStatus('saving', 'Saving changes…');
+    if (section) pendingSections.add(section);
+    pendingSections.forEach(key => setSaveStatus(key, 'saving', 'Saving changes…'));
     clearTimeout(saveTimer);
 
     saveTimer = setTimeout(function () {
 
-      if (!accessWindowsAreValid()) return;
+      if (!accessWindowsAreValid()) {
+        pendingSections.forEach(key => setSaveStatus(key, 'error', 'Changes pending. Fix the access window first.'));
+        return;
+      }
       if (saveRequestInFlight) {
         saveQueued = true;
         return;
@@ -771,6 +817,8 @@ $(function () {
       console.groupEnd();
 
       console.log('🚀 Sending PATCH →', updateUrl);
+      const submittedSections = new Set(pendingSections);
+      pendingSections.clear();
       saveRequestInFlight = true;
 
       $.ajax({
@@ -790,7 +838,9 @@ $(function () {
           const input = document.getElementById(this.dataset.resultState);
           if (payload[input.name] !== undefined && Number(payload[input.name]) === (input.checked ? 1 : 0)) this.textContent = input.checked ? 'On' : 'Off';
         });
-        setSaveStatus('saved', 'All changes saved');
+        submittedSections.forEach(key => {
+          if (!pendingSections.has(key)) setSaveStatus(key, 'saved', 'Changes saved.');
+        });
         feedback.success(res.message || 'Event settings saved.');
         updatePreviews();
       })
@@ -799,7 +849,10 @@ $(function () {
         console.error('Status:', xhr.status);
         console.error('Response:', xhr.responseText);
 
-        setSaveStatus('error', 'Changes not saved');
+        submittedSections.forEach(key => {
+          if (!pendingSections.has(key)) setSaveStatus(key, 'error', 'Changes not saved.');
+          pendingSections.add(key);
+        });
         showRequestErrors(xhr, 'Event settings could not be saved. Please try again.');
       })
       .always(function () {
@@ -813,39 +866,40 @@ $(function () {
     }, 700);
   }
 
-  let openingSettingsSection = false;
-  function openSettingsSection(hash, updateHash = true) {
+  const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')];
+  const settingsLinks = [...document.querySelectorAll('.settings-section-links a')];
+
+  function openSettingsSection(hash, updateHash = true, focus = true) {
     const section = document.getElementById(hash.replace(/^#/, ''));
-    if (!section) return;
-    const pane = section.closest('.tab-pane');
-    if (pane) {
-      const tab = document.querySelector('[data-bs-target="#' + pane.id + '"]');
-      if (tab) {
-        openingSettingsSection = true;
-        bootstrap.Tab.getOrCreateInstance(tab).show();
-        openingSettingsSection = false;
+    const panel = section?.closest('[data-settings-panel]');
+    if (!panel) return;
+    settingsPanels.forEach(item => { item.hidden = item !== panel; });
+    settingsLinks.forEach(link => {
+      const anchor = document.getElementById(link.hash.slice(1));
+      if (panel.contains(anchor)) {
+        link.setAttribute('aria-current', 'location');
+        $('#settings-section-select').val(link.hash);
+      } else {
+        link.removeAttribute('aria-current');
       }
+    });
+    if (updateHash && location.hash !== hash) history.pushState(null, '', hash);
+    if (focus) {
+      section.setAttribute('tabindex', '-1');
+      section.focus({ preventScroll: true });
+      section.scrollIntoView({ block: 'start' });
     }
-    $('#settings-section-select').val(hash);
-    if (updateHash) history.replaceState(null, '', hash);
-    section.scrollIntoView({ block: 'start' });
-    section.setAttribute('tabindex', '-1');
-    section.focus({ preventScroll: true });
   }
+
   $('#settings-section-select').on('change', function () {
-    openSettingsSection(this.value);
+    openSettingsSection(this.value, true, false);
   });
-  $('.settings-jump-links a').on('click', function (event) {
+  $('.settings-section-links a').on('click', function (event) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     openSettingsSection(this.hash);
   });
-  $('[data-bs-toggle="tab"][id^="settings-"]').on('shown.bs.tab', function () {
-    if (openingSettingsSection) return;
-    const hash = this.id === 'settings-selection-tab' ? '#settings-team-selection' : '#settings-basics';
-    $('#settings-section-select').val(hash);
-    history.replaceState(null, '', hash);
-  });
-  $(window).on('hashchange', function () { openSettingsSection(location.hash, false); });
+  $(window).on('hashchange', function () { openSettingsSection(location.hash || '#settings-basics', false); });
   if (location.hash) openSettingsSection(location.hash, false);
   $('[data-result-state]').each(function () {
     const badge = this;
@@ -859,11 +913,12 @@ $(function () {
       registrationControlDirty = true;
       registrationControlVersion += 1;
     }
-    autosave();
+    autosave(this.closest('[data-settings-panel]').dataset.settingsPanel);
   });
   $('#event-settings-form').on('submit', function (event) {
     event.preventDefault();
-    autosave();
+    const section = settingsPanels.find(panel => !panel.hidden)?.dataset.settingsPanel;
+    if (['basics', 'results', 'access'].includes(section)) autosave(section);
   });
 
   $('.age-convener-select').select2({
@@ -873,7 +928,7 @@ $(function () {
       data: params => ({ q: params.term || '', scope: 'management' }),
       processResults: data => ({ results: data.results || [] })
     }
-  }).on('change', autosave);
+  }).on('change', () => autosave('access'));
 
   $('.select2-admins').select2({
     width: '100%',
@@ -889,7 +944,7 @@ $(function () {
     }
   }).on('change', function () {
     console.log('👥 Admins changed:', $(this).val());
-    autosave();
+    autosave('access');
   });
 
   $('.select2-convenors').select2({
@@ -906,7 +961,7 @@ $(function () {
     }
   }).on('change', function () {
     console.log('👥 Convenors changed:', $(this).val());
-    autosave();
+    autosave('access');
   });
 
   $('.select2-scoring-accounts').select2({
@@ -924,7 +979,7 @@ $(function () {
   }).on('change', function () {
     console.log('🎾 Scoring accounts changed:', $(this).val());
     renderScoringVenueAssignments();
-    autosave();
+    autosave('access');
   });
 
   /* =========================
@@ -934,7 +989,7 @@ $(function () {
   let infoTimer = null;
 
   quill.on('text-change', function () {
-    setSaveStatus('saving', 'Saving information…');
+    setSaveStatus('information', 'saving', 'Saving information…');
     clearTimeout(infoTimer);
 
     infoTimer = setTimeout(function () {
@@ -955,12 +1010,12 @@ $(function () {
       })
       .done(() => {
         console.log('✅ Info saved');
-        setSaveStatus('saved', 'All changes saved');
+        setSaveStatus('information', 'saved', 'Public information saved.');
         feedback.success('Public information saved.');
       })
       .fail((xhr) => {
         console.error('❌ Info save failed', xhr.responseText);
-        setSaveStatus('error', 'Information not saved');
+        setSaveStatus('information', 'error', 'Information not saved.');
         showRequestErrors(xhr, 'Public information could not be saved.');
       });
 
@@ -1038,7 +1093,7 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
   if (this.id === 'logo-existing-select') {
     $('[name="logo_upload"]').val('');
   }
-  setSaveStatus('saving', 'Saving logo…');
+  setSaveStatus('logo', 'saving', 'Saving logo…');
 
   const formData = new FormData();
   formData.append('_method', 'PATCH');
@@ -1050,7 +1105,7 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
   if (file) {
     if (file.size > 2 * 1024 * 1024) {
       $('[name="logo_upload"]').val('');
-      setSaveStatus('error', 'Logo not saved');
+      setSaveStatus('logo', 'error', 'Logo not saved.');
       feedback.error('The event logo must be 2 MB or smaller.');
       return;
     }
@@ -1076,12 +1131,12 @@ $('[name="logo_upload"], #logo-existing-select').on('change', function () {
     select.val(response.logo || '');
     $('[name="logo_upload"]').val('');
     console.log('✅ Logo autosaved');
-    setSaveStatus('saved', 'All changes saved');
+    setSaveStatus('logo', 'saved', 'Logo saved.');
     feedback.success(existing || file ? 'Event logo saved.' : 'Event logo removed.');
   })
   .fail((xhr) => {
     console.error('❌ Logo autosave failed', xhr.responseText);
-    setSaveStatus('error', 'Logo not saved');
+    setSaveStatus('logo', 'error', 'Logo not saved.');
     showRequestErrors(xhr, 'The event logo could not be saved.');
   })
   .always(() => {

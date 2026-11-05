@@ -76,7 +76,7 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         [$event, $draw, $team, $fixture] = $this->competition();
         $first = $team->team_players_no_profile()->where('rank', 1)->firstOrFail();
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']))
-            ->assertOk()->assertSee('Change player')->assertSee('Change name')->assertSee('Confirm remove')
+            ->assertOk()->assertSee('Replace this player')->assertSee('Correct the player’s name')->assertSee('Remove this unpaid player')
             ->assertSee('Move up: Original1 District1', false)->assertSee('Add player')->assertSee('Add reserve player');
         $this->postJson(route('backend.team.changePlayer'), ['event_id' => $event->id, 'team_id' => $team->id,
             'slot_id' => $first->id, 'expected_rank' => 1, 'expected_player_id' => 0,
@@ -148,7 +148,7 @@ class AutomaticUpcomingFixtureUpdatesTest extends TestCase
         $event->update(['signUp' => false]);
         $this->postJson(route('backend.team.removePlayer'), $payload)->assertUnprocessable();
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id, 'panel' => 'players']))
-            ->assertOk()->assertDontSee('Change player')->assertDontSee('Add reserve player');
+            ->assertOk()->assertDontSee('Replace this player')->assertDontSee('Add reserve player');
     }
 
     public function test_open_roster_change_preserves_other_ties_and_their_bookings_in_the_same_draw(): void

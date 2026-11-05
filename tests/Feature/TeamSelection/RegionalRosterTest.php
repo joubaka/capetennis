@@ -178,7 +178,7 @@ class RegionalRosterTest extends TestCase
         $old = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Original', 'rank' => 2, 'player_profile' => $player->id, 'pay_status' => 0]);
         $sibling = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Sibling', 'surname' => 'Player', 'rank' => 3, 'pay_status' => 0]);
         $mirror = app(\App\Domain\Payments\Services\TeamPaymentService::class)->createUnpaidTeamPlayerSlot($team, $player, 2);
-        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Linked Actual')->assertDontSee('Imported Original')->assertSee('Change player');
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Linked Actual')->assertDontSee('Imported Original')->assertSee('Replace this player');
         $this->assertSame($player->id, (int) $old->fresh()->player_profile);
         $payload = ['team_id' => $team->id, 'event_id' => $event->id, 'slot_id' => $old->id, 'expected_rank' => 2, 'expected_player_id' => $player->id, 'name' => 'New', 'surname' => 'Player'];
         $this->postJson(route('backend.team.changePlayer'), $payload)->assertOk();
@@ -288,7 +288,7 @@ class RegionalRosterTest extends TestCase
         $mirror = $payments->createUnpaidTeamPlayerSlot($team, Player::factory()->create(), 2);
         $payments->updateTeamPlayerSlot($mirror, ['player_id' => 0]);
         $beforeMirror = $mirror->fresh()->getAttributes();
-        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Change name')->assertSee('Save name')->assertSee('value="Typoo"', false);
+        $this->actingAs($manager)->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Correct the player’s name')->assertSee('Save name')->assertSee('value="Typoo"', false);
         $payload = ['event_id' => $event->id, 'team_id' => $team->id, 'slot_id' => $slot->id, 'expected_rank' => 2,
             'expected_player_id' => 0, 'expected_name' => 'Typoo', 'expected_surname' => 'Unlinked', 'name' => '  Typo  ', 'surname' => 'Unlinked'];
         $this->postJson(route('backend.team.editPlayerName'), $payload)->assertOk();
@@ -399,7 +399,7 @@ class RegionalRosterTest extends TestCase
         $this->actingAs($manager);
         $this->assertTrue($manager->can('team.players.manage', $team));
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))
-            ->assertOk()->assertSee('Change player')->assertSee('Change name')->assertSee('Move up');
+            ->assertOk()->assertSee('Replace this player')->assertSee('Correct the player’s name')->assertSee('Move up');
         $sharedRegion = new EventRegion();
         $sharedRegion->forceFill(['event_id' => $otherEvent->id, 'region_id' => $team->region_id, 'ordering' => 2])->save();
         $this->assertFalse($access->canManageTeam($manager, $team));

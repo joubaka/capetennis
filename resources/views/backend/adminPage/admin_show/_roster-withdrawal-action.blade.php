@@ -1,5 +1,7 @@
-<div class="border rounded p-3">
-  <h6 class="mb-1">Withdraw from this team</h6>
-  <p class="small text-muted mb-2">Free this roster spot and review what happens to the original payment before you confirm.</p>
-  <a class="btn btn-outline-primary" data-roster-withdrawal-link href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">Review withdrawal / refund</a>
-</div>
+<a class="roster-action-choice" data-roster-withdrawal-link href="{{ route('backend.team.withdrawal.show', [$event, $team, $slot]) }}">
+  <span>
+    <strong class="d-block">Review withdrawal</strong>
+    <span class="small text-body">Leave the spot empty. See whether a refund is available before confirming.</span>
+  </span>
+  <i class="ti ti-arrow-right" aria-hidden="true"></i>
+</a>
