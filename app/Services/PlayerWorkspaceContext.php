@@ -11,7 +11,7 @@ use App\Services\Performance\PlayerRatingHistoryService;
 /** Read-only navigation context. It never changes a checkout's named player. */
 class PlayerWorkspaceContext
 {
-    public function forPlayer(User $user, ?Player $player = null, ?array $history = null, bool $includeSnapshot = true): array
+    public function forPlayer(User $user, ?Player $player = null, ?array $history = null): array
     {
         $players = app(MyTennisService::class)->playersFor($user);
         $related = $player && app(PlayerRelationshipAccess::class)->related($user, $player);
@@ -21,8 +21,8 @@ class PlayerWorkspaceContext
         $allowed = $player && app(PlayerRatingAccess::class)->allows($user, $player);
         return ['players' => $players, 'player' => $player, 'related' => (bool) $related,
             'canViewRating' => (bool) $allowed,
-            'snapshot' => $allowed && $includeSnapshot
-                ? PlayerRatingHistoryDisplay::snapshot($history ?? app(PlayerRatingHistoryService::class)->forPlayer($player))
+            'snapshot' => $allowed
+                ? PlayerRatingHistoryDisplay::snapshot($history ?? app(PlayerRatingHistoryService::class)->forPlayer($player, summaryOnly: true))
                 : null];
     }
 

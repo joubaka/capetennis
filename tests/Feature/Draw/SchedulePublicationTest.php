@@ -299,7 +299,7 @@ class SchedulePublicationTest extends TestCase
         $scope = ['event' => $event->id, 'date' => '2026-10-10', 'draw_id' => $draw->id];
         $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
             ->assertOk()->assertSee('fixture-round', false)->assertSee('fixture-tie', false)
-            ->assertSee('fixture-team-chip', false)->assertSee('Click to show schedule and fixtures')->assertSee('13:45')
+            ->assertSee('fixture-team-chip', false)->assertSee('Show fixtures')->assertSee('13:45')
             ->assertSee('Match time to follow')
             ->assertSee('Match times published')->assertDontSee('data-live-results=', false);
         $hidden = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))

@@ -22,6 +22,7 @@
       this.panel = panel;
       this.reload = reload;
       this.csrf = options.csrf || '';
+      this.signal = options.signal;
       this.pending = false;
       // Delegate from the persistent panel: its contents are replaced after month/filter changes.
       panel.addEventListener('submit', event => {
@@ -51,6 +52,8 @@
       content.textContent = 'Loading stage details…';
       const loading = root.CapeLoading?.show({ title: 'Loading pathway details', message: 'Please wait while we load this stage’s guidance.' });
       const controller = new AbortController();
+      const abort = () => controller.abort();
+      this.signal?.addEventListener('abort', abort, { once: true });
       const timeout = root.setTimeout(() => controller.abort(), 30000);
       try {
         const response = await root.fetch(button.dataset.pathwayInfo, {
@@ -65,6 +68,7 @@
         content.textContent = 'Stage details are unavailable. Select More info to try again.';
       } finally {
         root.clearTimeout(timeout);
+        this.signal?.removeEventListener('abort', abort);
         content.removeAttribute('aria-busy');
         button.disabled = false;
         loading?.close();

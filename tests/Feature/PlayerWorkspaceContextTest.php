@@ -115,7 +115,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $user = User::factory()->create(); $player = Player::factory()->create(['name' => 'Example', 'surname' => 'Player', 'userId' => $user->id]);
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
-        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->times(3)->andReturn($this->history());
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->times(5)->andReturn($this->history());
         $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic saved record unavailable.']);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic event history unavailable.', 'events' => [], 'pages' => 1]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistoryRefresh::class)->shouldReceive('status')->once()->andReturn(['state' => 'idle', 'message' => 'No update requested.']);
@@ -125,7 +125,7 @@ class PlayerWorkspaceContextTest extends TestCase
             'terms' => route('player-plus.terms', ['player' => $player->id])] as $name => $url) {
             $response = $this->actingAs($user)->get($url)->assertOk();
             if (in_array($name, ['record', 'events'], true)) {
-                $response->assertDontSee('data-rating-snapshot', false);
+                $response->assertDontSee('data-rating-snapshot', false)->assertSee('data-profile-rating-badge', false)->assertSee('66.6');
                 $this->assertTrue($response->viewData('workspace')['canViewRating']);
             } else {
                 $response->assertSee('data-rating-snapshot', false);
@@ -147,13 +147,15 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->assertSame(66.6, $response->viewData('workspace')['snapshot']['points'][0]['score']);
     }
 
-    public function test_opponents_loads_schedule_and_record_without_building_header_rating_history(): void
+    public function test_opponents_loads_schedule_and_record_with_only_the_header_rating_summary(): void
     {
         $user = User::factory()->create();
         $player = Player::factory()->create(['userId' => $user->id, 'name' => 'Jamie', 'surname' => 'Example']);
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $history = $this->mock(PlayerRatingHistoryService::class);
-        $history->shouldNotReceive('forPlayer');
+        $history->shouldReceive('forPlayer')->once()
+            ->withArgs(fn (Player $selected, array $filters, bool $summaryOnly) => $selected->is($player) && $filters === [] && $summaryOnly)
+            ->andReturn($this->history());
         $history->shouldReceive('recordSource')->once()->andReturn(['reason' => null, 'as_of' => '2026-11-03', 'evidence' => [[
             'source_id' => 'match:1', 'kind' => 'match', 'months' => 1, 'event_id' => 1, 'event' => 'Example Open',
             'date' => '2026-10-30', 'date_basis' => 'Match date', 'players' => [$player->id, 700], 'names' => [$player->full_name, 'Taylor Example'],
@@ -167,7 +169,7 @@ class PlayerWorkspaceContextTest extends TestCase
         ]);
         $response = $this->actingAs($user)->get(route('my.tennis.record', ['player' => $player, 'section' => 'opponents', 'opponent' => 700]))->assertOk();
         $response->assertSeeInOrder(['Upcoming matches', 'Example Saturday Open', 'Past opponents', '6-3 6-4'])
-            ->assertDontSee('data-rating-snapshot', false);
+            ->assertSee('66.6')->assertSee('Overall CTR 74.0')->assertDontSee('data-rating-snapshot', false);
         $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>Opponents\s*<\/a>/', $response->getContent());
         $this->export('opponents', $response);
     }

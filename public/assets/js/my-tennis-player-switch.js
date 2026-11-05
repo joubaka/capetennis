@@ -52,8 +52,16 @@
   }
 
   if (typeof module !== 'undefined' && module.exports) module.exports = bindPlayerSwitch;
-  if (root.document) root.document.addEventListener('DOMContentLoaded', function () {
-    bindPlayerSwitch(root, root.document.getElementById('my-tennis-player'));
-    bindPlayerSwitch(root, root.document.getElementById('workspace-player'), {submitOnChange: false});
-  });
+  if (root.document) {
+    const mount = () => {
+      bindPlayerSwitch(root, root.document.getElementById('my-tennis-player'));
+      bindPlayerSwitch(root, root.document.getElementById('workspace-player'), {submitOnChange: false});
+    };
+    root.document.addEventListener('DOMContentLoaded', mount);
+    root.document.addEventListener('my-tennis:mounted', mount);
+    root.document.addEventListener('my-tennis:unmounting', () => {
+      root.document.getElementById('my-tennis-player')?.capePlayerSwitch?.destroy();
+      root.document.getElementById('workspace-player')?.capePlayerSwitch?.destroy();
+    });
+  }
 })(typeof window === 'undefined' ? globalThis : window);

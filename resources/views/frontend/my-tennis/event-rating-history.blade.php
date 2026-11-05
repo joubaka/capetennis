@@ -1,11 +1,11 @@
-@extends('layouts/contentNavbarLayout')
+@extends(request()->header('X-My-Tennis-Navigation') === '1' ? 'layouts.my-tennis-fragment' : 'layouts.contentNavbarLayout')
 @section('title', 'Past-event player ratings')
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-event-rating-history="v1">
+<div data-my-tennis-workspace class="container-xxl flex-grow-1 container-p-y ct-player-workspace" data-event-rating-history="v1">
     @include('frontend.my-tennis.profile-header', ['workspaceTab' => 'rating'])
     <div class="card"><div class="card-body">
         <h2 class="h5">Past-event ratings</h2>
-        <p><a href="{{ route('my.tennis', ['player' => $ratingPlayer, 'tab' => 'rating']) }}">Back to rating</a></p>
+        <p><a data-my-tennis-link href="{{ route('my.tennis', ['player' => $ratingPlayer, 'tab' => 'rating']) }}">Back to rating</a></p>
         <p>See your estimated rating at the end of each event.</p>
         <details class="mb-3">
             <summary>How these estimates are worked out</summary>
@@ -71,3 +71,5 @@
     </div></div>
 </div>
 @endsection
+
+@include('frontend.my-tennis.workspace-assets')

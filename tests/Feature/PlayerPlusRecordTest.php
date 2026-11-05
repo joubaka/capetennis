@@ -150,7 +150,7 @@ class PlayerPlusRecordTest extends TestCase
         $service = Mockery::mock(PlayerPlusRecordService::class);
         $service->shouldReceive('forPlayer')->once()->with($player, ['year' => 2026], false)->andReturn($this->record([$this->row()]));
         $this->app->instance(PlayerPlusRecordService::class, $service);
-        $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player, null, false)->andReturn([]);
+        $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
         $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
         \Illuminate\Support\Facades\File::ensureDirectoryExists($path.'/layouts');
         file_put_contents($path.'/layouts/contentNavbarLayout.blade.php', '@yield("content")');

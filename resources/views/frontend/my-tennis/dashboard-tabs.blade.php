@@ -15,7 +15,7 @@
 @endphp
 <nav class="ct-my-tennis-nav" id="my-tennis-tabs" aria-label="My Tennis views">
   @foreach($tabs as $tab => [$label, $url])
-    <a href="{{ $url }}" @if($tab === $activeTab) aria-current="page" @endif
-      @if($tab === 'rating') id="my-tennis-rating-tab" @endif @if($tab === 'pathway') data-pathway-navigation @endif>{{ $label }}</a>
+    <a data-my-tennis-link href="{{ $url }}" @if($tab === $activeTab) aria-current="page" @endif
+      @if($tab === 'rating') id="my-tennis-rating-tab" @endif>{{ $label }}</a>
   @endforeach
 </nav>

@@ -11,7 +11,7 @@
   const applyPreference = modal.querySelector('[data-reminder-apply]');
   const nextDayOption = modal.querySelector('[data-reminder-next-day]');
   let nextMatchAt = null;
-  const buttons = document.querySelectorAll('[data-open-match-reminder]');
+  const buttons = () => document.querySelectorAll('[data-open-match-reminder]');
   let loading = false;
   let reminderModal;
   async function enhancePreference() {
@@ -65,7 +65,7 @@
   function openReminder(manual = false) {
     if (loading) return;
     loading = true;
-    buttons.forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); });
+    buttons().forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); });
     const body = modal.querySelector('[data-reminder-players]');
     const show = () => { reminderModal ||= new bootstrap.Modal(modal); reminderModal.show(); };
     return fetch(modal.dataset.endpoint, {credentials: 'same-origin', cache: 'no-store', headers: {Accept: 'application/json'}})
@@ -120,9 +120,18 @@
       show();
     }).finally(() => {
       loading = false;
-      buttons.forEach(button => { button.disabled = false; button.removeAttribute('aria-busy'); });
+      buttons().forEach(button => { button.disabled = false; button.removeAttribute('aria-busy'); });
     });
   }
-  buttons.forEach(button => button.addEventListener('click', () => openReminder(true)));
+  const boundButtons = new WeakSet();
+  function bindButtons() {
+    buttons().forEach(button => {
+      if (boundButtons.has(button)) return;
+      boundButtons.add(button);
+      button.addEventListener('click', () => openReminder(true));
+    });
+  }
+  bindButtons();
+  document.addEventListener('my-tennis:mounted', bindButtons);
   if (modal.dataset.autoOpen === '1' && !dismissed() && !snoozed()) openReminder();
 }());

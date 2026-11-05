@@ -34,7 +34,7 @@
     <p class="small mb-0 flex-grow-1" role="status"><strong>{{ $pathway['assessment_status'] }}</strong> · {{ $pathway['reason'] }}</p>
     <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse events</a>
   </div>
-  <details class="mt-2">
+  <details class="mt-2" @if($expandPathwayLevels ?? false) open @endif>
     <summary>See all levels and targets</summary>
     <p class="small text-muted mb-0">Red and Orange each have their own rating and event targets. Your rating can help suggest a Wilson division. Ask your coach which events would suit you.</p>
     <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>

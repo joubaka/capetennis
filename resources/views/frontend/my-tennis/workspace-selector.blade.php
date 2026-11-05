@@ -1,7 +1,9 @@
 @if($workspace['players']->isNotEmpty())
-@once
+@unless(request()->header('X-My-Tennis-Navigation') === '1')
+@once('my-tennis-player-switch-script')
 <script defer src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>
 @endonce
+@endunless
 <form method="get" action="{{ route('my.tennis') }}" class="ct-workspace-player-selector" data-workspace-player-selector>
   <label for="workspace-player" class="small d-block mb-1">{{ ($compactSelector ?? false) ? 'Switch player' : 'View player workspace' }}</label>
   <div class="d-flex gap-2">

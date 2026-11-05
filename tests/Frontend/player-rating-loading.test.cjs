@@ -2,10 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
-const source = fs.readFileSync('resources/views/frontend/my-tennis/index.blade.php', 'utf8');
-const script = source.match(/<script>\s*(document.addEventListener\('DOMContentLoaded',[\s\S]*?)<\/script>/)[1];
+const source = fs.readFileSync('resources/views/frontend/my-tennis/workspace-assets.blade.php', 'utf8');
+const script = source.match(/<script>\s*(function mountMyTennisRating\([\s\S]*?)<\/script>/)[1];
 function harness() {
-  let ready, shown, status, content = '', requests = 0, settle, timer, focusRestored = false, sectionRestored = false;
+  let ready, shown, unmount, status, content = '', requests = 0, settle, timer, focusRestored = false, sectionRestored = false;
   const dialog = {open: false, shows: 0, closes: 0, addEventListener() {}, showModal() {this.open = true; this.shows++;}, close() {this.open = false; this.closes++;}};
   const age = {hidden: false}, level = {value: 'overall'};
   const urls = [], options = [];
@@ -29,7 +29,10 @@ function harness() {
     prepend(value) {status = value;}, addEventListener(name, callback) {listeners[name] = callback;},
     set innerHTML(value) {content = value; status = undefined;}, get innerHTML() {return content;}
   };
-  const document = {createElement: element, addEventListener(name, callback) {ready = callback;},
+  const document = {createElement: element, addEventListener(name, callback) {
+    if (name === 'DOMContentLoaded') ready = callback;
+    if (name === 'my-tennis:unmounting') unmount = callback;
+  },
     activeElement: focused,
     getElementById(id) {return id === 'my-tennis-rating-loading' ? dialog : id === focused.id ? focused : id.endsWith('-tab') ? {id, addEventListener(name, callback) {shown = callback;}} : panel;}, querySelector() {return null;}};
   const context = {document, window: {CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {sync() {}}},
@@ -41,7 +44,7 @@ function harness() {
   vm.runInNewContext(script, context); ready();
   return {start: () => shown(), status: () => status, placeholder, attributes, panel, urls, options, dialog, age, level, requests: () => requests,
     focusRestored: () => focusRestored, sectionRestored: () => sectionRestored,
-    expireTimeout() {timer();}, hasTimeout: () => timer !== null,
+    expireTimeout() {timer();}, hasTimeout: () => timer !== null, unmount: () => unmount(),
     change(values, name, hidden = []) {const form = {action: 'https://ct.test/rating', values, elements: {namedItem(key) {return {type: hidden.includes(key) ? 'hidden' : 'select-one'};}}}; listeners.change({target: {name, closest() {return form;}}});},
     respond(ok, html = '<p>Saved ratings</p>') {settle({ok, redirected: false, text: async () => html});},
     paginate(url) {let prevented = false; listeners.click({button: 0, preventDefault() {prevented = true;}, target: {closest(selector) {return selector === '[data-rating-link]' ? {getAttribute() {return url;}} : null;}}}); return prevented;},
@@ -62,6 +65,18 @@ test('loading displays a spinner and hides placeholder until successful response
   assert.equal(h.options[0].headers['X-Requested-With'], 'XMLHttpRequest');
   assert.equal(h.dialog.open, false);
   assert.equal(h.hasTimeout(), false);
+});
+
+test('leaving the Rating tab aborts its request and closes its loader', async () => {
+  const h = harness();
+  const request = h.start();
+  assert.equal(h.dialog.open, true);
+  h.unmount();
+  await request;
+  assert.equal(h.options[0].signal.aborted, true);
+  assert.equal(h.dialog.open, false);
+  assert.equal(h.hasTimeout(), false);
+  assert.equal(h.focusRestored(), false);
 });
 
 test('rating pagination uses AJAX and filter changes reset to the first page', async () => {

@@ -54,6 +54,9 @@ class MyTennisController extends Controller
         $data['canPreviewNonPlus'] = $request->user()->hasRole('super-user');
         $data['previewNonPlus'] = $data['canPreviewNonPlus'] && $request->boolean('preview_non_plus');
         $data['canViewRating'] = !$data['previewNonPlus'] && $ratingPlayer && app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $ratingPlayer);
+        if ($request->query() === [] && $data['canViewRating'] && !$request->session()->has('errors')) {
+            return redirect()->route('my.tennis.pathway', $ratingPlayer)->header('Cache-Control', 'private, no-store');
+        }
         $data['overviewPathway'] = null;
         $data['ratingSnapshot'] = null;
         if ($ratingPlayer && $data['canViewRating']) {
@@ -119,7 +122,7 @@ class MyTennisController extends Controller
             ->forPlayer($request->user(), $player, (int) ($filters['upcoming_page'] ?? 1)) : null;
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
             'upcoming' => $upcoming,
-            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, includeSnapshot: false),
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
             'record' => app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'))])
             ->header('Cache-Control', 'private, no-store');
     }

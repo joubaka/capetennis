@@ -20,7 +20,7 @@ async function run({ login = 'first-login', account = '1', autoOpen = '1', stora
     addEventListener(event, handler) { handlers[event] = handler; },
   };
   const context = {
-    document: { getElementById() { return modal; }, querySelectorAll() { return [button]; }, createElement() { return { style: {}, children: [], append(node) { this.children.push(node); } }; } },
+    document: { getElementById() { return modal; }, querySelectorAll() { return [button]; }, addEventListener() {}, createElement() { return { style: {}, children: [], append(node) { this.children.push(node); } }; } },
     sessionStorage: {
       getItem(key) { if (blockedStorage) throw Error('blocked'); return storage.get(key); },
       setItem(key, value) { if (blockedStorage) throw Error('blocked'); storage.set(key, value); },

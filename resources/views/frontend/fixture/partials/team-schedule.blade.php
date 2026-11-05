@@ -5,9 +5,27 @@
   @media (max-width: 767.98px) {
     .public-fixture-page .fixture-round > summary,
     .public-fixture-page .fixture-tie > summary { min-height: 44px; }
-    .public-fixture-page .fixture-round > .card-body { padding: .75rem; }
-    .public-fixture-page .fixture-tie > .card > .card-body { padding: .5rem; }
-    .public-fixture-page .fixture-tie h5 { overflow-wrap: anywhere; font-size: 1rem; }
+    .public-fixture-page .fixture-draw-heading,
+    .public-fixture-page .fixture-round > summary,
+    .public-fixture-page .fixture-round > .card-body { padding: .625rem; }
+    .public-fixture-page .fixture-draw-heading h3 { font-size: 1.25rem; }
+    .public-fixture-page .fixture-draw-heading .badge { white-space: normal; text-align: left; }
+    .public-fixture-page .fixture-round h4 { font-size: 1.1rem; }
+    .public-fixture-page .public-tie-matches { border: 0; box-shadow: none; background: transparent; }
+    .public-fixture-page .public-tie-matches > .card-body { padding: 0; }
+    .public-tie-matches .public-match-cards { gap: .5rem; }
+    .public-tie-matches .public-match-card { padding: .625rem; background: #fff; }
+    .public-tie-matches .public-match-schedule { display: grid; gap: .125rem .5rem; align-items: baseline; }
+    .public-tie-matches .public-match-schedule.has-time { grid-template-columns: minmax(0, 1fr) auto; }
+    .public-tie-matches .public-match-not-before,
+    .public-tie-matches .public-match-date { grid-column: 1 / -1; margin: 0; font-size: .8rem; }
+    .public-tie-matches .public-match-time { grid-column: 2; grid-row: 1; font-size: 1.125rem; }
+    .public-tie-matches .public-match-venue { margin: 0; font-size: .875rem; }
+    .public-tie-matches .public-match-players { display: grid; gap: .25rem; margin-top: .375rem; padding-top: .375rem; font-size: .9rem; line-height: 1.4; }
+    .public-tie-matches .public-match-versus { display: none; }
+    .public-tie-matches .fixture-region-side { border-left: 3px solid var(--region-color, #475569); padding-left: .375rem; }
+    .public-tie-matches .fixture-region-badge { display: none; }
+    .public-tie-matches .public-match-score { margin-top: .375rem; color: #526277; }
     .public-fixture-page .btn { min-height: 44px; display: inline-flex; align-items: center; }
   }
 </style>
@@ -25,9 +43,11 @@
   .public-fixture-page .fixture-versus { font-size: .8rem; color: #64748b; }
   .public-fixture-page .fixture-team-names { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: .25rem .5rem .75rem; color: #526277; overflow-wrap: anywhere; }
   @media (max-width: 575.98px) {
-    .public-fixture-page .fixture-pairing, .public-fixture-page .fixture-team-names { grid-template-columns: minmax(0, 1fr); gap: .4rem; }
-    .public-fixture-page .fixture-versus { padding-left: .8rem; }
-    .public-fixture-page .fixture-tie > summary { padding: .75rem; }
+    .public-fixture-page .fixture-pairing, .public-fixture-page .fixture-team-names { gap: .25rem; }
+    .public-fixture-page .fixture-pairing .fixture-team-chip { padding: .25rem .375rem; font-size: .875rem; line-height: 1.3; }
+    .public-fixture-page .fixture-team-names { padding: 0 .125rem .375rem; }
+    .public-fixture-page .fixture-tie > summary { padding: .5rem; }
+    .public-fixture-page .fixture-tie-meta { gap: .25rem; margin-bottom: .375rem; }
   }
 </style>
 @if($draw->published)
@@ -43,7 +63,7 @@
 @endif
 <div class="public-fixture-page" @if($draw->published && ($enableLiveResults ?? true)) data-live-results="team-fixtures" @endif>
   <div class="card mb-3">
-    <div class="card-body d-flex justify-content-between align-items-start gap-3 flex-wrap">
+    <div class="fixture-draw-heading card-body d-flex justify-content-between align-items-start gap-2 gap-md-3 flex-wrap">
       <div>
         <h3 class="mb-2">{{ $draw->drawName }}</h3>
         <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
@@ -68,7 +88,7 @@
     <details class="fixture-round card mb-3" data-live-key="round-{{ $round }}">
       <summary class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap" style="cursor: pointer;">
         <h4 class="mb-0">Round {{ $round ?: '—' }}</h4>
-        <span class="fixture-toggle"><span class="when-closed">▸ Click to show schedule and fixtures</span><span class="when-open">▾ Click to hide schedule and fixtures</span></span>
+        <span class="fixture-toggle"><span class="when-closed">▸ Show fixtures</span><span class="when-open">▾ Hide fixtures</span></span>
         <span class="text-muted">{{ $ties->count() }} {{ $ties->count() === 1 ? 'tie' : 'ties' }} · {{ $roundFixtures->count() }} matches</span>
       </summary>
       <div class="card-body">
@@ -78,7 +98,7 @@
             <summary class="mb-2" id="fixture-tie-{{ $round }}-{{ $tieKey }}">
               <div class="fixture-tie-meta">
                 <span class="text-muted">Tie {{ $firstFixture->tie_nr ?: $loop->iteration }} · {{ $tieFixtures->count() }} matches</span>
-                <span class="fixture-toggle"><span class="when-closed">▸ Click to show matches</span><span class="when-open">▾ Click to hide matches</span></span>
+                <span class="fixture-toggle"><span class="when-closed">▸ Show matches</span><span class="when-open">▾ Hide matches</span></span>
               </div>
               @if($fixtures->pluck('draw_id')->unique()->count() > 1)<span class="badge bg-label-secondary">{{ $firstFixture->draw->drawName }}</span> @endif
               <div class="fixture-pairing">

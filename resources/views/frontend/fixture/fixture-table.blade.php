@@ -74,7 +74,7 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
 @endphp
 
 
-<div class="card">
+<div class="card{{ ($hideFixtureHeader ?? false) ? ' public-tie-matches' : '' }}">
   @unless($hideFixtureHeader ?? false)
   <div class="card-header d-flex justify-content-between align-items-center">
     <div>
@@ -102,14 +102,16 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
       @forelse($fixtures as $fx)
         @php [$homeClass, $awayClass] = $fxWinnerClasses($fx); @endphp
         <article class="public-match-card" aria-label="Match {{ $fx->match_nr }}">
-          <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}</div>
-          @if($fx->scheduled_at)
-            @if($notBeforeTimes)<div class="fw-bold" style="color:#664d03;">NB: NOT BEFORE</div>@endif
-            <div class="public-match-time">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</div>
-            <div class="public-match-date">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('l, j F Y') }}</div>
-          @else
-            <div class="public-match-date">Match time to follow</div>
-          @endif
+          <div class="public-match-schedule{{ $fx->scheduled_at ? ' has-time' : '' }}">
+            <div class="public-match-venue">{{ $fx->venue?->name ?? 'Venue to follow' }}</div>
+            @if($fx->scheduled_at)
+              @if($notBeforeTimes)<div class="public-match-not-before fw-bold" style="color:#664d03;">NB: NOT BEFORE</div>@endif
+              <div class="public-match-time">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('H:i') }}</div>
+              <div class="public-match-date">{{ \Carbon\Carbon::parse($fx->scheduled_at)->format('l, j F Y') }}</div>
+            @else
+              <div class="public-match-date">Match time to follow</div>
+            @endif
+          </div>
           <div class="public-match-players">
             <div class="{{ $homeClass }}">@if($fx instanceof \App\Models\TeamFixture)@include('frontend.fixture.lineup-side', ['lineup' => $fx->lineup_display['home']])@else<x-player-name :players="$fx->registration1?->players ?? []" :context="$draw" separator=" + " />@endif<x-result-label :outcome="$homeClass" /></div>
             <div class="public-match-versus">vs</div>

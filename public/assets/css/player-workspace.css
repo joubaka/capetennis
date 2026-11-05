@@ -142,7 +142,7 @@
   .ct-workspace-header-compact .ct-player-navigation-compact .btn { padding-inline: .2rem; }
 }
 
-.ct-my-tennis-nav { display:flex; flex-wrap:wrap; gap:.4rem; }
+.ct-my-tennis-nav { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); grid-auto-rows:1fr; gap:.4rem; }
 .ct-my-tennis-nav a {
   display:inline-flex;
   align-items:center;
@@ -153,9 +153,25 @@
   border-radius:.5rem;
   color:var(--ct-workspace-navy);
   font-weight:600;
+  text-align:center;
+  overflow-wrap:anywhere;
 }
 .ct-my-tennis-nav a:hover,
 .ct-my-tennis-nav a[aria-current="page"] { background:#fff4e7; border-color:#deb17e; }
+@media screen {
+  .ct-workspace-header-compact[data-player-profile-header] {
+    background: linear-gradient(115deg, #dcecff 0%, #edf5ff 60%, #fff0df 100%);
+    border-color: #aec9e8;
+    border-top-color: var(--ct-workspace-orange);
+  }
+  [data-player-profile-header] .ct-workspace-header-navigation { border-color: #b3cce8; }
+  [data-player-profile-header] .ct-my-tennis-nav a:hover { background: #dcecff; border-color: #7fa6d3; }
+  [data-player-profile-header] .ct-my-tennis-nav a[aria-current="page"] {
+    background: #194779;
+    border-color: #194779;
+    color: #fff;
+  }
+}
 .ct-my-tennis-rating-badge {
   display:flex;
   align-items:center;
@@ -172,7 +188,7 @@
 .ct-my-tennis-profile-fields { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%, 13rem), 1fr)); gap:1rem; }
 .ct-my-tennis-profile-fields dd { margin:0; overflow-wrap:anywhere; }
 .ct-my-tennis-profile-fields dt { color:#52677b; font-size:.85rem; }
-@media (max-width:575.98px) {
-  .ct-my-tennis-nav { display:grid; grid-template-columns:repeat(auto-fit,minmax(4.5rem,1fr)); }
-  .ct-my-tennis-nav a { padding-inline:.2rem; font-size:.8rem; white-space:nowrap; }
+@media (max-width:767.98px) {
+  .ct-my-tennis-nav:has(a:nth-child(4)) { grid-auto-flow:row; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .ct-my-tennis-nav a { padding:.2rem; font-size:.8rem; line-height:1.2; }
 }

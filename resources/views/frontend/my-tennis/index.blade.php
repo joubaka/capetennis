@@ -1,17 +1,9 @@
-@extends('layouts/contentNavbarLayout')
+@extends(request()->header('X-My-Tennis-Navigation') === '1' ? 'layouts.my-tennis-fragment' : 'layouts.contentNavbarLayout')
 
 @section('title', 'My Tennis')
 
-@section('vendor-style')
-<link rel="stylesheet" href="{{ asset('assets/vendor/libs/select2/select2.css') }}">
-@endsection
-
-@section('vendor-script')
-<script src="{{ asset('assets/vendor/libs/select2/select2.js') }}"></script>
-@endsection
-
 @section('content')
-<div id="my-tennis-page" class="container-xxl flex-grow-1 container-p-y ct-player-workspace">
+<div id="my-tennis-page" data-my-tennis-workspace class="container-xxl flex-grow-1 container-p-y ct-player-workspace">
   <style>
     #my-tennis-page { min-width: 0; overflow-x: clip; }
     #my-tennis-page [data-rating-hero] .ct-workspace-header-main,
@@ -24,11 +16,6 @@
     #my-tennis-page .my-tennis-heading p { font-size: .9rem; }
     #my-tennis-page .my-tennis-heading form { width: min(100%, 18rem); }
     #my-tennis-page .my-tennis-reminder { border-color: #d4dfd9; color: #456356; background: #f2f6f2; }
-    #my-tennis-tabs { flex-wrap: wrap; gap: .25rem; background: transparent; padding: 0; border-bottom: 1px solid #dce5e3; border-radius: 0; }
-    #my-tennis-tabs .nav-item { flex: 0 1 auto; min-width: 0; }
-    #my-tennis-tabs .nav-item:last-child { margin-left: auto; }
-    #my-tennis-tabs .nav-link { white-space: normal; width: 100%; min-height: 44px; padding: .75rem 1rem; font-size: .85rem; color: #536873; border-radius: 8px 8px 0 0; border-bottom: 3px solid transparent; }
-    #my-tennis-tabs .nav-link.active { background: #eef3fa; color: #004177; border-bottom-color: #004177; box-shadow: none; }
     #my-tennis-page #my-tennis-tab-content { padding: 0; background: transparent; border: 0; box-shadow: none; }
     #my-tennis-page .my-tennis-player-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1.5rem; background: #233d50; color: #fff; border-radius: 16px; margin-bottom: 1.75rem; }
     #my-tennis-page .my-tennis-player-avatar { display: grid; place-items: center; flex: 0 0 56px; height: 56px; border: 1px solid #72938b; border-radius: 16px; background: #3f605e; font-size: 1.2rem; font-weight: 600; }
@@ -131,9 +118,6 @@
     #my-tennis-page .player-actions[open] .my-tennis-unlink { position: absolute; z-index: 5; right: 0; top: 100%; background: #fff; border: 1px solid #e5ece9; box-shadow: 0 4px 16px #20384b12; white-space: nowrap; }
     #my-tennis-page #my-tennis-bulk-unlink[hidden] { display: none !important; }
     @media (max-width: 575.98px) {
-      #my-tennis-tabs .nav-item { flex: 1 1 45%; }
-      #my-tennis-tabs .nav-item:last-child { margin-left: 0; }
-      #my-tennis-tabs .nav-link { padding: .65rem .4rem; }
       #my-tennis-page .my-tennis-header-actions { width: 100%; }
       #my-tennis-page .my-tennis-header-actions .btn { flex: 1; }
       #my-tennis-page .my-tennis-profile-header { padding: 1rem; }
@@ -142,9 +126,7 @@
   @php
     $workspaceTab = $workspaceTab ?? 'profile';
   @endphp
-  @include('frontend.my-tennis.profile-header', [
-    'headerSubtitle' => $selectedPlayer ? ($profile['message'] ?? null) : (($ratingPlayer ?? null) ? 'Admin preview' : null),
-  ])
+  @include('frontend.my-tennis.profile-header')
 
   @if(($canPreviewNonPlus ?? false) && ($ratingPlayer ?? null))
     <div class="my-tennis-preview-toolbar" data-non-plus-preview-control>
@@ -166,7 +148,7 @@
     @endif
   </section>
   @if($canViewRating ?? false)
-    <p class="mt-3"><a href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a></p>
+    <p class="mt-3"><a data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a></p>
   @endif
   @elseif($workspaceTab === 'activity')
   <div id="my-tennis-overview">
@@ -201,7 +183,7 @@
         @endif
         <ul class="small ps-3 mb-2">@foreach($overviewPathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
         <p class="small text-muted mb-2">These are development targets; each tournament has its own entry rules.</p>
-        <a class="btn my-tennis-plus-link align-self-start" data-pathway-navigation href="{{ route('my.tennis.pathway', $selectedPlayer) }}">Explore my tennis pathway <span aria-hidden="true">→</span></a>
+        <a class="btn my-tennis-plus-link align-self-start" data-my-tennis-link href="{{ route('my.tennis.pathway', $selectedPlayer) }}">Explore my tennis pathway <span aria-hidden="true">→</span></a>
       </aside>
     @endif
     <div class="d-flex align-items-center justify-content-between gap-2 mb-3">
@@ -292,6 +274,15 @@
   @endif
 
   @elseif($workspaceTab === 'manage')
+  <script type="application/json" data-my-tennis-manage-config>{!! json_encode([
+    'searchUrl' => route('player.search', [], false),
+    'linkUrl' => route('backend.user.players.store', $accountUser, false),
+    'unlinkUrl' => route('backend.user.players.destroy', [$accountUser, '__PLAYER__'], false),
+    'bulkUnlinkUrl' => route('backend.user.players.bulk-destroy', $accountUser, false),
+    'playersUrl' => route('my.tennis.players', [], false),
+    'profileUrl' => route('my.tennis', [], false),
+    'linkedIds' => array_map('intval', $linkedPlayerIds),
+  ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_THROW_ON_ERROR) !!}</script>
   <div id="my-tennis-manage">
   <div class="card my-tennis-manage-card mb-4 border-0 shadow-sm">
     <div class="card-body">
@@ -350,267 +341,4 @@
 </div>
 @endsection
 
-@section('page-script')
-<script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
-<script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
-<script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
-<script src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>
-<script src="{{ asset('assets/js/my-tennis-workspace.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-workspace.js')) }}"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  const button = document.getElementById('my-tennis-rating-tab');
-  const panel = document.getElementById('my-tennis-rating');
-  if (!button || !panel) return;
-  document.querySelector('[data-overview-rating-link]')?.addEventListener('click', event => {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    bootstrap.Tab.getOrCreateInstance(button).show();
-  });
-  if (!panel.dataset.ratingUrl) {
-    if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
-    return;
-  }
-  let loaded = false, loading = false, refreshPending = false, pendingUrl = null, lastUrl = panel.dataset.ratingUrl;
-  let loadingHandle = null;
-  let focusId = null;
-  const syncAgeFilter = () => {
-    const level = panel.querySelector('[name="rating_level"]:not([type="hidden"])');
-    const age = panel.querySelector('[data-rating-age-filter]');
-    if (age && level) age.hidden = level.value !== 'overall';
-  };
-  const refreshUI = new window.PlayerRatingHistoryRefreshUI(panel, () => {
-    if (loading) { refreshPending = true; return; }
-    return load(lastUrl);
-  }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '' });
-  new window.PlayerPathwayUI(panel, () => {
-    if (loading) { refreshPending = true; return; }
-    return load(lastUrl);
-  }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '' });
-  const load = async (url = null) => {
-    if (loading) {
-      if (url) { lastUrl = url; pendingUrl = url; }
-      return;
-    }
-    if (loaded && !url) return;
-    lastUrl = url || lastUrl;
-    const requestUrl = lastUrl;
-    loading = true;
-    if (!loadingHandle) {
-      focusId = panel.contains(document.activeElement) ? document.activeElement.id : button.id;
-      loadingHandle = window.CapeLoading.show({title: 'Loading ratings', message: 'Please wait while we load your saved rating history.'});
-    }
-    panel.querySelectorAll('[data-rating-placeholder], [data-rating-retry]').forEach(element => { element.hidden = true; });
-    panel.setAttribute('aria-busy', 'true');
-    let status = panel.querySelector('[data-rating-load-status]');
-    if (!status) { status = document.createElement('p'); status.dataset.ratingLoadStatus = ''; status.setAttribute('role', 'status'); status.className = 'small text-muted d-flex align-items-center gap-2'; panel.prepend(status); }
-    status.textContent = '';
-    const spinner = document.createElement('span');
-    spinner.className = 'spinner-border spinner-border-sm flex-shrink-0';
-    spinner.setAttribute('aria-hidden', 'true');
-    status.append(spinner, 'Loading saved rating history…');
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
-    try {
-      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: controller.signal });
-      if (!response.ok || response.redirected) throw new Error('Unavailable');
-      const html = await response.text();
-      if (pendingUrl) return;
-      const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
-      panel.innerHTML = html;
-      const currentBadge = document.querySelector('[data-profile-rating-badge]');
-      const updatedBadge = panel.querySelector('[data-profile-rating-update]')?.content.firstElementChild;
-      if (currentBadge && updatedBadge) currentBadge.replaceWith(updatedBadge.cloneNode(true));
-      syncAgeFilter();
-      const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
-      if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
-      loaded = true;
-      refreshUI.sync();
-    } catch (error) {
-      if (pendingUrl) return;
-      status.textContent = 'Rating history could not be loaded. ';
-      const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-sm btn-outline-primary'; retry.dataset.ratingRetry = ''; retry.textContent = 'Try again'; status.append(retry);
-    } finally {
-      clearTimeout(timeout);
-      loading = false;
-      panel.removeAttribute('aria-busy');
-      if (pendingUrl) { const nextUrl = pendingUrl; pendingUrl = null; refreshPending = false; load(nextUrl); }
-      else if (refreshPending) { refreshPending = false; load(lastUrl); }
-      else {
-        loadingHandle?.close();
-        loadingHandle = null;
-        const focusTarget = (focusId && document.getElementById(focusId)) || panel.querySelector('[data-rating-list-focus]') || button;
-        focusTarget.focus({ preventScroll: true });
-      }
-    }
-  };
-  button.addEventListener('shown.bs.tab', () => load());
-  panel.addEventListener('click', event => {
-    const link = event.target.closest('[data-rating-link]');
-    if (link && (event.button === undefined || event.button === 0) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); load(link.getAttribute('href')); }
-    else if (event.target.closest('[data-rating-retry]')) load(lastUrl);
-  });
-  const filterUrl = (form, changedControl = null) => {
-    const url = new URL(form.action);
-    const params = new URLSearchParams(new FormData(form));
-    // A second form may still contain hidden values from the previous response.
-    // Keep the latest choices while updating and after a failed request.
-    const latest = new URL(lastUrl, form.action).searchParams;
-    latest.forEach((value, key) => {
-      const preserve = form.elements.namedItem(key)?.type === 'hidden'
-        || (loading && changedControl && key !== changedControl.name);
-      if (params.has(key) && preserve) params.set(key, value);
-    });
-    if (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level', 'rating_per_page'].includes(changedControl?.name)) params.set('rating_page', '1');
-    url.search = params.toString();
-    return url.toString();
-  };
-  panel.addEventListener('change', event => {
-    const form = event.target.closest('[data-rating-filters]');
-    if (form) {
-      syncAgeFilter();
-      if (loading && event.target.id) focusId = event.target.id;
-      load(filterUrl(form, event.target));
-    }
-  });
-  panel.addEventListener('submit', event => {
-    const form = event.target.closest('[data-rating-filters]');
-    if (form) { event.preventDefault(); load(filterUrl(form)); }
-  });
-  if (panel.dataset.ratingPage !== undefined) load();
-  else if (window.location.hash === '#rating') bootstrap.Tab.getOrCreateInstance(button).show();
-});
-</script>
-<script>
-(() => {
-  const openLegacyTab = () => {
-    const url = new URL(window.location.href);
-    const tab = {'#rating': 'rating', '#my-tennis-history': 'activity', '#manage': 'manage'}[url.hash];
-    if (!tab || url.searchParams.has('tab') || url.searchParams.has('feature')) return;
-    url.searchParams.set('tab', tab);
-    @if($selectedPlayer ?? $ratingPlayer ?? null)
-    url.searchParams.set('player', {{ (int) ($selectedPlayer ?? $ratingPlayer)->id }});
-    @endif
-    if (tab !== 'activity') url.hash = '';
-    window.location.replace(url);
-  };
-  openLegacyTab();
-  window.addEventListener('hashchange', openLegacyTab);
-  const playerSelect = document.getElementById('my-tennis-player');
-  if (playerSelect && window.jQuery?.fn?.select2) {
-    window.jQuery(playerSelect).select2({ width: '100%', minimumResultsForSearch: 0, placeholder: 'Choose a player' });
-  }
-  const searchInput = document.getElementById('my-tennis-player-search');
-  const linkButton = document.getElementById('my-tennis-player-link-button');
-  const feedback = document.getElementById('my-tennis-link-feedback');
-  const linkedPlayers = document.getElementById('my-tennis-linked-players');
-  const bulkButton = document.getElementById('my-tennis-bulk-unlink');
-  const loadMoreButton = document.getElementById('my-tennis-load-more');
-  if (!searchInput || !linkButton || !feedback) return;
-
-  const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
-  const searchUrl = {{ Illuminate\Support\Js::from(route('player.search', [], false)) }};
-  const linkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.store', $accountUser, false)) }};
-  const unlinkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.destroy', [$accountUser, '__PLAYER__'], false)) }};
-  const bulkUnlinkUrl = {{ Illuminate\Support\Js::from(route('backend.user.players.bulk-destroy', $accountUser, false)) }};
-  const playersUrl = {{ Illuminate\Support\Js::from(route('my.tennis.players', [], false)) }};
-  const linkedIds = new Set({{ Illuminate\Support\Js::from(array_map('intval', $linkedPlayerIds)) }});
-
-  const showFeedback = (message, type = 'info') => {
-    const alert = document.createElement('div');
-    alert.className = `alert alert-${type} py-2 mb-0`;
-    alert.textContent = message;
-    feedback.replaceChildren(alert);
-  };
-
-  const selectedIds = () => [...document.querySelectorAll('.my-tennis-player-check:checked')].map(input => Number(input.value));
-  const refreshBulkButton = () => {
-    const count = selectedIds().length;
-    bulkButton.disabled = count === 0;
-    bulkButton.hidden = count === 0;
-    bulkButton.innerHTML = `<i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink selected${count ? ` (${count})` : ''}`;
-  };
-
-  document.addEventListener('change', event => {
-    if (event.target.matches('.my-tennis-player-check')) refreshBulkButton();
-  });
-
-  const appendPlayerRows = players => {
-    players.forEach(player => {
-      const row = document.createElement('div');
-      row.className = 'player-chip';
-      row.dataset.playerRow = player.id;
-      const details = document.createElement('div');
-      const checkbox = document.createElement('input');
-      checkbox.className = 'form-check-input my-tennis-player-check me-2';
-      checkbox.type = 'checkbox'; checkbox.value = player.id;
-      checkbox.setAttribute('aria-label', `Select ${player.name} for bulk unlink`);
-      const name = document.createElement('a'); name.className = 'fw-semibold'; name.textContent = player.name;
-      const playerUrl = new URL({{ Illuminate\Support\Js::from(route('my.tennis', [], false)) }}, window.location.origin); playerUrl.searchParams.set('player', player.id); name.href = playerUrl.href;
-      const source = document.createElement('small'); source.className = 'text-muted'; source.textContent = player.linked ? 'Linked to this account' : 'Legacy account link';
-      details.append(checkbox, name, source);
-      const unlink = document.createElement('button');
-      unlink.className = 'btn btn-sm text-danger my-tennis-unlink'; unlink.type = 'button'; unlink.dataset.playerId = player.id; unlink.dataset.playerName = player.name;
-      unlink.innerHTML = '<i class="ti ti-user-minus me-1" aria-hidden="true"></i>Unlink';
-      const actions = document.createElement('details'); actions.className = 'player-actions';
-      const summary = document.createElement('summary'); summary.textContent = 'Actions'; summary.setAttribute('aria-label', `Actions for ${player.name}`);
-      actions.append(summary, unlink);
-      row.append(details, actions); linkedPlayers.append(row);
-    });
-  };
-
-  const linkPlayer = async (player, button) => {
-    button.disabled = true;
-    try {
-      await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id });
-      showFeedback(`Existing access to ${player.name} ${player.surname || ''} has been restored.`, 'success');
-      window.location.reload();
-    } catch (error) { button.disabled = false; showFeedback(error.message, 'danger'); }
-  };
-
-  const unlinkPlayer = async button => {
-    const name = button.dataset.playerName;
-    if (!window.confirm(`Unlink ${name} from your account? This will not delete the player or their history.`)) return;
-    button.disabled = true;
-    try {
-      const response = await fetch(unlinkUrl.replace('__PLAYER__', button.dataset.playerId), { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Unable to unlink player');
-      window.location.reload();
-    } catch (error) { button.disabled = false; showFeedback(error.message, 'danger'); }
-  };
-
-  document.addEventListener('click', event => {
-    const button = event.target.closest('.my-tennis-unlink');
-    if (button) unlinkPlayer(button);
-  });
-
-  bulkButton.addEventListener('click', async () => {
-    const ids = selectedIds();
-    if (!ids.length || !window.confirm(`Unlink ${ids.length} selected player${ids.length === 1 ? '' : 's'}? Their records and history will be kept.`)) return;
-    bulkButton.disabled = true;
-    try {
-      const response = await fetch(bulkUnlinkUrl, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ player_ids: ids }) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.message || 'Unable to unlink selected players');
-      window.location.reload();
-    } catch (error) { showFeedback(error.message, 'danger'); refreshBulkButton(); }
-  });
-
-  loadMoreButton?.addEventListener('click', async () => {
-    const page = Number(loadMoreButton.dataset.nextPage || 2);
-    loadMoreButton.disabled = true;
-    try {
-      const response = await fetch(`${playersUrl}?page=${page}`, { headers: { Accept: 'application/json' } });
-      if (!response.ok) throw new Error('Unable to load more players');
-      const payload = await response.json(); appendPlayerRows(payload.data || []);
-      if (page >= Number(payload.meta?.last_page || page)) loadMoreButton.remove();
-      else { loadMoreButton.dataset.nextPage = page + 1; loadMoreButton.disabled = false; }
-    } catch (error) { showFeedback(error.message, 'danger'); loadMoreButton.disabled = false; }
-  });
-
-  new window.MyTennisPlayerSearch({ select: searchInput, button: linkButton,
-    status: document.getElementById('my-tennis-player-search-status'), url: searchUrl, linkedIds,
-    onLink: player => linkPlayer({ id: player.id, name: player.text }, linkButton) });
-})();
-</script>
-@endsection
+@include('frontend.my-tennis.workspace-assets')

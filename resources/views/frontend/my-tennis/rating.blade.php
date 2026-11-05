@@ -9,8 +9,8 @@
     .ctr-history .btn-primary:hover { background:#172e45;border-color:#172e45; }
     .ctr-history .btn-outline-primary { color:#004177;border-color:#a5bcd5; }
     .ctr-history .btn-outline-primary:hover { background:#eef3fa;color:#172e45;border-color:#004177; }
-    .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem; }
-    .ctr-history .ctr-section-tabs .nav-link { min-height:44px;white-space:normal;color:#47645c;background:#f1f5fa;border:1px solid #dbe4ef;border-radius:10px;font-weight:600; }
+    .ctr-history .ctr-section-tabs { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:1fr;gap:.5rem; }
+    .ctr-history .ctr-section-tabs .nav-link { min-height:44px;text-align:center;overflow-wrap:anywhere;white-space:normal;color:#47645c;background:#f1f5fa;border:1px solid #dbe4ef;border-radius:10px;font-weight:600; }
     .ctr-history .ctr-section-tabs .nav-link:hover { background:#e4edf8; }
     .ctr-history .ctr-section-tabs .nav-link.active { background:#004177;border-color:#004177;color:#fff;box-shadow:0 3px 8px #172e4518; }
     .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }

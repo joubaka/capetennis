@@ -115,7 +115,7 @@
       <p class="ctr-hero-description">What should I play next? How am I progressing? Player Plus helps primary-school players, beginners and their families understand playing strength and explore the journey from Red Ball through Orange, Green and Yellow Ball to TSA events.</p>
       <div class="ctr-intro-actions">
         <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
-        <a class="btn ctr-secondary" href="{{ route('my.tennis') }}#rating">Preview in My Tennis</a>
+        <a class="btn ctr-secondary" href="{{ route('my.tennis', ['tab' => 'rating']) }}">Preview in My Tennis</a>
       </div>
       <p class="ctr-hero-note">For one player and their linked parents or guardians.<br>Essential tournament information stays free.</p>
     </div>

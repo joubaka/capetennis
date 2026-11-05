@@ -91,6 +91,74 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $this->export('admin-preview', $response);
     }
 
+    public function test_bare_landing_opens_progress_for_an_eligible_remembered_player(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id, 'name' => 'Taylor']);
+        $standard = Player::factory()->create(['userId' => $user->id, 'name' => 'Avery']);
+        $this->actingAs($user);
+        PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
+
+        $this->get(route('my.tennis'))->assertOk()->assertViewIs('frontend.my-tennis.index')->assertSee('Edit profile');
+        $this->get(route('my.tennis', ['player' => $player, 'tab' => 'profile']))->assertOk()->assertSee('Edit profile');
+        $progress = route('my.tennis.pathway', $player);
+        $this->get(route('my.tennis'))->assertRedirect($progress)->assertHeader('Cache-Control', 'no-store, private');
+        $response = $this->get($progress)->assertOk()
+            ->assertViewIs('frontend.my-tennis.pathway-page')->assertViewHas('ratingPlayer', fn (Player $selected) => $selected->is($player))
+            ->assertHeader('Cache-Control', 'no-store, private');
+        $dom = new \DOMDocument;
+        @$dom->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($dom);
+        $this->assertSame('Progress', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
+        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[@open]')->length);
+        $this->export('progress-entry', $response);
+
+        $this->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertViewHas('workspaceTab', 'activity');
+        $this->get(route('my.tennis', ['player' => $standard]))->assertOk()->assertViewHas('workspaceTab', 'profile');
+        $this->get(route('my.tennis'))->assertOk()->assertViewHas('workspaceTab', 'profile');
+    }
+
+    public function test_ajax_tabs_return_only_the_workspace_and_keep_existing_access_checks(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $other = Player::factory()->create();
+        $headers = ['X-My-Tennis-Navigation' => '1'];
+        $this->actingAs($user);
+        $this->get(route('my.tennis.record', $player), $headers)->assertForbidden();
+        PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn([
+            'reason' => null, 'as_of' => '2026-11-03', 'ball_stage' => 'standard',
+            'points' => [['index' => 11, 'date' => '2026-11-03', 'score' => 91.1]],
+        ]);
+        $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->twice()->andReturn(['reason' => 'No saved results.']);
+        $this->mock(\App\Services\Performance\PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()
+            ->andReturn(['reason' => 'No event ratings.', 'events' => [], 'pages' => 1]);
+        $this->mock(\App\Services\Performance\PlayerEventRatingHistoryRefresh::class)->shouldReceive('status')->once()
+            ->andReturn(['state' => 'idle', 'message' => 'No update requested.']);
+
+        $tabs = [];
+        foreach (['profile', 'activity', 'rating', 'manage'] as $tab) {
+            $tabs[$tab] = route('my.tennis', ['player' => $player, 'tab' => $tab]);
+        }
+        $tabs += [
+            'record' => route('my.tennis.record', $player),
+            'opponents' => route('my.tennis.record', ['player' => $player, 'section' => 'opponents']),
+            'pathway' => route('my.tennis.pathway', $player),
+            'events' => route('my.tennis.event-history', $player),
+        ];
+        $this->export('ajax-entry', $this->get($tabs['profile'])->assertOk());
+        foreach ($tabs as $name => $url) {
+            $response = $this->get($url, $headers)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
+                ->assertSee('data-my-tennis-workspace', false)->assertSee('data-my-tennis-link', false)
+                ->assertDontSee('my-tennis-navigation.js', false)
+                ->assertSee('id="my-tennis-player"', false)->assertSee('91.1')
+                ->assertSee($player->getProfileStatus()['message']);
+            $this->export('ajax-'.$name, $response);
+        }
+        $this->get(route('my.tennis.pathway', $other), $headers)->assertForbidden();
+    }
+
     public function test_profile_remembers_an_authorized_selection_and_activity_loads_separately(): void
     {
         $user = User::factory()->create();

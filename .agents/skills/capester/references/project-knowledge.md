@@ -65,13 +65,18 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   cannot remain indefinitely. A loading indicator is not evidence of performance.
 - Show the latest saved rating update when relevant; distinguish saved evidence
   from a refresh in progress. Verify timestamps against the application timezone.
-- Keep Player Plus navigation separate from rating data. Use
-  `PlayerWorkspaceContext` without a snapshot on detail pages that do not show
-  one; retain the publication checks for the results those pages do show.
-- My Tennis starts on the player's profile. Revalidate remembered players
-  against the current account relationship before displaying personal details.
+- The shared My Tennis tab header shows the selected player's authorized saved
+  rating summary, including on Results and Opponents. Keep this personal badge
+  separate from the published, comparable Overall CTR used in match comparisons.
+- The plain My Tennis landing opens Progress with levels expanded for a linked
+  player with rating access. Profile is the fallback, and explicit player and
+  tab links retain their destinations. Revalidate remembered players against
+  the current account relationship before displaying personal details.
   Activity and profile editing are standard features; Plus tabs and private
   ratings follow the selected player's entitlement.
+- My Tennis tab fragments use the same authorized GET routes as direct links.
+  Preserve full-page fallback, rebind controls on workspace mount, and cancel
+  transient rating and pathway reads when leaving a view.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.
