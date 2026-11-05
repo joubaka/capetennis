@@ -31,18 +31,12 @@
   .event-play-card .event-published-draw-link.btn, .event-play-card .event-draw-score.btn { box-shadow: none; }
   .event-play-card a:focus-visible { outline: 3px solid #6b9cd3; outline-offset: 3px; }
   .event-play-card .event-published-draw-row a:focus-visible { outline: 3px solid var(--draw-accent); outline-offset: -4px; }
-  .event-play-venues { border-top: 1px solid #e6ebf2; padding-top: 20px; }
-  .event-play-venue { padding: 14px 16px; border-radius: 8px; background: #f7f9fc; }
-  .event-play-venue-name { color: #344d69; font-size: .875rem; font-weight: 600; margin-bottom: 10px; overflow-wrap: anywhere; }
-  .event-play-venue .btn { min-height: 44px; display: inline-flex; align-items: center; font-size: .8125rem; white-space: normal; text-align: left; }
-  .event-play-card .event-play-order.btn { color: #155e57; border-color: #377d74; background: #fff; }
-  .event-play-card .event-play-order.btn:hover { color: #fff; border-color: #155e57; background: #155e57; }
   @media (max-width: 575.98px) { .event-play-card > .card-header { padding: 18px 18px 0; } .event-play-card > .card-header + .card-body { padding: 18px; } }
 </style>
 @endonce
 <div class="card event-play-card mb-4">
   <div class="card-header">
-    <h5 class="event-play-title">Draws and order of play</h5>
+    <h5 class="event-play-title">Draws</h5>
   </div>
 
   <div class="card-body">
@@ -172,28 +166,6 @@
   @empty
     <div class="alert alert-info m-0"><strong>Draws are being finalised.</strong> They will appear here when released; match times may follow later.</div>
   @endforelse
-  @php
-    $publicVenueRows = $publicRowsByDraw->flatten(1)->filter(fn ($row) => !empty($row['venue_id']) && !empty($row['venue_name']))->groupBy('venue_id');
-  @endphp
-  @if($publicVenueRows->isNotEmpty())
-    <section class="event-play-venues mt-4" aria-label="Published venues and order of play">
-      <h6 class="event-play-section-title">Venues and schedules</h6>
-      <div class="d-grid gap-3">
-        @foreach($publicVenueRows->sortBy(fn ($rows) => $rows->first()['venue_name']) as $venueId => $venueRows)
-          <div class="event-play-venue">
-            <div class="event-play-venue-name"><i class="ti ti-map-pin me-1" aria-hidden="true"></i>{{ $venueRows->first()['venue_name'] }}</div>
-            <div class="d-flex flex-wrap gap-2">
-              <a class="btn btn-outline-primary" href="{{ route('fixtures.venue', [$event->id, $venueId]) }}">View fixtures<span class="visually-hidden">: {{ $venueRows->first()['venue_name'] }}</span></a>
-              @foreach($venueRows->pluck('scheduled_at')->map(fn ($time) => \Carbon\Carbon::parse($time)->toDateString())->unique()->sort() as $venueDate)
-                <a class="btn btn-outline-secondary event-play-order" href="{{ route('fixtures.order', [$event->id, $venueId, $venueDate]) }}">{{ \Carbon\Carbon::parse($venueDate)->format('D j M') }} order of play<span class="visually-hidden">: {{ $venueRows->first()['venue_name'] }}</span></a>
-              @endforeach
-            </div>
-          </div>
-        @endforeach
-      </div>
-    </section>
-  @endif
-    
 
 </div>
 

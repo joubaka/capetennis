@@ -28,7 +28,9 @@
                class="btn event-venue-scoring-link">
               <i class="ti ti-map-pin" aria-hidden="true"></i>
               <span class="event-venue-scoring-name">{{ $scoringVenue->name }}
-                <span class="d-block small fw-normal mt-1">{{ \Carbon\Carbon::parse($scoringVenue->scoring_date ?? now(config('app.timezone'))->toDateString())->format('l') }}: {{ $scoringVenue->today_scored_count ?? 0 }} of {{ $scoringVenue->today_fixture_count ?? 0 }} scored</span>
+                @if(($scoringVenue->today_fixture_count ?? 0) > 0)
+                  <span class="d-block small fw-normal mt-1">{{ \Carbon\Carbon::parse($scoringVenue->scoring_date)->format('l') }}: {{ $scoringVenue->today_scored_count }} of {{ $scoringVenue->today_fixture_count }} scored</span>
+                @endif
                 <span class="d-block small fw-normal">{{ $scoringVenue->fixture_count }} scheduled total</span>
               </span>
               <i class="ti ti-chevron-right event-venue-scoring-arrow" aria-hidden="true"></i>

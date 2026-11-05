@@ -10,7 +10,7 @@ use Illuminate\Support\Collection;
 
 final class VenueScoringProgress
 {
-    public function venues(Event $event, ?int $venueId = null): Collection
+    public function venues(Event $event, ?int $venueId = null, bool $todayOnly = true): Collection
     {
         $date = now(config('app.timezone'))->toDateString();
         $drawIds = $event->draws()->select('id');
@@ -34,10 +34,10 @@ final class VenueScoringProgress
                 [$date, $date, ...$scoredTeams->getBindings()])
             ->groupBy('venue_id')->get()->keyBy('venue_id');
 
-        $todayVenueIds = $individual->filter(fn ($counts) => (int) $counts->today_total > 0)->keys()
-            ->merge($team->filter(fn ($counts) => (int) $counts->today_total > 0)->keys())->unique();
+        $scheduledVenueIds = $individual->filter(fn ($counts) => ! $todayOnly || (int) $counts->today_total > 0)->keys()
+            ->merge($team->filter(fn ($counts) => ! $todayOnly || (int) $counts->today_total > 0)->keys())->unique();
 
-        return Venue::query()->whereIn('id', $todayVenueIds)->orderBy('name')->get()
+        return Venue::query()->whereIn('id', $scheduledVenueIds)->orderBy('name')->get()
             ->map(function ($venue) use ($individual, $team, $date) {
                 $venue->fixture_count = (int) ($individual->get($venue->id)?->total ?? 0) + (int) ($team->get($venue->id)?->total ?? 0);
                 $venue->today_fixture_count = (int) ($individual->get($venue->id)?->today_total ?? 0) + (int) ($team->get($venue->id)?->today_total ?? 0);

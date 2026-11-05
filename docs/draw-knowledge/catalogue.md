@@ -292,6 +292,8 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Rule and solution:** The venue scoring workspace presents the fixture queue instead of a round-robin matrix while retaining venue and draw restrictions.
 
+Team and Interprovincial Trials event pages list venues with scheduled matches across the event for authorized scorers above the published draws. Each link opens the working fixture queue for that venue. Venue assignments still restrict the list and queue. The public draw list shows published start times without a separate venue directory.
+
 **Sources:** `app/Http/Controllers/Frontend/VenueScoringController.php` and scoring workspace Blade.
 
 **Regression:** `tests/Feature/TeamDraw/TeamRoundRobinMatrixTest.php::test_workspace_always_shows_fixture_queue_without_round_robin_matrix()` and venue-restricted scorer coverage.

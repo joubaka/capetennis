@@ -4,9 +4,11 @@ namespace Tests\Feature\Draw;
 
 use App\Models\Draw;
 use App\Models\Event;
+use App\Models\EventAdmin;
 use App\Models\EventType;
 use App\Models\Fixture;
 use App\Models\OrderOfPlay;
+use App\Models\User;
 use App\Models\Venue;
 use App\Services\Scheduling\SchedulePublicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -61,7 +63,8 @@ class TrialPublicDrawSharingTest extends TestCase
         $publication = app(SchedulePublicationService::class);
         $publication->publish($event, ['draw_id' => $draw->id]);
         $publicSlot->update(['venue_id' => $privateVenue->id, 'time' => '2026-10-31 16:45:00']);
-        $this->get(route('events.show', $event))->assertOk()->assertSee($venueUrl, false)->assertSee($orderUrl, false)
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee($venueUrl, false)->assertDontSee($orderUrl, false)
+            ->assertDontSee('Published trial courts')->assertDontSee('Score fixtures by venue')
             ->assertSee('Friday from 09:15')->assertDontSee('Private revised courts')->assertDontSee('16:45');
         foreach ([$drawUrl, $venueUrl, $orderUrl] as $url) {
             $this->get($url)->assertOk()->assertSee('09:15')->assertSee('Published trial courts')
@@ -77,5 +80,13 @@ class TrialPublicDrawSharingTest extends TestCase
         $draw->update(['published' => false]);
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('Public trial draw');
         $this->get($drawUrl)->assertForbidden();
+
+        $draw->update(['published' => true]);
+        $admin = User::factory()->create();
+        EventAdmin::create(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $scoringUrl = route('frontend.scoring.workspace', ['event' => $event, 'schedule_source' => 'working', 'venue' => $privateVenue->id]);
+        $this->actingAs($admin)->get(route('events.show', $event))->assertOk()
+            ->assertSeeInOrder(['Score fixtures by venue', 'Private revised courts', 'Published draws'])
+            ->assertSee($scoringUrl)->assertDontSee($orderUrl, false);
     }
 }

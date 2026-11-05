@@ -115,6 +115,9 @@ class PublicDrawOrderingTest extends TestCase
             'match_nr' => 1, 'fixture_type' => 1, 'scheduled_at' => '2026-10-08 05:00:00', 'venue_id' => $venue->id, 'court_label' => '2']);
         $draws = Draw::whereKey($draws->pluck('id'))->with(['draw_types', 'settings', 'flexibleMonrad'])->get();
         $html = view('frontend.event.partials._draws_and_order_of_play', ['event' => $event, 'eventDraws' => $draws])->render();
+        $this->assertStringNotContainsString('Venues and schedules', $html);
+        $this->assertStringNotContainsString('Published courts', $html);
+        $this->assertStringNotContainsString('Score fixtures by venue', $html);
         preg_match_all('/<article class="event-published-draw-row[^>]*>.*?<\/article>/s', $html, $cards);
         $earlyCard = collect($cards[0])->first(fn ($card) => str_contains($card, 'u/13 Early'));
         $privateCard = collect($cards[0])->first(fn ($card) => str_contains($card, 'u/8 Private only'));

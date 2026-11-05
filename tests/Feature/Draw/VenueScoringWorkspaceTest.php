@@ -933,6 +933,10 @@ class VenueScoringWorkspaceTest extends TestCase
         foreach (['Bloemhof', 'Past only', 'Future team only', 'Undated only', 'Foreign only'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
         $this->assertStringContainsString('Sunday: 1 of 2 scored', $html);
         $this->assertStringContainsString('4 scheduled total', $html);
+
+        $allScheduledVenues = $progress->venues($event, todayOnly: false);
+        $this->assertSame([$bloemhof->id, $futureVenue->id, $pastVenue->id, $paulRoos->id], $allScheduledVenues->pluck('id')->all());
+        $this->assertSame([$bloemhof->id], $progress->venues($event, $bloemhof->id, todayOnly: false)->pluck('id')->all());
         if (getenv('TODAY_VENUES_SNAPSHOT') === '1') {
             @mkdir(storage_path('app/testing'), 0777, true);
             file_put_contents(storage_path('app/testing/today-scoring-venues.html'), '<!doctype html><html><head><meta charset="utf-8"><title>Sunday scoring venues — fictional QA</title></head><body>'.$html.'</body></html>');
