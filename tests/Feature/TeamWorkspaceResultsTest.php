@@ -305,10 +305,19 @@ class TeamWorkspaceResultsTest extends TestCase
         TeamPlayer::where('player_id', $home->id)->update(['rank' => 1]);
         TeamPlayer::where('player_id', $away->id)->update(['rank' => 3]);
         $this->fixture($draw, $home, $away, [[1, 6], [1, 6]]);
-        $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.id', $home->id)
+        $results = $this->groupedRequest($event)->assertOk()->assertJsonPath('ranking.0.id', $home->id)
             ->assertJsonPath('ranking.0.points', 0)->assertJsonPath('ranking.0.band', '1–2')
             ->assertJsonPath('ranking.0.lost_all_counted_band_matches', false)
             ->assertJsonPath('ranking.1.id', $away->id)->assertJsonPath('ranking.1.points', 35);
+        if (getenv('CT_CENTRAL_TEAMS_QA') === '1') {
+            \App\Models\EventType::unguarded(fn () => \App\Models\EventType::updateOrCreate(['id' => 3], [
+                'name' => 'Teams', 'type' => \App\Models\EventType::TEAM, 'code' => 'teams',
+            ]));
+            $event->update(['eventType' => 3]);
+            $shell = $this->get(route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']))->assertOk();
+            file_put_contents(storage_path('framework/testing/qa-central-result-shell.html'), $shell->getContent());
+            file_put_contents(storage_path('framework/testing/qa-central-results.json'), $results->getContent());
+        }
     }
 
     public function test_adjacent_direct_comparisons_and_own_band_loss_flags_use_only_counted_formats_and_regions(): void

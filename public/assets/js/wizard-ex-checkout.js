@@ -115,8 +115,12 @@ $(function () {
               '<div class="col-md-6"><label class="form-label">Email</label>' +
                 '<input type="email" class="form-control pd-email" value="' + (res.email || '') + '"></div>' +
               (res.can_declare_player_of_colour ?
-                '<div class="col-12"><label class="form-label">Does this player identify as a player of colour (POC)?</label>' +
-                  '<select class="form-select pd-player-of-colour">' +
+                '<div class="col-12"><label class="form-label me-2" for="' + cardId + '-colour">Does this player identify as a player of colour (POC)?</label>' +
+                  '<button type="button" class="btn btn-sm btn-outline-secondary mb-2" data-bs-toggle="collapse" data-bs-target="#' + cardId + '-colour-help" aria-expanded="false" aria-controls="' + cardId + '-colour-help" aria-label="Why? Why we ask about players of colour">Why?</button>' +
+                  '<div class="collapse" id="' + cardId + '-colour-help">' +
+                    '<p class="small mb-2">As part of the Interpro development programme, each six-player provincial team must include at least two players of colour. This information helps selectors identify players to consider for Interpro.</p>' +
+                  '</div>' +
+                  '<select class="form-select pd-player-of-colour" id="' + cardId + '-colour">' +
                     '<option value=""' + (res.is_player_of_colour === null ? ' selected' : '') + '>Prefer not to answer</option>' +
                     '<option value="1"' + (res.is_player_of_colour === true ? ' selected' : '') + '>Yes</option>' +
                     '<option value="0"' + (res.is_player_of_colour === false ? ' selected' : '') + '>No</option>' +

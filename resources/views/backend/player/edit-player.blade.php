@@ -40,7 +40,18 @@
     <div class="card mb-3"><div class="card-header"><h5 class="mb-0">Coach and development</h5></div><div class="card-body">
       <div class="mb-3"><label for="player-coach" class="form-label">Player coach</label><input class="form-control" type="text" name="coach" value="{{ old('coach', $player->coach) }}" id="player-coach" maxlength="255"></div>
       @if(auth()->user()->hasAnyRole(['super-user', 'admin']))
-      <div><label class="form-label" for="is-player-of-colour">Player of colour (POC)</label><select class="form-select" name="is_player_of_colour" id="is-player-of-colour"><option value="" @selected(old('is_player_of_colour', $player->is_player_of_colour) === null || old('is_player_of_colour', $player->is_player_of_colour) === '')>Not declared</option><option value="1" @selected((string) old('is_player_of_colour', $player->is_player_of_colour) === '1')>Yes</option><option value="0" @selected(old('is_player_of_colour', $player->is_player_of_colour) === false || (string) old('is_player_of_colour', $player->is_player_of_colour) === '0')>No</option></select><p class="small text-muted mb-0 mt-1">For transformation and player development planning.</p></div>
+      <div>
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <label class="form-label mb-0" for="is-player-of-colour">Player of colour (POC)</label>
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse"
+            data-bs-target="#player-of-colour-help" aria-expanded="false" aria-controls="player-of-colour-help"
+            aria-label="Why? Why we ask about player of colour status">Why?</button>
+        </div>
+        <select class="form-select" name="is_player_of_colour" id="is-player-of-colour"><option value="" @selected(old('is_player_of_colour', $player->is_player_of_colour) === null || old('is_player_of_colour', $player->is_player_of_colour) === '')>Not declared</option><option value="1" @selected((string) old('is_player_of_colour', $player->is_player_of_colour) === '1')>Yes</option><option value="0" @selected(old('is_player_of_colour', $player->is_player_of_colour) === false || (string) old('is_player_of_colour', $player->is_player_of_colour) === '0')>No</option></select>
+        <div class="collapse" id="player-of-colour-help">
+          <p class="small text-muted mb-0 mt-2">As part of the Interpro development programme, each six-player provincial team must include at least two players of colour. This information helps selectors identify players to consider for Interpro.</p>
+        </div>
+      </div>
       @endif
     </div></div>
     <button type="submit" class="btn btn-primary">Save player details</button>

@@ -182,7 +182,9 @@
   });
   const renderTeamPublication = function (button, published) {
     const card = button.closest('.regional-team-card');
+    const roster = card?.closest('[data-roster-team]');
     const badge = card?.querySelector('[data-team-publication-status]');
+    const rosterBadge = roster?.querySelector('summary [data-team-publication]');
     const settingsCheckbox = card?.querySelector('input[name="published"][type="checkbox"]');
     button.dataset.published = published ? '1' : '0';
     if (button.classList.contains('btn')) {
@@ -195,6 +197,12 @@
       badge.textContent = published ? 'Published' : 'Not published';
       badge.classList.toggle('bg-label-success', published);
       badge.classList.toggle('bg-label-secondary', !published);
+    }
+    if (roster) roster.dataset.publication = published ? 'published' : 'draft';
+    if (rosterBadge) {
+      rosterBadge.textContent = published ? 'Published' : 'Unpublished';
+      rosterBadge.classList.toggle('bg-label-success', published);
+      rosterBadge.classList.toggle('bg-label-secondary', !published);
     }
     if (settingsCheckbox) settingsCheckbox.checked = published;
   };

@@ -3,7 +3,7 @@
 {{-- ============================= --}}
 {{-- REGIONS TAB --}}
 {{-- ============================= --}}
-<div class="tab-pane fade" id="tab-regions" role="tabpanel" aria-labelledby="tab-regions">
+<div class="tab-pane fade" id="tab-regions" role="tabpanel" aria-labelledby="regions-tab">
   <div class="card">
 
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -108,7 +108,7 @@
                       </div>
                     </div>@endcan
                   </div>
-                  <section class="border rounded p-3 mb-3" aria-label="Team publication for {{ $region->region_name }}">
+                  <section class="setup-publication-bar" aria-label="Team publication for {{ $region->region_name }}">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                       <div><h3 class="h6 mb-1">Team publication</h3><p class="small text-muted mb-0">Review the teams before publishing. Draws, schedules and results use separate publication controls.</p></div>
                     <button type="button"
@@ -137,90 +137,97 @@
                       @foreach ($region->teams as $team)
 
                         {{-- 🔹 TEAM ROW (AJAX TARGET) --}}
-                        <div class="list-group-item d-flex flex-wrap gap-2 justify-content-between align-items-start py-3 px-3 border-0 border-bottom"
+                        <div class="list-group-item setup-team-row"
                              data-team-row
                              data-team-id="{{ $team->id }}">
 
-                          <div class="flex-grow-1" style="min-width:0; overflow-wrap:anywhere">
+                          <div class="setup-team-identity">
                             <div class="fw-medium">{{ $team->name }}</div>
 
-                            <small class="text-muted d-block mb-1 category-{{ $team->id }}">
+                            <small class="text-muted category-{{ $team->id }}">
                               Category:
                               <span class="fw-semibold text-primary">
                                 {{ $team->category?->category?->name ?? 'None' }}
                               </span>
                             </small>
-
-                            <button class="btn btn-xs bg-label-info edit-team-category"
-                                    data-team='@json($team->only(["id","name"]))'
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#edit-team-category-modal">
-                              <i class="ti ti-edit me-25"></i> Edit Category
-                            </button>
-                            @can('team.update', $team)
-                              <details class="mt-2" @if($errors->teamRename->any() && (int) old('rename_team_id') === (int) $team->id) open @endif>
-                                <summary class="btn btn-xs btn-outline-secondary">Edit Team Name</summary>
-                                <form method="POST" action="{{ route('backend.team.name.update', [$event, $team]) }}" class="mt-2">
-                                  @csrf
-                                  @method('PATCH')
-                                  <input type="hidden" name="rename_team_id" value="{{ $team->id }}">
-                                  <label class="form-label" for="team-name-{{ $team->id }}">Team name</label>
-                                  <input class="form-control" id="team-name-{{ $team->id }}" name="name" maxlength="255" required value="{{ (int) old('rename_team_id') === (int) $team->id ? old('name', $team->name) : $team->name }}">
-                                  <button type="submit" class="btn btn-sm btn-primary mt-2">Save Team Name</button>
-                                </form>
-                              </details>
-                            @endcan
+                            <span class="badge bg-label-success setup-published">Published</span>
+                            <span class="badge bg-label-secondary setup-unpublished">Unpublished</span>
+                            <span class="badge bg-label-info setup-imported">No profile</span>
+                            <span class="badge bg-label-secondary setup-linked">Profile roster</span>
                           </div>
+                          <div class="setup-team-actions">
+                            <details class="setup-team-tools" @if($errors->teamRename->any() && (int) old('rename_team_id') === (int) $team->id) open @endif>
+                              <summary class="btn btn-sm btn-outline-secondary" aria-label="Team actions for {{ $team->name }}">Actions</summary>
+                              <div class="setup-team-action-list">
+                                <button class="btn btn-xs bg-label-info edit-team-category"
+                                        data-team='@json($team->only(["id","name"]))'
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#edit-team-category-modal">
+                                  <i class="ti ti-edit me-25"></i> Edit Category
+                                </button>
+                                @can('team.update', $team)
+                                  <details class="setup-team-rename" @if($errors->teamRename->any() && (int) old('rename_team_id') === (int) $team->id) open @endif>
+                                    <summary class="btn btn-xs btn-outline-secondary">Edit Team Name</summary>
+                                    <form method="POST" action="{{ route('backend.team.name.update', [$event, $team]) }}" class="mt-2">
+                                      @csrf
+                                      @method('PATCH')
+                                      <input type="hidden" name="rename_team_id" value="{{ $team->id }}">
+                                      <label class="form-label" for="team-name-{{ $team->id }}">Team name</label>
+                                      <input class="form-control" id="team-name-{{ $team->id }}" name="name" maxlength="255" required value="{{ (int) old('rename_team_id') === (int) $team->id ? old('name', $team->name) : $team->name }}">
+                                      <button type="submit" class="btn btn-sm btn-primary mt-2">Save Team Name</button>
+                                    </form>
+                                  </details>
+                                @endcan
 
-                          <div class="text-end" style="min-width:180px">
+                                {{-- ✅ PUBLISH / UNPUBLISH --}}
+                                <button type="button"
+                                   class="publishTeam btn btn-xs
+                                   {{ $team->published ? 'btn-warning' : 'btn-success' }}"
+                                   data-id="{{ $team->id }}"
+                                   data-url="{{ route('publish.team', $team) }}"
+                                   data-state="{{ (int)$team->published }}">
 
-                            {{-- ✅ PUBLISH / UNPUBLISH --}}
-                            <button type="button"
-                               class="publishTeam btn btn-xs w-100 mb-2
-                               {{ $team->published ? 'btn-warning' : 'btn-success' }}"
-                               data-id="{{ $team->id }}"
-                               data-url="{{ route('publish.team', $team) }}"
-                               data-state="{{ (int)$team->published }}">
-
-                              <i class="ti {{ $team->published ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
-                              {{ $team->published ? 'Unpublish Team' : 'Publish Team' }}
-                            </button>
+                                  <i class="ti {{ $team->published ? 'ti-eye-off' : 'ti-eye' }} me-1"></i>
+                                  {{ $team->published ? 'Unpublish Team' : 'Publish Team' }}
+                                </button>
 
 
-                            {{-- ✅ NOPROFILE TOGGLE --}}
-                            <a href="javascript:void(0)"
-                               class="toggleNoProfile btn btn-xs w-100 mb-2
-                               {{ $team->noProfile ? 'btn-danger' : 'btn-info' }}"
-                               data-url="{{ route('backend.teams.toggle-noprofile', $team->id) }}"
-                               data-state="{{ (int)$team->noProfile }}">
+                                {{-- ✅ NOPROFILE TOGGLE --}}
+                                <a href="javascript:void(0)"
+                                   class="toggleNoProfile btn btn-xs
+                                   {{ $team->noProfile ? 'btn-danger' : 'btn-info' }}"
+                                   data-url="{{ route('backend.teams.toggle-noprofile', $team->id) }}"
+                                   data-state="{{ (int)$team->noProfile }}">
 
-                              <i class="ti {{ $team->noProfile ? 'ti-user-off' : 'ti-user' }} me-1"></i>
-                              {{ $team->noProfile ? 'Disable NoProfile' : 'Enable NoProfile' }}
-                            </a>
+                                  <i class="ti {{ $team->noProfile ? 'ti-user-off' : 'ti-user' }} me-1"></i>
+                                  {{ $team->noProfile ? 'Disable NoProfile' : 'Enable NoProfile' }}
+                                </a>
 
-                            {{-- ✅ IMPORT NO-PROFILE TEAM (only shown if team is no-profile) --}}
-                     
-                            @if ($team->noProfile == 1)
-                              <button type="button"
-                                      class="import-noprofile-btn btn btn-xs btn-outline-success w-100 mb-2"
-                                      data-region-id="{{ $region->id }}"
-                                      data-team-id="{{ $team->id }}"
-                                      data-team-name="{{ $team->name }}"
-                                      data-import-url="{{ route('backend.team.import.no.profile', [$event, $team]) }}"
-                                      data-template-url="{{ route('team.import.no.profile.template', [$event, $team]) }}"
-                                      data-bs-toggle="modal"
-                                      data-bs-target="#import-noprofile-modal">
-                                <i class="ti ti-file-import me-1"></i> Import Roster
-                              </button>
-                            @endif
+                                {{-- ✅ IMPORT NO-PROFILE TEAM (only shown if team is no-profile) --}}
 
-                            {{-- DELETE TEAM (future AJAX-ready) --}}
-                            <a href="javascript:void(0)"
-                               class="text-danger small removeTeam"
-                               data-id="{{ $team->id }}">
-                              <i class="ti ti-trash me-25"></i> Delete
-                            </a>
+                                @if ($team->noProfile == 1)
+                                  <button type="button"
+                                          class="import-noprofile-btn btn btn-xs btn-outline-success"
+                                          data-region-id="{{ $region->id }}"
+                                          data-team-id="{{ $team->id }}"
+                                          data-team-name="{{ $team->name }}"
+                                          data-import-url="{{ route('backend.team.import.no.profile', [$event, $team]) }}"
+                                          data-template-url="{{ route('team.import.no.profile.template', [$event, $team]) }}"
+                                          data-bs-toggle="modal"
+                                          data-bs-target="#import-noprofile-modal">
+                                    <i class="ti ti-file-import me-1"></i> Import Roster
+                                  </button>
+                                @endif
 
+                                {{-- DELETE TEAM (future AJAX-ready) --}}
+                                <a href="javascript:void(0)"
+                                   class="text-danger small removeTeam"
+                                   data-id="{{ $team->id }}">
+                                  <i class="ti ti-trash me-25"></i> Delete
+                                </a>
+
+                              </div>
+                            </details>
                           </div>
                         </div>
 

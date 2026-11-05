@@ -40,7 +40,7 @@
     url.hash = 'tab-' + tab;
     return tab;
   }
-  function activeMode() { return ['players', 'order', 'communications', 'invitations', 'regions', 'result-rank'].find(mode => document.getElementById('tab-' + mode)?.classList.contains('active')) || 'players'; }
+  function activeMode() { return ['players', 'order', 'communications', 'campaigns', 'regions', 'result-rank'].find(mode => document.getElementById('tab-' + mode)?.classList.contains('active')) || 'players'; }
   function syncSelectionContext() {
     window.syncTeamSelectionContext?.({regionId: $('[data-roster-region]').val(), teamId: selectedTeam(), mode: activeMode(), task: new URL(window.location.href).searchParams.get('selection_task')});
   }
@@ -55,13 +55,8 @@
     const useOrder = selectionUsesOrder();
     const useCommunications = activeMode() === 'communications';
     if (useOrder) window.restoreMergedTeamRoster?.();
-    const tools = document.querySelector('[data-merged-selection-tools]');
-    if (useCommunications) {
-      if (tools) document.getElementById('tab-players')?.append(tools);
-      document.getElementById('tab-communications')?.append(host);
-    }
-    else if (!useOrder && tools) { document.getElementById('tab-players')?.append(tools); tools.append(host); }
-    else document.getElementById(useOrder ? 'tab-order' : 'tab-players')?.append(host);
+    const destination = document.getElementById(useCommunications ? 'tab-communications' : (useOrder ? 'tab-order' : 'tab-campaigns'));
+    if (destination && host.parentElement !== destination) destination.append(host);
     host.hidden = false;
     document.querySelectorAll('#tab-order [data-roster-panel]').forEach(panel => { if (useOrder) panel.hidden = true; });
     if (host.querySelector('[data-embedded-teams-selection]')) { syncSelectionContext(); window.mergeTeamRoster?.(); return Promise.resolve(); }
@@ -286,10 +281,11 @@
     const panel = document.querySelector('[data-roster-panel="order"]:not([hidden])');
     if (!panel || panel.dataset.loaded !== 'true') return;
     const terms = String($('[data-order-search]').val() || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const teamId = selectedTeam();
     let matches = 0;
     panel.querySelectorAll('[data-order-team]').forEach(team => {
-      team.hidden = (!!selectedTeam() && team.dataset.orderTeam !== selectedTeam()) || !terms.every(term => (team.dataset.orderTeamName || '').toLowerCase().includes(term));
-      if (!team.hidden) { matches++; if (terms.length) team.open = true; }
+      team.hidden = (!!teamId && team.dataset.orderTeam !== teamId) || !terms.every(term => (team.dataset.orderTeamName || '').toLowerCase().includes(term));
+      if (!team.hidden) { matches++; if (terms.length || teamId) team.open = true; }
     });
     const count = panel.querySelector('[data-order-match-count]');
     if (count) count.textContent = matches + ' teams shown';
@@ -304,9 +300,10 @@
     if (!panel || panel.dataset.loaded !== 'true') return;
     const terms = String($('[data-roster-search]').val() || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
     const filters = Object.fromEntries(filterNames.map(name => [name, $('[data-roster-filter="' + name + '"]').val()]));
+    const teamId = selectedTeam();
     let matches = 0; let teams = 0;
     panel.querySelectorAll('[data-roster-team]').forEach(team => {
-      const teamVisible = (!selectedTeam() || team.dataset.rosterTeam === selectedTeam()) && (!filters.category || team.dataset.category === filters.category) && (!filters.publication || team.dataset.publication === filters.publication);
+      const teamVisible = (!teamId || team.dataset.rosterTeam === teamId) && (!filters.category || team.dataset.category === filters.category) && (!filters.publication || team.dataset.publication === filters.publication);
       let rowMatches = 0;
       team.querySelectorAll('[data-roster-row]').forEach(row => {
         const haystack = (team.dataset.teamName + ' ' + row.dataset.search).toLowerCase();
@@ -317,7 +314,7 @@
       const filtering = terms.length || filters.payment || filters.profile;
       team.hidden = !teamVisible || (filtering && rowMatches === 0);
       if (!team.hidden) { teams++; matches += rowMatches; }
-      if (filtering && !team.hidden) team.open = true;
+      if ((filtering || teamId) && !team.hidden) team.open = true;
     });
     const count = panel.querySelector('[data-roster-match-count]');
     if (count) count.textContent = matches + ' roster places shown in ' + teams + ' teams';
@@ -428,8 +425,8 @@
     syncRegionOrganizer(regionId);
     const host = document.querySelector('[data-central-selection-host]');
     if (activeMode() !== 'players') window.restoreMergedTeamRoster?.();
-    if (host) host.hidden = !['players', 'communications'].includes(activeMode()) && !selectionUsesOrder();
-    if (activeMode() === 'communications' || selectionUsesOrder()) loadSelection();
+    if (host) host.hidden = !['players', 'communications', 'campaigns'].includes(activeMode()) && !selectionUsesOrder();
+    if (['communications', 'campaigns'].includes(activeMode()) || selectionUsesOrder()) loadSelection();
     else if ($('#tab-order').hasClass('active')) loadPanel('order', regionId);
     else if ($('#tab-players').hasClass('active')) {
       const roster = loadPanel('players', regionId);
@@ -466,8 +463,8 @@
     const requestedTab = url.searchParams.get('roster_tab') || (legacySelection ? 'invitations' : document.querySelector('[data-team-context]')?.dataset.defaultMode);
     const normalizedTab = consumeMessagesLink(url, requestedTab, legacySelection);
     window.history.replaceState({}, '', url);
-    const tab = normalizedTab === 'invitations' ? 'players' : normalizedTab;
-    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'communications', 'invitations', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
+    const tab = normalizedTab === 'invitations' ? 'campaigns' : normalizedTab;
+    const button = document.querySelector('.team-admin-workspace [data-bs-target="#tab-' + (['regions', 'order', 'communications', 'campaigns', 'result-rank'].includes(tab) ? tab : 'players') + '"]');
     if (button) bootstrap.Tab.getOrCreateInstance(button).show();
     selectRegion(regionId);
     initCategorySelect();
@@ -662,7 +659,12 @@
     if (pendingEvidenceCard) { showDraftEvidence(pendingEvidenceCard); pendingEvidenceCard = null; }
     else document.querySelector('[data-draft-open]')?.focus({ preventScroll: true });
   });
-  function showDraftEvidence(card) { card.querySelector('.result-reason')?.setAttribute('open', ''); card.scrollIntoView({ behavior: 'smooth', block: 'center' }); card.querySelector('[data-selection-reason]')?.focus({ preventScroll: true }); }
+  function showDraftEvidence(card) {
+    card.querySelector('.result-player-evidence')?.setAttribute('open', '');
+    card.querySelector('.result-reason')?.setAttribute('open', '');
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.querySelector('[data-selection-reason]')?.focus({ preventScroll: true });
+  }
   $(document).on('change', '[data-result-group-select]', function () {
     const radio = [...document.querySelectorAll('.category-radio')].find(input => input.value === this.value);
     if (radio) { radio.checked = true; $(radio).trigger('change'); }
@@ -678,6 +680,7 @@
     const scroll = window.scrollY;
     const focusId = document.activeElement?.id;
     const openRegions = [...document.querySelectorAll('#regionsAccordion .accordion-collapse.show')].map(region => region.id);
+    const openSetupTeams = new Set([...document.querySelectorAll('.setup-team-tools[open]')].map(tools => tools.closest('[data-team-row]').dataset.teamId));
     document.querySelectorAll('[data-roster-team], [data-order-team]').forEach(team => savedOpen.set((team.dataset.rosterTeam ? 'players:' : 'order:') + (team.dataset.rosterTeam || team.dataset.orderTeam), team.open));
     feedback('Updating team workspace…');
     $.ajax({ url: workspaceUrl({ workspace: 1 }), dataType: 'html' })
@@ -695,6 +698,9 @@
         editingGroup = null; draftReady = false; selectionVersion = 0; savedDraft = null;
         restoreState();
         openRegions.forEach(id => { const region = document.getElementById(id); if (region) bootstrap.Collapse.getOrCreateInstance(region, { toggle: false }).show(); });
+        document.querySelectorAll('[data-team-row] .setup-team-tools').forEach(tools => {
+          if (openSetupTeams.has(tools.closest('[data-team-row]').dataset.teamId)) tools.open = true;
+        });
         if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
         window.scrollTo(0, scroll);
         feedback('');

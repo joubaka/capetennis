@@ -25,7 +25,10 @@
   @endif
   <h6>Calculated ranking</h6>
   <p class="result-heading-hint">Results stay in calculated order here. Use Reorder players to arrange your private draft and add optional comments.</p>
-  <ol class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
+  <div class="result-list-columns" aria-hidden="true">
+    <span>Pick</span><span>Rank</span><span>Player / record</span><span>Points</span>
+  </div>
+  <ol data-teams-table class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
   @foreach($ranking as $player)
     @php $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0; @endphp
     <li data-result-player="{{ $player['id'] }}" data-player-name="{{ $player['name'] }}" data-player-region="{{ $player['region'] }}" data-player-suggested="{{ $player['suggested'] ? '1' : '0' }}" data-player-cutoff="{{ $player['cutoff_tie'] ? '1' : '0' }}" @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
@@ -44,6 +47,9 @@
         @if($wonAllCountedBandMatches)<span class="result-tag result-tag-selected">Won all counted band matches · {{ $player['own_band_record']['wins'] }}W / 0L</span>@endif
         @if(!empty($player['platteland_manual_review']))<span class="result-tag result-tag-review">Manual comparison needed: unbeaten played record against adjacent higher-band results</span>@endif
       </div>
+      <details class="result-player-evidence">
+        <summary>Evidence &amp; comment</summary>
+        <div class="result-evidence-body">
       <dl class="result-metrics">
         <div><dt>Points per win</dt><dd>{{ $player['points_per_win'] }}</dd></div>
         <div><dt>Singles wins</dt><dd>{{ $player['singles_wins'] }}</dd></div>
@@ -98,6 +104,8 @@
           @endforeach
         </ul></details>
       </div>
+        </div>
+      </details>
     </li>
   @endforeach
   </ol>

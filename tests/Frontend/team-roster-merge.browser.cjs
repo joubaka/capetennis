@@ -11,13 +11,14 @@ test('merged roster moves linked/raw invitation forms once and restores exact id
     await page.setContent(`<div class="team-admin-workspace">
       <div id="tab-players" class="active"><div data-roster-panel="players" data-region-id="127">
         <details data-roster-team="841" open><summary>North team</summary><div class="roster-team-body">
-          <table><tbody><tr data-roster-row="11" data-roster-player-id="44" data-roster-imported-id="9"><td>1</td><td>Linked player <span>Invited</span></td></tr>
+          <div class="roster-team-tools"></div>
+          <table><tbody><tr data-roster-row="11" data-roster-player-id="44" data-roster-imported-id="9"><td>1</td><td data-label="Player"><strong>Linked player</strong> <span>Invited</span></td><td><div class="roster-row-actions"></div></td></tr>
             <tr data-roster-row="12" data-roster-imported-id="10"><td>2</td><td>Raw player</td></tr><tr data-roster-row="13"><td>3</td><td>Empty place <button id="fill">Add player</button></td></tr></tbody></table>
           <details class="roster-reserves"><summary>Reserve queue</summary>Old reserve summary</details>
         </div></details>
       </div><details><summary>Campaigns</summary><div data-central-selection-host><div data-embedded-teams-selection>
         <div id="region-panel-9"><div><div data-team-card-id="841" class="regional-team-card">
-          <div data-team-workspace-header data-team-workspace-target="#team-workspace-841"><div>Duplicate team title</div><button class="team-workspace-toggle">Show team</button></div>
+          <div data-team-workspace-header data-team-workspace-target="#team-workspace-841"><div>Duplicate team title</div><div class="team-workspace-actions"><button class="team-workspace-toggle">Show team</button><div class="dropdown"><button id="team-tools">Team actions</button></div></div></div>
           <div class="collapse" id="team-workspace-841">
             <div class="table-responsive"><table><tbody data-team-invitations>
               <tr data-order-player-id="99" data-invitation-player-id="44"><td data-label="Rank">1</td><td data-label="Player">Linked player</td><td data-label="Regional action"><form id="invitation-action"><input name="reason" value="Keep draft"><button type="button" id="original-action">Manage</button></form><div id="original-modal" class="modal"><input value="Modal draft"></div></td></tr>
@@ -55,6 +56,16 @@ test('merged roster moves linked/raw invitation forms once and restores exact id
       };
     });
     assert.deepEqual(merged, { rows: 3, details: 3, formSame: true, linkedInline: true, rawInline: true, ancestor: '841', portal: true, activeHistoryRows: 0, reserve: 1, clicks: 1, fillSame: true, ids: 1 });
+    assert.equal(await page.locator('.roster-team-tools #team-tools').count(), 1);
+    assert.equal(await page.locator('[data-team-workspace-header]').isVisible(), false);
+    const profile = page.getByRole('button', { name: 'Profile, contact & imported name for Linked player' });
+    const detail = page.locator('#' + await profile.getAttribute('aria-controls'));
+    assert.equal(await detail.isVisible(), false);
+    await profile.click();
+    assert.equal(await profile.getAttribute('aria-expanded'), 'true');
+    assert.equal(await detail.isVisible(), true);
+    await profile.click();
+    assert.equal(await detail.isVisible(), false);
     const restored = await page.evaluate(() => {
       document.querySelector('#invitation-action input').value = 'Updated retained draft';
       window.restoreMergedTeamRoster();
@@ -64,13 +75,15 @@ test('merged roster moves linked/raw invitation forms once and restores exact id
         header: card.querySelector('[data-team-workspace-header]').dataset.teamWorkspaceTarget,
         open: card.querySelector('#team-workspace-841').classList.contains('show'), portal: document.querySelectorAll('[data-roster-modal-portal]').length,
         wrappers: card.querySelectorAll('[data-canonical-roster]').length,
-        modalSame: document.getElementById('original-modal') === window.originals['original-modal'] };
+        modalSame: document.getElementById('original-modal') === window.originals['original-modal'],
+        headerToolsRestored: !!card.querySelector('[data-team-workspace-header]:not([hidden]) #team-tools') };
       window.mergeTeamRoster();
       document.querySelector('[data-roster-row="11"]').hidden = true;
       document.dispatchEvent(new Event('roster:filtered'));
       result.filtered = [...document.querySelectorAll('[data-roster-detail-row="11"]')].every(row => row.hidden);
+      result.triggers = document.querySelectorAll('[data-roster-row="11"] .roster-identity-toggle').length;
       return result;
     });
-    assert.deepEqual(restored, { card: true, same: true, draft: 'Updated retained draft', rows: 3, header: '#team-workspace-841', open: false, portal: 0, wrappers: 0, modalSame: true, filtered: true });
+    assert.deepEqual(restored, { card: true, same: true, draft: 'Updated retained draft', rows: 3, header: '#team-workspace-841', open: false, portal: 0, wrappers: 0, modalSame: true, headerToolsRestored: true, filtered: true, triggers: 2 });
   } finally { await browser.close(); }
 });

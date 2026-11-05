@@ -147,6 +147,7 @@ class TeamWorkspaceTest extends TestCase
         }
         $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
         \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
+        $this->event->update(['signUp' => false]);
         $locked = $this->get($url.'?roster_region='.$this->region->id.'&panel=order')->assertOk()->assertSee('Locked here: fixtures generated')->assertSee('Order status')->assertDontSee('sortablePlayers')->assertDontSee('data-order-move', false);
         $this->assertDatabaseCount('team_players', 1);
         $this->assertDatabaseCount('team_fixtures', 1);

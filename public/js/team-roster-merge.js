@@ -7,8 +7,10 @@
 
   function restore() {
     for (const state of teams.values()) {
+      for (const {node, anchor} of state.tools) anchor.replaceWith(node);
       for (const move of state.rows) {
         if (move.anchor.parentNode) move.anchor.replaceWith(move.row);
+        move.trigger?.remove();
         move.detail.remove();
       }
       state.changes.reverse().forEach(([node, name, value]) => { node[name] = value; });
@@ -35,14 +37,38 @@
     const anchor = document.createComment('invitation identity'); row.before(anchor);
     const detail = document.createElement('tr'); detail.dataset.rosterDetailRow = canonical.dataset.rosterRow;
     const cell = document.createElement('td'); cell.colSpan = canonical.children.length;
-    const disclosure = document.createElement('details'); disclosure.className = 'roster-identity-details';
-    const summary = document.createElement('summary'); summary.textContent = imported ? 'Profile, contact & imported name' : 'Invitation, email & regional actions';
     const wrap = document.createElement('div'); wrap.className = 'table-responsive pt-2';
     const table = document.createElement('table'); table.className = 'table table-sm roster-identity-controls';
     const body = document.createElement('tbody'); body.append(row); table.append(body); wrap.append(table);
-    disclosure.append(summary, wrap); cell.append(disclosure); detail.append(cell); canonical.after(detail);
+    const label = imported ? 'Profile, contact & imported name' : 'Invitation, email & regional actions';
+    const actions = canonical.querySelector('.roster-row-actions');
+    let trigger;
+    if (actions) {
+      detail.id = 'roster-detail-' + (imported ? 'profile-' + row.dataset.slotId : 'invitation-' + row.dataset.orderPlayerId);
+      detail.hidden = true;
+      trigger = document.createElement('button');
+      trigger.type = 'button';
+      trigger.className = 'btn btn-sm btn-outline-secondary roster-identity-toggle';
+      trigger.textContent = imported ? 'Profile' : 'Invitation';
+      const player = canonical.querySelector('[data-label="Player"] strong')?.textContent.trim();
+      trigger.setAttribute('aria-label', player ? label + ' for ' + player : label);
+      trigger.setAttribute('aria-controls', detail.id);
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.addEventListener('click', () => {
+        const expanded = trigger.getAttribute('aria-expanded') === 'true';
+        trigger.setAttribute('aria-expanded', String(!expanded));
+        detail.hidden = expanded;
+      });
+      actions.append(trigger);
+      cell.append(wrap);
+    } else {
+      const disclosure = document.createElement('details'); disclosure.className = 'roster-identity-details';
+      const summary = document.createElement('summary'); summary.textContent = label;
+      disclosure.append(summary, wrap); cell.append(disclosure);
+    }
+    detail.append(cell); canonical.after(detail);
     if (!imported) row.querySelectorAll('td[data-label="Rank"], td[data-label="Player"]').forEach(td => remember(td, 'hidden', true, state.changes));
-    state.rows.push({row, anchor, detail});
+    state.rows.push({row, anchor, detail, trigger});
   }
 
   function project() {
@@ -58,7 +84,7 @@
       const workspace = card?.querySelector('#team-workspace-' + CSS.escape(teamId));
       if (!card || !body || !workspace) return;
       const anchor = document.createComment('team invitation tools'); card.before(anchor);
-      const state = {primary, card, body, anchor, workspace, workspaceOpen: workspace.classList.contains('show'), original: [...body.childNodes], rows: [], changes: []};
+      const state = {primary, card, body, anchor, workspace, workspaceOpen: workspace.classList.contains('show'), original: [...body.childNodes], rows: [], changes: [], tools: []};
       const canonical = document.createElement('div'); canonical.dataset.canonicalRoster = ''; canonical.append(...state.original);
       state.canonical = canonical;
       workspace.prepend(canonical); workspace.classList.add('show');
@@ -69,6 +95,17 @@
         header.removeAttribute('data-team-workspace-target');
         if (header.firstElementChild) remember(header.firstElementChild, 'hidden', true, state.changes);
         header.querySelectorAll('.team-workspace-toggle').forEach(button => remember(button, 'hidden', true, state.changes));
+        const toolbar = canonical.querySelector('.roster-team-tools');
+        const menu = header.querySelector('.team-workspace-actions > .dropdown');
+        if (toolbar && menu) {
+          for (const node of [header.querySelector('[data-team-open-places]'), menu].filter(Boolean)) {
+            const anchor = document.createComment('team toolbar action');
+            node.before(anchor);
+            toolbar.append(node);
+            state.tools.push({node, anchor});
+          }
+          remember(header, 'hidden', true, state.changes);
+        }
       }
       card.querySelectorAll('[data-team-invitations] > tr[data-order-player-id], .imported-roster-players > tr[data-slot-id]').forEach(row => {
         if (canonical.contains(row)) return;
@@ -96,7 +133,8 @@
   function syncVisibility() {
     for (const state of teams.values()) for (const move of state.rows) {
       const owner = move.detail.dataset?.rosterDetailRow;
-      if (owner) move.detail.hidden = state.primary.querySelector('[data-roster-row="' + CSS.escape(owner) + '"]')?.hidden || false;
+      if (owner) move.detail.hidden = !!state.primary.querySelector('[data-roster-row="' + CSS.escape(owner) + '"]')?.hidden
+        || move.trigger?.getAttribute('aria-expanded') === 'false';
     }
   }
   window.mergeTeamRoster = project;

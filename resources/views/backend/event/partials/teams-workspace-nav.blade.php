@@ -5,28 +5,32 @@
     'players' => [($rosterOnly ?? false) ? 'Players' : 'Players & invitations', 'ti-users', 'tab-players'],
     'order' => ['Player order', 'ti-list-numbers', 'tab-order'],
     'communications' => ['Communications', 'ti-mail', 'tab-communications'],
+    'campaigns' => ['Campaigns & settings', 'ti-speakerphone', 'tab-campaigns'],
     'setup' => ['Setup', 'ti-settings', 'tab-regions'],
     'results' => ['Result ranks', 'ti-award', 'tab-result-rank'],
   ];
 @endphp
 <style>
-  .teams-workspace-nav { display:flex; flex-wrap:wrap; gap:.4rem; padding:.5rem; margin-bottom:1rem; border:1px solid #dbe6f4; border-radius:.75rem; background:#f7faff; }
-  .teams-workspace-nav .teams-workspace-link { display:flex; align-items:center; justify-content:center; gap:.4rem; min-height:44px; padding:.65rem 1rem; border-radius:.5rem; color:#506176; font-weight:600; text-decoration:none; }
-  .teams-workspace-nav .teams-workspace-link.active { color:#173f78; background:#fff; box-shadow:0 .15rem .5rem rgba(31,57,104,.12); }
-  .teams-workspace-nav .teams-workspace-link:focus-visible { outline:3px solid #1f5c9d; outline-offset:2px; }
-  @media(max-width:575.98px) { .teams-workspace-nav .teams-workspace-link { flex:1 1 calc(50% - .4rem); min-width:0; padding:.65rem .4rem; font-size:.875rem; } }
+  .teams-workspace-nav { display:flex; flex-wrap:wrap; gap:.2rem; margin-bottom:.5rem; border-bottom:1px solid #dbe6f4; background:#fff; }
+  .teams-workspace-nav .teams-workspace-link { display:flex; align-items:center; gap:.35rem; min-height:38px; padding:.35rem .65rem; color:#506176; font-size:.875rem; font-weight:600; text-decoration:none; border-bottom:2px solid transparent; }
+  .teams-workspace-nav .teams-workspace-link.active { color:#173f78; border-bottom-color:#173f78; background:#f4f7fb; }
+  .teams-workspace-nav .teams-workspace-link:focus-visible { outline:3px solid #1f5c9d; outline-offset:-3px; }
+  @media(max-width:767.98px) {
+    .teams-workspace-nav { gap:.15rem .25rem; }
+    .teams-workspace-nav .teams-workspace-link { min-height:44px; padding-inline:.45rem; font-size:.82rem; }
+    .teams-workspace-nav .teams-workspace-link i { display:none; }
+  }
 </style>
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2"><h2 class="h5 mb-0">Teams</h2><span class="text-muted small">{{ ($rosterOnly ?? false) ? 'Players and player order' : ($teamsWorkspaceManager ? 'Players, invitations and team setup' : 'Region-scoped workspace') }}</span></div>
+<h2 class="h5 mb-1">Teams</h2>
 @if($teamsWorkspaceManager)
-<nav class="teams-workspace-nav nav tabs-wrap" aria-label="Teams workspace" data-teams-workspace>
+<nav class="teams-workspace-nav nav tabs-wrap" aria-label="Teams workspace" data-teams-workspace @if($teamsWorkspaceRoster)role="tablist"@endif>
   @foreach($teamsWorkspaceItems as $key => [$label, $icon, $panel])
     @continue(($rosterOnly ?? false) && !in_array($key, ['players', 'order']))
-    @continue($key === 'communications' && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
+    @continue(in_array($key, ['communications', 'campaigns']) && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
     @if(($key !== 'invitations' || $teamsWorkspaceCanInvite) && ($key !== 'results' || auth()->user()?->can('event.manage', $event)) && ($key !== 'setup' || app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event)))
-      @if($key === 'setup')<details class="teams-workspace-more"><summary class="teams-workspace-link">Setup &amp; history</summary><div class="d-flex flex-wrap">@endif
       <a class="teams-workspace-link {{ $teamsWorkspaceRoster && $panel ? 'nav-link' : '' }} {{ ($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') ? 'active' : '' }}"
          href="{{ route('admin.events.teams', [$event, 'roster_tab' => match($key) { 'setup' => 'regions', 'results' => 'result-rank', default => $key }]).'#'.$panel }}"
-         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'players' => 'players-tab', 'invitations' => 'invitations-tab', 'order' => 'order-tab', 'communications' => 'communications-tab', 'results' => 'result-rank-button', default => 'regions-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
+         @if($teamsWorkspaceRoster && $panel) data-bs-toggle="tab" data-bs-target="#{{ $panel }}" data-teams-panel="{{ $panel }}" id="{{ match($key) { 'setup' => 'regions-tab', 'results' => 'result-rank-button', default => $key.'-tab' } }}" role="tab" aria-controls="{{ $panel }}" aria-selected="{{ $key === 'players' ? 'true' : 'false' }}"
 @endif
 
          @if($teamsWorkspaceRoster ? $key === 'players' : $key === 'invitations') aria-current="page"
@@ -37,7 +41,6 @@
 @endif
 
       </a>
-      @if($key === 'results' || ($key === 'setup' && !auth()->user()?->can('event.manage', $event)))</div></details>@endif
 
 @endif
 

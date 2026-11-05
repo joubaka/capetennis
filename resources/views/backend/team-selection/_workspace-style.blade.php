@@ -1,4 +1,10 @@
 <style>
+  .announcement-list { list-style: none; padding: 0; margin: 0 0 .65rem; border: 1px solid var(--roster-border, #d9e1eb); border-radius: 6px; }
+  .announcement-row { padding: .35rem .6rem; overflow-wrap: anywhere; }
+  .announcement-row + .announcement-row { border-top: 1px solid var(--roster-border, #d9e1eb); }
+  .announcement-message > summary { min-height: 38px; align-content: center; cursor: pointer; font-size: .8rem; color: #315982; }
+  .announcement-message img { max-width: 100%; height: auto; }
+  @media (max-width: 767.98px) { .announcement-message > summary { min-height: 44px; } }
   [data-embedded-teams-selection] > .region-selection-container { padding:0; max-width:none; }
   [data-embedded-teams-selection] .regional-team-card > .collapse > .nav-tabs { display:none; }
   [data-embedded-teams-selection] [data-event-roster-email-action] { display:none !important; }

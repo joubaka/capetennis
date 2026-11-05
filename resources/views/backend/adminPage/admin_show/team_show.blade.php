@@ -19,7 +19,7 @@
       @include('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => true])
       @include('backend.adminPage.admin_show._team-context')
 
-      <div class="tab-content p-3">
+      <div class="tab-content team-workspace-panels">
 
        {{-- ✅ Regions + Teams merged --}}
 {{-- ============================= --}}
@@ -40,11 +40,19 @@
   @unless($rosterOnly ?? false)
     @if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event))
     <div class="tab-pane fade" id="tab-communications" role="tabpanel" aria-labelledby="communications-tab">
-      <h3 class="h5">Communications</h3>
-      <p class="text-muted small">Contact selected players and publish announcements for the selected region.</p>
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-communications-toolbar>
+        @if($regionalScoped ?? false)
+          <a class="btn btn-primary" href="{{ route('backend.event-communications.index', $event) }}"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email</a>
+        @else
+          <button class="btn btn-primary" type="button" data-team-email-open><i class="ti ti-mail me-1" aria-hidden="true"></i>Email</button>
+        @endif
+        <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', $event) }}">Email history</a>
+        @unless($regionalScoped ?? false)
+          <a class="btn btn-outline-secondary" href="{{ route('backend.event-mail-log.index', $event) }}">Delivery log</a>
+        @endunless
+      </div>
     </div>
-    @endif
-    <details class="mt-4 border rounded p-3" data-merged-selection-tools><summary class="fw-semibold">Campaigns &amp; settings</summary>
+    <div class="tab-pane fade" id="tab-campaigns" role="tabpanel" aria-labelledby="campaigns-tab">
       <div data-central-selection-host>
         @if(isset($embeddedTeamSelection))
           @include('backend.team-selection._workspace-style', $embeddedTeamSelection)
@@ -53,7 +61,8 @@
           <p class="text-muted" role="status">Loading invitation actions and campaign tools…</p>
         @endif
       </div>
-    </details>
+    </div>
+    @endif
   @endunless
 
 
@@ -70,6 +79,7 @@
   </div>
 
 @unless($rosterOnly ?? false)
+@include('backend.adminPage.admin_show._team-email')
 <!-- Import all no-profile teams for one region -->
 <div class="modal fade" id="import-region-teams-modal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-scrollable">

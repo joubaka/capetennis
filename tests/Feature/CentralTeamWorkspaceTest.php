@@ -29,7 +29,7 @@ class CentralTeamWorkspaceTest extends TestCase
         $this->eventRegion = EventRegion::forceCreate(['event_id' => $this->event->id, 'region_id' => $region->id, 'ordering' => 1]);
         $category = CategoryEvent::factory()->create(['event_id' => $this->event->id]);
         $this->team = Team::factory()->create(['name' => 'North Primary', 'region_id' => $region->id, 'category_event_id' => $category->id, 'num_team_members' => 3, 'noProfile' => true]);
-        NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Synthetic', 'surname' => 'Player', 'email' => 'confidential-roster@example.test', 'pay_status' => 0]);
+        NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Synthetic', 'surname' => 'Player', 'email' => 'confidential-roster@example.test', 'cell_nr' => '021 555 0100', 'pay_status' => 0]);
         $linked = Player::factory()->create(['name' => 'Linked', 'surname' => 'Synthetic']);
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'name' => 'Original', 'surname' => 'Roster', 'player_profile' => $linked->id, 'pay_status' => 0]);
         TeamPlayer::create(['team_id' => $this->team->id, 'rank' => 2, 'player_id' => $linked->id, 'pay_status' => 0]);
@@ -45,7 +45,9 @@ class CentralTeamWorkspaceTest extends TestCase
     {
         $page = $this->get(route('admin.events.teams', $this->event))->assertOk();
         $page->assertSee('data-team-context', false)->assertSee('data-workspace-team', false)->assertSee('Players &amp; invitations', false)
-            ->assertDontSee('data-bs-target="#tab-invitations"', false)->assertSee('Setup &amp; history', false)
+            ->assertDontSee('data-bs-target="#tab-invitations"', false)->assertSee('id="regions-tab"', false)
+            ->assertSee('id="result-rank-button"', false)
+            ->assertSee('data-bs-target="#tab-campaigns"', false)->assertSee('id="tab-campaigns"', false)
             ->assertDontSee('confidential-roster@example.test')->assertDontSee('data-embedded-teams-selection', false)->assertDontSee('<iframe', false);
         $this->assertSame(1, substr_count($page->getContent(), 'id="roster-region"'));
         $this->assertSame(1, preg_match_all('/<select[^>]+data-workspace-team/', $page->getContent()));
@@ -71,6 +73,10 @@ class CentralTeamWorkspaceTest extends TestCase
         $this->assertStringContainsString('#tab-communications .region-task-panel[id$="-messages"]', $fragment->json('style'));
         $this->assertDatabaseCount('team_selection_region_announcements', 0);
         $this->assertDatabaseCount('team_payment_orders', 0);
+        if (getenv('CT_CENTRAL_TEAMS_QA') === '1') {
+            file_put_contents(storage_path('framework/testing/qa-central-selection.json'), $fragment->getContent());
+            file_put_contents(storage_path('framework/testing/qa-central-shell.html'), $this->get(route('admin.events.teams', $this->event))->getContent());
+        }
     }
 
     public function test_legacy_invitation_url_renders_same_shell_and_preserves_all_real_tools_without_duplicate_ids(): void
@@ -94,6 +100,15 @@ class CentralTeamWorkspaceTest extends TestCase
         foreach ((new \DOMXPath($baseline))->query('//*[@id]') as $node) $baselineIds[] = $node->getAttribute('id');
         $this->assertSame(array_keys(array_filter(array_count_values($baselineIds), fn ($count) => $count > 1)), $duplicates);
         if (getenv('CT_CENTRAL_TEAMS_QA') === '1') {
+            $this->mock(\App\Services\Performance\PlayerRatingBadgeService::class, function ($mock) {
+                $mock->shouldReceive('forPlayer')->andReturn([
+                    'score' => 82.3,
+                    'confidence_label' => 'Medium',
+                    'rating_scope' => 'ball',
+                    'ball_type' => 'green',
+                    'title' => 'Synthetic rating for layout verification',
+                ]);
+            });
             file_put_contents(storage_path('framework/testing/qa-central-teams.html'), $page->getContent());
             file_put_contents(storage_path('framework/testing/qa-central-roster.html'), $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id]))->getContent());
             file_put_contents(storage_path('framework/testing/qa-central-order.html'), $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id, 'panel' => 'order']))->getContent());
@@ -153,7 +168,7 @@ class CentralTeamWorkspaceTest extends TestCase
         $page = $this->get(route('admin.events.teams', [$this->event, 'roster_region' => $this->eventRegion->region_id]))->assertOk();
         $page->assertSee('Change player')->assertSee('Existing player profile')
             ->assertSee('Player without a profile')->assertSee('Contact')->assertSee('Payment')
-            ->assertSee('Team #'.$this->team->id.' · Player order is shown by rank.')
+            ->assertSee('data-roster-team="'.$this->team->id.'"', false)
             ->assertSee('data-roster-player-column', false)
             ->assertSee('confidential-roster@example.test')->assertDontSee('South private region')
             ->assertDontSee('data-region-organizers', false)->assertDontSee('data-team-email-open', false)

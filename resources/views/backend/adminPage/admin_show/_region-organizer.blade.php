@@ -1,22 +1,17 @@
-<style>
-  .region-organizer-card { min-width:0; background:#f7faff; }
-  .region-organizer-card [hidden] { display:none !important; }
-  .region-organizer-card .select2-container { max-width:100%; }
-  .region-organizer-identity { overflow-wrap:anywhere; }
-  .region-organizer-card summary { cursor:pointer; min-height:44px; display:flex; align-items:center; gap:.5rem; font-weight:600; color:#173f78; }
-</style>
-<section class="region-organizer-card border rounded p-3 mt-3" aria-label="Regional organizer" data-region-organizers>
+<section class="region-organizer-card" aria-label="Regional organizer" data-region-organizers>
   @foreach($organizerRegions ?? [] as $organizer)
     @php($scope = $organizer['scope'])
     @php($manager = $organizer['manager'])
     @php($defaults = $organizer['defaults'])
     <div data-region-organizer="{{ $scope->region_id }}" @if(!$loop->first) hidden @endif>
-      <div class="d-flex flex-wrap justify-content-between gap-2">
-        <div class="region-organizer-identity"><strong>Regional organizer</strong><div>{{ $manager?->name ?: trim(($manager?->userName ?? '').' '.($manager?->userSurname ?? '')) ?: $manager?->email ?: 'Not assigned' }}</div>@if($manager?->email)<div class="small text-muted">{{ $manager->email }}</div>@endif</div>
-        <span class="badge bg-label-{{ $scope->managerAssignment ? 'primary' : 'secondary' }} align-self-start">{{ $scope->managerAssignment ? 'Custom assignment' : ($manager ? 'Series organizer default' : 'Not assigned') }}</span>
-      </div>
-      <details class="mt-2" data-organizer-editor @if($errors->has('manager_user_id') || $errors->has('manager_email')) open @endif>
-        <summary><i class="ti ti-user-cog" aria-hidden="true"></i>{{ $manager ? 'Change organizer' : 'Assign organizer' }}</summary>
+      <details data-organizer-editor @if($errors->has('manager_user_id') || $errors->has('manager_email')) open @endif>
+        <summary class="btn btn-outline-secondary" aria-label="Regional organizer settings">
+          <i class="ti ti-user-cog" aria-hidden="true"></i> Organizer
+        </summary>
+        <div class="small mt-2">Regional organizer <strong>{{ $manager?->name ?: trim(($manager?->userName ?? '').' '.($manager?->userSurname ?? '')) ?: $manager?->email ?: 'Not assigned' }}</strong></div>
+        <div class="fw-semibold">{{ $manager ? 'Change organizer' : 'Assign organizer' }}</div>
+        @if($manager?->email)<div class="small text-muted region-organizer-identity">{{ $manager->email }}</div>@endif
+        <span class="badge bg-label-{{ $scope->managerAssignment ? 'primary' : 'secondary' }}">{{ $scope->managerAssignment ? 'Custom assignment' : ($manager ? 'Series organizer default' : 'Not assigned') }}</span>
         <p class="small text-muted mt-2">Assign an existing Cape Tennis user to {{ $scope->region?->region_name }} for this event. A player profile is not required.</p>
         <form method="POST" action="{{ route('backend.team-selection.manager.assign', [$event, $scope]) }}" class="row g-2 align-items-end">
           @csrf @method('PUT')

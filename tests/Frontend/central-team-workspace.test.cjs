@@ -16,7 +16,7 @@ function harness({ endpoint = '/selection?workspace_fragment=1', managed = '1', 
   const host = { children: [], parent: null, hidden: false, querySelector() { return state.root ? {} : null; }, setAttribute() {}, removeAttribute() {},
     set innerHTML(value) { state.root = value.includes('data-embedded-teams-selection'); },
     replaceChildren() { state.root = false; this.children = []; }, append(node) { this.children.push(node); } };
-  const panels = Object.fromEntries(['players', 'order', 'communications', 'invitations', 'regions', 'result-rank'].map(name => ['tab-' + name, { classList: { contains: () => name === mode }, append(node) { node.parent = name; } }]));
+  const panels = Object.fromEntries(['players', 'order', 'communications', 'campaigns', 'regions', 'result-rank'].map(name => ['tab-' + name, { classList: { contains: () => name === mode }, append(node) { node.parent = name; node.parentElement = this; } }]));
   const window = { location: { href: 'http://localhost/backend/team-selection/events/242?selected_team=841&workspace=invitations' } };
   const document = {
     querySelector(selector) { return selector === '[data-workspace-team]' ? team : selector === '[data-team-context]' ? context : selector === '[data-central-selection-host]' ? host : null; },
@@ -83,7 +83,7 @@ test('lazy invitations share one request and one initializer while preserving se
 });
 
 test('failed invitation authorization shows retry without running scripts and a later retry can recover', async () => {
-  const h = harness({ mode: 'invitations' });
+  const h = harness({ mode: 'campaigns' });
   h.state.fail = true;
   await h.loadSelection();
   assert.equal(h.state.initialized, 0);
@@ -94,7 +94,7 @@ test('failed invitation authorization shows retry without running scripts and a 
   await h.loadSelection();
   assert.equal(h.state.requests, 2);
   assert.equal(h.state.initialized, 1);
-  assert.equal(h.host.parent, 'players');
+  assert.equal(h.host.parent, 'campaigns');
 });
 
 test('team context disables other region options and clears an incompatible team selection', () => {

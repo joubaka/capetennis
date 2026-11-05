@@ -1,6 +1,6 @@
 <p class="small text-muted" data-order-match-count role="status" aria-live="polite"></p>
 <div class="alert alert-light border" data-order-empty hidden>No teams match this search.</div>
-<h2 class="h5">Player order · {{ $region->region_name }}</h2>
+<h2 class="h6 mb-2">Player order · {{ $region->region_name }}</h2>
 @forelse($region->teams as $team)
   @php
     $rosterOnly = $rosterOnly ?? false;
@@ -14,16 +14,14 @@
     $noProfiles = $team->team_players_no_profile->keyBy('rank');
     $ranks = $slots->keys()->merge($noProfiles->keys())->unique()->sort();
   @endphp
-  <details class="roster-team" data-order-team="{{ $team->id }}" data-order-team-name="{{ $team->name }}" @if($loop->first) open
-@endif
->
+  <details class="roster-team" data-order-team="{{ $team->id }}" data-order-team-name="{{ $team->name }}">
     <summary class="roster-team-summary"><span class="roster-team-title"><strong>{{ $team->name }}</strong><span class="small text-muted">{{ $orderHint }}</span></span>
 @unless($rosterOnly)
 <span class="d-flex flex-wrap gap-2"><span class="badge {{ $editable ? 'bg-label-info' : 'bg-label-warning' }}">{{ $orderStatus }}</span><span class="badge {{ $team->published ? 'bg-label-success' : 'bg-label-secondary' }}" data-team-publication="{{ $team->id }}">{{ $team->published ? 'Published' : 'Unpublished' }}</span></span>
 @endunless
 </summary>
     <div class="roster-team-body">
-      <div class="table-responsive"><table class="table align-middle order-player-table"><thead><tr><th scope="col">{{ $editable ? 'Move' : 'Order status' }}</th><th scope="col">Rank</th><th scope="col">Player</th>
+      <div class="table-responsive"><table class="table table-sm align-middle order-player-table mb-1"><thead><tr><th scope="col">{{ $editable ? 'Move' : 'Order status' }}</th><th scope="col">Rank</th><th scope="col">Player</th>
 @unless($rosterOnly)
 <th scope="col">Payment</th>
 @endunless
@@ -42,7 +40,7 @@
             @endphp
             @continue(!$player && !$np && $rank > $team->num_team_members)
             <tr class="{{ $orderable ? 'drag-item' : 'order-vacancy' }}" data-playerteamid="{{ $orderable ? $id : '' }}" data-teamplayerid="{{ $slot?->id }}" data-noprofileid="{{ $np?->id }}" data-type="{{ $type }}">
-              <td data-label="{{ $editable ? 'Move' : 'Order status' }}">
+              <td data-order-controls data-label="{{ $editable ? 'Move' : 'Order status' }}">
                 @if($rosterOnly && $editable && $slot)
                   @include('backend.adminPage.admin_show._roster-actions')
                 @elseif($editable && $id && $orderable)<span class="drag-handle" title="Drag to reorder" aria-hidden="true"><i class="ti ti-grip-vertical"></i></span><button type="button" class="btn btn-outline-secondary" data-order-move="up" aria-label="Move {{ $name }} up">↑</button><button type="button" class="btn btn-outline-secondary" data-order-move="down" aria-label="Move {{ $name }} down">↓</button>@else<span class="text-muted">{{ $editable ? 'No roster place' : $orderStatus }}</span>
