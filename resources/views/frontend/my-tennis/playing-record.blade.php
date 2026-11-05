@@ -10,19 +10,23 @@
     .ct-record .record-upcoming-row time strong { white-space:nowrap; }
     .ct-record .record-rating-comparison { margin:.4rem 0 0; }
     .ct-record .record-rating-comparison summary { min-height:44px; padding:.6rem .15rem; color:#004177; cursor:pointer; }
-    .ct-record .record-rating-comparison-body { background:#f6f8fa; border:1px solid #dce5ef; border-radius:8px; padding:.8rem; }
+    .ct-record .record-rating-comparison-body { background:#f6f8fa; border:1px solid #dce5ef; border-radius:10px; padding:clamp(.75rem,2vw,1rem); }
+    .ct-record .record-rating-comparison-title { margin:0 0 .65rem; }
+    .ct-record .record-rating-comparison-side { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem 1rem; padding:.45rem 0; border-top:1px solid #dce5ef; }
+    .ct-record .record-rating-comparison-side .record-player-name > strong { flex:0 1 8rem; }
+    .ct-record .record-rating-comparison-side > .record-note { margin-inline-start:auto; }
     .ct-record :is(.record-coverage, .record-rating-comparison) summary:focus-visible { outline:3px solid #b85b00; outline-offset:2px; }
     .ct-record .record-coverage { margin:0 0 1rem; }
     .ct-record .record-coverage summary { cursor:pointer; padding:.6rem 0; width:fit-content; min-height:44px; color:#004177; }
     .ct-record #past-opponents, .ct-record #opponent-meetings { scroll-margin-top:6rem; }
-    .ct-record .record-matchup-heading, .ct-record .record-player-name { display:flex; flex-wrap:wrap; align-items:center; gap:.25rem .45rem; }
-    .ct-record .record-rating-mark { display:inline-flex; align-items:center; gap:.25rem; }
-    .ct-record .record-rating-mark .ctr-badge { width:2.4rem !important; height:2.4rem !important; }
+    .ct-record .record-matchup-heading, .ct-record .record-player-name { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .6rem; }
+    .ct-record .record-rating-mark { display:inline-flex; flex-wrap:wrap; align-items:center; gap:.2rem .4rem; }
     .ct-record .record-rating-mark > .small { max-width:5rem; }
     .ct-record .record-ball-label { color:#095c60; font-size:.65rem; }
     @media(max-width:575px) {
       .ct-record .record-upcoming-row { grid-template-columns:minmax(0,1fr); gap:.25rem; }
       .ct-record .record-upcoming-row .record-fixture-link { justify-self:start; }
+      .ct-record .record-rating-comparison-side > .record-note { margin-inline-start:0; }
     }
   </style>
   @include('frontend.my-tennis.profile-header', ['workspaceTab' => $recordSection, 'ratingPlayer' => $recordPlayer])

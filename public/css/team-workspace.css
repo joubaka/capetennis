@@ -240,7 +240,6 @@
 .roster-contact-links > a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .roster-contact-links > a:focus-visible { outline-offset: 0; white-space: normal; overflow-wrap: anywhere; }
 .roster-contact .roster-whatsapp { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.5rem; min-height: 1.5rem; font-size: 1rem; }
-.roster-compact-table [data-roster-row] [data-ctr-badge] { width: 2rem !important; height: 2rem !important; padding: .15rem !important; margin-inline-start: 0 !important; }
 .roster-row-actions, .roster-compact-table .team-roster-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
 .roster-row-actions:has(.roster-identity-toggle) > .roster-imported-action-hint { display: none; }
 .roster-compact-table .team-roster-actions > form { margin: 0; }

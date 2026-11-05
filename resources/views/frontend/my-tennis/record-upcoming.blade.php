@@ -21,12 +21,12 @@
           <details class="record-rating-comparison">
             <summary><strong>{{ $opponent['name'] }}</strong></summary>
             <div class="record-rating-comparison-body">
-              <h3 class="h6">{{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}</h3>
+              <h3 class="h6 record-rating-comparison-title">{{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}</h3>
               @foreach([
                 ['name' => $recordPlayer->full_name, 'rating' => $personalRating, 'stage' => $personalSnapshot['stage'] ?? null],
                 ['name' => $opponent['name'], 'rating' => $opponentRating, 'stage' => $opponentRating['stage'] ?? null],
               ] as $side)
-                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                <div class="record-rating-comparison-side">
                   @include('frontend.my-tennis.record-player-name', ['name' => $side['name'], 'rating' => $side['rating'], 'stage' => $side['stage']])
                   @if(in_array($side['rating']['confidence_label'] ?? null, ['Low', 'Medium', 'High'], true))
                     <small class="record-note">{{ $side['rating']['confidence_label'] }} confidence</small>
@@ -35,7 +35,7 @@
                   @endif
                 </div>
               @endforeach
-              @if($opponent['id'])<a class="d-inline-block mt-2 py-2" href="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => 'opponents', 'opponent' => $opponent['id']]) }}#opponent-meetings">See past meetings →</a>@endif
+              @if($opponent['id'])<a class="record-fixture-link mt-1" href="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => 'opponents', 'opponent' => $opponent['id']]) }}#opponent-meetings">See past meetings →</a>@endif
             </div>
           </details>
         @empty
