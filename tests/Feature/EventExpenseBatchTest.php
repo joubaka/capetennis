@@ -121,6 +121,8 @@ class EventExpenseBatchTest extends TestCase
             $this->assertDatabaseHas('event_expenses', ['id' => $first->id, 'amount' => '1.01']);
         }
         $this->save([$this->row(['expense_type' => 'payfast'])])->assertSessionHasErrors('lines.0.expense_type');
+        \App\Models\ExpenseType::create(['key' => 'automated_test_fee', 'label' => 'Automated fee', 'is_system' => true]);
+        $this->save([$this->row(['expense_type' => 'automated_test_fee'])])->assertSessionHasErrors('lines.0.expense_type');
         $this->assertDatabaseCount('event_expenses', 2);
     }
 

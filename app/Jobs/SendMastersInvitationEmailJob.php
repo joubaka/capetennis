@@ -18,7 +18,6 @@ use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use RuntimeException;
 use Throwable;
 
 class SendMastersInvitationEmailJob implements ShouldQueue
@@ -111,6 +110,9 @@ class SendMastersInvitationEmailJob implements ShouldQueue
     {
         return BulkEmailLog::where('mail_type', 'masters_invitation')
             ->where('related_type', MastersInvitation::class)
+            ->whereHasMorph('related', [MastersInvitation::class], fn ($invitation) =>
+                $invitation->whereHas('batch', fn ($batch) => $batch->where('event_id', $this->eventId))
+            )
             ->find($this->logId);
     }
 }

@@ -25,6 +25,7 @@ function autosaveEditor() {
   const saveSource = source.slice(source.indexOf("  $(document).on('click', '[data-selection-save]'"), source.indexOf("  $(document).on('change', '[data-selection-player]'"));
   const editor = new Function('$', 'window', 'document', 'values', 'selectionStatus', `
     let draftFinalized = false, previewPendingUrl, autosaveTimer, autosavePending = false, autosavePaused = false, draftDirty = false, saveRequestBusy = false, draftReady = true, selectionVersion = 3, resultGeneration = 1, savedDraft, draftBaseline = '';
+    const rankingCriteriaFingerprint = 'current-criteria';
     function updateDraftProgress() {} function selectionGroup() { return '10-boys'; }
     function draftFingerprint() { return JSON.stringify(values); }
     function draftRows() { return [{ dataset: { draftKey: '5' } }]; }
@@ -43,6 +44,7 @@ test('rapid comments debounce into one private draft save', () => {
   f.editor.edit('A'); f.editor.edit('AB'); f.editor.edit('ABC'); f.tick();
   assert.equal(f.requests.length, 1);
   assert.equal(JSON.parse(f.requests[0].options.data).reasons['5'], 'ABC');
+  assert.equal(JSON.parse(f.requests[0].options.data).criteria_fingerprint, 'current-criteria');
   f.success(0); f.tick(); assert.equal(f.requests.length, 1);
 });
 

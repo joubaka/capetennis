@@ -1,12 +1,12 @@
 (() => {
   'use strict';
   window.MyTennisPlayerSearch = class {
-    static async link({ url, csrf, playerId }) {
+    static async link({ url, csrf, playerId, reason }) {
       let response;
       try {
         response = await fetch(url, { method: 'POST', credentials: 'same-origin',
           headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' },
-          body: JSON.stringify({ player_id: playerId }) });
+          body: JSON.stringify({ player_id: playerId, reason }) });
       } catch (error) {
         throw new Error('Unable to reach Cape Tennis. Check your connection and try linking the player again.');
       }
@@ -36,7 +36,7 @@
           url, dataType: 'json', delay: 300, cache: false,
           data: params => ({ q: (params.term || '').trim(), format: 'select2', page: params.page || 1 }),
           processResults: data => {
-            status.textContent = data.results.length ? 'Choose a profile, then press Link selected player.' : 'No matching player profiles found.';
+            status.textContent = data.results.length ? 'Choose a player profile to continue.' : 'No matching player profiles found.';
             return { ...data, results: data.results.map(player => ({ ...player, disabled: linkedIds.has(Number(player.id)) })) };
           },
           transport: (params, success, failure) => {
@@ -60,7 +60,7 @@
       $select.on('change', () => {
         const player = $select.select2('data')[0];
         button.disabled = !player?.id || linkedIds.has(Number(player.id));
-        status.textContent = player?.id ? 'Profile selected. Press Link selected player to confirm.' : '';
+        status.textContent = player?.id ? 'Profile selected. Use the button below to confirm.' : '';
       });
       button.addEventListener('click', () => {
         const player = $select.select2('data')[0];

@@ -16,9 +16,13 @@ function harness({ schedule = false, drawStatus = 0, scheduleStatus = 0 } = {}) 
   const colors = {};
   const draw = element(drawStatus);
   const times = element(scheduleStatus);
+  const summary = { data: () => 1, removeClass() { return this; },
+    addClass(value) { colors['.event-oop-summary'] = value; return this; },
+    text(value) { labels['.event-oop-summary'] = value; } };
   const card = { find(selector) {
     if (selector === '.toggle-publish') return draw;
     if (selector === '.toggle-publish-schedule') return times;
+    if (selector === '.event-oop-summary') return { each(callback) { callback.call(summary); } };
     return { removeClass() { return this; }, addClass(value) { colors[selector] = value; return this; }, text(value) { labels[selector] = value; } };
   } };
   function element(status) {
@@ -54,6 +58,7 @@ test('draw response updates draw state while retaining independent schedule stat
   assert.equal(ui.draw.data('status'), 1);
   assert.equal(ui.times.data('status'), 1);
   assert.equal(ui.labels['.event-schedule-status'], 'Schedule published');
+  assert.equal(ui.labels['.event-oop-summary'], 'Order of play: Published');
   assert.equal(ui.colors['.event-draw-status'], 'bg-label-success');
   assert.match(ui.button.content, /Hide draw/);
   assert.equal(ui.button.disabled, false);
@@ -67,6 +72,7 @@ test('schedule reads oop_published and explains preview-only state without publi
   assert.equal(ui.labels['.event-draw-status'], 'Draw hidden');
   assert.equal(ui.colors['.event-draw-status'], 'bg-label-warning');
   assert.equal(ui.labels['.event-schedule-status'], 'Schedule preview only');
+  assert.equal(ui.labels['.event-oop-summary'], 'Order of play: Preview only');
   assert.match(ui.messages[0][1], /Publish the draw to make these times public/);
   assert.match(ui.button.content, /Hide schedule/);
   assert.equal(ui.button.disabled, false);

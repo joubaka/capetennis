@@ -9,6 +9,11 @@ admin or super-user actor, an explanation and a successful transactional audit.
 Existing legacy owners may restore their pivot link. A failed audit rolls back
 the addition. Existing self-unlink and other family accounts remain independent.
 
+Super-users can link a player to their own account from My Tennis to open the
+linked Profile. The action uses the audited staff link workflow and sends no
+notification. The relationship is a normal player link and can affect recipients
+of future player communications until it is removed.
+
 Creating a genuinely new own profile differs from finding an existing profile
 with matching identity fields. A duplicate match does not prove ownership.
 Additional guardians need staff review through existing user management; the

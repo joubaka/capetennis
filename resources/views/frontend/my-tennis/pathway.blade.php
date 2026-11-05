@@ -62,8 +62,8 @@
       @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
     </div>
   </div>
-  <details class="mt-2">
-    <summary>See all levels and targets</summary>
+  <section class="mt-3" aria-labelledby="pathway-levels-heading">
+    <h3 class="h6" id="pathway-levels-heading">All levels and targets</h3>
     <p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>
     <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>
     @foreach(['red' => ['Red ball', '#ed2029', 0], 'orange' => ['Orange ball', '#ed7100', 1]] as $ball => [$label, $ink, $benchmarkIndex])
@@ -95,5 +95,5 @@
       </li>
     @endforeach
     </ol>
-  </details>
+  </section>
 </section>

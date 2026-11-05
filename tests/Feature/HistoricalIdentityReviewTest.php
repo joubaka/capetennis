@@ -6,6 +6,7 @@ use App\Models\{Category, CategoryEvent, Draw, Event, HistoricalIdentityProposal
 use App\Services\Performance\{HistoricalIdentityReviewService, PlayerPerformanceHistoryService, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
@@ -15,6 +16,14 @@ class HistoricalIdentityReviewTest extends TestCase
 {
     // Counterfactual previews use a real read-only transaction, so cannot nest in RefreshDatabase.
     use DatabaseTruncation;
+
+    protected function beforeTruncatingDatabase(): void
+    {
+        if (config('database.default') === 'sqlite' && config('database.connections.sqlite.database') === ':memory:') {
+            // This trait opens a fresh connection; RefreshDatabase's migrated flag may describe another PDO.
+            RefreshDatabaseState::$migrated = false;
+        }
+    }
 
     protected function afterTruncatingDatabase(): void
     {
@@ -31,7 +40,7 @@ class HistoricalIdentityReviewTest extends TestCase
     public static function tearDownAfterClass(): void
     {
         // Subsequent RefreshDatabase classes need the pristine migration-seeded baseline.
-        \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        RefreshDatabaseState::$migrated = false;
         parent::tearDownAfterClass();
     }
 

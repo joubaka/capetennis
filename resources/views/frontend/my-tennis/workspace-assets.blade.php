@@ -232,10 +232,21 @@ function mountMyTennisControls() {
   };
 
   const linkPlayer = async (player, button) => {
+    const adminProfileLink = button.hasAttribute('data-admin-profile-link');
     button.disabled = true;
     workspace.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true}));
     try {
-      await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id });
+      await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id,
+        reason: adminProfileLink ? 'Super admin reviewing the linked player profile in My Tennis' : undefined });
+      if (adminProfileLink) {
+        if (!lifetime.signal.aborted) {
+          const url = new URL(profileUrl, window.location.origin);
+          url.searchParams.set('player', player.id);
+          url.searchParams.set('tab', 'profile');
+          window.location.assign(url.href);
+        }
+        return;
+      }
       showFeedback(`Existing access to ${player.name} ${player.surname || ''} has been restored.`, 'success');
       if (!lifetime.signal.aborted) window.location.reload();
     } catch (error) { button.disabled = false; showFeedback(error.message, 'danger'); }

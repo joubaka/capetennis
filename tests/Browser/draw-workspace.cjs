@@ -263,29 +263,49 @@ async function run() {
       await page.locator('#rrScoreModal').waitFor({ state: 'hidden' });
       assert.equal(calls.filter(c => c.path.includes('/roundrobin/score/')).length, 1);
     });
+    await check('Playoff preview recovers from a read failure without generating fixtures', async () => {
+      const previewRoute = '**/main-bracket?force=0';
+      const mutationCount = calls.length;
+      await page.route(previewRoute, route => route.fulfill({ status: 503 }), { times: 1 });
+      await page.evaluate(() => { location.hash = '#main-bracket'; });
+      await page.locator('#main-bracket-pane.active').waitFor();
+      const retry = page.getByRole('button', { name: 'Try again', exact: true });
+      await retry.waitFor();
+      const [request] = await Promise.all([
+        page.waitForRequest(req => new URL(req.url()).pathname.endsWith('/main-bracket')),
+        retry.click(),
+      ]);
+      assert.equal(request.method(), 'GET');
+      await page.getByText('Regression bracket preview', { exact: true }).waitFor();
+      assert.deepEqual(calls.slice(mutationCount).map(call => call.path).filter(pathname => pathname !== '/audit/interactions'), []);
+    });
     await check('All sections and every print choice remain reachable', async () => {
-      await page.getByRole('button', { name: 'Setup & Rules', exact: true }).click();
+      await page.getByRole('button', { name: 'Draw settings', exact: true }).click();
       await page.locator('#settings-pane.active').waitFor();
-      await page.locator('.rr-advanced > summary').click();
+      await page.getByText('View full setup', { exact: true }).click();
       assert.equal(await page.locator('#complete-seeding-matrix').isVisible(), true);
-      await page.locator('#notes-tab').click();
+      await page.getByRole('button', { name: 'Rules & notes', exact: true }).click();
       assert.equal(await page.locator('#btn-save-notes').isVisible(), true);
-      await page.locator('#rr-open-print').click();
-      for (const id of ['fixtures', 'matrix', 'bracket', 'empty-bracket', 'combined', 'draw-pack'])
-        assert.equal(await page.locator('#btn-print-' + id).isVisible(), true);
     });
     await check('Every print action opens a populated printable document', async () => {
+      await page.getByText('More tools', { exact: true }).click();
+      await page.locator('#rr-open-print').click();
       for (const id of ['fixtures', 'matrix', 'bracket', 'empty-bracket', 'combined', 'draw-pack']) {
-        const opened = page.waitForEvent('popup');
-        await page.locator('#btn-print-' + id).click();
-        const popup = await opened;
+        assert.equal(await page.locator('#btn-print-' + id).isVisible(), true);
+        const [popup] = await Promise.all([
+          page.waitForEvent('popup'),
+          page.locator('#btn-print-' + id).click(),
+        ]).catch(error => { throw new Error(id + ' print did not open: ' + error.message, { cause: error }); });
         await popup.waitForLoadState('domcontentloaded');
         assert.ok((await popup.locator('body').innerText()).trim().length > 20, id + ' print content');
         await popup.close();
       }
     });
     await check('Order saving includes hidden fixtures and leaves match numbers unchanged', async () => {
-      await page.getByRole('button', { name: 'Schedule', exact: true }).click();
+      // The individual draw now uses the event planner as its visible entry
+      // point. Keep testing the existing workspace's saved Match list link.
+      await page.evaluate(() => { location.hash = '#oop'; });
+      await page.locator('#oop-pane.active').waitFor();
       await page.locator('.rr-order-down').first().click();
       await page.locator('#rr-ops-search').fill(fixtures[0].home);
       await page.locator('#rr-save-order-btn').click();
@@ -293,16 +313,16 @@ async function run() {
       const save = calls.findLast(c => c.path.endsWith('/save-order'));
       assert.equal(save.data.order.length, fixtures.length);
     });
-    await check('Scheduling still offers draw, round, match, auto and clear controls', async () => {
-      await page.locator('#schedule-tab').click();
-      await page.locator('[data-bs-target="#scheduleModal"]').click();
-      await page.locator('#scheduleModal.show').waitFor();
-      assert.equal(await page.locator('#scheduleModal input[name="mode"]').count(), 3);
-      assert.equal(await page.locator('#autoScheduleBtn').isVisible(), true);
-      assert.equal(await page.locator('#clearScheduleBtn').isVisible(), true);
-      await page.locator('#scheduleModal .btn-close').click();
+    await check('The scheduling link opens the event venue planner scoped to this draw', async () => {
+      const plannerLink = page.getByRole('link', { name: 'Schedule matches', exact: true });
+      assert.equal(await plannerLink.isVisible(), true);
+      const target = new URL(await plannerLink.getAttribute('href'));
+      assert.match(target.pathname, /\/events\/\d+\/venue-schedule$/);
+      assert.deepEqual([...target.searchParams.values()], [String(await page.locator('#round-robin-app').getAttribute('data-draw-id'))]);
     });
     await check('Add Venue opens the rendered modal and saves the array contract', async () => {
+      await page.evaluate(() => { location.hash = '#schedule'; });
+      await page.locator('#schedule-pane.active').waitFor();
       await page.locator('#rr-add-venues').click();
       await page.locator('#venuesModal.show').waitFor();
       await page.locator('#toggle-create-venue').click();
@@ -320,7 +340,7 @@ async function run() {
     });
     await check('Mobile assignment actions and navigation fit the viewport', async () => {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('button', { name: 'Players & Groups', exact: true }).click();
+      await page.getByRole('button', { name: 'Players & Positions', exact: true }).click();
       await page.locator('#groups-pane.show.active').waitFor();
       await page.waitForFunction(() => getComputedStyle(document.querySelector('#groups-pane')).opacity === '1');
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
@@ -329,7 +349,7 @@ async function run() {
     });
     await check('All four work areas also fit a 360px screen', async () => {
       await page.setViewportSize({ width: 360, height: 800 });
-      for (const label of ['Players & Groups', 'Draw & Results', 'Schedule', 'Setup & Rules']) {
+      for (const label of ['Players & Positions', 'Draw & Results', 'Draw settings', 'Rules & notes']) {
         await page.getByRole('button', { name: label, exact: true }).click();
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2),

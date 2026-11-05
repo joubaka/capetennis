@@ -4,8 +4,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('public/assets/js/player-rating-badges.js', 'utf8');
 
-function harness({ enabled = true, svg = false, category = false } = {}) {
-  const node = { dataset: { ratingPlayer: '7', ratingDraw: '0', ...(svg ? { ratingSvg: '1' } : {}), ...(category ? { ratingCategory: '3' } : {}) }, innerHTML: 'Old server badge' };
+function harness({ enabled = true, svg = false, category = false, compact = false } = {}) {
+  const node = { dataset: { ratingPlayer: '7', ratingDraw: '0', ...(svg ? { ratingSvg: '1' } : {}), ...(category ? { ratingCategory: '3' } : {}) }, innerHTML: 'Old server badge',
+    closest(selector) { return compact && selector === '.fm-player-identity' ? {} : null; } };
   const label = { textContent: '' };
   const detail = { dataset: { ratingDetailVersion: 'v1' }, hidden: true };
   const timers = [];
@@ -65,6 +66,17 @@ test('finish-only ball estimates retain explicit low-confidence local source lab
   assert.match(h.node.innerHTML, /within-group only/);
   assert.match(h.node.innerHTML, /Low confidence · final placings only/);
   assert.match(h.node.innerHTML, /data-stage="orange"/);
+});
+
+test('fixed-height draw rows retain rating caveats in the compact badge', async () => {
+  const h = harness({ compact: true });
+  h.update('v1', [{ score: 55.1, rating_scope: 'ball', ball_type: 'orange', comparable: false,
+    evidence_basis: 'finish_only', confidence_label: 'Low' }]);
+  await h.flush();
+  assert.match(h.node.innerHTML, /fm-ctr-badge/);
+  assert.match(h.node.innerHTML, /CTR 55\.1\*/);
+  assert.match(h.node.innerHTML, /Low confidence · within-group only · final placings only/);
+  assert.doesNotMatch(h.node.innerHTML, /data-ctr-badge/);
 });
 
 test('private rendered badges refresh after version changes and removed ratings clear old HTML', async () => {

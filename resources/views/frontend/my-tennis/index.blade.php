@@ -302,13 +302,21 @@
       <div class="mb-3" id="my-tennis-link-feedback" role="status" aria-live="polite"></div>
       <div class="collapse" id="link-player-panel">
         <div class="border rounded p-3 mb-3">
-          <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Existing family links remain available. To add an existing player or another guardian, contact Cape Tennis support for relationship review. Finding or paying for a player does not grant private access.</span></div></div>
+          @if($accountUser->hasRole('super-user'))
+            <p class="alert alert-info">Link a player to your own account and open their Profile. Adding the link sends no notifications and is recorded in the audit log. While linked, your account may receive future player communications. You can unlink the player here when you’re done.</p>
+          @else
+            <div class="alert alert-info d-flex gap-2 align-items-start mb-3"><i class="ti ti-users fs-4" aria-hidden="true"></i><div><strong>Shared player access</strong><br><span class="small">Existing family links remain available. To add an existing player or another guardian, contact Cape Tennis support for relationship review. Finding or paying for a player does not grant private access.</span></div></div>
+          @endif
           <label for="my-tennis-player-search" class="form-label">Find the player profile</label>
           <select id="my-tennis-player-search" class="form-select" aria-describedby="my-tennis-player-search-help my-tennis-player-search-status"><option></option></select>
           <p id="my-tennis-player-search-help" class="form-text mt-2">Type at least two characters of the player's name, then choose their profile. Selecting a profile does not link it.</p>
           <p id="my-tennis-player-search-status" class="small text-muted" role="status" aria-live="polite"></p>
-          <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Restore existing access</button>
-          <p class="form-text mb-0 mt-2">This can restore an existing relationship. New relationships require staff review.</p>
+          @if($accountUser->hasRole('super-user'))
+            <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" data-admin-profile-link disabled>Link and open profile</button>
+          @else
+            <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Restore existing access</button>
+            <p class="form-text mb-0 mt-2">This can restore an existing relationship. New relationships require staff review.</p>
+          @endif
         </div>
       </div>
       <div id="my-tennis-linked-players">

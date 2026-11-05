@@ -366,6 +366,12 @@ Composite ties may play later-round singles before earlier-round doubles. Same-d
 
 **Regression:** `tests/Feature/Draw/TeamAgeVenueSetupTest.php` and `tests/Frontend/team-age-venue-setup.test.cjs` cover shared age setup, venue pools, stale/invalid saves, other-age and publication preservation, unsaved drafts and asynchronous save guards. `tests/Feature/Draw/TeamBulkSchedulingTest.php` covers independent ages and venues, spare courts, phase completion, partial selections, manual moves, failed reset, composite programmes, foreign/incomplete selections and placement dependencies. `tests/Frontend/schedule-programme-bulk.test.cjs` and the programme apply tests cover bulk selection and concurrent draft edits. Test execution and browser evidence must be reported separately from these coverage references; no deployment or live scheduling is authorized by this guide.
 
+## DK-30 — Restoring the Playoffs tab leaves an empty or stalled preview
+
+An individual round-robin workspace can restore the Playoffs tab before its JavaScript attaches. Initialize the visible tab once on startup, preserve lazy loading for other tabs, and refresh when the user returns. A failed preview read should replace the spinner with a Retry button that repeats the GET. Preparation and generation remain separate actions.
+
+The owning script is `resources/js/admin/roundrobin/brackets.js`, which Mix copies to `public/assets/js/admin/roundrobin/brackets.js`. Verify that both copies match. The focused regression is `tests/Frontend/playoff-preview-load.test.cjs`; `tests/Browser/draw-workspace.cjs` exercises restoration, a failed read, and successful retry against a local fixture.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

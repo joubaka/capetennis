@@ -43,7 +43,7 @@ test('unsupported individual workflows use general setup without programme submi
 });
 test('programme group uses exact individual IDs and keeps team age selection',()=>{
  const get=()=>({value:'individual:2'});const context={document:{getElementById:get},programmeDraws:[{id:1,is_team:false,programme_age:'monrad:19'},{id:2,is_team:false,programme_age:'monrad:19'},{id:3,is_team:true,programme_age:'19'}]};
- const start=source.indexOf('  const programmeGroup =');const end=source.indexOf('\n',start);vm.runInNewContext(source.slice(start,end)+';globalThis.group=programmeGroup;',context);assert.deepEqual(Array.from(context.group(),d=>d.id),[2]);
+ const start=source.indexOf('  const programmeGroup =');const end=source.indexOf('  const programmeStatus =',start);vm.runInNewContext(source.slice(start,end)+';globalThis.group=programmeGroup;',context);assert.deepEqual(Array.from(context.group(),d=>d.id),[2]);
  context.document.getElementById=()=>({value:'19'});assert.deepEqual(Array.from(context.group(),d=>d.id),[3]);
 });
 

@@ -8,6 +8,7 @@
   'use strict';
 
   var DRAW_ID = null;
+  var mainPreviewVisited = false;
 
   var SPINNER_LARGE = [
     '<div class="text-center py-5">',
@@ -28,7 +29,17 @@
   function loadMainBracket(force) {
     $('#bracket-zoom-inner')
       .html(SPINNER_SMALL)
-      .load(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/main-bracket?force=' + (force ? 1 : 0));
+      .load(AdminRoutes.appUrl() + '/backend/draw/' + DRAW_ID + '/main-bracket?force=' + (force ? 1 : 0), function (_, status) {
+        if (status === 'error') {
+          $(this).html('<div class="alert alert-warning" role="alert">Could not load the playoffs. <button type="button" class="btn btn-sm btn-outline-primary" id="rr-retry-bracket">Try again</button></div>');
+        }
+      });
+  }
+
+  function visitMainPreview() {
+    if (mainPreviewVisited) return;
+    mainPreviewVisited = true;
+    loadMainBracket();
   }
 
   function loadPlateBracket(force) {
@@ -130,12 +141,16 @@
   // ─── Bind ─────────────────────────────────────────────────────────
   function bind() {
     $(document).on('click', '#btn-generate-main-bracket', generateMainBracket);
+    $(document).on('click', '#rr-retry-bracket', function () { loadMainBracket(); });
 
     // Load on tab activation (lazy-load)
     $('button[data-bs-toggle="tab"]').on('shown.bs.tab', function (e) {
       if ($(e.target).attr('id') === 'main-bracket-tab') {
-        loadMainBracket();
+        visitMainPreview();
       }
+    });
+    $('button[data-bs-toggle="tab"]').on('hide.bs.tab', function (e) {
+      if ($(e.target).attr('id') === 'main-bracket-tab') mainPreviewVisited = false;
     });
 
     // Reload after score save (bracket mode)
@@ -156,8 +171,10 @@
 
   function init(drawId) {
     DRAW_ID = drawId;
+    mainPreviewVisited = false;
     bind();
     _initZoom();
+    if ($('#main-bracket-pane').hasClass('active') || $('#main-bracket-tab').hasClass('active')) visitMainPreview();
 
     // Expose for legacy shims
     root.loadMainBracket  = loadMainBracket;

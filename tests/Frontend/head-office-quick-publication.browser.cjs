@@ -42,7 +42,7 @@ test('closed team draw cards show publication failures, recovery and success on 
       const feedback = page.locator('[data-quick-draw-feedback]');
       await feedback.filter({ hasText: 'review team ties' }).waitFor({ state: 'visible' });
       assert.equal(await page.locator('[data-quick-publication-card]').getAttribute('open'), null);
-      assert.equal(await page.locator('[data-quick-draw-publication]').textContent(), 'Publish');
+      assert.equal(await page.locator('[data-quick-draw-publication]').textContent(), 'Publish draw');
       await page.evaluate(() => window.replies.push('disconnect', 'disconnect'));
       await page.locator('[data-quick-draw-publication]').click();
       await page.locator('[data-quick-draw-status-retry]').waitFor({ state: 'visible' });
@@ -52,7 +52,7 @@ test('closed team draw cards show publication failures, recovery and success on 
       await page.evaluate(result => window.replies.push(result), state(true));
       await page.locator('[data-quick-draw-publication]').click();
       await feedback.filter({ hasText: 'Draw published.' }).waitFor({ state: 'visible' });
-      assert.equal(await page.locator('[data-quick-draw-publication]').textContent(), 'Unpublish');
+      assert.equal(await page.locator('[data-quick-draw-publication]').textContent(), 'Unpublish draw');
       const requests = await page.evaluate(() => window.requests);
       assert.deepEqual(JSON.parse(requests.at(-1).options.body), { operation: 'draws', action: 'publish', draw_ids: [1] });
       assert.equal(requests.filter(request => request.options.method === 'POST').length, 3);

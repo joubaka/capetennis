@@ -113,9 +113,10 @@ test('compact Teams tabs are reachable on desktop, tablet and phone', async () =
           display: getComputedStyle(row).display,
           height: row.getBoundingClientRect().height,
           cellTops: [...row.cells].map(cell => cell.getBoundingClientRect().top),
+          cellContents: [...row.cells].map(cell => [cell.dataset.label, ...[...cell.children].map(child => Math.round(child.getBoundingClientRect().height))].join(' ')),
         }));
         assert.equal(dimensions.display, 'table-row', `${width}px collapsed rated player layout`);
-        assert.ok(dimensions.height <= 64, `${width}px rated row is ${dimensions.height}px high`);
+        assert.ok(dimensions.height <= 64, `${width}px rated row is ${dimensions.height}px high (${dimensions.cellContents.join(', ')})`);
         assert.equal(new Set(dimensions.cellTops).size, 1, `${width}px player columns share a line`);
         await ratedRow.scrollIntoViewIfNeeded();
         await page.screenshot({ path: path.join(fixtureRoot, `compact-teams-${width}-dense-roster.png`) });

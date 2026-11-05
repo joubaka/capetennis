@@ -82,10 +82,12 @@ test('overlapping refresh requests fetch again after the first response', async 
 
 function mutation(options = {}) {
   const handlers = {}, buttons = [{ disabled: false }], panel = { dataset: {}, querySelectorAll() { return buttons; } };
-  const label = {}, clock = {};
-  const feedback = { dataset: {}, setAttribute() {}, querySelector(selector) { return selector.includes('message') ? label : clock; }, append(button) { this.retry = button; }, set textContent(value) { this.message = value; this.firstChild = { textContent: value }; } };
-  const form = { dataset: {}, elements: {}, closest(selector) { return selector === '[data-roster-panel]' ? panel : null; }, querySelectorAll() { return buttons; }, getAttribute() { return '/save'; }, parentElement: { querySelector() { return feedback; } }, contains(button) { return buttons.includes(button); } };
-  const document = { addEventListener(type, callback) { handlers[type] = callback; }, createElement() { return { dataset: {}, setAttribute() {}, addEventListener(type, callback) { this.click = callback; } }; } };
+  const label = {}, clock = {}, percent = {};
+  const feedback = { dataset: {}, setAttribute() {}, matches(selector) { return selector === '[data-team-roster-feedback]' && 'teamRosterFeedback' in this.dataset; },
+    querySelector(selector) { return selector.includes('message') ? label : selector.includes('time') ? clock : percent; },
+    append(button) { this.retry = button; }, set textContent(value) { this.message = value; this.firstChild = { textContent: value }; } };
+  const form = { dataset: {}, elements: {}, closest(selector) { return selector === '[data-roster-panel]' ? panel : null; }, querySelectorAll() { return buttons; }, getAttribute() { return '/save'; }, after(node) { this.nextElementSibling = node; }, contains(button) { return buttons.includes(button); } };
+  const document = { addEventListener(type, callback) { handlers[type] = callback; }, createElement(tag) { return tag === 'p' ? feedback : { dataset: {}, setAttribute() {}, addEventListener(type, callback) { this.click = callback; } }; } };
   let posts = 0, gets = 0, failed = true, now = 0, timerId = 0;
   const timers = new Map(), postResolvers = [], refreshResolvers = [];
   const window = { refreshTeamRoster: async () => { gets++; if (options.pendingRefresh) await new Promise(resolve => refreshResolvers.push(resolve)); if (failed) throw Error('refresh failed'); }, toastr: { success() {} }, location: { reload() { assert.fail('must not navigate'); } } };
@@ -121,7 +123,7 @@ test('pending save shows an animated spinner, elapsed time and slow feedback wit
   assert.equal(f.label.textContent, 'Saving player change…');
   assert.equal(f.buttons[0].disabled, true);
   f.advance(10000);
-  assert.match(f.label.textContent, /longer than usual/);
+  assert.match(f.label.textContent, /waiting for save confirmation.*do not submit again/i);
   assert.equal(f.clock.textContent, '10s elapsed');
   await f.submit(); assert.equal(f.counts().posts, 1);
   f.postResolvers[0](); await pending;

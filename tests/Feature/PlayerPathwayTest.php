@@ -114,7 +114,7 @@ class PlayerPathwayTest extends TestCase
         $response = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Ball level: Green/yellow ball');
         $this->assertMatchesRegularExpression('/data-pathway-top-badge>.*?aria-label="CTR 67\\.9 · Green\/yellow ball"/s', $response->getContent());
         $response->assertDontSee('a starting stage must be recorded')->assertSee('Wilson A suggested')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
-        $response->assertSee('Suggested next step')->assertSee('See all levels and targets')
+        $response->assertSee('Suggested next step')->assertSee('All levels and targets')
             ->assertSee('data-pathway-snapshot', false)->assertSee('You are here')->assertSee('data-pathway-competition="Wilson A"', false);
         if (getenv('CT_PATHWAY_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/pathway-auto-qa.html'), $response->getContent());

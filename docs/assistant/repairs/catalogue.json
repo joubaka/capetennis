@@ -409,6 +409,32 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/Scheduling/TeamAgeVenueSetup.php", "app/Services/Scheduling/TeamDisciplineOrder.php", "app/Services/Scheduling/EventVenueScheduleService.php", "app/Services/TeamScheduleService.php", "docs/draw-knowledge/catalogue.md"],
       "tests": ["tests/Feature/Draw/TeamAgeVenueSetupTest.php", "tests/Feature/Draw/TeamBulkSchedulingTest.php", "tests/Feature/Draw/ScheduleProgrammeTest.php"]
+    },
+    {
+      "id": "RK-028",
+      "title": "Batch expense form rejects a valid manual category",
+      "scope": "Validation of event expense category keys submitted from the batch form.",
+      "symptoms": "A valid manual category comes back as invalid on SQLite and the expense batch does not save.",
+      "cause": "Laravel serializes a false boolean in a wildcard exists rule as an empty string. SQLite does not match that string to a numeric zero in the system flag.",
+      "fix": "Use explicit zero for the database-rule predicate. Retain the reserved key restriction and all event authorization, stale edit, atomic save and exact amount checks.",
+      "verification": "EventExpenseBatchTest passed locally on SQLite and MySQL. It covers valid manual categories, reserved and other system categories, cross-event isolation, atomic updates, retries and exact amounts.",
+      "limits": "Guide only. This is a validation fix and does not authorize changes to expense records, accounting or payment history.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/EventExpenseBatchController.php"],
+      "tests": ["tests/Feature/EventExpenseBatchTest.php"]
+    },
+    {
+      "id": "RK-029",
+      "title": "A mismatched Masters email job changes another event's mail status",
+      "scope": "The dedicated Masters invitation mail job and its failure callback.",
+      "symptoms": "A queued job with the wrong event ID can mark a valid invitation log as skipped or failed.",
+      "cause": "The job loaded the log by ID and mail type before proving that its related invitation belonged to the job event.",
+      "fix": "Scope the shared log lookup through the persisted invitation and its batch event before changing status. Keep signed snapshot and send eligibility checks, and preserve uncertain outcomes across retries and late failure callbacks.",
+      "verification": "Local MastersInvitationEmailTest uses an isolated database, array mail and a mock transport. It covers cross-event and wrong-type log isolation, pre-transport holds and a transport exception with no second send.",
+      "limits": "Guide only. Applies to the dedicated Masters invitation job. Does not authorize sending or retrying mail or repairing legacy bulk-job records.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Jobs/SendMastersInvitationEmailJob.php"],
+      "tests": ["tests/Unit/MastersInvitationEmailTest.php"]
     }
   ]
 }

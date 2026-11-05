@@ -257,6 +257,16 @@
 @media (min-width: 768px) {
   .team-admin-workspace .roster-team-title { flex-direction: row; align-items: baseline; flex-wrap: wrap; gap: .1rem .55rem; }
 }
+@media (min-width: 768px) and (max-width: 991.98px) {
+  .team-admin-workspace .roster-compact-table [data-roster-contact-column] { width: 8.5rem; }
+  /* A player name and stamp can wrap onto separate lines in tablet columns. */
+  #tab-players .roster-compact-table [data-label="Player"] [data-ctr-badge] {
+    width: 2rem !important;
+    height: 2rem !important;
+    padding: 0 !important;
+    margin-block: 0 !important;
+  }
+}
 .roster-more-actions > summary { list-style: none; cursor: pointer; }
 .roster-more-actions > summary::-webkit-details-marker { display: none; }
 .roster-more-actions[open] { flex-basis: 100%; }

@@ -44,7 +44,8 @@ class PlayerSuspension extends Model
     {
         return $query
             ->whereNull('lifted_at')
-            ->where('ends_at', '>', Carbon::today()->toDateString());
+            // The end date is exclusive, whether stored as a date or as midnight.
+            ->where('ends_at', '>=', Carbon::today()->addDay()->toDateString());
     }
 
     public function getIsActiveAttribute(): bool

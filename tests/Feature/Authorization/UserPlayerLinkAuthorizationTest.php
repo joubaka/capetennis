@@ -5,6 +5,8 @@ namespace Tests\Feature\Authorization;
 use App\Models\Player;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -77,6 +79,30 @@ class UserPlayerLinkAuthorizationTest extends TestCase
             'player_id' => $player->id,
         ]);
         $this->assertSame($owner->id, $player->fresh()->userId);
+    }
+
+    public function test_super_admin_can_link_a_player_to_their_own_account_without_notifications(): void
+    {
+        Mail::fake();
+        Notification::fake();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $admin = User::factory()->create();
+        $admin->assignRole('super-user');
+        $owner = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $owner->id]);
+        $owner->players()->attach($player->id);
+
+        $this->actingAs($admin)->postJson(route('backend.user.players.store', $admin), [
+            'player_id' => $player->id,
+            'reason' => 'Super admin reviewing the linked player profile in My Tennis',
+        ])->assertOk();
+
+        $this->assertDatabaseHas('user_players', ['user_id' => $admin->id, 'player_id' => $player->id]);
+        $this->assertDatabaseHas('user_players', ['user_id' => $owner->id, 'player_id' => $player->id]);
+        $this->assertDatabaseHas('players', ['id' => $player->id, 'userId' => $owner->id]);
+        $this->assertDatabaseHas('audit_events', ['action' => 'player.account-linked', 'actor_id' => $admin->id, 'subject_id' => (string) $player->id]);
+        Mail::assertNothingOutgoing();
+        Notification::assertNothingSent();
     }
 
     public function test_existing_pivot_link_is_idempotent_and_legacy_get_mutations_are_retired(): void

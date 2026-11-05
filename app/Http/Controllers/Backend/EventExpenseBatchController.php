@@ -47,7 +47,7 @@ class EventExpenseBatchController extends Controller
             'lines.*.id' => ['nullable', 'integer', 'distinct', Rule::exists('event_expenses', 'id')->where('event_id', $event->id)],
             'lines.*.version' => ['required_with:lines.*.id', 'nullable', 'string', 'size:64'],
             'lines.*.batch_key' => ['required_without:lines.*.id', 'nullable', 'uuid', 'distinct'],
-            'lines.*.expense_type' => ['required', 'string', Rule::exists('expense_types', 'key')->where('is_system', false), Rule::notIn(['payfast', 'cape_tennis_fee'])],
+            'lines.*.expense_type' => ['required', 'string', Rule::exists('expense_types', 'key')->where('is_system', 0), Rule::notIn(['payfast', 'cape_tennis_fee'])],
             'lines.*.description' => ['nullable', 'string', 'max:255'],
             'lines.*.recipient_name' => ['nullable', 'string', 'max:150'],
             'lines.*.paid_by_convenor_id' => ['nullable', 'integer', Rule::exists('event_convenors', 'id')->where('event_id', $event->id)],

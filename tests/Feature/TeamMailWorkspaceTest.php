@@ -177,12 +177,20 @@ class TeamMailWorkspaceTest extends TestCase
         $this->assertSame($wanted->player->email, $batch->recipients[0]['email']);
     }
 
-    public function test_lifecycle_rejects_regional_only_actor_foreign_import_and_different_approver(): void
+    public function test_lifecycle_preview_respects_regional_scope_and_batch_ownership(): void
     {
         $regional = User::factory()->create();
         EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $this->region->region_id, 'event_region_id' => $this->region->id, 'user_id' => $regional->id]);
         $route = route('backend.team-selection.invitations.email.send-pending-activated', [$this->event, $this->import]);
-        $this->actingAs($regional)->post($route)->assertForbidden();
+        $this->actingAs($regional)->post($route)->assertOk();
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNothingDispatched();
+
+        $otherManager = User::factory()->create();
+        $otherRegion = TeamRegion::create(['region_name' => 'Mail South', 'clothing_admin' => false]);
+        $otherEventRegion = EventRegion::forceCreate(['event_id' => $this->event->id, 'region_id' => $otherRegion->id]);
+        EventRegionManager::create(['event_id' => $this->event->id, 'region_id' => $otherRegion->id, 'event_region_id' => $otherEventRegion->id, 'user_id' => $otherManager->id]);
+        $this->actingAs($otherManager)->post($route)->assertForbidden();
         $foreign = Event::factory()->create();
         $this->actingAs($this->actor)->post(route('backend.team-selection.invitations.email.send-pending-activated', [$foreign, $this->import]))->assertNotFound();
         $batch = $this->preview('pending');
@@ -194,18 +202,24 @@ class TeamMailWorkspaceTest extends TestCase
     {
         $this->invitation->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED]);
         $this->invitation->player->update(['userId' => User::factory()->create(['email' => 'secondary-parent@example.test'])->id]);
-        $response = $this->post(route('backend.team-selection.invitations.email.custom-preview', [$this->event, $this->import]), [
+        $this->post(route('backend.team-selection.invitations.email.custom-preview', [$this->event, $this->import]), [
             'invitation_ids' => [$this->invitation->id], 'email_subject' => 'Custom subject', 'email_message' => 'Only my authored message.',
         ])->assertOk();
         $batch = EventCommunicationBatch::latest('id')->firstOrFail();
-        $this->assertCount(1, $batch->recipients);
-        $this->assertSame($this->invitation->player->email, $batch->recipients[0]['email']);
-        $this->assertSame('Only my authored message.', $batch->recipients[0]['html']);
-        $this->assertStringNotContainsString('clothing', $batch->recipients[0]['html']);
-        app(EventCommunicationService::class)->approve($batch, $this->actor, false);
+        $addresses = [$this->invitation->player->email, 'secondary-parent@example.test'];
+        $this->assertEqualsCanonicalizing($addresses, array_column($batch->recipients, 'email'));
+        foreach ($batch->recipients as $recipient) {
+            $this->assertSame('Only my authored message.', $recipient['html']);
+        }
+        $this->assertSame(2, app(EventCommunicationService::class)->approve($batch, $this->actor, false)['queued']);
         $this->assertNull($this->invitation->fresh()->invited_at);
         $this->assertTrue(data_get($this->invitation->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
-        $this->assertSame('team_email', $batch->logs()->sole()->mail_type);
+        $logs = $batch->logs()->get();
+        $this->assertEqualsCanonicalizing($addresses, $logs->pluck('recipient_email')->all());
+        foreach ($logs as $log) {
+            $this->assertSame('team_email', $log->mail_type);
+            $this->assertSame('Only my authored message.', $log->payload['body']);
+        }
     }
 
     public function test_workspace_email_chooser_retains_campaign_controls_and_blank_custom_with_pending_contacts(): void

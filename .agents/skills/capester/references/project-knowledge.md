@@ -70,7 +70,7 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   separate from the published, comparable Overall CTR used in match comparisons.
 - The plain My Tennis landing opens Profile, including for players with rating
   access. Explicit player and tab links retain their destinations. The full
-  Tournament options level map is available behind a disclosure. Revalidate remembered players against
+  Tournament options level map is always visible. Revalidate remembered players against
   the current account relationship before displaying personal details.
   Activity and profile editing are standard features; Plus tabs and private
   ratings follow the selected player's entitlement.

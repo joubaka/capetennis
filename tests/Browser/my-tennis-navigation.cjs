@@ -155,15 +155,9 @@ async function run() {
       await active('Opponents');
       await page.goForward();
       await active('Tournament options');
-      const levels = workspace.getByText('See all levels and targets', { exact: true });
-      await levels.waitFor();
-      assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);
-      await levels.click();
-      assert.equal(await levels.evaluate(summary => summary.parentElement.open), true);
-      await levels.click();
-      assert.equal(await levels.evaluate(summary => summary.parentElement.open), false);
-      await levels.click();
-      await workspace.locator('[data-player-pathway] details[open]').waitFor();
+      const levels = workspace.getByRole('region', { name: 'All levels and targets' });
+      await levels.locator('[data-pathway-snapshot]').waitFor({ state: 'visible' });
+      assert.equal(await levels.locator('summary').count(), 0);
       await nav.getByRole('link', { name: 'Profile' }).click();
       await active('Profile');
       await nav.getByRole('link', { name: 'Activity', exact: true }).click();

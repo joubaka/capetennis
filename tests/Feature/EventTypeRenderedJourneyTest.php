@@ -286,7 +286,7 @@ class EventTypeRenderedJourneyTest extends TestCase
         $player = Player::factory()->create(['name' => 'Synthetic clothing', 'surname' => 'Player']);
         TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
         $importedTeam = Team::factory()->create(['region_id' => $region->id, 'category_event_id' => $category->id, 'published' => true, 'noProfile' => true]);
-        NoProfileTeamPlayer::create(['team_id' => $importedTeam->id, 'name' => 'Imported', 'surname' => 'Clothing player', 'rank' => 1]);
+        NoProfileTeamPlayer::create(['team_id' => $importedTeam->id, 'name' => 'Imported', 'surname' => 'Clothing player', 'rank' => 1, 'pay_status' => 0]);
         $item = ClothingItemType::create(['region_id' => $region->id, 'item_type_name' => 'Synthetic shirt', 'price' => 125]);
         $size = ClothingSize::create(['item_type' => $item->id, 'size' => 'Synthetic size', 'ordering' => 1]);
         $payer = User::factory()->create();

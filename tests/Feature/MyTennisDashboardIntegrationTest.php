@@ -77,7 +77,8 @@ class MyTennisDashboardIntegrationTest extends TestCase
             ->assertSee('second-player@example.test')->assertSee('Explore Player Plus')
             ->assertDontSee(route('my.tennis.record', $sibling), false);
         $this->export('manage', $this->get(route('my.tennis', ['tab' => 'manage']))->assertOk()
-            ->assertSee('Manage player profiles')->assertSee('data-player-row="'.$sibling->id.'"', false));
+            ->assertSee('Manage player profiles')->assertSee('data-player-row="'.$sibling->id.'"', false)
+            ->assertSee('Restore existing access')->assertDontSee('data-admin-profile-link disabled', false));
         $this->get(route('my.tennis', ['player' => Player::factory()->create()->id]))->assertOk()->assertDontSee('Edit profile');
     }
 
@@ -92,6 +93,8 @@ class MyTennisDashboardIntegrationTest extends TestCase
             ->assertDontSee('private-preview@example.test')->assertDontSee('Edit profile');
         $this->assertTabTargets($response->getContent());
         $this->export('admin-preview', $response);
+        $this->get(route('my.tennis', ['player' => $preview->id, 'tab' => 'manage']))->assertOk()
+            ->assertSee('Link and open profile')->assertSee('data-admin-profile-link disabled', false);
     }
 
     public function test_bare_landing_opens_profile_for_an_eligible_remembered_player(): void
@@ -116,7 +119,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
         @$dom->loadHTML($response->getContent());
         $xpath = new \DOMXPath($dom);
         $this->assertSame('Tournament options', trim($xpath->evaluate('string(//*[@id="my-tennis-tabs"]/*[@aria-current="page"])')));
-        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//details[not(@open)]/summary[normalize-space()="See all levels and targets"]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-player-pathway]//ol[@data-pathway-snapshot and not(ancestor::details)]')->length);
         $this->export('progress-entry', $response);
 
         $this->get(route('my.tennis', ['tab' => 'activity']))->assertOk()->assertViewHas('workspaceTab', 'activity');

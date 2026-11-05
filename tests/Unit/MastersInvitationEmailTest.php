@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use ReflectionClass;
 use RuntimeException;
+use Symfony\Component\Mailer\Exception\TransportException;
+use Symfony\Component\Mailer\Transport\TransportInterface;
 use Tests\TestCase;
 
 class MastersInvitationEmailTest extends TestCase
@@ -93,6 +95,11 @@ class MastersInvitationEmailTest extends TestCase
             $table->string('status');
             $table->text('payload');
             $table->text('error_message')->nullable();
+            $table->unsignedInteger('attempt_number')->default(1);
+            $table->timestamp('accepted_at')->nullable();
+            $table->string('transport_message_id')->nullable();
+            $table->string('transport_name', 100)->nullable();
+            $table->string('evidence_status')->nullable();
             foreach (['queued_at', 'sent_at', 'failed_at', 'skipped_at'] as $column) {
                 $table->dateTime($column)->nullable();
             }
@@ -152,7 +159,7 @@ class MastersInvitationEmailTest extends TestCase
     {
         $log = $this->email();
         $this->app['events']->listen(MessageSending::class, function () use ($log) {
-            $this->assertSame('queued', $log->fresh()->status);
+            $this->assertSame('sending', $log->fresh()->status);
             $this->assertNull($log->fresh()->sent_at);
         });
         $job = new SendMastersInvitationEmailJob($log->id, 1);
@@ -178,37 +185,29 @@ class MastersInvitationEmailTest extends TestCase
             new MastersInvitationMail(MastersInvitation::find($log->related_id)));
     }
 
-    public function test_actual_send_errors_are_retained_without_prematurely_marking_failed(): void
+    public function test_uncertain_transport_outcome_cannot_be_retried_or_overwritten_by_a_late_failure(): void
     {
         $log = $this->email();
-        $this->app['events']->listen(MessageSending::class, fn () => throw new RuntimeException('Transport unavailable'));
+        $transport = \Mockery::mock(TransportInterface::class);
+        $transport->shouldReceive('send')->once()->andThrow(new TransportException('Transport unavailable'));
+        Mail::mailer('array')->setSymfonyTransport($transport);
         $job = new SendMastersInvitationEmailJob($log->id, 1);
-        try {
-            $job->handle();
-            $this->fail('Sending should throw.');
-        } catch (RuntimeException $exception) {
-            $this->assertSame('Transport unavailable', $exception->getMessage());
-        }
-        $this->assertSame('queued', $log->fresh()->status);
-        $this->assertSame('Transport unavailable', $log->fresh()->error_message);
+        $job->handle();
+        $this->assertSame('acceptance_unknown', $log->fresh()->status);
+        $this->assertStringContainsString('acceptance is uncertain', $log->fresh()->error_message);
         $this->assertNull($log->fresh()->sent_at);
+        $job->handle();
         $job->failed(new MaxAttemptsExceededException('Deadline exceeded'));
-        $this->assertSame('failed', $log->fresh()->status);
-        $this->assertSame('Transport unavailable', $log->fresh()->error_message);
-        $this->assertCount(0, Mail::mailer('array')->getSymfonyTransport()->messages());
+        $this->assertSame('acceptance_unknown', $log->fresh()->status);
     }
 
     public function test_cancelled_sends_are_not_recorded_as_sent(): void
     {
         $log = $this->email();
         $this->app['events']->listen(MessageSending::class, fn () => false);
-        try {
-            (new SendMastersInvitationEmailJob($log->id, 1))->handle();
-            $this->fail('A cancelled send must not succeed.');
-        } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('cancelled', $exception->getMessage());
-        }
-        $this->assertSame('queued', $log->fresh()->status);
+        (new SendMastersInvitationEmailJob($log->id, 1))->handle();
+        $this->assertSame('skipped', $log->fresh()->status);
+        $this->assertStringContainsString('held before transport', $log->fresh()->error_message);
         $this->assertNull($log->fresh()->sent_at);
     }
 
@@ -331,6 +330,7 @@ class MastersInvitationEmailTest extends TestCase
     {
         $queue = new \Illuminate\Queue\SyncQueue;
         $queue->setContainer($this->app);
+        $queue->setConnectionName('sync');
 
         $method = (new ReflectionClass($queue))->getMethod('createPayload');
 

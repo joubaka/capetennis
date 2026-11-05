@@ -49,7 +49,7 @@ final class AssistantRepairLibrary
                 }
                 foreach ($record[$field] as $reference) {
                     if (! is_string($reference) || strlen($reference) > 240
-                        || ! preg_match('/^(app|tests|docs)\/[A-Za-z0-9_\/-]+\.[A-Za-z0-9]+$/D', $reference)
+                        || ! preg_match('/^(app|tests|docs)\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/D', $reference)
                         || str_contains($reference, '..')) {
                         throw new RuntimeException('Invalid repository reference.');
                     }

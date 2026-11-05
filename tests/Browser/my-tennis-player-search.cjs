@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const root = path.resolve(__dirname, '../..');
 const source = fs.readFileSync(path.join(root, 'resources/views/frontend/my-tennis/index.blade.php'), 'utf8');
-const markup = source.match(/<label for="my-tennis-player-search"[\s\S]*?<\/button>/)[0];
+const markup = source.match(/<label for="my-tennis-player-search"[\s\S]*?<p id="my-tennis-player-search-status"[^>]*><\/p>/)[0]
+  + source.match(/<button id="my-tennis-player-link-button"[^>]*data-admin-profile-link[^>]*>[^<]*<\/button>/)[0];
 const style = source.match(/<style>[\s\S]*?<\/style>/)[0];
 assert.match(source, /route\('player.search', \[\], false\)/);
 assert.match(source, /route\('backend.user.players.store', \$accountUser, false\)/);
@@ -61,7 +62,7 @@ assert.match(source, /route\('backend.user.players.store', \$accountUser, false\
       await input.press('ArrowDown');
       await input.press('Enter');
       assert.deepEqual(await page.evaluate(() => window.links), [], 'Selecting never links');
-      await page.getByRole('button', { name: 'Link selected player' }).click();
+      await page.getByRole('button', { name: 'Link and open profile' }).click();
       assert.equal((await page.evaluate(() => window.links)).length, 1);
       await box.click();
       await input.pressSequentially('empty');
