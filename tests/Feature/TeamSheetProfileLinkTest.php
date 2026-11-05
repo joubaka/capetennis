@@ -156,7 +156,8 @@ class TeamSheetProfileLinkTest extends TestCase
             'selectedPlayer' => $player, 'errors' => new \Illuminate\Support\ViewErrorBag,
         ]);
 
-        $this->assertStringContainsString('Profile linking is currently unavailable', $html);
+        $this->assertStringContainsString('Once your team is linked in TeamSheet', $html);
+        $this->assertStringContainsString('tennis ladder, school tournament and league match results', $html);
         $this->assertStringContainsString('href="https://www.teamsheet.co.za/"', $html);
         $this->assertStringNotContainsString(route('my.tennis.teamsheet.start', $player), $html);
     }

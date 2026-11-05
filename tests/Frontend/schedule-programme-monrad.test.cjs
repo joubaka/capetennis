@@ -14,7 +14,7 @@ for (const size of [8,16,32]) test('individual Monrad '+size+' uses a separate s
     get(`programme-end-${day}`).value=`2026-10-${String(9+day).padStart(2,'0')}T18:00`;
   }
   const days=[0,1,2].map(day=>({start:get(`programme-start-${day}`).value,end:get(`programme-end-${day}`).value}));
-  const context={document:{getElementById:get,addEventListener(){},querySelectorAll:()=>[]},programmeSettings:new Map(),selectedProgrammeAge:'',programmePayload:null,
+  const context={document:{getElementById:get,addEventListener(){},querySelectorAll:()=>[]},programmeSettings:new Map(),programmeDisciplineOrders:{},programmeScopedDays:{},selectedProgrammeAge:'',programmePayload:null,
     programmeDates:['2026-10-09','2026-10-10','2026-10-11'],programmeDayIndexes:[0,1,2],programmeDayNumbers:[1,2,3],programmeDayCount:3,
     programmeMatchOverrides:new Map(),readProgrammeMatchOverrides:()=>[],
     programmeDraws:[{id:1,programme_age:'monrad:19',name:'Girls',is_team:false,rounds,venues:[]},{id:2,programme_age:'19',name:'Team',is_team:true,rounds:[1],venues:[]}],

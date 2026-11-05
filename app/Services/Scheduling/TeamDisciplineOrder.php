@@ -5,6 +5,7 @@ namespace App\Services\Scheduling;
 use App\Models\{Draw, Event, TeamFixture};
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /** Completion barriers are local to an event, age group and qualification stage. */
 final class TeamDisciplineOrder
@@ -37,10 +38,34 @@ final class TeamDisciplineOrder
             ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))->get();
     }
 
-    public function dependencies(Collection $fixtures): array
+    public function savedOrders(Event $event): array
     {
-        $drawGroups = $fixtures->unique('draw_id')->mapWithKeys(fn ($fixture) => [$fixture->draw_id => $this->group($fixture->draw)]);
-        $groups = $fixtures->groupBy(fn ($fixture) => $drawGroups[$fixture->draw_id]);
+        $stored = json_decode((string) DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->value('options'), true) ?: [];
+        return $stored['team_discipline_order'] ?? [];
+    }
+
+    public function programmeOrders(Collection $draws, array $programme, array $savedOrders): array
+    {
+        if (! isset($programme['discipline_order'])) return $savedOrders;
+        $age = app(ScheduleProgramme::class)->age($draws->first());
+        $savedOrders[$age] = $programme['discipline_order'];
+        return $savedOrders;
+    }
+
+    public function dependencies(Collection $fixtures, array $orders = [], array $dates = []): array
+    {
+        $drawGroups = $fixtures->unique('draw_id')->mapWithKeys(function ($fixture) use ($orders) {
+            $group = $this->group($fixture->draw);
+            $age = $orders ? app(ScheduleProgramme::class)->age($fixture->draw) : null;
+            return [$fixture->draw_id => [$group, ($orders[$age] ?? null) === 'by_day']];
+        });
+        $groups = $fixtures->groupBy(function ($fixture) use ($drawGroups, $dates) {
+            [$group, $byDay] = $drawGroups[$fixture->draw_id];
+            if (! $byDay) return $group;
+            $date = $dates[$fixture->id] ?? ($fixture->scheduled_at ? Carbon::parse($fixture->scheduled_at)->toDateString() : null);
+            // An unplaced fixture cannot block a different date.
+            return $group.':'.($date ?? 'unplaced:'.$fixture->id);
+        });
         $dependencies = [];
         foreach ($groups as $group) {
             $phases = $group->groupBy(fn ($fixture) => $this->phase($fixture))->sortKeys();
@@ -55,9 +80,10 @@ final class TeamDisciplineOrder
 
     public function configureNodes(array &$nodes, Event $event, ?array $dependencies = null): void
     {
-        $dependencies ??= $this->dependencies($this->inventory($event));
+        $dependencies ??= $this->dependencies($this->inventory($event), $this->savedOrders($event));
         $drawGroups = [];
         foreach ($nodes as $key => &$node) {
+            if (($node['fixture_kind'] ?? null) !== 'team') continue;
             $phaseDependencies = $dependencies[$key] ?? [];
             $node['discipline_group'] = $drawGroups[$node['draw_id']] ??= $this->group($node['fixture']->draw);
             $node['discipline_phase'] = $this->phase($node['fixture']);
@@ -72,7 +98,8 @@ final class TeamDisciplineOrder
     public function manualError(TeamFixture $fixture, ?Carbon $start, int $duration, ?Collection $fixtures = null, ?array $dependencies = null): ?string
     {
         $fixtures ??= $this->inventory($fixture->draw->event);
-        $dependencies ??= $this->dependencies($fixtures);
+        $dependencies ??= $this->dependencies($fixtures, $this->savedOrders($fixture->draw->event),
+            $start ? [$fixture->id => $start->toDateString()] : []);
         $key = 'team:'.$fixture->id;
         foreach ($fixtures as $other) {
             if ($other->id === $fixture->id) continue;
@@ -89,10 +116,9 @@ final class TeamDisciplineOrder
         return null;
     }
 
-    public function validateAssignments(Event $event, Collection $assignments): void
+    public function validateAssignments(Event $event, Collection $assignments, ?array $orders = null): void
     {
         $fixtures = $this->inventory($event)->keyBy('id');
-        $dependencies = $this->dependencies($fixtures);
         $changed = [];
         foreach ($assignments->where('fixture_kind', 'team') as $row) {
             $fixture = $fixtures[$row['fixture_id']] ?? null;
@@ -101,10 +127,18 @@ final class TeamDisciplineOrder
             $fixture->duration_min = $row['duration'];
             $changed['team:'.$fixture->id] = true;
         }
+        $savedOrders = $this->savedOrders($event);
+        $orders ??= $savedOrders;
+        $restoredStrict = array_keys(array_filter($savedOrders, fn ($mode, $age) => $mode === 'by_day'
+            && ($orders[$age] ?? 'event') === 'event', ARRAY_FILTER_USE_BOTH));
+        $strictDraws = $restoredStrict ? $fixtures->unique('draw_id')
+            ->filter(fn ($fixture) => in_array(app(ScheduleProgramme::class)->age($fixture->draw), $restoredStrict, true))
+            ->pluck('draw_id')->flip() : collect();
+        $dependencies = $this->dependencies($fixtures, $orders);
         foreach ($fixtures as $later) {
             if (! $later->scheduled_at) continue;
             foreach ($dependencies['team:'.$later->id] ?? [] as $key) {
-                if (! isset($changed[$key]) && ! isset($changed['team:'.$later->id])) continue;
+                if (! $strictDraws->has($later->draw_id) && ! isset($changed[$key]) && ! isset($changed['team:'.$later->id])) continue;
                 $earlier = $fixtures[(int) substr($key, 5)];
                 if (! $earlier->scheduled_at || Carbon::parse($earlier->scheduled_at)->addMinutes((int) ($earlier->duration_min ?: 120))->gt(Carbon::parse($later->scheduled_at))) {
                     throw new \InvalidArgumentException('The saved batch must finish singles, reverse singles, doubles, then mixed within each age group. Include dependent disciplines or keep their saved times valid.');

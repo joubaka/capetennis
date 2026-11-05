@@ -16,12 +16,17 @@ async function run() {
     for (const width of [320, 1440]) {
       const page = await browser.newPage({ viewport: { width, height: 860 } });
       const requests = [];
+      const warmRequests = [];
       const errors = [];
       let failActivity = true;
       let finishFailedActivity;
       const failedActivity = new Promise(resolve => { finishFailedActivity = resolve; });
       let finishActivityRetry;
       const activityRetry = new Promise(resolve => { finishActivityRetry = resolve; });
+      let finishRatingWarmup;
+      const ratingWarmup = new Promise(resolve => { finishRatingWarmup = resolve; });
+      let finishPathwayWarmup;
+      const pathwayWarmup = new Promise(resolve => { finishPathwayWarmup = resolve; });
       let documentLoads = 0;
       let ratingFragmentLoads = 0;
       page.on('pageerror', error => errors.push(error.message));
@@ -38,6 +43,14 @@ async function run() {
             record: 'record', opponents: 'opponents', pathway: 'pathway', 'event-ratings': 'events',
           })[url.pathname.split('/').pop()];
           assert.ok(tab, url.href);
+          if (request.headers().purpose === 'prefetch') {
+            warmRequests.push(tab);
+            if (tab === 'activity') return route.fulfill({ status: 503 });
+            if (tab === 'rating') await ratingWarmup;
+            await route.fulfill({ contentType: 'text/html', body: fixture('ajax-' + tab) });
+            if (tab === 'pathway') finishPathwayWarmup();
+            return;
+          }
           requests.push(tab);
           if (tab === 'activity' && failActivity) {
             failActivity = false;
@@ -56,7 +69,7 @@ async function run() {
         if (!asset.startsWith(publicRoot + path.sep) || !fs.existsSync(asset) || !fs.statSync(asset).isFile()) return route.abort();
         return route.fulfill({ path: asset });
       });
-      await page.goto('http://localhost/my-tennis');
+      await page.goto('http://localhost/my-tennis?player=1&tab=profile');
       const workspace = page.locator('[data-my-tennis-workspace]');
       const nav = workspace.getByRole('navigation', { name: 'My Tennis views' });
       let navigationBounds;
@@ -88,6 +101,7 @@ async function run() {
         navigationBounds = bounds;
       };
       await active('Profile');
+      await pathwayWarmup;
       const activityTab = nav.getByRole('link', { name: 'Activity', exact: true });
       const activitySpinner = activityTab.locator('[data-my-tennis-tab-spinner]');
       await activityTab.click();
@@ -110,6 +124,10 @@ async function run() {
       await reminder.waitFor({ state: 'hidden' });
       for (const name of ['Rating', 'Results', 'Opponents', 'Tournament options']) {
         await nav.getByRole('link', { name, exact: true }).click();
+        if (name === 'Rating') {
+          assert.equal(await workspace.getAttribute('aria-busy'), 'true');
+          finishRatingWarmup();
+        }
         await active(name);
         if (name === 'Rating') {
           await workspace.getByRole('heading', { name: 'Player rating', exact: true }).waitFor();
@@ -132,13 +150,22 @@ async function run() {
       await workspace.locator('[data-player-pathway] details[open]').waitFor();
       await nav.getByRole('link', { name: 'Profile' }).click();
       await active('Profile');
+      await nav.getByRole('link', { name: 'Activity', exact: true }).click();
+      await active('Activity');
+      await nav.getByRole('link', { name: 'Profile' }).click();
+      await active('Profile');
       await workspace.getByRole('link', { name: 'Manage players', exact: true }).click();
       await workspace.getByRole('heading', { name: 'Manage player profiles' }).waitFor();
       await workspace.getByRole('button', { name: 'Player access' }).click();
       await workspace.locator('#link-player-panel.show').waitFor();
       assert.equal(documentLoads, 1);
       assert.equal(ratingFragmentLoads, 0);
-      assert.deepEqual(requests, ['activity', 'activity', 'rating', 'events', 'record', 'opponents', 'pathway', 'opponents', 'pathway', 'profile', 'manage']);
+      assert.deepEqual([...warmRequests].sort(), ['activity', 'opponents', 'pathway', 'rating', 'record']);
+      assert.deepEqual(requests, ['activity', 'activity', 'events', 'manage']);
+      await workspace.evaluate(element => element.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true})));
+      await nav.getByRole('link', { name: 'Rating', exact: true }).click();
+      await active('Rating');
+      assert.deepEqual(requests, ['activity', 'activity', 'events', 'manage', 'rating']);
       assert.deepEqual(errors, []);
       await page.close();
     }

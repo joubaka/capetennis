@@ -42,6 +42,10 @@
 .ct-workspace-header :is(a, button, select, summary):focus-visible { outline: 3px solid var(--ct-workspace-orange); outline-offset: 3px; }
 .ct-workspace-header select { min-height: 44px; }
 .ct-player-workspace > .card { border-color: var(--ct-workspace-line); border-radius: 14px; margin-bottom: 1.25rem; }
+.ct-player-workspace .ct-teamsheet-profile {
+  background-image: linear-gradient(110deg, #edf4fc, #f8fbff);
+  border-inline-start: 4px solid #245484;
+}
 .ct-player-workspace .ct-workspace-sheet { background: #fff; border: 1px solid var(--ct-workspace-line); border-radius: 14px; padding: clamp(1rem, 2.5vw, 1.5rem); margin-bottom: 1.25rem; }
 .ct-player-workspace > nav:not(.ct-player-navigation) { margin-bottom: 1rem; }
 .ct-player-workspace .btn { min-height: 44px; }

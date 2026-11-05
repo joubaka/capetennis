@@ -20,7 +20,7 @@ function scenario() {
     return {dataset:{programmeDraw:match[1],programmeRound:match[2]},querySelector:selector => ({value:selector === '.programme-day' ? day : sequence})};
   });
   const context = {document:{getElementById:get,querySelectorAll:selector => selector === '.programme-bulk-age:checked' ? choices.filter(input => input.checked) : selector === '.programme-bulk-age' ? choices : [],addEventListener() {}},
-    programmeDraws:draws,programmeSettings:new Map(),selectedProgrammeAge:'',programmePayload:null,
+    programmeDraws:draws,programmeSettings:new Map(),programmeDisciplineOrders:{},programmeScopedDays:{},selectedProgrammeAge:'',programmePayload:null,
     programmeDates:['2026-10-09'],programmeDayIndexes:[0],programmeDayNumbers:[1],programmeDayCount:1,
     programmeMatchOverrides:new Map(),readProgrammeMatchOverrides:() => [],programmeRows:rows,
     invalidatePreview:()=>{},renderProgrammeStages:()=>{},updateProgrammeDayPublicationLinks:()=>{},programmeStatus:()=>{},

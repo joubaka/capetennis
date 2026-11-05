@@ -73,14 +73,29 @@ final class ScheduleAuditService
             ], $own), 'external' => count($own) !== count($bookings)];
         };
         $programmeFixtureRounds = [];
+        $teamProgrammeKeys = [];
         foreach ($rows as $row) {
             if (!empty($row['orphan'])) $add('error', 'orphan_reservation', 'A saved court reservation has no matching fixture. Review the draw before rebuilding or rescheduling.', [$row]);
             if (! $row['venue'] || ! trim($row['court'])) $add('error', 'missing_location', 'A saved match is missing its venue or court.', [$row]);
             if ($row['raw_duration'] < 1) $add('warning', 'missing_duration', 'Match duration is missing or invalid; overlap checks use the scheduling default.', [$row]);
             if (count($row['players']) < $row['expected_players']) $add('warning', 'unknown_players', 'Player identities are unresolved; player overlap checks cannot fully verify this match.', [$row]);
             if (!empty($row['orphan'])) continue;
-            $programmeKey = $draft['individual_programme_by_draw'][(string) $row['draw']] ?? null;
+            $team = str_starts_with($row['key'], 'team:');
+            $programmeKey = $team
+                ? ($teamProgrammeKeys[$row['draw']] ??= app(ScheduleProgramme::class)->key($draws[$row['draw']]))
+                : ($draft['individual_programme_by_draw'][(string) $row['draw']] ?? null);
             $programme = $programmeKey ? ($draft['programme_settings'][$programmeKey]['programme'] ?? $draft['programme'] ?? []) : ($draft['programme'] ?? []);
+            if ($team && $programmeKey !== null) {
+                $dayOverride = $draft['team_programme_days'][$programmeKey][$row['start']->toDateString()] ?? null;
+                $scopedRound = collect($dayOverride['rounds'] ?? [])->first(fn ($entry) => (int) $entry['drawId'] === $row['draw'] && (int) $entry['round'] === $row['round']);
+                if ($scopedRound) {
+                    $day = $dayOverride['day'];
+                    if ($row['start']->lt(Carbon::parse($day['start'])) || $row['end']->gt(Carbon::parse($day['end']))) {
+                        $add('error', 'outside_programme', 'Saved time falls outside its configured programme day.', [$row]);
+                    }
+                    continue;
+                }
+            }
             $fixtureId = (int) explode(':', $row['key'])[1];
             $programmeRound = collect($programme['matches'] ?? [])->first(fn ($match) => (int) ($match['draw_id'] ?? $match['drawId'] ?? 0) === $row['draw'] && (int) ($match['fixture_id'] ?? $match['fixtureId'] ?? 0) === $fixtureId);
             if (! $programmeRound) {

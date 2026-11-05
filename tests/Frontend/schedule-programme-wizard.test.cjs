@@ -47,7 +47,7 @@ function harness(id, fail = false) {
     markAllocationsDirty:() => { context.allocationsDirty = true; }
   };
   vm.runInNewContext(handler(id), context);
-  return {context, messages, target, button:element(id), run() {
+  return {context, messages, target, element, button:element(id), run() {
     const event = {currentTarget:element(id)};
     const pending = listener(event);
     // Native dispatch clears currentTarget before an asynchronous handler resumes.
@@ -57,6 +57,16 @@ function harness(id, fail = false) {
     return pending;
   }};
 }
+
+test('single age preview sends the selected playing date and discipline order', async () => {
+  const app = harness('programme-create');
+  app.element('programme-age').value = '13';
+  app.element('programme-discipline-order').value = 'by_day';
+  app.element('programme-save-date').value = '2026-10-09';
+  await app.run();
+  assert.equal(app.context.payload.programme.discipline_order, 'by_day');
+  assert.equal(app.context.payload.programme_save_date, '2026-10-09');
+});
 
 for (const fail of [false, true]) test(`programme preview restores its button after asynchronous ${fail ? 'failure' : 'success'}`, async () => {
   const app = harness('programme-create', fail);

@@ -32,9 +32,27 @@ class PlayerUpcomingMatchInsights
                 'opponents' => $opponents->values()->all(),
                 'url' => route($team ? 'frontend.fixtures.show' : 'public.roundrobin.show', $fixture->draw_id)];
         })->values()->all();
-        $opponents = collect($rows)->pluck('opponents')->flatten(1);
-        $ratings = $opponents->isEmpty() ? [] : app(PlayerRatingTopTen::class)
-            ->forMatchPlayers($user, $player, $opponents->pluck('id')->filter()->push((int) $player->id)->all());
+        // Share only the saved badge for opponents on this page of published fixtures.
+        $opponentIds = collect($rows)->pluck('opponents')->flatten(1)->pluck('id')->filter()->unique();
+        $ratings = [];
+        $access = app(PlayerRatingAccess::class);
+        if ($opponentIds->isNotEmpty() && $access->allows($user, $player) && $access->allowsDiscovery($user)) {
+            $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
+            if (array_key_exists('reason', $snapshot) && $snapshot['reason'] === null) {
+                foreach ($opponentIds as $id) {
+                    $estimates = [];
+                    foreach (array_keys(BallRatingModel::LABELS) as $stage) {
+                        $estimates[$stage] = $snapshot['ball_ratings'][$stage]['ratings'][$id] ?? [];
+                    }
+                    $stage = BallRatingModel::currentStage($estimates);
+                    if ($stage === null) continue;
+                    $estimate = $estimates[$stage];
+                    $ratings[$id] = ['stage' => $stage, 'score' => round((float) $estimate['score'], 1),
+                        'confidence_label' => AbilityConfidenceDisplay::label((int) ($estimate['confidence_index'] ?? 0), $estimate),
+                        'connection_status' => ($estimate['comparable'] ?? true) ? null : 'disconnected'];
+                }
+            }
+        }
         return ['rows' => $rows, 'ratings' => $ratings, 'total' => $fixtures->count(), 'page' => $page, 'pages' => $pages];
     }
 }

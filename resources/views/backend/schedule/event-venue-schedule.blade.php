@@ -286,7 +286,7 @@
         <p class="text-muted mb-0">Select individual draws, then set up days, venues and match times. Each draw keeps its own gender.</p>
       @elseif(!$planningDate && $draws->where('programme_supported', true)->whereNotNull('programme_age')->isNotEmpty())
         <p class="text-muted mb-0">Add the event venues, select age groups, assign their courts and playing days, then preview and save.</p>
-        <p class="text-muted small mt-2 mb-0">Each age group keeps its own venues. Singles finish before reverse singles, then doubles, then mixed. Publication is a separate step.</p>
+        <p class="text-muted small mt-2 mb-0">Each age group keeps its own venues and discipline rules. Publication is a separate step.</p>
       @else
         <p class="text-muted mb-0">Assign courts, set the timing, then review and save the schedule.</p>
         <p class="text-muted small mt-2 mb-0">Choose any combination of draws across all age groups in this event. Team and individual matches share the same court calendar.</p>
@@ -488,7 +488,7 @@
           <label class="form-check"><input class="form-check-input programme-bulk-age" type="checkbox" value="{{ $age }}" checked> Under {{ $age }}</label>
           @endforeach
         </div>
-        <p class="small text-muted mb-0">Each age group keeps its assigned venues and courts and progresses independently. All singles finish before reverse singles, then doubles, then mixed. The selected groups share the daily time windows below. Preview and save together; publish separately.</p>
+        <p class="small text-muted mb-0">Each age group keeps its assigned venues, courts and discipline rules and progresses independently. The selected groups share the daily time windows below. Preview and save together; publish separately.</p>
       </fieldset>
       @endif
       @if($teamPlanning)
@@ -517,11 +517,19 @@
       </section>
       <p id="age-setup-bulk-help" class="small text-muted" hidden>Select one age at a time to set up its venues, courts and playing-order numbers. Then choose Bulk schedule age groups to preview the prepared ages together.</p>
       @endif
-      <p class="small">{{ $teamPlanning ? 'Choose an age group to load its saved days and venue bands, or bulk schedule selected age groups. Within each age group, all singles finish before reverse singles, then doubles, then mixed.' : 'Your selected draws define this programme.' }} Move each round to its playing day, assign venues and courts, then preview and save. Review and publication remain separate.</p>
+      <p class="small">{{ $teamPlanning ? 'Choose an age group to load its saved days and venue bands, or bulk schedule selected age groups.' : 'Your selected draws define this programme.' }} Move each round to its playing day, assign venues and courts, then preview and save. Review and publication remain separate.</p>
       <div id="programme-save-state" class="alert alert-info py-2" role="status" aria-live="polite">{{ $teamPlanning ? "Choose an age group." : "Select draws to set up the schedule." }}</div>
       @if($teamPlanning)
       <p class="small mb-3">Save the age setup above once for all rounds and disciplines. Round-specific exceptions remain available on the round cards when needed.</p>
       <h6>3. Arrange playing days & timing</h6>
+      <div id="programme-discipline-setting" class="mb-3" hidden>
+        <label class="form-label" for="programme-discipline-order">Discipline order</label>
+        <select id="programme-discipline-order" class="form-select" aria-describedby="programme-discipline-help">
+          <option value="event">Finish each discipline across the age group</option>
+          <option value="by_day">Finish each discipline within its playing day</option>
+        </select>
+        <p id="programme-discipline-help" class="form-text mb-0">The order is singles, reverse singles, doubles, then mixed. The playing-day option lets you start Friday doubles after Friday reverse singles, with more reverse singles on Saturday.</p>
+      </div>
       @endif
       <div class="row g-3 mb-3">@foreach($programmeDates as $day => $programmeDate)<div class="{{ $programmeDayCount === 1 ? 'col-12' : ($programmeDayCount === 2 ? 'col-md-6' : 'col-md-4') }}"><strong data-programme-day-label="{{ $day + 1 }}">Day {{ $day + 1 }}</strong><label class="form-label d-block mt-2" for="programme-start-{{ $day }}">Starts</label><input id="programme-start-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T08:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-end-{{ $day }}">Finishes</label><input id="programme-end-{{ $day }}" class="form-control programme-time" type="datetime-local" value="{{ $programmeDate.'T18:00' }}" min="{{ $programmeDate }}T00:00" max="{{ $programmeDate }}T23:59"><label class="form-label d-block mt-2" for="programme-gender-{{ $day }}">Order within each round</label><select id="programme-gender-{{ $day }}" class="form-select programme-gender-day"><option value="boys_then_girls" @selected($scheduleDraft['gender_waves'] === 'boys_then_girls')>Boys then girls</option><option value="girls_then_boys" @selected($scheduleDraft['gender_waves'] === 'girls_then_boys')>Girls then boys</option><option value="combined" @selected($scheduleDraft['gender_waves'] === 'combined')>Together</option></select><a class="btn btn-sm btn-outline-primary mt-2" data-programme-review-day="{{ $day }}" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'date' => $programmeDate]) }}">Review &amp; publish this day</a></div>@endforeach</div>
       <p class="small mb-2" id="programme-drag-instructions">Drag the handle to put rounds in order or move them between days. {{ $teamPlanning ? 'Boys and girls in the same round move together.' : 'Each selected draw has its own round cards.' }} Each drop refreshes the preview using AJAX; match times are saved only when you choose Save. Use the Up/Down buttons or day selector with a keyboard.</p>
@@ -559,7 +567,20 @@
       <p class="small text-muted">Use free courts to avoid waiting for every earlier match to finish. Your boys/girls order, round wave interval, court availability and player rest still apply.</p>
         </div>
       </details>
-      @if($teamPlanning)<h6>4. Preview & save</h6><p class="small text-muted">Generate suggested times, resolve any unallocated matches, then save the complete schedule privately. Review and publish the saved schedule separately.</p>@endif
+      @if($teamPlanning)
+      <h6>4. Preview & save</h6>
+      <div class="mb-3" id="programme-save-scope" hidden>
+        <label class="form-label" for="programme-save-date">Days to preview and save</label>
+        <select class="form-select" id="programme-save-date" aria-describedby="programme-save-scope-help">
+          <option value="">All playing days</option>
+          @foreach($programmeDates as $programmeDate)
+          <option value="{{ $programmeDate }}">{{ \Carbon\Carbon::parse($programmeDate)->translatedFormat('l j F') }}</option>
+          @endforeach
+        </select>
+        <p class="form-text mb-0" id="programme-save-scope-help">Choose one day to save match times only for that date. Saved times stay fixed unless you select the checkbox above to replan them. The discipline order setting applies to the age group.</p>
+      </div>
+      <p class="small text-muted">Generate suggested times, resolve any unallocated matches, then save privately. Review and publish the saved schedule separately.</p>
+      @endif
       <button id="programme-create" type="button" class="btn btn-primary">Create event schedule preview</button>
       <div id="programme-status" class="small mt-2" role="status" aria-live="polite"></div>
     </div>
@@ -1721,7 +1742,8 @@
     const hasSuggestions = result.matches.length > 0;
     const scheduleComplete = !result.unscheduled.length && !hasSuggestions && (result.existing_matches || []).length > 0;
     const applyPreview = document.getElementById('apply-preview');
-    applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${result.input.programme?.days?.length ? 'Save complete event schedule' : 'Save matches that fit'}`;
+    const applyLabel = result.input.programme_save_date ? 'Save selected day' : result.input.programme?.days?.length ? 'Save complete event schedule' : 'Save matches that fit';
+    applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${applyLabel}`;
     const continueToDraws = document.getElementById('continue-to-draws');
     applyPreview.disabled = !!result.preview_only || !hasSuggestions || ((!!result.input.programme?.days?.length || !!result.input.day_batch) && result.unscheduled.length > 0);
     applyPreview.classList.toggle('d-none', scheduleComplete);
@@ -2557,6 +2579,25 @@
       if (programmePayload) delete programmePayload.preview_moves;
       if (dayBatchPayload) delete dayBatchPayload.preview_frozen_keys;
       if (programmePayload) delete programmePayload.preview_frozen_keys;
+      if (submittedProgramme?.discipline_order && submittedAge) {
+        programmeDisciplineOrders[submittedAge] = submittedProgramme.discipline_order;
+      }
+      if (submittedPayload.programme_save_date) {
+        invalidatePreview();
+        const message = 'Saved '+applied.count+' matches privately for '+submittedPayload.programme_save_date+'. Use the review link for that day to view the saved times.';
+        programmeStatus(message, 'success');
+        setStatus(document.getElementById('review-status'), message, 'success');
+        notify(message, 'success');
+        completed = true;
+        finishScheduleActivity(message);
+        return;
+      }
+      if (submittedProgramme?.days?.length && submittedAge === 'bulk') {
+        programmeDraws.filter(draw => submittedPayload.draw_ids.includes(Number(draw.id)))
+          .forEach(draw => delete programmeScopedDays[String(draw.programme_age)]);
+      } else if (submittedProgramme?.days?.length && submittedAge) {
+        delete programmeScopedDays[submittedAge];
+      }
       if (submittedProgramme?.days?.length && submittedAge) {
         programmeSavedAges.add(submittedAge);
         if ((programmeEditVersions.get(submittedAge) || 0) === submittedEditVersion) {
@@ -2639,6 +2680,8 @@
   } catch (_) { /* Continue with the saved server settings when browser storage is unavailable. */ }
   const programmeDraws = @json($draws->where('programme_supported', true)->values()).map(draw => ({...draw, rounds:draw.programme_rounds}));
   const programmeSettings = new Map(Object.entries(@json($scheduleDraft['programme_settings'] ?? [])));
+  const programmeDisciplineOrders = @json($scheduleDraft['team_discipline_order'] ?? []);
+  const programmeScopedDays = @json($scheduleDraft['team_programme_days'] ?? []);
   const programmeDates = @json($programmeDates);
   const programmeDayIndexes = programmeDates.map((_, index) => index);
   const programmeDayNumbers = programmeDayIndexes.map(index => index + 1);
@@ -2660,7 +2703,7 @@
     if (!target) return;
     const age = document.getElementById('programme-age').value;
     const dirty = programmeDirtyAges.has(age) || !programmeSavedAges.has(age);
-    target.textContent = !age ? 'Choose an age group.' : (age === 'bulk' ? 'Selected age groups' : String(age).startsWith('individual:') ? 'Selected draws' : 'Under '+(String(age).startsWith('monrad:') ? String(age).slice(7) : age))+': '+(dirty ? 'Unsaved programme changes' : 'Saved programme loaded')+'. Venue bands and courts save separately. Days, order and match times save only with Save complete event schedule.';
+    target.textContent = !age ? 'Choose an age group.' : (age === 'bulk' ? 'Selected age groups' : String(age).startsWith('individual:') ? 'Selected draws' : 'Under '+(String(age).startsWith('monrad:') ? String(age).slice(7) : age))+': '+(dirty ? 'Unsaved programme changes' : 'Saved programme loaded')+'. Venue bands and courts save separately. Save the complete schedule to keep your full programme.';
     target.className = 'alert py-2 '+(age && dirty ? 'alert-warning' : 'alert-info');
   };
   const markProgrammeDirty = () => {
@@ -2982,11 +3025,13 @@
     })));
   };
   document.getElementById('programme-age').addEventListener('change', () => {
+    const disciplineOrder = document.getElementById('programme-discipline-order');
     if (selectedProgrammeAge) {
-      programmeSettings.set(selectedProgrammeAge, {...readProgrammeOptions(), programme:{
+      programmeSettings.set(selectedProgrammeAge, {...readProgrammeOptions(), localDraft:true, programme:{
         days:programmeDayIndexes.map(day => ({start:document.getElementById(`programme-start-${day}`).value, end:document.getElementById(`programme-end-${day}`).value, gender_waves:document.getElementById(`programme-gender-${day}`).value, break_start:document.getElementById(`programme-break-start-${day}`).value, break_end:document.getElementById(`programme-break-end-${day}`).value})),
         rounds:programmeRows().map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)})).concat(selectedProgrammeAge === 'bulk' ? (programmeSettings.get('bulk')?.programme?.rounds || []).filter(saved => !programmeRows().some(row => Number(row.dataset.programmeDraw) === Number(saved.draw_id ?? saved.drawId))) : []),
         matches:readProgrammeMatchOverrides(),
+        discipline_order:disciplineOrder?.value || 'event',
       }});
     }
     selectedProgrammeAge = document.getElementById('programme-age').value;
@@ -2994,6 +3039,13 @@
     if (bulkAges) bulkAges.hidden = selectedProgrammeAge !== 'bulk';
     updateProgrammeSaveState();
     const settings = programmeSettings.get(selectedProgrammeAge);
+    const saveScope = document.getElementById('programme-save-scope');
+    if (disciplineOrder) {
+      document.getElementById('programme-discipline-setting').hidden = !/^\d+$/.test(selectedProgrammeAge);
+      const draftOrder = settings?.localDraft ? settings.programme.discipline_order : null;
+      disciplineOrder.value = draftOrder ?? programmeDisciplineOrders[selectedProgrammeAge] ?? settings?.programme?.discipline_order ?? 'event';
+    }
+    if (saveScope) saveScope.hidden = !/^\d+$/.test(selectedProgrammeAge);
     programmeMatchOverrides = new Map((settings?.programme?.matches || []).map(row => {
       const savedDate = String(settings.programme.days?.[Number(row.day)-1]?.start || '').slice(0,10);
       const day = programmeDates.includes(savedDate) ? programmeDates.indexOf(savedDate)+1 : programmeDayCount+Number(row.day);
@@ -3002,7 +3054,8 @@
     }));
     const localDateTime = value => String(value || '').replace(' ', 'T').slice(0,16);
     programmeDayIndexes.forEach(day => {
-      const saved = settings?.programme?.days?.find(window => localDateTime(window.start).slice(0,10) === programmeDates[day] && localDateTime(window.end).slice(0,10) === programmeDates[day]) || programmeDefaultDays[day];
+      const scopedWindow = settings?.localDraft ? null : programmeScopedDays[selectedProgrammeAge]?.[programmeDates[day]]?.day;
+      const saved = scopedWindow || settings?.programme?.days?.find(window => localDateTime(window.start).slice(0,10) === programmeDates[day] && localDateTime(window.end).slice(0,10) === programmeDates[day]) || programmeDefaultDays[day];
       document.getElementById(`programme-start-${day}`).value = localDateTime(saved.start);
       document.getElementById(`programme-end-${day}`).value = localDateTime(saved.end);
       document.getElementById(`programme-gender-${day}`).value = saved.gender_waves || document.getElementById('gender-waves').value;
@@ -3017,14 +3070,21 @@
       const shared = document.getElementById({duration:'schedule-duration', player_rest:'schedule-rest', court_gap:'schedule-gap', gender_wave_release:'gender-wave-release', reschedule_existing:'reschedule-existing'}[key]);
       if (key === 'reschedule_existing') shared.checked = control.checked; else shared.value = control.value;
     });
+    if (saveScope && !saveScope.hidden && document.getElementById('programme-save-date').value) {
+      document.getElementById('programme-reschedule-existing').checked = false;
+      document.getElementById('reschedule-existing').checked = false;
+    }
     programmePayload = null; invalidatePreview();
     const group = programmeGroup();
     document.getElementById('programme-rounds').innerHTML = `<table class="table"><thead><tr><th>Discipline / round</th><th>Day</th><th>Order within day</th></tr></thead><tbody>${group.flatMap(draw => draw.rounds.map(round => {
       const code = String(draw.rubber_code || draw.name).toLowerCase();
       const mixed = code.includes('mixed'), reverse = code.includes('reverse'), doubles = code.includes('double');
       const drawSettings = settings?.programme?.rounds?.some(row => Number(row.draw_id ?? row.drawId) === Number(draw.id)) ? settings : selectedProgrammeAge === 'bulk' ? programmeSettings.get(String(draw.programme_age)) : settings;
-      const savedRound = drawSettings?.programme?.rounds?.find(row => Number(row.draw_id ?? row.drawId) === Number(draw.id) && Number(row.round) === Number(round));
-      const savedDate = savedRound ? String(drawSettings?.programme?.days?.[Number(savedRound.day)-1]?.start || '').slice(0,10) : null;
+      const isDrawRound = row => Number(row.draw_id ?? row.drawId) === Number(draw.id) && Number(row.round) === Number(round);
+      const scopedDay = drawSettings?.localDraft ? null : Object.entries(programmeScopedDays[String(draw.programme_age)] ?? {})
+        .find(([, saved]) => saved.rounds?.some(isDrawRound));
+      const savedRound = scopedDay?.[1].rounds.find(isDrawRound) ?? drawSettings?.programme?.rounds?.find(isDrawRound);
+      const savedDate = scopedDay?.[0] ?? (savedRound ? String(drawSettings?.programme?.days?.[Number(savedRound.day)-1]?.start || '').slice(0,10) : null);
       const mappedSavedDay = savedRound ? (programmeDates.includes(savedDate) ? programmeDates.indexOf(savedDate)+1 : programmeDayCount+Number(savedRound.day)) : null;
       const discipline = mixed ? 3 : doubles ? 2 : reverse ? 1 : 0;
       const day = Number(mappedSavedDay ?? Math.min(programmeDayCount, (!draw.is_team ? Math.min(programmeDayCount, document.getElementById('schedule-daily-limit').checked ? Math.floor((round - 1) / 3) + 1 : Math.floor((round - 1) * programmeDayCount / Math.max(1, draw.rounds.length)) + 1) : Math.floor(discipline * programmeDayCount / 4) + 1)));
@@ -3050,6 +3110,17 @@
   }));
   document.getElementById('programme-wizard').addEventListener('change', event => {
     if (event.target.id === 'programme-age' || event.target.id === 'programme-reuse-source') return;
+    if (['programme-discipline-order', 'programme-save-date'].includes(event.target.id)) {
+      programmePayload = null;
+      invalidatePreview();
+      if (event.target.id === 'programme-save-date') {
+        if (event.target.value) {
+          document.getElementById('programme-reschedule-existing').checked = false;
+          document.getElementById('reschedule-existing').checked = false;
+        }
+        return;
+      }
+    }
     markProgrammeDirty(); updateProgrammeDayLabels();
   });
   document.querySelectorAll('.programme-time').forEach(input => input.addEventListener('change', () => { programmePayload = null; invalidatePreview(); }));
@@ -3155,6 +3226,12 @@
     });
     const rounds = [...document.querySelectorAll('[data-programme-draw]')].map(row => ({draw_id:Number(row.dataset.programmeDraw), round:Number(row.dataset.programmeRound), day:Number(row.querySelector('.programme-day').value), sequence:Number(row.querySelector('.programme-sequence').value)}));
     programmePayload = {draw_ids:group.map(draw => draw.id), draw_rounds:[], draw_starts:[], venue_starts:[], start:days[0].start, end:days[days.length - 1].end, programme:{days,rounds,matches:readProgrammeMatchOverrides()}, allow_partial:false, cross_band_policy:'highest_ranked'};
+    const disciplineOrder = document.getElementById('programme-discipline-order');
+    if (/^\d+$/.test(document.getElementById('programme-age')?.value) && disciplineOrder) {
+      programmePayload.programme.discipline_order = disciplineOrder.value;
+      const saveDate = document.getElementById('programme-save-date').value;
+      if (saveDate) programmePayload.programme_save_date = saveDate;
+    }
     try {
       const drafts = typeof ageSetupController !== 'undefined' ? ageSetupController?.previewDrafts(group.map(draw => draw.id)) || [] : [];
       if(drafts.length)programmePayload.draft_age_setups=drafts;
@@ -3163,7 +3240,20 @@
     const refreshVersion = ++programmeRefreshVersion;
     button.innerHTML = '<span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>Creating event schedule preview…';
     programmeStatus('Checking every round, court, player rest and daily window. Your saved schedule stays in place while the preview is created.');
-    try { const result = await post(previewUrl, payload); if (refreshVersion !== programmeRefreshVersion) return; render(result); if (showReview) showWorkflowStep(3); const totals = days.map((day, index) => `${programmeDayLabel(index + 1)}: ${result.matches.filter(row => row.scheduled_at.startsWith(day.start.slice(0,10))).length} suggested`).join(' · '); programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. ${result.preview_only ? 'Preview only: unsaved age setup. Nothing saved or published.' : 'Review before saving.'}`, result.unscheduled.length ? 'warning' : 'success'); }
+    try {
+      const result = await post(previewUrl, payload);
+      if (refreshVersion !== programmeRefreshVersion) return;
+      render(result);
+      if (showReview) showWorkflowStep(3);
+      const saveDate = result.input?.programme_save_date;
+      const totals = days.flatMap((day, index) => {
+        const date = day.start.slice(0,10);
+        if (saveDate && date !== saveDate) return [];
+        const count = result.matches.filter(row => row.scheduled_at.startsWith(date)).length;
+        return [`${programmeDayLabel(index + 1)}: ${count} suggested`];
+      }).join(' · ');
+      programmeStatus(`${totals}. ${result.unscheduled.length} unallocated. ${result.preview_only ? 'Preview only: unsaved age setup. Nothing saved or published.' : 'Review before saving.'}`, result.unscheduled.length ? 'warning' : 'success');
+    }
     catch (error) { if (!error.stalePreview && refreshVersion === programmeRefreshVersion) programmeStatus(error.message, 'danger'); }
     finally { if (refreshVersion === programmeRefreshVersion) { button.disabled = false; button.innerHTML = typeof programmeDayBoxMode !== 'undefined' && programmeDayBoxMode ? 'Generate suggested schedule' : programmeCreateLabel; } }
   };

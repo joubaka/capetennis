@@ -233,6 +233,7 @@ function mountMyTennisControls() {
 
   const linkPlayer = async (player, button) => {
     button.disabled = true;
+    workspace.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true}));
     try {
       await window.MyTennisPlayerSearch.link({ url: linkUrl, csrf, playerId: player.id });
       showFeedback(`Existing access to ${player.name} ${player.surname || ''} has been restored.`, 'success');
@@ -244,6 +245,7 @@ function mountMyTennisControls() {
     const name = button.dataset.playerName;
     if (!window.confirm(`Unlink ${name} from your account? This will not delete the player or their history.`)) return;
     button.disabled = true;
+    workspace.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true}));
     try {
       const response = await fetch(unlinkUrl.replace('__PLAYER__', button.dataset.playerId), { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json' } });
       const payload = await response.json();
@@ -261,6 +263,7 @@ function mountMyTennisControls() {
     const ids = selectedIds();
     if (!ids.length || !window.confirm(`Unlink ${ids.length} selected player${ids.length === 1 ? '' : 's'}? Their records and history will be kept.`)) return;
     bulkButton.disabled = true;
+    workspace.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true}));
     try {
       const response = await fetch(bulkUnlinkUrl, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': csrf, Accept: 'application/json', 'Content-Type': 'application/json' }, body: JSON.stringify({ player_ids: ids }) });
       const payload = await response.json();

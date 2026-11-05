@@ -10,7 +10,6 @@
     .ct-record .record-upcoming-row time strong { white-space:nowrap; }
     .ct-record .record-rating-comparison { margin:.4rem 0 0; }
     .ct-record .record-rating-comparison summary { min-height:44px; padding:.6rem .15rem; color:#004177; cursor:pointer; }
-    .ct-record .record-rating-comparison summary span { margin-inline-start:.45rem; color:#52677b; font-size:.8rem; }
     .ct-record .record-rating-comparison-body { background:#f6f8fa; border:1px solid #dce5ef; border-radius:8px; padding:.8rem; }
     .ct-record :is(.record-coverage, .record-rating-comparison) summary:focus-visible { outline:3px solid #b85b00; outline-offset:2px; }
     .ct-record .record-coverage { margin:0 0 1rem; }

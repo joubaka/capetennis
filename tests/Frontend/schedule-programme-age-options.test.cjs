@@ -18,10 +18,12 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   const settings = new Map([['13', {duration:85, player_rest:45, court_gap:7, gender_wave_release:'court_ready', reschedule_existing:true,
     programme:{days:[0,1,2].map(day => ({start:`2026-10-${String(9+day).padStart(2,'0')} 09:30:00`, end:`2026-10-${String(9+day).padStart(2,'0')} 17:15:00`, gender_waves:'girls_then_boys', break_start:`2026-10-${String(9+day).padStart(2,'0')} 12:00:00`, break_end:`2026-10-${String(9+day).padStart(2,'0')} 13:00:00`})), rounds:[{[key]:1, round:1, day:2, sequence:8}]} }], ['15', {programme:{days:[0,1,2].map(day => ({start:`2026-10-${String(9+day).padStart(2,'0')}T08:00`,end:`2026-10-${String(9+day).padStart(2,'0')}T18:00`})), rounds:[{[key]:2,round:1,day:3,sequence:1}]}}]]);
   let rows = [];
-  const context = {document:{getElementById:get, addEventListener() {}, querySelectorAll:() => []}, programmeSettings:settings, selectedProgrammeAge:'', programmePayload:null,
+  settings.get('13').programme.discipline_order = 'event';
+  const context = {document:{getElementById:get, addEventListener() {}, querySelectorAll:() => []}, programmeSettings:settings, programmeDisciplineOrders:{13:'by_day'}, selectedProgrammeAge:'', programmePayload:null,
+    programmeScopedDays:{13:{'2026-10-11':{day:{start:'2026-10-11 08:30:00', end:'2026-10-11 17:45:00', gender_waves:'girls_then_boys'}, rounds:[{drawId:1, round:1, day:3, sequence:4}]}}},
     programmeDates:['2026-10-09','2026-10-10','2026-10-11'], programmeDayIndexes:[0,1,2], programmeDayNumbers:[1,2,3], programmeDayCount:3,
     programmeMatchOverrides:new Map(), readProgrammeMatchOverrides:() => [],
-    programmeGroup:() => get('programme-age').value === '13' ? [{id:1,name:'Mixed doubles',rounds:[1],venues:[]}] : [{id:2,name:'Mixed doubles',rounds:[1],venues:[]}],
+    programmeGroup:() => get('programme-age').value === '13' ? [{id:1,programme_age:13,name:'Mixed doubles',rounds:[1],venues:[]}] : [{id:2,programme_age:15,name:'Mixed doubles',rounds:[1],venues:[]}],
     programmeRows:() => rows, invalidatePreview:() => {}, renderProgrammeStages:() => {}, updateProgrammeDayPublicationLinks:() => {}, programmeStatus:() => {}, updateProgrammeSaveState:() => {}, updateProgrammeDayLabels:() => {}, programmeDayLabel:day => `Day ${day}`, escapeHtml:value => value};
   const setupStart = source.indexOf('  const programmeOptionControls =');
   const setupEnd = source.indexOf('  const programmeSavedAges =', setupStart);
@@ -45,9 +47,19 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   assert.equal(get('gender-wave-release').value, 'court_ready');
   assert.equal(get('programme-reschedule-existing').checked, true);
   assert.equal(get('reschedule-existing').checked, true);
-  assert.match(get('programme-rounds').innerHTML, /value="2" selected/);
-  assert.match(get('programme-rounds').innerHTML, /value="8"/);
+  assert.equal(get('programme-discipline-setting').hidden, false);
+  assert.equal(get('programme-discipline-order').value, 'by_day');
+  get('programme-save-date').value = '2026-10-09';
+  get('programme-wizard').listener({target:{id:'programme-save-date', value:'2026-10-09'}});
+  assert.equal(get('programme-reschedule-existing').checked, false, 'scoping a save keeps existing times by default');
+  assert.equal(get('reschedule-existing').checked, false);
+  assert.equal(get('programme-start-1').value, '2026-10-10T09:30', 'unrelated saved date stays intact');
+  assert.equal(get('programme-start-2').value, '2026-10-11T08:30', 'scoped saved hours override that date');
+  assert.match(get('programme-rounds').innerHTML, /value="3" selected/);
+  assert.match(get('programme-rounds').innerHTML, /value="4"/);
   get('programme-start-0').value = '2026-10-09T10:45';
+  get('programme-start-2').value = '2026-10-11T09:00';
+  get('programme-discipline-order').value = 'event';
   rows = [{dataset:{programmeDraw:'1',programmeRound:'1'},querySelector:selector => ({value:selector === '.programme-day' ? '3' : '9'})}];
   get('programme-age').value = '15'; get('programme-age').listener();
   assert.equal(get('programme-break-start-0').value, '');
@@ -58,9 +70,12 @@ for (const key of ['draw_id', 'drawId']) test(`age selection restores saved opti
   assert.match(get('programme-rounds').innerHTML, /value="3" selected/);
   assert.equal(get('programme-duration').value, '');
   assert.equal(get('programme-reschedule-existing').checked, false);
+  assert.equal(get('programme-discipline-order').value, 'event');
   rows = [];
   get('programme-age').value = '13'; get('programme-age').listener();
   assert.equal(get('programme-start-0').value, '2026-10-09T10:45');
+  assert.equal(get('programme-start-2').value, '2026-10-11T09:00', 'unsaved draft takes precedence over the scoped save on an age switch');
+  assert.equal(get('programme-discipline-order').value, 'event', 'unsaved edit is restored for the selected age');
   assert.match(get('programme-rounds').innerHTML, /value="3" selected/);
   assert.match(get('programme-rounds').innerHTML, /value="9"/);
 });
@@ -83,7 +98,7 @@ test('programme labels use selected dates and save status keeps later edits pend
   elements.get('programme-age').value='15'; context.api.updateProgrammeSaveState();
   assert.match(elements.get('programme-save-state').textContent,/Under 15: Saved/);
   elements.get('programme-age').value='13'; context.api.markProgrammeDirty();
-  Object.assign(context,{submittedProgramme:{days:[1,2,3]},submittedAge:'13',submittedOptions:{duration:30},submittedEditVersion});
+  Object.assign(context,{submittedProgramme:{days:[1,2,3]},submittedAge:'13',submittedOptions:{duration:30},submittedEditVersion,programmeScopedDays:{}});
   Object.assign(context,context.api);
   const applyStart=source.indexOf('      if (submittedProgramme?.days?.length');
   const applyEnd=source.indexOf('      replanVenueIds =',applyStart);

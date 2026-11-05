@@ -2,8 +2,109 @@
   'use strict';
 
   const workspaceSelector = '[data-my-tennis-workspace]';
+  const cacheLifetime = 60000;
   let pending = null;
-  let renderedUrl = window.location.pathname + window.location.search;
+  let renderedUrl = pageKey(new URL(window.location.href));
+  let scope = null;
+  let warmDisabled = false;
+
+  function pageKey(url) {
+    return url.pathname + url.search;
+  }
+
+  function clearCache() {
+    scope?.controller.abort();
+    scope = null;
+  }
+
+  async function fetchWorkspace(url, signal, prefetch = false) {
+    const headers = {Accept: 'text/html', 'X-My-Tennis-Navigation': '1'};
+    if (prefetch) headers.Purpose = 'prefetch';
+    const response = await fetch(url, {
+      headers, credentials: 'same-origin', cache: 'no-store', signal,
+      redirect: prefetch ? 'manual' : 'follow',
+    });
+    if (response.redirected || response.type === 'opaqueredirect') {
+      disableCache();
+      return {redirected: true};
+    }
+    if ([401, 403, 419].includes(response.status)) disableCache();
+    if (!response.ok) throw new Error('My Tennis is unavailable');
+
+    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+    const workspace = page.querySelector(workspaceSelector);
+    if (!workspace || signal.aborted) throw new Error('My Tennis workspace unavailable');
+    return {title: page.title, workspace};
+  }
+
+  function remember(target, key, page) {
+    if (scope === target && target.keys.has(key)) {
+      target.ready.set(key, {page, expires: Date.now() + cacheLifetime});
+    }
+  }
+
+  function warmTabs(workspace, page) {
+    if (warmDisabled) return;
+    const tabs = Array.from(workspace.querySelectorAll('#my-tennis-tabs [data-my-tennis-link]'), link => new URL(link.href))
+      .filter(url => url.origin === window.location.origin);
+    const keys = new Set(tabs.map(pageKey));
+    if (scope && keys.size === scope.keys.size && [...keys].every(key => scope.keys.has(key))) return;
+    clearCache();
+    if (!keys.size) return;
+
+    const target = {keys, ready: new Map(), inFlight: new Map(), controller: new AbortController()};
+    scope = target;
+    if (page) remember(target, renderedUrl, page);
+    const queue = tabs.filter(url => !target.ready.has(pageKey(url)));
+    async function warmNext() {
+      while (scope === target && queue.length) {
+        const url = queue.shift();
+        const key = pageKey(url);
+        if (target.ready.has(key) || pending?.key === key) continue;
+        const controller = new AbortController();
+        const cancel = () => controller.abort();
+        target.controller.signal.addEventListener('abort', cancel, {once: true});
+        const signal = controller.signal;
+        const timeout = window.setTimeout(() => controller.abort(), 15000);
+        const task = fetchWorkspace(url, signal, true)
+          .then(page => {
+            if (!page.redirected && !signal.aborted) remember(target, key, page);
+          })
+          .catch(() => {})
+          .finally(() => {
+            window.clearTimeout(timeout);
+            target.controller.signal.removeEventListener('abort', cancel);
+            target.inFlight.delete(key);
+          });
+        target.inFlight.set(key, task);
+        await task;
+      }
+    }
+    warmNext();
+    warmNext();
+  }
+
+  function cachedPage(key) {
+    const item = scope?.ready.get(key);
+    if (item?.expires > Date.now()) return item.page;
+    scope?.ready.delete(key);
+    return null;
+  }
+
+  function render(page, workspace, url, {back, focus}) {
+    const next = page.workspace.cloneNode(true);
+    if (!back && url.href !== window.location.href) window.history.pushState(null, '', url.href);
+    if (page.title) document.title = page.title;
+    renderedUrl = pageKey(url);
+    workspace.dispatchEvent(new CustomEvent('my-tennis:unmounting', {bubbles: true}));
+    workspace.replaceWith(next);
+    next.dispatchEvent(new CustomEvent('my-tennis:mounted', {bubbles: true}));
+    warmTabs(next, page);
+
+    const active = next.querySelector('[data-my-tennis-link][aria-current="page"]');
+    if (focus) active?.focus({preventScroll: true});
+    if (url.hash) document.getElementById(url.hash.slice(1))?.scrollIntoView();
+  }
 
   function showStatus(workspace, message) {
     let status = workspace.querySelector('[data-my-tennis-navigation-status]');
@@ -25,7 +126,16 @@
     if (!workspace) return;
 
     pending?.abort();
+    pending = null;
+    const key = pageKey(url);
+    const ready = cachedPage(key);
+    if (ready) {
+      render(ready, workspace, url, {back, focus});
+      return;
+    }
+
     const request = new AbortController();
+    request.key = key;
     pending = request;
     const timeout = window.setTimeout(() => request.abort(), 30000);
     workspace.setAttribute('aria-busy', 'true');
@@ -45,39 +155,19 @@
     }, 180);
 
     try {
-      const response = await fetch(url, {
-        headers: {Accept: 'text/html', 'X-My-Tennis-Navigation': '1'},
-        credentials: 'same-origin',
-        cache: 'no-store',
-        signal: request.signal,
-      });
+      const warming = scope?.inFlight.get(key);
+      if (warming) await warming;
       if (pending !== request) return;
-      if (response.redirected) {
+      const page = cachedPage(key) ?? await fetchWorkspace(url, request.signal);
+      if (pending !== request) return;
+      if (page.redirected) {
         if (back) window.location.reload();
         else window.location.assign(url.href);
         return;
       }
-      if (!response.ok) throw new Error('My Tennis is unavailable');
-
-      const html = await response.text();
-      if (pending !== request) return;
       if (request.signal.aborted) throw new Error('My Tennis request timed out');
-      const page = new DOMParser().parseFromString(html, 'text/html');
-      const next = page.querySelector(workspaceSelector);
-      if (!next) throw new Error('My Tennis workspace missing');
-
-      if (!back && url.href !== window.location.href) {
-        window.history.pushState(null, '', url.href);
-      }
-      if (page.title) document.title = page.title;
-      renderedUrl = url.pathname + url.search;
-      workspace.dispatchEvent(new CustomEvent('my-tennis:unmounting', {bubbles: true}));
-      workspace.replaceWith(next);
-      next.dispatchEvent(new CustomEvent('my-tennis:mounted', {bubbles: true}));
-
-      const active = next.querySelector('[data-my-tennis-link][aria-current="page"]');
-      if (focus) active?.focus({preventScroll: true});
-      if (url.hash) document.getElementById(url.hash.slice(1))?.scrollIntoView();
+      if (scope) remember(scope, key, page);
+      render(page, workspace, url, {back, focus});
     } catch (error) {
       if (pending !== request) return;
       if (back) {
@@ -120,6 +210,39 @@
 
   window.addEventListener('popstate', () => {
     const url = new URL(window.location.href);
-    if (renderedUrl !== url.pathname + url.search || pending) open(url, {back: true});
+    if (renderedUrl !== pageKey(url) || pending) open(url, {back: true});
   });
+
+  function disableCache() {
+    warmDisabled = true;
+    clearCache();
+  }
+
+  document.addEventListener('submit', event => {
+    if (event.target.closest(workspaceSelector) && event.target.method !== 'get') disableCache();
+  }, true);
+  document.addEventListener('click', event => {
+    if (event.target.closest(`${workspaceSelector} [data-history-refresh]`)) disableCache();
+  }, true);
+  document.addEventListener('my-tennis:invalidate', disableCache);
+  window.addEventListener('pagehide', () => {
+    pending?.abort();
+    pending = null;
+    disableCache();
+  });
+  window.addEventListener('pageshow', event => {
+    if (event.persisted) window.location.reload();
+  });
+
+  // Defer runs before the controls mount on DOMContentLoaded. Keep a pristine
+  // copy of the initial tab so returning to it does not clone enhanced widgets.
+  const initialWorkspace = document.querySelector(workspaceSelector);
+  const initialPage = initialWorkspace && document.readyState === 'interactive'
+    ? {title: document.title, workspace: initialWorkspace.cloneNode(true)}
+    : null;
+  // Let the requested tab paint before the other authorized tabs start loading.
+  window.requestAnimationFrame(() => window.setTimeout(() => {
+    const workspace = document.querySelector(workspaceSelector);
+    if (workspace) warmTabs(workspace, workspace === initialWorkspace ? initialPage : null);
+  }, 0));
 })();

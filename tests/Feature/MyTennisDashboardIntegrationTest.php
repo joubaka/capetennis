@@ -169,6 +169,9 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $other = Player::factory()->create(['userId' => $user->id, 'name' => 'Taylor']);
         $this->actingAs($user);
         $this->get(route('my.tennis', ['player' => $other->id]))->assertOk();
+        $this->get(route('my.tennis', ['player' => $first->id, 'tab' => 'activity']), [
+            'Purpose' => 'prefetch', 'X-My-Tennis-Navigation' => '1',
+        ])->assertOk()->assertSessionHas('my_tennis.selected_player', $other->id);
         $profile = $this->get(route('my.tennis'))->assertOk();
         $this->assertSame($other->id, $profile->viewData('selectedPlayer')->id);
         $this->assertArrayNotHasKey('upcomingMatchPage', $profile->original->getData());

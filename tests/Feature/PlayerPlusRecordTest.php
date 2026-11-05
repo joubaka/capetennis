@@ -290,16 +290,15 @@ class PlayerPlusRecordTest extends TestCase
         $upcoming = ['rows' => [['date' => '2026-11-05 09:00:00', 'event' => 'Upcoming Open', 'draw' => 'Singles',
             'venue' => 'Example courts', 'court' => '2', 'team' => null,
             'opponents' => [['id' => 43, 'name' => '<script>Opponent</script>']], 'url' => '/published-draw']],
-            'ratings' => [42 => ['score' => 80.0, 'confidence' => 'Low'], 43 => ['score' => 75.0, 'confidence' => 'Moderate']],
+            'ratings' => [43 => ['score' => 75.0, 'stage' => 'standard', 'confidence_label' => 'Medium']],
             'total' => 1, 'page' => 1, 'pages' => 1];
         $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
         $html = \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', ['recordPlayer' => $this->player(), 'recordSection' => 'opponents', 'record' => $record, 'upcoming' => $upcoming]);
         $this->assertLessThan(strpos($html, 'History unavailable'), strpos($html, 'id="upcoming-heading"'));
         $this->assertStringContainsString('<details', $html);
-        $this->assertStringContainsString('Overall CTR 80.0', $html);
-        $this->assertStringContainsString('Overall CTR 75.0', $html);
-        $this->assertStringContainsString('Overall CTR gap: <strong>5.0 points</strong>', $html);
-        $this->assertStringContainsString('Moderate confidence', $html);
+        $this->assertStringContainsString('CTR 75.0 · Green/Yellow ball', $html);
+        $this->assertStringContainsString('Medium confidence', $html);
+        $this->assertStringNotContainsString('Overall CTR', $html);
         $this->assertStringContainsString('Court 2', $html);
         $this->assertStringContainsString('href="/published-draw" class="record-fixture-link">View draw', $html);
         $this->assertStringContainsString('&lt;script&gt;Opponent&lt;/script&gt;', $html);
@@ -307,7 +306,7 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertStringContainsString('opponent=43#opponent-meetings', $html);
     }
 
-    public function test_upcoming_comparison_displays_personal_ball_rating_separately_from_missing_overall_ratings(): void
+    public function test_upcoming_match_displays_the_profile_ball_badge_and_available_opponent_badge(): void
     {
         $upcoming = ['rows' => [['date' => '2026-11-05 09:00:00', 'event' => 'Upcoming Open', 'draw' => 'Singles',
             'venue' => 'Example courts', 'court' => '2', 'team' => null,
@@ -321,20 +320,17 @@ class PlayerPlusRecordTest extends TestCase
         ];
         $template = file_get_contents(resource_path('views/frontend/my-tennis/record-upcoming.blade.php'));
         $html = \Illuminate\Support\Facades\Blade::render($template, $data);
-        $this->assertStringContainsString('Personal Green/Yellow ball rating', $html);
-        $this->assertStringContainsString('<strong>87.6</strong>', $html);
-        $this->assertStringContainsString('Overall CTR unavailable for comparison', $html);
-        $this->assertStringContainsString('No published Overall CTR available for comparison', $html);
-        $this->assertStringNotContainsString('Overall CTR gap', $html);
+        $this->assertStringContainsString('CTR 87.6 · Green/Yellow ball', $html);
+        $this->assertStringContainsString('Ball rating unavailable', $html);
+        $this->assertStringNotContainsString('Overall CTR', $html);
 
-        $data['upcoming']['ratings'][43] = ['score' => 75.0, 'confidence' => 'Moderate'];
+        $data['upcoming']['ratings'][43] = ['score' => 75.0, 'stage' => 'orange', 'confidence_label' => 'Medium'];
         $html = \Illuminate\Support\Facades\Blade::render($template, $data);
-        $this->assertStringContainsString('Overall CTR 75.0', $html);
-        $this->assertStringNotContainsString('Overall CTR gap', $html);
+        $this->assertStringContainsString('CTR 75.0 · Orange ball', $html);
+        $this->assertStringNotContainsString('Ball rating unavailable', $html);
 
         $data['workspace']['canViewRating'] = false;
         $html = \Illuminate\Support\Facades\Blade::render($template, $data);
-        $this->assertStringNotContainsString('Personal Green/Yellow ball rating', $html);
         $this->assertStringNotContainsString('87.6', $html);
     }
 }

@@ -102,7 +102,15 @@ final class ScheduleProgramme
             $matches[$fixtureId] = compact('drawId', 'fixtureId', 'day', 'sequence');
         }
         ksort($matches);
-        return ['days' => $days, 'rounds' => array_values($rounds)] + ($matches ? ['matches' => array_values($matches)] : []);
+        $disciplineOrder = $programme['discipline_order'] ?? null;
+        if ($disciplineOrder !== null && (! in_array($disciplineOrder, ['event', 'by_day'], true)
+            || $draws->contains(fn ($draw) => ! $draw->isTeamDraw() || $this->age($draw) === null)
+            || $draws->map(fn ($draw) => $this->age($draw))->unique()->count() !== 1)) {
+            throw new \InvalidArgumentException('Choose a discipline order for one team age group.');
+        }
+        return ['days' => $days, 'rounds' => array_values($rounds)]
+            + ($matches ? ['matches' => array_values($matches)] : [])
+            + ($disciplineOrder !== null ? ['discipline_order' => $disciplineOrder] : []);
     }
 
     public function configureNodes(array &$nodes, array $programme): void

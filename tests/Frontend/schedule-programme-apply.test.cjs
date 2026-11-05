@@ -11,7 +11,7 @@ function scenario(programme = true) {
   const context = {
     payload:{draw_ids:[1], ...(programme ? {programme:{days:[{start:'2026-10-09'},{start:'2026-10-10'},{start:'2026-10-11'}],rounds:[{draw_id:1,round:1,day:2,sequence:1}]}} : {})},
     revision:'original-revision', dayBatchPayload:null, programmePayload:null, selectedProgrammeAge:'13', programmeEditVersions:new Map([['13',1]]),
-    programmeDirtyAges:new Set(programme ? ['13'] : []), programmeSavedAges:new Set(), programmeSettings:new Map(),
+    programmeDirtyAges:new Set(programme ? ['13'] : []), programmeSavedAges:new Set(), programmeSettings:new Map(), programmeDisciplineOrders:{}, programmeScopedDays:{}, programmeStatus:message => messages.push(message),
     document:{getElementById:id => id==='apply-preview' ? button : {id}},
     readProgrammeOptions:() => ({duration:30}), updateProgrammeSaveState:() => {},
     applyUrl:'/apply', previewUrl:'/preview', drawsUrl:'/saved', replanVenueIds:[],
@@ -28,6 +28,22 @@ function scenario(programme = true) {
   vm.runInNewContext(source.slice(start,end),context);
   return {context,button,messages,requests,timers,redirects,rendered,start:() => listener({currentTarget:button}),complete:() => resolveApply({count:3})};
 }
+
+test('day-scoped save preserves the unsaved programme and does not redirect', async () => {
+  const app = scenario();
+  app.context.payload.programme_save_date = '2026-10-09';
+  app.context.payload.programme.discipline_order = 'by_day';
+  const pending = app.start();
+  app.complete();
+  await pending;
+  assert.equal(app.requests.length, 1);
+  assert.equal(app.requests[0].body.programme_save_date, '2026-10-09');
+  assert.equal(app.context.programmeDisciplineOrders['13'], 'by_day');
+  assert.equal(app.context.programmeDirtyAges.has('13'), true);
+  assert.equal(app.context.programmeSavedAges.has('13'), false);
+  assert.match(app.messages.at(-1), /Saved 3 matches privately for 2026-10-09/);
+  assert.deepEqual(app.redirects, []);
+});
 
 test('full apply keeps later same-age edits and skips revalidation of invalid current controls', async () => {
   const app=scenario(); const pending=app.start();

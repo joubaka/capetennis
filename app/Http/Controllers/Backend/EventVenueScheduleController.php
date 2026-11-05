@@ -148,6 +148,8 @@ final class EventVenueScheduleController extends Controller
             'gender_waves' => 'combined',
             'gender_wave_release' => 'whole_wave',
             'tie_allocation' => 'balanced',
+            'team_discipline_order' => [],
+            'team_programme_days' => [],
             'rank_venue_preferences' => [], 'cross_band_policy' => 'highest_ranked',
         ], $storedScheduleDraft);
         foreach (['start', 'end'] as $key) {
@@ -1199,7 +1201,7 @@ final class EventVenueScheduleController extends Controller
                 $data['schedule']['cross_band_policy'] ??= $stored['cross_band_policy'] ?? 'highest_ranked';
                 $data['schedule']['limit_daily_matches'] = ! empty($stored['limit_daily_matches']) || ! empty($data['schedule']['limit_daily_matches']);
                 $data['schedule']['round_venue_setups'] = $stored['round_venue_setups'] ?? [];
-                foreach (['programme', 'programme_settings', 'team_age_venue_setups'] as $key) {
+                foreach (['programme', 'programme_settings', 'team_age_venue_setups', 'team_discipline_order', 'team_programme_days'] as $key) {
                     if (isset($stored[$key])) $data['schedule'][$key] = $stored[$key];
                 }
                 unset($data['schedule']['rank_preference_draw_ids']);
@@ -1557,7 +1559,9 @@ final class EventVenueScheduleController extends Controller
             'full_day_court_starts.*.*.end' => ['required', 'date'],
             'reschedule_existing' => ['sometimes', 'boolean'],
             'start' => ['required', 'date'], 'end' => ['nullable', 'date', 'after:start'],
-            'programme' => ['sometimes', 'array:days,rounds,matches'],
+            'programme' => ['sometimes', 'array:days,rounds,matches,discipline_order'],
+            'programme.discipline_order' => ['sometimes', 'in:event,by_day'],
+            'programme_save_date' => ['sometimes', 'required', 'date_format:Y-m-d'],
             'programme.matches' => ['sometimes', 'array', 'max:2000'],
             'programme.matches.*' => ['array:draw_id,fixture_id,day,sequence'],
             'programme.matches.*.draw_id' => ['required', 'integer'],

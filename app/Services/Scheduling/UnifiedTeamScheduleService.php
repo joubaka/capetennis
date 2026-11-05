@@ -143,10 +143,13 @@ final class UnifiedTeamScheduleService
         $duration = (int) ($data['duration'] ?? $data['duration_min'] ?? 75);
         $rest = (int) ($data['player_rest'] ?? 0);
         $gap = (int) ($data['court_gap'] ?? $fixture->gap_minutes ?? 0);
-        if ($error = app(TeamDisciplineOrder::class)->manualError($fixture, $start, $duration)) return $error;
+        $phaseOrder = app(TeamDisciplineOrder::class);
+        $inventory = $phaseOrder->inventory($event);
+        $phaseDependencies = $phaseOrder->dependencies($inventory, $draft['team_discipline_order'] ?? [], [$fixture->id => $start->toDateString()]);
+        if ($error = $phaseOrder->manualError($fixture, $start, $duration, $inventory, $phaseDependencies)) return $error;
         $progression = $data['round_progression'] ?? 'team_ready';
         if (! in_array($progression, ['team_ready', 'all_round'], true)) return 'Choose a valid round progression rule.';
-        $nodes = $this->nodes($fixture->draw, $progression);
+        $nodes = $this->nodes($fixture->draw, $progression, $phaseDependencies);
         $node = $nodes['team:'.$fixture->id] ?? null;
         foreach ($node['dependencies'] ?? [] as $key) {
             $earlier = TeamFixture::find((int) substr($key, 5));
@@ -212,7 +215,7 @@ final class UnifiedTeamScheduleService
     public function removalError(Event $event, array $fixtureIds, ?string $progression = null): ?string
     {
         $inventory = app(TeamDisciplineOrder::class)->inventory($event);
-        $phaseDependencies = app(TeamDisciplineOrder::class)->dependencies($inventory);
+        $phaseDependencies = app(TeamDisciplineOrder::class)->dependencies($inventory, app(TeamDisciplineOrder::class)->savedOrders($event));
         $removedKeys = array_map(fn ($id) => 'team:'.$id, $fixtureIds);
         foreach ($inventory as $later) {
             if (! in_array((int) $later->id, array_map('intval', $fixtureIds), true) && $later->scheduled_at
@@ -226,7 +229,7 @@ final class UnifiedTeamScheduleService
         $keys = array_map(fn ($id) => 'team:'.$id, $fixtureIds);
         foreach (Draw::whereIn('id', $drawIds)->get() as $draw) {
             foreach ($this->dependentPlayoffs($draw) as $playoff) if ($playoff->fixtures()->whereNotNull('scheduled_at')->exists()) return 'A saved playoff programme depends on these round-robin times. Return the playoff bookings to planning first.';
-            foreach ($this->nodes($draw, $progression) as $key => $node) {
+            foreach ($this->nodes($draw, $progression, $phaseDependencies) as $key => $node) {
                 if (in_array($key, $keys, true) || ! $node['fixture']->scheduled_at) continue;
                 if (array_intersect($keys, $node['dependencies'])) return 'A saved later team tie depends on this assignment. Return the dependent tie to planning too.';
             }

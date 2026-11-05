@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\{Draw, Event, Fixture, OrderOfPlay, Player, Registration, User, Venue};
 use App\Services\MyTennisService;
-use App\Services\Performance\{PlayerRatingTopTen, PlayerUpcomingMatchInsights};
+use App\Services\Performance\{PlayerAbilitySnapshotStore, PlayerRatingAccess, PlayerUpcomingMatchInsights};
 use Tests\TestCase;
 
 class PlayerUpcomingMatchInsightsTest extends TestCase
@@ -14,7 +14,7 @@ class PlayerUpcomingMatchInsightsTest extends TestCase
         $user = new User;
         $player = new Player;
         $this->mock(MyTennisService::class)->shouldReceive('upcomingScheduledMatchesFor')->once()->with($player)->andReturn(collect());
-        $this->mock(PlayerRatingTopTen::class)->shouldNotReceive('forMatchPlayers');
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldNotReceive('current');
 
         $this->assertSame(['rows' => [], 'ratings' => [], 'total' => 0, 'page' => 1, 'pages' => 1],
             app(PlayerUpcomingMatchInsights::class)->forPlayer($user, $player));
@@ -36,8 +36,17 @@ class PlayerUpcomingMatchInsightsTest extends TestCase
                 ->setRelation('venue', $venue)->setRelation('orderOfPlay', new OrderOfPlay(['court' => '3']));
             $fixtures->push($fixture);
         }
-        $this->mock(MyTennisService::class)->shouldReceive('upcomingScheduledMatchesFor')->once()->with($player)->andReturn($fixtures);
-        $this->mock(PlayerRatingTopTen::class)->shouldReceive('forMatchPlayers')->once()->with($user, $player, [121, 42])->andReturn([]);
+        $this->mock(MyTennisService::class)->shouldReceive('upcomingScheduledMatchesFor')->times(3)->with($player)->andReturn($fixtures);
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allows')->with($user, $player)->times(3)->andReturn(true, false, true);
+        $access->shouldReceive('allowsDiscovery')->with($user)->twice()->andReturn(true, false);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn([
+            'reason' => null,
+            'ball_ratings' => ['standard' => ['ratings' => [
+                121 => ['score' => 70.1, 'confidence_index' => 50, 'component' => 'private detail'],
+                101 => ['score' => 66.0], 42 => ['score' => 91.1],
+            ]]],
+        ]);
         $result = app(PlayerUpcomingMatchInsights::class)->forPlayer($user, $player, 999);
         $this->assertSame(21, $result['total']);
         $this->assertSame(2, $result['page']);
@@ -45,6 +54,8 @@ class PlayerUpcomingMatchInsightsTest extends TestCase
         $this->assertSame([['id' => 121, 'name' => 'Opponent 21']], $result['rows'][0]['opponents']);
         $this->assertSame('3', $result['rows'][0]['court']);
         $this->assertSame(route('public.roundrobin.show', 5), $result['rows'][0]['url']);
-        $this->assertSame([], $result['ratings']);
+        $this->assertSame([121 => ['stage' => 'standard', 'score' => 70.1, 'confidence_label' => 'Medium', 'connection_status' => null]], $result['ratings']);
+        $this->assertSame([], app(PlayerUpcomingMatchInsights::class)->forPlayer($user, $player, 999)['ratings']);
+        $this->assertSame([], app(PlayerUpcomingMatchInsights::class)->forPlayer($user, $player, 999)['ratings']);
     }
 }

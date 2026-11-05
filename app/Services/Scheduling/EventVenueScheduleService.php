@@ -92,6 +92,16 @@ final class EventVenueScheduleService
         if ($dayBatch && (count($drawOrder) !== $draws->count() || count(array_unique($drawOrder)) !== count($drawOrder)
             || array_diff($drawOrder, $draws->pluck('id')->all()) || $draws->pluck('id')->diff($drawOrder)->isNotEmpty())) throw new \InvalidArgumentException('Draw order must include each selected draw exactly once.');
         $programme = app(ScheduleProgramme::class)->normalize($options['programme'] ?? [], $draws, $this->availableDrawRounds($draws, true), $event);
+        $programmeSaveDate = $options['programme_save_date'] ?? null;
+        $programmeSaveDay = null;
+        if ($programmeSaveDate !== null) {
+            $dates = array_map(fn ($day) => substr($day['start'], 0, 10), $programme['days'] ?? []);
+            $dayIndex = array_search($programmeSaveDate, $dates, true);
+            if ($dayIndex === false || $draws->isEmpty() || $draws->contains(fn ($draw) => ! $draw->isTeamDraw())) {
+                throw new \InvalidArgumentException('Choose one date in the team programme to save.');
+            }
+            $programmeSaveDay = $dayIndex + 1;
+        }
         if ($programme) {
             $options['allow_partial'] = false;
             $programmeService = app(ScheduleProgramme::class);
@@ -304,14 +314,16 @@ final class EventVenueScheduleService
         $eligibleFixtureKeys = [];
         $dayRoundCoverage = [];
         $warnings = $rankRuleWarnings;
-        $phaseInventory = $draws->contains(fn ($draw) => $draw->isTeamDraw()) ? app(TeamDisciplineOrder::class)->inventory($event) : collect();
-        $phaseDependencies = app(TeamDisciplineOrder::class)->dependencies($phaseInventory);
+        $disciplineOrder = app(TeamDisciplineOrder::class);
+        $phaseInventory = $draws->contains(fn ($draw) => $draw->isTeamDraw()) ? $disciplineOrder->inventory($event) : collect();
+        $disciplineOrders = $disciplineOrder->programmeOrders($draws, $programme, $storedRoundDraft['team_discipline_order'] ?? []);
+        $plannedRounds = collect($programme['rounds'] ?? [])->keyBy(fn ($row) => $row['drawId'].'|'.$row['round']);
         foreach ($draws as $draw) {
             if ($draw->locked) {
                 $warnings[] = "{$draw->drawName} was not changed because the draw is locked.";
                 continue;
             }
-            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression, $phaseDependencies) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
+            foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression, []) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
                 $timing = app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap, $dayBatch);
                 $node['timed'] = ! $draw->isTeamDraw() && $draw->settings?->score_format === 'timed';
                 $node['duration'] = $timing['duration_minutes'];
@@ -343,6 +355,14 @@ final class EventVenueScheduleService
                     $node['venue_courts'] = array_filter($node['venue_courts']);
                 }
                 $slot = $this->nodeSlot($node);
+                if ($programmeSaveDate !== null) {
+                    $planned = $plannedRounds[$draw->id.'|'.$node['round']] ?? null;
+                    $onSaveDay = ($planned['day'] ?? null) === $programmeSaveDay;
+                    if ($slot?->time && $onSaveDay !== (Carbon::parse($slot->time)->toDateString() === $programmeSaveDate)) {
+                        throw new \InvalidArgumentException('A match would move to or from the selected programme day. Keep its saved date or replan the complete programme.');
+                    }
+                    $node['selected_round'] = $onSaveDay;
+                }
                 if ($fullDay) {
                     $node['selected_round'] = $node['selected_round'] && (! $slot?->time || Carbon::parse($slot->time)->toDateString() === $fullDay);
                     if ($node['selected_round']) {
@@ -378,6 +398,19 @@ final class EventVenueScheduleService
                 if ($node['selected_round'] && ! $node['played'] && ! $node['fixed']) $excluded[] = $id;
             }
         }
+
+        $disciplineDates = [];
+        $singleDate = $dayScope ?? $fullDay ?? ($end && $start->isSameDay($end) ? $start->toDateString() : null);
+        if (in_array('by_day', $disciplineOrders, true)) {
+            foreach ($nodes as $node) {
+                if (($node['fixture_kind'] ?? null) !== 'team' || ! $node['selected_round'] || $node['fixed'] || $node['played']) continue;
+                $planned = $plannedRounds[$node['draw_id'].'|'.$node['round']] ?? null;
+                $date = $planned ? substr($programme['days'][$planned['day'] - 1]['start'], 0, 10) : $singleDate;
+                if ($date !== null) $disciplineDates[$node['fixture']->id] = $date;
+            }
+        }
+        $phaseDependencies = $disciplineOrder->dependencies($phaseInventory, $programme || $singleDate ? $disciplineOrders : [], $disciplineDates);
+        $disciplineOrder->configureNodes($nodes, $event, $phaseDependencies);
 
         if ($selectedFixtureKeys !== null && array_diff($selectedFixtureKeys, $eligibleFixtureKeys)) throw new \InvalidArgumentException('Choose matches in the selected event draws, rounds and playing day only.');
         if ($dayBatch) foreach ($drawRounds as $row) foreach ($row['rounds'] as $round) {
@@ -457,10 +490,11 @@ final class EventVenueScheduleService
             if ($programme) {
                 $node['wave'] = $node['programme_phase'];
                 $slot = $this->nodeSlot($node);
-                if (($node['fixed'] || $node['played']) && $slot?->time && (Carbon::parse($slot->time)->lt($node['draw_start']) || Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $node['duration']))->gt($node['programme_end']))) {
+                $checkWindow = $programmeSaveDate === null || ($node['selected_round'] && $node['programme_day'] === $programmeSaveDay);
+                if ($checkWindow && ($node['fixed'] || $node['played']) && $slot?->time && (Carbon::parse($slot->time)->lt($node['draw_start']) || Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $node['duration']))->gt($node['programme_end']))) {
                     throw new \InvalidArgumentException('A saved match is outside its programme day. Review or return it to planning before creating this programme.');
                 }
-                if (($node['fixed'] || $node['played']) && $slot?->time && $node['programme_break'] && Carbon::parse($slot->time)->lt($node['programme_break'][1]) && Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $node['duration']))->gt($node['programme_break'][0])) throw new \InvalidArgumentException('A saved match overlaps a programme break. Review its time before creating this programme.');
+                if ($checkWindow && ($node['fixed'] || $node['played']) && $slot?->time && $node['programme_break'] && Carbon::parse($slot->time)->lt($node['programme_break'][1]) && Carbon::parse($slot->time)->addMinutes((int) ($slot->duration_minutes ?: $node['duration']))->gt($node['programme_break'][0])) throw new \InvalidArgumentException('A saved match overlaps a programme break. Review its time before creating this programme.');
             }
             if ($node['automatic']) {
                 $finished[$id] = $node['not_before']->copy();
@@ -985,6 +1019,8 @@ final class EventVenueScheduleService
         }
         $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
             ...(! empty($options['draft_age_setups']) ? ['draft_age_setups' => $options['draft_age_setups']] : []),
+            ...($programmeSaveDate !== null ? ['programme_save_date' => $programmeSaveDate] : []),
+            ...($disciplineOrders ? ['team_discipline_order' => $disciplineOrders] : []),
             'match_timing' => collect($nodes)->map(fn ($node) => ['duration' => $node['duration'], 'court_gap' => $node['court_gap']])->all(),
             'preview_moves' => array_values($previewMoves),
             'preview_frozen_keys' => $frozenKeys,
@@ -1012,6 +1048,12 @@ final class EventVenueScheduleService
                 'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
         ];
 
+        if ($programmeSaveDate !== null) {
+            $plan = array_values(array_filter($plan, fn ($row) => substr($row['scheduled_at'], 0, 10) === $programmeSaveDate));
+            $existingMatches = array_values(array_filter($existingMatches, fn ($row) => substr($row['scheduled_at'], 0, 10) === $programmeSaveDate));
+            $unscheduled = array_values(array_filter($unscheduled, fn ($row) => $row['programme_day'] === $programmeSaveDay));
+        }
+
         return [
             'preview_only' => ! empty($options['draft_age_setups']),
             'event' => ['id' => $event->id, 'name' => $event->name],
@@ -1020,7 +1062,7 @@ final class EventVenueScheduleService
             'matches' => $plan, 'existing_matches' => $existingMatches,
             'unscheduled' => $unscheduled, 'warnings' => $warnings, 'venue_change_warnings' => $venueChangeWarnings,
             'automatic_byes' => collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->count(),
-            'automatic_fixture_ids' => ($dayScope || $fullDay) ? [] : collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->keys()->values()->all(),
+            'automatic_fixture_ids' => ($dayScope || $fullDay || $programmeSaveDate !== null) ? [] : collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->keys()->values()->all(),
             'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision, 'rank_revision' => $rankChoices]), 'input' => $input,
         ];
     }
@@ -1070,7 +1112,13 @@ final class EventVenueScheduleService
 
             $matches = collect($preview['matches'])
                 ->when($applyVenueIds, fn (Collection $rows) => $rows->whereIn('venue_id', $applyVenueIds))->values();
-            app(TeamDisciplineOrder::class)->validateAssignments($event, $matches);
+            $saveDate = $preview['input']['programme_save_date'] ?? null;
+            $disciplineOrder = app(TeamDisciplineOrder::class);
+            $disciplineOrders = $preview['input']['team_discipline_order'] ?? [];
+            $disciplineOrder->validateAssignments($event, $matches, $disciplineOrders);
+            if ($saveDate !== null && $matches->isEmpty()) {
+                throw new \InvalidArgumentException('This programme day has no new or changed fixtures to save.');
+            }
             if ($applyVenueIds && $matches->isEmpty()) {
                 throw new \InvalidArgumentException('This venue has no new or changed fixtures to apply.');
             }
@@ -1140,7 +1188,7 @@ final class EventVenueScheduleService
                 DrawAuditLog::record((int) $drawId, 'event_venue_schedule_applied', null, [
                     'event_id' => $event->id, 'matches' => $rows->count(), 'revision' => $expectedRevision,
                     'venue_ids' => $rows->pluck('venue_id')->unique()->values()->all(),
-                    'partial' => (bool) $applyVenueIds, 'day_scope' => $options['day_scope'] ?? $options['full_day_scope'] ?? null, 'full_day_scope' => $options['full_day_scope'] ?? null, 'assignments' => $auditAssignments[$drawId] ?? [],
+                    'partial' => (bool) $applyVenueIds || $saveDate !== null, 'day_scope' => $options['day_scope'] ?? $options['full_day_scope'] ?? $saveDate, 'full_day_scope' => $options['full_day_scope'] ?? null, 'assignments' => $auditAssignments[$drawId] ?? [],
                     'full_day_options' => ! empty($options['full_day_scope']) ? $preview['input'] : null,
                     'day_options' => ! empty($options['day_scope']) ? array_intersect_key($preview['input'], array_flip([
                         'venue_ids', 'day_court_labels', 'rank_venue_preferences', 'cross_band_policy',
@@ -1148,7 +1196,7 @@ final class EventVenueScheduleService
 
                 ]);
             }
-            if (! empty($options['programme'])) {
+            if (! empty($options['programme']) && $saveDate === null) {
                 $draft = DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->lockForUpdate()->first();
                 $stored = json_decode((string) ($draft->options ?? ''), true) ?: [];
                 $legacyRound = $stored['programme']['rounds'][0] ?? null;
@@ -1173,6 +1221,7 @@ final class EventVenueScheduleService
                         $ageProgramme = $programme;
                         $ageProgramme['rounds'] = array_values(array_filter($programme['rounds'], fn ($row) => $ageDraws->contains('id', $row['drawId'])));
                         $stored['programme_settings'][(string) $groupAge] = $settings + ['programme' => $ageProgramme];
+                        unset($stored['team_programme_days'][(string) $groupAge]);
                     }
                 } else {
                     $stored['programme_settings'][(string) $age] = $settings + ['programme' => $programme];
@@ -1189,7 +1238,29 @@ final class EventVenueScheduleService
             }
             $draft = DB::table('event_venue_schedule_drafts')->where('event_id', $event->id)->lockForUpdate()->first();
             $stored = json_decode((string) ($draft->options ?? ''), true) ?: [];
-            if (array_key_exists('limit_daily_matches', $options) || array_key_exists('limit_daily_matches', $stored) || $preview['input']['limit_daily_matches']) {
+            if (isset($preview['input']['programme']['discipline_order'])) {
+                $stored['team_discipline_order'] = $disciplineOrders;
+            }
+            if ($saveDate !== null) {
+                $programme = $preview['input']['programme'];
+                $day = collect($programme['days'])->first(fn ($day) => substr($day['start'], 0, 10) === $saveDate);
+                $rounds = collect($programme['rounds'])->filter(fn ($row) => substr($programme['days'][$row['day'] - 1]['start'], 0, 10) === $saveDate);
+                $ageByDraw = $event->draws()->whereIn('id', $rounds->pluck('drawId'))->get()
+                    ->mapWithKeys(fn ($draw) => [$draw->id => app(ScheduleProgramme::class)->key($draw)]);
+                foreach ($rounds->groupBy(fn ($row) => $ageByDraw[$row['drawId']]) as $age => $ageRounds) {
+                    $placements = $stored['team_programme_days'][$age] ?? [];
+                    $accepted = $ageRounds->keyBy(fn ($row) => $row['drawId'].'|'.$row['round']);
+                    foreach ($placements as $date => $placement) {
+                        if ($date === $saveDate) continue;
+                        $remaining = array_values(array_filter($placement['rounds'], fn ($row) => ! $accepted->has($row['drawId'].'|'.$row['round'])));
+                        if ($remaining) $placements[$date]['rounds'] = $remaining;
+                        else unset($placements[$date]);
+                    }
+                    $placements[$saveDate] = ['day' => $day, 'rounds' => $ageRounds->values()->all()];
+                    $stored['team_programme_days'][$age] = $placements;
+                }
+            }
+            if ($saveDate === null && (array_key_exists('limit_daily_matches', $options) || array_key_exists('limit_daily_matches', $stored) || $preview['input']['limit_daily_matches'])) {
                 $stored['limit_daily_matches'] = (bool) $preview['input']['limit_daily_matches'];
             }
             if (! empty($preview['input']['day_batch'])) {

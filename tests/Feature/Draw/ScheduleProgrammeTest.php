@@ -5,6 +5,7 @@ namespace Tests\Feature\Draw;
 use App\Models\{Draw, Event, Player, TeamFixture, Venue};
 use App\Services\Scheduling\EventVenueScheduleService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ScheduleProgrammeTest extends TestCase
@@ -59,6 +60,88 @@ class ScheduleProgrammeTest extends TestCase
         $saved = $service->preview($event, $options);
         $this->assertCount(0, $saved['matches']);
         $this->assertSame(12, TeamFixture::whereNotNull('scheduled_at')->count());
+    }
+
+    public function test_daily_discipline_order_can_save_friday_doubles_before_saturday_reverse_singles(): void
+    {
+        [$event, $options] = $this->scenario();
+        [, $reverseDrawId, $doublesDrawId] = $options['draw_ids'];
+        foreach ($options['programme']['rounds'] as &$round) {
+            if ($round['draw_id'] === $doublesDrawId && $round['round'] <= 2) {
+                $round['day'] = 1;
+                $round['sequence'] = 4 + $round['round'];
+            }
+        }
+        unset($round);
+        $options['duration'] = 45;
+        $options['player_rest'] = 15;
+        $saturday = TeamFixture::where('draw_id', $reverseDrawId)->where('round_nr', 2)->sole();
+        $venueId = Draw::findOrFail($reverseDrawId)->venues()->firstOrFail()->id;
+        $saturday->update(['scheduled_at' => '2026-10-10 08:00:00', 'venue_id' => $venueId,
+            'court_label' => '1', 'duration_min' => 45, 'scheduled' => 1]);
+        $saturdayBefore = $saturday->fresh()->getAttributes();
+        DB::table('published_schedule_assignments')->insert([
+            'event_id' => $event->id, 'draw_id' => $reverseDrawId, 'fixture_kind' => 'team',
+            'fixture_id' => $saturday->id, 'scheduled_at' => '2026-10-10 08:00:00',
+            'venue_id' => $venueId, 'court' => '1', 'duration' => 45, 'published_at' => now(),
+        ]);
+        $publishedBefore = DB::table('published_schedule_assignments')->get()->all();
+
+        $options['programme']['discipline_order'] = 'by_day';
+        $options['programme_save_date'] = '2026-10-09';
+
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($event, $options);
+        $friday = collect($preview['matches'])->filter(fn ($row) => str_starts_with($row['scheduled_at'], '2026-10-09'));
+        $this->assertCount(6, $friday);
+        $this->assertCount(2, $friday->where('draw_id', $doublesDrawId));
+        $reverseStart = $friday->where('draw_id', $reverseDrawId)->sole()['scheduled_at'];
+        $this->assertGreaterThanOrEqual(strtotime($reverseStart) + 60 * 60,
+            strtotime($friday->where('draw_id', $doublesDrawId)->min('scheduled_at')));
+
+        try {
+            $service->apply($event, array_replace($options, ['programme_save_date' => '2026-10-10']), $preview['revision']);
+            $this->fail('Changing the selected date must require a new preview.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('fresh preview', $exception->getMessage());
+        }
+
+        $this->assertSame(6, $service->apply($event, $options, $preview['revision'])['count']);
+        $this->assertSame(7, TeamFixture::whereNotNull('scheduled_at')->count());
+        $this->assertSame(6, TeamFixture::whereDate('scheduled_at', '2026-10-09')->count());
+        $this->assertSame($saturdayBefore, $saturday->fresh()->getAttributes());
+        $this->assertEquals($publishedBefore, DB::table('published_schedule_assignments')->get()->all());
+        $this->assertSame(0, TeamFixture::whereDate('scheduled_at', '2026-10-11')->count());
+        $disciplineOrder = app(\App\Services\Scheduling\TeamDisciplineOrder::class);
+        $this->assertSame('by_day', $disciplineOrder->savedOrders($event)[10]);
+        $draft = json_decode(DB::table('event_venue_schedule_drafts')
+            ->where('event_id', $event->id)->value('options'), true, flags: JSON_THROW_ON_ERROR);
+        $this->assertSame(['2026-10-09'], array_keys($draft['team_programme_days'][10]));
+        $this->assertSame([1, 2], collect($draft['team_programme_days'][10]['2026-10-09']['rounds'])
+            ->where('drawId', $doublesDrawId)->pluck('round')->all());
+        $fridayReverse = TeamFixture::findOrFail($friday->where('draw_id', $reverseDrawId)->sole()['fixture_id']);
+        $doublesStart = \Carbon\Carbon::parse($friday->where('draw_id', $doublesDrawId)->min('scheduled_at'));
+        $this->assertStringContainsString('later discipline', $disciplineOrder->manualError($fridayReverse, $doublesStart, 45));
+    }
+
+    public function test_selected_day_cannot_use_unsaved_rounds_from_another_day(): void
+    {
+        [$event, $options] = $this->scenario();
+        $options['programme']['discipline_order'] = 'by_day';
+        $options['programme_save_date'] = '2026-10-10';
+        $service = app(EventVenueScheduleService::class);
+
+        $preview = $service->preview($event, $options);
+        $this->assertTrue(collect($preview['unscheduled'])->contains(
+            fn ($row) => $row['draw_id'] === $options['draw_ids'][1] && $row['round'] === 2));
+
+        try {
+            $service->apply($event, $options, $preview['revision']);
+            $this->fail('An incomplete selected day must not be saved.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('unscheduled', $exception->getMessage());
+        }
+        $this->assertSame(0, TeamFixture::whereNotNull('scheduled_at')->count());
     }
 
     public function test_two_day_event_uses_daily_windows_and_preserves_saved_programme(): void

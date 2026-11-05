@@ -42,7 +42,7 @@ class MyTennisController extends Controller
             selectUpcoming: false,
         );
         $data['workspaceTab'] = $tab;
-        if ($data['selectedPlayer']) {
+        if ($data['selectedPlayer'] && !$request->prefetch()) {
             $request->session()->put('my_tennis.selected_player', $data['selectedPlayer']->id);
         }
         // A super admin may preview another player's rating without granting ownership.
