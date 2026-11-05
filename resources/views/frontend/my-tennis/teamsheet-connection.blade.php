@@ -1,8 +1,11 @@
 @php($connection = app(\App\Services\Performance\TeamSheetProfileLinkService::class)->status(auth()->user(), $selectedPlayer))
 <section class="card mb-4 ct-teamsheet-profile" aria-labelledby="teamsheet-connection-title" data-teamsheet-profile-link="v1">
   <div class="card-body">
-    <h3 id="teamsheet-connection-title" class="h5">TeamSheet profile</h3>
-    <p class="mb-0">Once your team is linked in TeamSheet, sign in there to open your player profile and see your tennis ladder, school tournament and league match results as they’re published.</p>
+    <h3 id="teamsheet-connection-title" class="h5 ct-teamsheet-profile-brand">
+      <img src="{{ asset('assets/img/logos/teamsheet-ts.png') }}" width="56" height="56" alt="">
+      <span><strong>Team<span class="ct-teamsheet-profile-accent">Sheet</span></strong> profile</span>
+    </h3>
+    <p class="mb-0">Once your school signs up for TeamSheet, you can link your player profile and see your tennis ladder, school tournament and league match results as they’re published.</p>
     @if(session('teamsheet_success'))
       <p class="alert alert-success" role="status">{{ session('teamsheet_success') }}</p>
     @endif
@@ -24,9 +27,9 @@
       <form class="mt-3" method="post" action="{{ route('my.tennis.teamsheet.start', $selectedPlayer) }}">
         @csrf
         <p class="small text-muted">Sign in to TeamSheet and select the same player. You must be the player or their linked parent on both sites.</p>
-        <button class="btn btn-primary" type="submit">Link TeamSheet</button>
+        <button class="btn ct-teamsheet-profile-primary" type="submit">Link TeamSheet</button>
       </form>
     @endif
-    <a class="btn btn-outline-primary mt-3" href="https://www.teamsheet.co.za/" referrerpolicy="no-referrer">Open TeamSheet</a>
+    <a class="btn ct-teamsheet-profile-link mt-3" href="https://www.teamsheet.co.za/" referrerpolicy="no-referrer">Open TeamSheet</a>
   </div>
 </section>

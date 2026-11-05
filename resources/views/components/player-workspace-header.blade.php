@@ -1,7 +1,7 @@
 @props(['title', 'eyebrow' => 'Cape Tennis · Player Plus', 'subtitle' => null, 'heading' => 'h1', 'headingId' => null, 'workspace' => null, 'compact' => false])
-@once
+@pushOnce('page-styles', 'player-workspace')
   <link rel="stylesheet" href="{{ asset('assets/css/player-workspace.css') }}?v={{ filemtime(public_path('assets/css/player-workspace.css')) }}">
-@endonce
+@endPushOnce
 @php($headingTag = in_array($heading, ['h1', 'h2'], true) ? $heading : 'h1')
 <header {{ $attributes->class(['ct-workspace-header', 'ct-workspace-header-compact' => $compact]) }}>
   <div class="ct-workspace-header-main">

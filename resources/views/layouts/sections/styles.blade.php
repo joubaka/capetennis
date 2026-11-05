@@ -69,6 +69,7 @@
 
 <!-- Page Styles -->
 @yield('page-style')
+@stack('page-styles')
 
 
 

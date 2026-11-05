@@ -9,8 +9,8 @@ class PlayerWorkspaceHeaderTest extends TestCase
 {
     public function test_workspace_header_reuses_accessible_slots_and_escapes_identity_text(): void
     {
-        $html = Blade::render('<x-player-workspace-header :title="$name" subtitle="Recorded results" heading="h2" heading-id="synthetic-heading" data-synthetic-header><x-slot:summary><p>Saved summary</p></x-slot:summary><x-slot:actions><button>Choose player</button></x-slot:actions><x-slot:navigation><nav aria-label="Synthetic player views"><a href="/record">Playing Record</a></nav></x-slot:navigation></x-player-workspace-header>', ['name' => '<script>Example</script>']);
-        $this->assertStringContainsString('player-workspace.css', $html);
+        $html = Blade::render('<x-player-workspace-header :title="$name" subtitle="Recorded results" heading="h2" heading-id="synthetic-heading" data-synthetic-header><x-slot:summary><p>Saved summary</p></x-slot:summary><x-slot:actions><button>Choose player</button></x-slot:actions><x-slot:navigation><nav aria-label="Synthetic player views"><a href="/record">Playing Record</a></nav></x-slot:navigation></x-player-workspace-header><head>@stack(\'page-styles\')</head>', ['name' => '<script>Example</script>']);
+        $this->assertMatchesRegularExpression('/<head>\s*<link[^>]+player-workspace\.css[^>]*>\s*<\/head>/', $html);
         $this->assertStringContainsString('data-synthetic-header', $html);
         $this->assertStringContainsString('id="synthetic-heading"', $html);
         $this->assertStringContainsString('&lt;script&gt;Example&lt;/script&gt;', $html);

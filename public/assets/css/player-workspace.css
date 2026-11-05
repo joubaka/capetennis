@@ -43,8 +43,43 @@
 .ct-workspace-header select { min-height: 44px; }
 .ct-player-workspace > .card { border-color: var(--ct-workspace-line); border-radius: 14px; margin-bottom: 1.25rem; }
 .ct-player-workspace .ct-teamsheet-profile {
-  background-image: linear-gradient(110deg, #edf4fc, #f8fbff);
-  border-inline-start: 4px solid #245484;
+  --ct-teamsheet-navy: #0b284c;
+  --ct-teamsheet-gold: #c9981a;
+  color: var(--ct-teamsheet-navy);
+  background: linear-gradient(110deg, #fff8e6, #fff);
+  border-color: #e9dbb6;
+  border-inline-start: 4px solid var(--ct-teamsheet-gold);
+}
+.ct-teamsheet-profile .ct-teamsheet-profile-brand {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  color: var(--ct-teamsheet-navy);
+}
+.ct-teamsheet-profile-brand img {
+  flex: 0 0 auto;
+  border-radius: 10px;
+}
+.ct-teamsheet-profile-brand strong { font-size: 1.15em; font-weight: 800; }
+.ct-teamsheet-profile-accent { color: #92400e; }
+.ct-teamsheet-profile .ct-teamsheet-profile-primary,
+.ct-teamsheet-profile .ct-teamsheet-profile-link:hover {
+  color: #fff;
+  background: var(--ct-teamsheet-navy);
+  border-color: var(--ct-teamsheet-navy);
+}
+.ct-teamsheet-profile .ct-teamsheet-profile-primary:hover {
+  color: #fff;
+  background: #173e67;
+  border-color: #173e67;
+}
+.ct-teamsheet-profile .ct-teamsheet-profile-link {
+  color: var(--ct-teamsheet-navy);
+  border-color: var(--ct-teamsheet-navy);
+}
+.ct-teamsheet-profile :is(.ct-teamsheet-profile-primary, .ct-teamsheet-profile-link):focus-visible {
+  outline: 3px solid #92400e;
+  outline-offset: 3px;
 }
 .ct-player-workspace .ct-workspace-sheet { background: #fff; border: 1px solid var(--ct-workspace-line); border-radius: 14px; padding: clamp(1rem, 2.5vw, 1.5rem); margin-bottom: 1.25rem; }
 .ct-player-workspace > nav:not(.ct-player-navigation) { margin-bottom: 1rem; }
