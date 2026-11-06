@@ -2,18 +2,12 @@
 @section('title', 'Preview Plus')
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y ct-player-workspace">
-  <x-player-workspace-header compact :title="$ratingPlayer->full_name" eyebrow="My Tennis · Preview Plus" data-player-profile-header>
-    <x-slot:navigation>
-      @include('frontend.my-tennis.dashboard-tabs', [
-        'headerPlayer' => $ratingPlayer,
-        'headerRelated' => true,
-        'headerCanViewRating' => false,
-        'headerQuery' => ['player' => $ratingPlayer->id],
-        'workspaceTab' => $previewFeature === 'events' ? 'rating' : $previewFeature,
-        'workspace' => ['related' => true],
-      ])
-    </x-slot:navigation>
-  </x-player-workspace-header>
+  @include('frontend.my-tennis.profile-header', [
+    'canViewRating' => false,
+    'ratingPreviewPlayer' => $ratingPlayer,
+    'workspaceTab' => $previewFeature === 'events' ? 'rating' : $previewFeature,
+  ])
+  <script defer src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>
   <div class="card p-3 p-sm-4" data-player-plus-preview-page>
     <style>
       .plus-sample{background:#fff;border:1px solid #cbd9e9;border-radius:.75rem;margin:1rem 0;padding:1rem}

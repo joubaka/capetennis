@@ -15,7 +15,7 @@
   @if($headerPlayer)
     @if($headerCanViewRating)
       @include('frontend.my-tennis.profile-rating-badge', ['badgeSnapshot' => $headerSnapshot, 'badgeUrl' => $headerRatingUrl])
-    @elseif(in_array($workspaceTab ?? 'profile', ['profile', 'activity', 'manage'], true))
+    @else
       <div class="ct-my-tennis-rating-badge" data-profile-plus-preview>
         <x-ctr-mark size="heading" />
         <a class="btn btn-sm btn-outline-primary" href="{{ route('my.tennis.feature-preview', ['player' => $headerPlayer, 'feature' => 'rating']) }}">Preview Plus</a>

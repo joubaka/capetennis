@@ -78,6 +78,7 @@ class MyTennisController extends Controller
         // Marketing only: do not load private rating, match or pathway evidence.
         return response()->view('frontend.my-tennis.feature-preview-page', [
             'ratingPlayer' => $player, 'previewFeature' => $feature,
+            'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, []),
         ])->header('Cache-Control', 'private, no-store');
     }
 
