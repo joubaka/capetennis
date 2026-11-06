@@ -272,7 +272,9 @@ $navbarDetached = ($navbarDetached ?? '');
           <div class="avatar avatar-online">
             @auth
               <img src="{{ Auth::user()->profile_photo_url }}"
-                   class="w-px-40 h-auto rounded-circle">
+                   class="w-px-40 h-auto rounded-circle" alt="Profile menu">
+              <span class="badge rounded-pill position-absolute top-0 start-100 translate-middle d-none"
+                    role="img" data-announcement-menu-badge></span>
             @else
               <span class="badge bg-label-primary">Guest</span>
             @endauth
@@ -306,6 +308,13 @@ $navbarDetached = ($navbarDetached ?? '');
           @endif
 
           @auth
+          <li class="d-none" data-announcement-menu-entry>
+            <a class="dropdown-item" href="#event-announcements" data-announcement-menu-link>
+              <i class="ti ti-speakerphone me-2" aria-hidden="true"></i>
+              Event announcements
+              <span class="badge rounded-pill ms-1 d-none" role="img" data-announcement-menu-badge></span>
+            </a>
+          </li>
           @if(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
           <li><a class="dropdown-item" href="{{ route('backend.email-issues') }}">Email issues <span class="badge bg-danger">{{ \App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count() }}</span></a></li>
           @endif

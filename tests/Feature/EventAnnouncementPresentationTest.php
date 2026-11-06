@@ -20,7 +20,10 @@ class EventAnnouncementPresentationTest extends TestCase
 
         $this->assertStringContainsString('View 1 new announcement', $html);
         $this->assertStringContainsString('ct:announcements:987654:guest', $html);
-        $this->assertStringContainsString('Mark as viewed &amp; close', $html);
+        $this->assertStringContainsString('id="event-announcements"', $html);
+        $this->assertStringContainsString('data-posted-at="'.$announcement->created_at->getTimestampMs().'"', $html);
+        $this->assertStringContainsString('Mark as read &amp; close', $html);
+        $this->assertStringContainsString('Mark all as read', $html);
         $this->assertStringContainsString('<p>Play starts at 09:00.', $html);
         $this->assertStringNotContainsString('alert(1)', $html);
         $this->assertStringNotContainsString('<details open', $html);
