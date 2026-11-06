@@ -32,8 +32,21 @@ const introHtml = read('intro');
       assert.match(await banner.innerText(), /Player Plus · Now open/i);
       assert.equal(await banner.locator('h2').innerText(), 'See your game grow.');
       const link = banner.getByRole('link', { name: 'Upgrade to Plus now!' });
+      const details = banner.locator('.home-ctr-mobile-details');
+      const mobile = width < 768;
+      assert.equal(await details.isVisible(), mobile);
+      if (mobile) {
+        const compactHeight = await banner.evaluate(el => el.offsetHeight);
+        assert.ok(compactHeight <= 230, `compact banner at ${width}px: ${compactHeight}px`);
+        assert.equal(await details.evaluate(el => el.open), false);
+        await details.locator('summary').press('Enter');
+        assert.equal(await details.evaluate(el => el.open), true);
+        assert.equal(await details.getByText('Compare with eligible opponents').isVisible(), true);
+        assert.ok(await banner.evaluate(el => el.offsetHeight) > compactHeight);
+      }
       assert.equal(await banner.locator('[data-ctr-badge]:visible').count(), 3);
-      assert.ok(await banner.locator('.home-ctr-examples').evaluate(el => el.scrollWidth <= el.clientWidth + 1), `badges fit at ${width}px`);
+      assert.ok(await banner.locator('.home-ctr-examples:visible').evaluate(el => el.scrollWidth <= el.clientWidth + 1), `badges fit at ${width}px`);
+      if (mobile) await details.locator('summary').press('Enter');
       assert.equal(new URL(await link.getAttribute('href')).pathname, '/ctr');
       await banner.screenshot({ path: path.join(root, `storage/framework/testing/ctr-marketing-home-${width}.png`) });
       const linkHeight = await link.evaluate(el => el.getBoundingClientRect().height);

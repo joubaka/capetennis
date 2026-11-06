@@ -103,28 +103,29 @@
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
   .ranking-link:hover .ranking-name { color: #14796e; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
-  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 5%, #244d75, transparent 65%), linear-gradient(115deg, #102438, #132f49); border: 1px solid #395c7f; border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: clamp(1rem, 3vw, 3rem); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); padding: clamp(1.2rem, 3vw, 2.5rem); }
-  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.85rem, 3.5vw, 3.25rem); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; margin: .8rem 0 .65rem; text-wrap: balance; }
+  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 5%, #244d75, transparent 65%), linear-gradient(115deg, #102438, #132f49); border: 1px solid #395c7f; border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: clamp(1rem, 2vw, 2rem); grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); padding: 1rem clamp(1rem, 2vw, 1.75rem); }
+  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.5vw, 2.25rem); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; margin: .25rem 0 .4rem; text-wrap: balance; }
   .home-ctr h2 span, .home-ctr-open { color: #ffbd70; }
   .home-ctr-open { background: #ffbd701a; border: 1px solid #ffbd7080; border-radius: 2rem; display: inline-block; font-size: .75rem; font-weight: 800; letter-spacing: .07em; padding: .35rem .7rem; text-transform: uppercase; }
-  .home-ctr p { color: #e4efff; font-size: 1rem; line-height: 1.55; margin: 0; max-width: 50ch; }
-  .home-ctr-benefits { color: #e4efff; display: flex; flex-wrap: wrap; gap: .35rem 1rem; list-style: none; margin: .75rem 0 1.1rem; padding: 0; }
+  .home-ctr p { color: #e4efff; font-size: 1rem; line-height: 1.45; margin: 0; max-width: 65ch; }
+  .home-ctr-benefits { color: #e4efff; display: flex; flex-wrap: wrap; gap: .35rem 1rem; list-style: none; margin: .45rem 0 .65rem; padding: 0; }
   .home-ctr-benefits li { align-items: baseline; display: flex; font-size: .85rem; gap: .35rem; }
   .home-ctr-benefits li::before { background: #ffbd70; border-radius: 50%; content: ''; height: .3rem; width: .3rem; }
-  .home-ctr p.home-ctr-availability { font-size: .85rem; margin: .75rem 0 1rem; }
+  .home-ctr p.home-ctr-availability { font-size: .85rem; margin: .45rem 0 .65rem; }
   .home-ctr-copy { min-width: 0; }
-  .home-ctr-examples { background: #0e243a66; border: 1px solid #9ec9f24a; border-radius: .85rem; isolation: isolate; overflow: hidden; padding: clamp(.75rem, 2vw, 1.5rem); position: relative; text-align: center; }
+  .home-ctr .home-ctr-mobile-summary, .home-ctr-mobile-details { display: none; }
+  .home-ctr-examples { background: #0e243a66; border: 1px solid #9ec9f24a; border-radius: .85rem; isolation: isolate; overflow: hidden; padding: .65rem .75rem; position: relative; text-align: center; }
   .home-ctr-examples::before { background: linear-gradient(90deg, transparent 49%, #fff 49% 51%, transparent 51%), linear-gradient(0deg, transparent 24%, #fff 24% 25%, transparent 25% 75%, #fff 75% 76%, transparent 76%); border: 2px solid #fff; content: ''; height: 16rem; inset: -2.5rem auto auto 50%; opacity: .12; pointer-events: none; position: absolute; transform: translateX(-50%) rotate(-20deg); width: 9rem; z-index: -1; }
-  .home-ctr-example-title { color: #fff; font-size: .9rem; font-weight: 800; letter-spacing: .06em; margin-bottom: .65rem; text-transform: uppercase; }
+  .home-ctr-example-title { color: #fff; font-size: .9rem; font-weight: 800; letter-spacing: .06em; margin-bottom: .35rem; text-transform: uppercase; }
   .home-ctr-badges { display: flex; gap: clamp(.25rem, 1.5vw, 1.15rem); justify-content: center; }
   .home-ctr-badge-preview { align-items: center; display: flex; flex-direction: column; gap: .35rem; }
-  .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 8vw, 7rem) !important; margin-inline: 0 !important; width: clamp(3.75rem, 8vw, 7rem) !important; }
+  .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 6vw, 4.75rem) !important; margin-inline: 0 !important; width: clamp(3.75rem, 6vw, 4.75rem) !important; }
   .home-ctr-badge-preview > .small { display: none; }
   .home-ctr-badge-label { color: #e4efff; font-size: .75rem; font-weight: 700; }
   .home-ctr-example-note { color: #c4d5eb; font-size: .7rem; margin-top: .5rem; }
   .home-ctr [data-player-plus-coming-soon] { align-items: center; background: rgba(255,180,91,.12) !important; border: 1px solid rgba(255,180,91,.65); color: #ffbd70 !important; display: inline-flex; font-size: .7rem !important; font-weight: 800; gap: .45rem; letter-spacing: .08em; padding: .4rem .7rem !important; text-transform: uppercase; }
   .home-ctr [data-player-plus-coming-soon]::before { background: currentColor; border-radius: 50%; content: ''; height: .35rem; width: .35rem; }
-  .home-layout .home-ctr .btn { align-items: center; background: #ffab45 !important; border: 1px solid #ffbd70 !important; border-radius: .6rem; box-shadow: 0 .3rem .8rem rgba(8,30,59,.2); color: #102a4a !important; display: inline-flex; font-weight: 800 !important; gap: .15rem; justify-content: center; min-height: 48px !important; padding: .8rem 1.1rem; transition: background-color .2s ease, box-shadow .2s ease; white-space: normal; }
+  .home-layout .home-ctr .btn { align-items: center; background: #ffab45 !important; border: 1px solid #ffbd70 !important; border-radius: .6rem; box-shadow: 0 .3rem .8rem rgba(8,30,59,.2); color: #102a4a !important; display: inline-flex; font-weight: 800 !important; gap: .15rem; justify-content: center; min-height: 48px !important; padding: .45rem .9rem; transition: background-color .2s ease, box-shadow .2s ease; white-space: normal; }
   .home-layout .home-ctr .btn:hover { background: #ffc077 !important; box-shadow: 0 .4rem 1rem rgba(8,30,59,.3); }
   .home-layout .home-ctr .btn:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
 
@@ -138,9 +139,21 @@
     .home-layout { padding-top: 5rem; }
   }
   @media (max-width: 767.98px) {
-    .home-ctr { grid-template-columns: minmax(0, 1fr); }
-    .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 17vw, 5.5rem) !important; width: clamp(3.75rem, 17vw, 5.5rem) !important; }
-    .home-ctr-badge-preview [data-ctr-badge] > svg:not(:first-child) { display: none; }
+    .home-ctr { gap: 0; grid-template-columns: minmax(0, 1fr); padding: .85rem 1rem .35rem; }
+    .home-layout .home-ctr h2 { font-size: 1.25rem; letter-spacing: -.025em; margin: 0 0 .25rem; text-wrap: wrap; }
+    .home-ctr .home-ctr-description,
+    .home-ctr-copy > .home-ctr-benefits,
+    .home-ctr > .home-ctr-examples { display: none; }
+    .home-ctr .home-ctr-mobile-summary { display: block; font-size: .875rem; line-height: 1.4; }
+    .home-ctr p.home-ctr-availability { font-size: .75rem; line-height: 1.4; margin: .25rem 0 0; }
+    .home-ctr .home-ctr-open,
+    .home-ctr [data-player-plus-coming-soon] { margin-bottom: .4rem; }
+    .home-layout .home-ctr .btn { font-size: .85rem; margin-top: .55rem; padding: .4rem .75rem; }
+    .home-ctr-mobile-details { display: block; }
+    .home-ctr-mobile-details summary { align-content: center; color: #e4efff; cursor: pointer; font-size: .85rem; min-height: 44px; width: fit-content; }
+    .home-ctr-mobile-details[open] { padding-bottom: .5rem; }
+    .home-ctr-mobile-details .home-ctr-benefits { margin-top: 0; }
+    .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.1rem, 16vw, 5.5rem) !important; width: clamp(3.1rem, 16vw, 5.5rem) !important; }
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
     .home-controls { min-width: 0; padding: .8rem; }
@@ -175,40 +188,25 @@
         @if($plusSalesOpen)
           <span class="home-ctr-open">Player Plus · Now open</span>
           <h2 id="home-ctr-title">See your <span>game grow.</span></h2>
-          <p>Get to know your Cape Tennis Rating (CTR) with Player Plus. Follow your progress and find the right challenge for your level.</p>
+          <p class="home-ctr-description">Get to know your Cape Tennis Rating (CTR) with Player Plus. Follow your progress and find the right challenge for your level.</p>
         @else
           <x-player-plus-coming-soon />
           <h2 id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
-          <p>Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
+          <p class="home-ctr-description">Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
         @endif
-        <ul class="home-ctr-benefits">
-          <li>Track your rating over time</li>
-          <li>Compare with eligible opponents</li>
-          <li>Explore your tournament pathway</li>
-        </ul>
+        <p class="home-ctr-mobile-summary">Know your playing level and find your next challenge.</p>
+        @include('frontend.partials.home-ctr-benefits')
         @unless($plusSalesOpen)
           <p class="home-ctr-availability">CTR insights are part of Player Plus. New sign-ups are currently closed.</p>
         @endunless
         <a class="btn btn-warning" href="{{ route('ctr.index') }}">{{ $plusSalesOpen ? 'Upgrade to Plus now!' : 'Explore CTR Ratings' }} <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
       </div>
-      <div class="home-ctr-examples">
-        <div class="home-ctr-example-title">The CTR badges</div>
-        <div class="home-ctr-badges" role="group" aria-label="Example CTR badges">
-          <div class="home-ctr-badge-preview">
-            <x-ctr-badge :score="35.6" stage="red" title="Example Red Ball CTR badge; illustrative score only." />
-            <span class="home-ctr-badge-label">Red Ball</span>
-          </div>
-          <div class="home-ctr-badge-preview">
-            <x-ctr-badge :score="48.2" stage="orange" title="Example Orange Ball CTR badge; illustrative score only." />
-            <span class="home-ctr-badge-label">Orange Ball</span>
-          </div>
-          <div class="home-ctr-badge-preview">
-            <x-ctr-badge :score="62.4" :overall="true" title="Example Overall CTR badge; illustrative score only." />
-            <span class="home-ctr-badge-label">Overall CTR</span>
-          </div>
-        </div>
-        <div class="home-ctr-example-note">Example badges · illustrative scores</div>
-      </div>
+      @include('frontend.partials.home-ctr-examples')
+      <details class="home-ctr-mobile-details">
+        <summary>CTR benefits and badge examples</summary>
+        @include('frontend.partials.home-ctr-benefits')
+        @include('frontend.partials.home-ctr-examples')
+      </details>
     </section>
   </div>
   @endif

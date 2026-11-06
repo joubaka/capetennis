@@ -1,4 +1,33 @@
 <style>
+.desktop-announcement-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+@media (max-width: 575.98px) {
+  .desktop-announcement-badge { display: none !important; }
+
+  .mobile-announcement-trigger {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+  }
+
+  .mobile-announcement-trigger .ti { font-size: 1.2rem; }
+
+  .mobile-announcement-trigger [data-announcement-menu-badge] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    font-size: .65rem;
+    padding: .2em .4em;
+  }
+}
+
 @media (max-width: 1199.98px) {
   .mobile-horizontal-menu-toggle {
     align-items: center;
@@ -207,7 +236,7 @@ $navbarDetached = ($navbarDetached ?? '');
     </div>
     @if(auth()->check() && \Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
       @php($emailIssueCount=\App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count())
-      @if($emailIssueCount)<a class="btn btn-sm btn-outline-danger me-2" href="{{ route('backend.email-issues') }}" aria-label="{{ $emailIssueCount }} email issues need attention">Email issues <span class="badge bg-danger">{{ $emailIssueCount }}</span></a>@endif
+      @if($emailIssueCount)<a class="btn btn-sm btn-outline-danger me-2 d-none d-sm-inline-flex align-items-center gap-1" href="{{ route('backend.email-issues') }}" aria-label="{{ $emailIssueCount }} email issues need attention">Email issues <span class="badge bg-danger">{{ $emailIssueCount }}</span></a>@endif
     @endif
 
     <!-- Style Switcher -->
@@ -266,6 +295,17 @@ $navbarDetached = ($navbarDetached ?? '');
         </li>
       @endif
 
+      @auth
+        <li class="nav-item d-sm-none me-1">
+          <button type="button" class="btn btn-outline-primary mobile-announcement-trigger"
+                  data-bs-toggle="modal" data-bs-target="#announcement-inbox" aria-haspopup="dialog">
+            <i class="ti ti-speakerphone" aria-hidden="true"></i>
+            <span class="visually-hidden">Event announcements</span>
+            <span class="badge rounded-pill d-none" role="img" data-announcement-menu-badge></span>
+          </button>
+        </li>
+      @endauth
+
       <!-- User dropdown -->
       <li class="nav-item navbar-dropdown dropdown-user dropdown">
         <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
@@ -279,7 +319,7 @@ $navbarDetached = ($navbarDetached ?? '');
           </div>
         </a>
         @auth
-          <button type="button" class="badge rounded-pill border-0 position-absolute top-0 start-100 translate-middle d-none"
+          <button type="button" class="badge rounded-pill border-0 d-none desktop-announcement-badge"
                   data-announcement-menu-badge data-bs-toggle="modal" data-bs-target="#announcement-inbox"></button>
         @endauth
 
