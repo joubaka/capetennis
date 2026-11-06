@@ -157,7 +157,8 @@ class PlayerPlusDirectCheckoutTest extends TestCase
 
         $this->actingAs(User::factory()->create())->get($cancelReturn)->assertForbidden();
         $this->actingAs($payer)->get($cancelReturn.'&payment_status=COMPLETE')
-            ->assertOk()->assertSee('Cancelled or couldn’t finish at PayFast?')->assertSee('href="'.$cancelReturn.'"', false)
+            ->assertOk()->assertSeeInOrder(['Payment status', 'Awaiting confirmation', 'Check payment status', 'Order details'])
+            ->assertSee('Cancelled or couldn’t finish at PayFast?')->assertSee('href="'.$cancelReturn.'"', false)
             ->assertSee('data-plus-retry-refresh-ms', false)->assertSee('Check payment status')
             ->assertDontSee('Start a new checkout');
         $this->post($store, array_replace($data, ['request_token' => (string) Str::uuid()]))->assertRedirect($receipt);

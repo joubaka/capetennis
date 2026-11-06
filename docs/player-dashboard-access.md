@@ -77,6 +77,12 @@ scale, with missing months and changed comparison groups preserved. It reuses
 the authorised history read rather than calculating ratings or revealing source
 evidence. Non-Plus requests do not read that history for their illustration.
 
+The Plus Rating view opens on Rating overview, with the latest saved CTR first,
+followed by the player's comparable positions and age-group Top 10. Super-users
+see the full-list filters below the positions. Rating history links open the
+history section directly. Opponent comparisons remain scoped to eligible
+published fixtures and saved meetings.
+
 Dedicated player views and Plus offer/order/history/details pages use
 `PlayerWorkspaceContext` for the same header. Its selector contains at most 100
 existing related profiles, retaining an explicitly selected related player.

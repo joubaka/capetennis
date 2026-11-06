@@ -177,11 +177,15 @@ class PlayerPlusMonthlyTest extends TestCase
         Role::findOrCreate('super-user', 'web');
         $admin = User::factory()->create()->assignRole('super-user');
         $root = $this->order();
+        $payer = User::factory()->create();
+        $pending = app(PlayerPlusService::class)->start(Player::factory()->create(), $payer, (string) Str::uuid(), 6900, 'monthly', true);
         $this->actingAs($admin)->postJson($url, ['player_plus_monthly_price' => '4.99', 'player_plus_monthly_enabled' => true])->assertUnprocessable();
         $this->postJson($url, ['player_plus_monthly_price' => '79.95', 'player_plus_monthly_enabled' => false])->assertOk();
         $this->assertSame(7995, PlayerPlusService::monthlyPriceCents());
         $this->assertFalse(PlayerPlusService::monthlyEnabled());
         $this->assertSame(6900, $root->fresh()->price_cents);
+        $this->actingAs($payer)->get(route('player-plus.orders.show', $pending))->assertOk()
+            ->assertSee('Close checkout')->assertDontSee(route('player-plus.orders.pay', $pending), false);
     }
 
     public function test_cancel_gateway_recovers_lost_response_only_from_matching_explicit_cancelled_status(): void

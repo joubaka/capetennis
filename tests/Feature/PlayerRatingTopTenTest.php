@@ -95,7 +95,7 @@ class PlayerRatingTopTenTest extends TestCase
             $this->assertSame(3, $result['summary'][$scope]['total']);
         }
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
-        $this->assertStringContainsString('Rating position #2 of 3', $html);
+        $this->assertStringContainsString('Rating position #2 of 3', strip_tags($html));
         $this->assertStringContainsString('Your age-group Top 10', $html);
         foreach (['Explore ratings', 'rating_per_page', 'name="rating_age"', 'name="rating_gender"', 'Next players'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
     }
@@ -115,44 +115,28 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([], $result['lists']);
     }
 
-    public function test_plus_search_is_explicit_bounded_alphabetical_and_excludes_private_or_disconnected_players(): void
+    public function test_plus_rating_ignores_old_player_search_parameters(): void
     {
-        foreach (range(1, 15) as $id) $this->player($id, sprintf('Search %02d', $id), status: $id === 14 ? 'draft' : 'published');
-        $snapshot = $this->snapshot(array_combine(range(1, 15), range(50, 64)));
-        $snapshot['all_age']['ratings'][15]['comparable'] = false;
-        $selected = \App\Models\Player::find(1);
+        $this->player(1, 'Selected');
+        $this->player(2, 'Former search result');
+        DB::table('players')->where('id', 1)->update(['dateOfBirth' => '2015-01-01', 'gender' => '1']);
+        $selected = \App\Models\Player::findOrFail(1);
         $user = \Mockery::mock(User::class)->makePartial();
         $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
         $access = $this->mock(PlayerRatingAccess::class);
-        $access->shouldReceive('allowsDiscovery')->times(10)->andReturnTrue();
-        $access->shouldReceive('allows')->times(10)->with($user, $selected)->andReturnTrue();
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(10)->andReturn($snapshot);
-        foreach (['', 'S'] as $query) {
-            $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => $query]);
-            $this->assertSame([], $result['search']['players']);
-        }
-        $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'search']);
-        $this->assertCount(10, $result['search']['players']);
-        $this->assertSame(array_map(fn ($id) => sprintf('Search %02d Example', $id), range(1, 10)), array_column($result['search']['players'], 'name'));
-        foreach ($result['search']['players'] as $match) $this->assertSame(['id', 'name'], array_keys($match));
-        $this->assertNull($result['search']['selected']);
-        $this->assertSame([], $result['lists']['overall']['players']);
-        $excluded = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'Search 1']);
-        $this->assertSame(['Search 10 Example', 'Search 11 Example', 'Search 12 Example', 'Search 13 Example'], array_column($excluded['search']['players'], 'name'));
+        $access->shouldReceive('allowsDiscovery')->twice()->andReturnTrue();
+        $access->shouldReceive('allows')->twice()->with($user, $selected)->andReturnTrue();
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->twice()->andReturn($this->snapshot([1 => 50, 2 => 51]));
+
+        $service = app(PlayerRatingTopTen::class);
+        $result = $service->build($user, $selected, ['rating_search' => 'Former search result', 'rating_search_player' => 2]);
+        $this->assertSame($service->build($user, $selected), $result);
+        $this->assertArrayNotHasKey('search', $result);
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
-        $this->assertStringContainsString('name="rating_search"', $html);
-        $this->assertStringNotContainsString('data-top-ten-cohort', $html);
-        $this->assertStringNotContainsString('Search 14', $html);
-        $this->assertStringNotContainsString('Search 15', $html);
+        $this->assertStringContainsString('data-plus-age-top-ten', $html);
+        $this->assertStringNotContainsString('name="rating_search"', $html);
         $this->assertStringNotContainsString('data-rating-search-result', $html);
-        $chosen = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'search', 'rating_search_player' => 2]);
-        $this->assertSame(['id' => 2, 'name' => 'Search 02 Example', 'score' => 51.0, 'confidence' => 'Moderate'], $chosen['search']['selected']);
-        $chosenHtml = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $chosen, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
-        $this->assertSame(1, substr_count($chosenHtml, 'data-rating-search-result'));
-        $this->assertStringContainsString('CTR 51.0 · Overall CTR', $chosenHtml);
-        foreach ([['rating_search' => 'Search 01', 'rating_search_player' => 2], ['rating_search' => 'Search 14', 'rating_search_player' => 14], ['rating_search_player' => 2], ['rating_search' => 'search', 'rating_search_player' => 13], ['rating_search' => 'Search 15', 'rating_search_player' => 15]] as $invalidSelection) {
-            $this->assertNull(app(PlayerRatingTopTen::class)->build($user, $selected, $invalidSelection)['search']['selected']);
-        }
+        $this->assertStringNotContainsString('Former search result', $html);
     }
 
     public function test_plus_top_ten_is_server_scoped_bounded_and_publication_is_rechecked(): void
@@ -181,10 +165,8 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([17, 2, 3, 4, 5, 6, 7, 8, 9, 10], array_column($tampered['lists']['overall']['players'], 'id'));
         $this->assertCount(10, $tampered['lists']['overall']['players']);
         DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
-        $revoked = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_search' => 'Peer', 'rating_search_player' => 2]);
+        $revoked = app(PlayerRatingTopTen::class)->build($user, $selected);
         $this->assertSame([], $revoked['lists']['overall']['players']);
-        $this->assertSame([], $revoked['search']['players']);
-        $this->assertNull($revoked['search']['selected']);
         DB::table('series')->where('id', 1)->update(['leaderboard_published' => true]);
         DB::table('players')->where('id', $selected->id)->update(['dateOfBirth' => null]);
         $selected->dateOfBirth = null;
@@ -213,7 +195,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame($result['summary'], $filtered['summary']);
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $filtered, 'ratingPlayer' => $selected,
             'ratingHistory' => ['cohort' => 'overall', 'month' => 11, 'scope' => 'new', 'scale' => 'focused']])->render();
-        $this->assertStringContainsString('Rating position #13 of 13', $html);
+        $this->assertStringContainsString('Rating position #13 of 13', strip_tags($html));
         $this->assertStringContainsString('name="rating_age"', $html);
         $this->assertStringContainsString('Overall CTR', $html);
         $this->assertStringContainsString('value="overall"', $html);

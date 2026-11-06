@@ -87,7 +87,7 @@ function mountMyTennisRating() {
       if (!response.ok || response.redirected) throw new Error('Unavailable');
       const html = await response.text();
       if (lifetime.signal.aborted || pendingUrl) return;
-      const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'progress';
+      const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'compare';
       const adminToolsOpen = panel.querySelector('[data-rating-admin-tools]')?.open;
       panel.innerHTML = html;
       const adminTools = panel.querySelector('[data-rating-admin-tools]');

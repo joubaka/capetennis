@@ -1,3 +1,19 @@
+@php
+  $ratingFragment = ($embeddedRating ?? false) || request()->ajax();
+  $activeRatingSection = match (request()->query('rating_section')) {
+    'history' => 'progress',
+    'method' => 'understand',
+    default => 'compare',
+  };
+  $ratingSections = ['compare' => 'Rating overview', 'progress' => 'Rating history', 'understand' => 'How ratings work'];
+  $canBrowseRatings = $ratingTopTen['can_browse'] ?? false;
+  $ratingBrowseFilters = $canBrowseRatings ? ($ratingTopTen['filters'] ?? []) : [];
+  $ratingSectionFilters = request()->only(['month', 'scope', 'scale', 'page']);
+  if ($canBrowseRatings) {
+    $ratingSectionFilters += $ratingBrowseFilters + request()->only(['rating_page']);
+  }
+  $ratingSectionUrl = fn ($section) => route('my.tennis.rating', ['player' => $ratingPlayer->id, 'rating_section' => $section] + $ratingSectionFilters);
+@endphp
 <section class="card ctr-history ct-player-workspace" aria-labelledby="player-rating-heading"><div class="card-body">
   <style>
     .ctr-history { border:1px solid #dbe4ef;border-radius:18px;overflow:hidden; }
@@ -14,6 +30,15 @@
     .ctr-history .ctr-section-tabs .nav-link:hover { background:#e4edf8; }
     .ctr-history .ctr-section-tabs .nav-link.active { background:#004177;border-color:#004177;color:#fff;box-shadow:0 3px 8px #172e4518; }
     .ctr-history .ctr-section-content { padding:0;background:transparent;box-shadow:none; }
+    .ctr-history .ctr-section-content > .tab-pane:not(.active) { display:none; }
+    .ctr-history .ctr-overview-snapshot .ct-rating-snapshot {
+      padding:clamp(1rem,2vw,1.5rem);
+      background:#172e45;
+      border-color:#172e45;
+      color:#fff;
+    }
+    .ctr-history .ctr-overview-snapshot h3 { color:#fff;font-size:1rem;margin:0 0 .5rem; }
+    .ctr-history .ctr-overview-snapshot p { margin:.35rem 0 0;color:#e0ebf5;font-size:.875rem; }
     @media(max-width:767.98px) { .ctr-history .ctr-section-tabs .nav-link { padding:.4rem .25rem;font-size:.8rem; } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
     .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
@@ -38,7 +63,7 @@
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
   </style>
-  @if(($embeddedRating ?? false) || request()->ajax())
+  @if($ratingFragment)
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
       <h2 id="player-rating-heading" class="h5 mb-0">Player rating</h2>
       <a class="btn btn-sm btn-outline-primary" data-my-tennis-link href="{{ route('my.tennis.event-history', $ratingPlayer) }}">Past-event ratings</a>
@@ -53,10 +78,7 @@
   <x-player-workspace-header compact title="Player rating" :subtitle="$ratingPlayer->full_name" heading="h2" heading-id="player-rating-heading" data-rating-hero>
       @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
     <x-slot:summary>
-      <details class="ct-workspace-rating-details">
-        <summary>Latest rating and trend</summary>
-        @include('frontend.my-tennis.rating-snapshot')
-      </details>
+      @include('frontend.my-tennis.rating-snapshot')
     </x-slot:summary>
     <x-slot:navigation>
     <a href="{{ route('my.tennis', ['player' => $ratingPlayer->id]) }}">Back to My Tennis profile</a>
@@ -64,13 +86,31 @@
     </x-slot:navigation>
   </x-player-workspace-header>
   @endif
-  <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
-    @foreach(['progress' => 'Rating history', 'compare' => 'Compare players', 'understand' => 'How ratings work'] as $section => $label)
-      <button class="nav-link {{ $loop->first ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $loop->first ? 'true' : 'false' }}">{{ $label }}</button>
-    @endforeach
-  </div>
+  @if($ratingFragment)
+    <div class="nav nav-pills ctr-section-tabs my-3" role="tablist" aria-label="Explore your rating">
+      @foreach($ratingSections as $section => $label)
+        <button class="nav-link {{ $section === $activeRatingSection ? 'active' : '' }}" id="ctr-tab-{{ $section }}" data-rating-section="{{ $section }}" data-bs-toggle="pill" data-bs-target="#ctr-panel-{{ $section }}" type="button" role="tab" aria-controls="ctr-panel-{{ $section }}" aria-selected="{{ $section === $activeRatingSection ? 'true' : 'false' }}">{{ $label }}</button>
+      @endforeach
+    </div>
+    <noscript><p><a href="{{ $ratingSectionUrl('history') }}">Open rating history</a></p></noscript>
+  @else
+    <nav class="nav nav-pills ctr-section-tabs my-3" aria-label="Explore your rating">
+      @foreach(['compare' => null, 'progress' => 'history', 'understand' => 'method'] as $section => $sectionQuery)
+        <a class="nav-link {{ $section === $activeRatingSection ? 'active' : '' }}" id="ctr-tab-{{ $section }}" href="{{ $ratingSectionUrl($sectionQuery) }}" @if($section === $activeRatingSection) aria-current="page" @endif>{{ $ratingSections[$section] }}</a>
+      @endforeach
+    </nav>
+  @endif
   <div class="tab-content ctr-section-content">
-  <div class="tab-pane active show" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
+  <div class="tab-pane {{ $activeRatingSection === 'compare' ? 'active show' : '' }}" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
+    @if($ratingFragment)
+      <div class="ctr-overview-snapshot">
+        @include('frontend.my-tennis.rating-snapshot')
+      </div>
+    @endif
+    @include('frontend.my-tennis.rating-top-ten')
+    @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
+  </div>
+  <div class="tab-pane {{ $activeRatingSection === 'progress' ? 'active show' : '' }}" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
   @if($ratingHistory['reason'])
     <p role="status" class="alert alert-warning mt-3">{{ $ratingHistory['reason'] }}</p>
   @elseif(!$ratingHistory['series'])
@@ -86,8 +126,10 @@
       $selectedIsLatest = $point && $latest && $point['index'] === $latest['index'] && $point['date'] === $latest['date'];
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
-      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale']] + ($ratingTopTen['filters'] ?? []);
-      $query['rating_page'] = $ratingTopTen['lists'][$ratingTopTen['filters']['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
+      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale'], 'rating_section' => 'history'] + $ratingBrowseFilters;
+      if ($canBrowseRatings) {
+          $query['rating_page'] = $ratingTopTen['lists'][$ratingBrowseFilters['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
+      }
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp
     <p class="small text-muted mt-3 mb-3">Saved through {{ $ratingHistory['as_of'] }}.@if($ratingHistory['stale']) Update pending.@endif</p>
@@ -114,14 +156,17 @@
     <div class="ctr-legend mt-2"><span><i class="ctr-line-key" aria-hidden="true"></i>Same comparison group</span><span><i class="ctr-line-key ctr-line-key-dashed" aria-hidden="true"></i>Group or reference changed</span><span>Missing months remain gaps</span></div>
     <p class="small text-muted mt-2 mb-0">Dashed lines mark changes in comparison group or reference. Compare changes within solid sections.</p>
     <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters mt-3">
-      @foreach($ratingTopTen['filters'] ?? [] as $filter => $value)<input type="hidden" name="{{ $filter }}" value="{{ $value }}">@endforeach
-      <input type="hidden" name="rating_page" value="{{ $query['rating_page'] }}">
+      @foreach($ratingBrowseFilters as $filter => $value)<input type="hidden" name="{{ $filter }}" value="{{ $value }}">@endforeach
+      @if($canBrowseRatings)<input type="hidden" name="rating_page" value="{{ $query['rating_page'] }}">@endif
+      <input type="hidden" name="rating_section" value="history">
       <div><span class="small text-muted d-block">Current rating group</span><strong data-current-rating-group>{{ $ratingHistory['current_group_label'] ?? 'Not rated yet' }}</strong></div>
       <div><label for="ctr-month">Explore a month</label><select class="form-select" name="month" id="ctr-month">
         @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }}</option>@endforeach
       </select></div>
       <input type="hidden" name="scope" value="{{ $ratingHistory['scope'] }}">
-      <noscript><button class="btn btn-primary" type="submit">Show selection</button></noscript>
+      @if($ratingFragment)<noscript>@endif
+      <button class="btn btn-primary" type="submit">Show selection</button>
+      @if($ratingFragment)</noscript>@endif
     </form>
     <div class="ctr-stats">
       <div class="ctr-stat" data-selected-month-summary><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
@@ -193,11 +238,7 @@
 
   @endif
   </div>
-  <div class="tab-pane" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
-    @include('frontend.my-tennis.rating-top-ten')
-    @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
-  </div>
-  <div class="tab-pane" id="ctr-panel-understand" role="tabpanel" aria-labelledby="ctr-tab-understand" tabindex="0">
+  <div class="tab-pane {{ $activeRatingSection === 'understand' ? 'active show' : '' }}" id="ctr-panel-understand" role="tabpanel" aria-labelledby="ctr-tab-understand" tabindex="0">
     <h3 class="h5">What does my rating mean?</h3>
     <x-rating-explanation class="mt-3" />
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
@@ -207,12 +248,6 @@
     </div></details>
   </div>
   </div>
-  @if(($embeddedRating ?? false) || request()->ajax())
-    <details class="ct-workspace-rating-details mt-3">
-      <summary>Latest saved rating details</summary>
-      @include('frontend.my-tennis.rating-snapshot')
-    </details>
-  @endif
   @if(auth()->user()?->hasRole('super-user'))
     <details class="mt-3" data-rating-admin-tools>
       <summary>Admin tools</summary>

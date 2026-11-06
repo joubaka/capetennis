@@ -31,8 +31,6 @@ class PlayerRatingTopTen
     {
         $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
         $result['can_browse'] = $user?->hasRole('super-user') === true;
-        $search = is_string($filters['rating_search'] ?? null) ? mb_substr(trim($filters['rating_search']), 0, 100) : '';
-        $result['search'] = ['query' => $search, 'players' => [], 'selected' => null];
         if (!$result['can_browse'] && (!$selected || !$user || !$this->access->allows($user, $selected))) $result['visible'] = false;
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $selectedAge = $selected ? $this->ageKey($selected->dateOfBirth, $today) : '';
@@ -128,19 +126,6 @@ class PlayerRatingTopTen
                 $population = $selectedAge === 'unknown' ? [] : array_values(array_filter($players,
                     fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge) && $p['gender'] === $gender));
                 $result['lists'][$key]['players'] = array_slice($this->positions($population), 0, 10);
-                if (mb_strlen($search) >= 2) {
-                    $matches = array_values(array_filter($players, fn ($p) => mb_stripos($p['name'], $search) !== false));
-                    usort($matches, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']) ?: $a['id'] <=> $b['id']);
-                    $matches = array_slice($matches, 0, 10);
-                    $result['search']['players'] = array_map(fn ($p) => array_intersect_key($p, array_flip(['id', 'name'])), $matches);
-                    $target = filter_var($filters['rating_search_player'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-                    foreach ($matches as $match) {
-                        if ($target === $match['id']) {
-                            $result['search']['selected'] = array_intersect_key($match, array_flip(['id', 'name', 'score', 'confidence']));
-                            break;
-                        }
-                    }
-                }
                 continue;
             }
             if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $this->matchesAgeScope($p['age'], $age)) && ($gender === '' || $p['gender'] === $gender)));

@@ -1,27 +1,44 @@
 @if($ratingTopTen['visible'] ?? false)
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
   <h3 class="h5" id="player-top-ten-heading"><x-ctr-mark class="me-2" />Your rating positions</h3>
-  <style>.ctr-top-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ctr-top-list{min-width:0;border:1px solid #dce7e2;border-radius:14px;padding:1rem;background:#fff}@media(max-width:767.98px){.ctr-top-lists{grid-template-columns:1fr}}</style>
+  <style>
+    .ctr-top-lists { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem; }
+    .ctr-top-list { min-width:0;border:1px solid #dbe4ef;border-radius:14px;padding:1rem;background:#fff; }
+    .ctr-position-card { background:#f1f5fa; }
+    .ctr-position-card h4 { color:#172e45;margin-bottom:.5rem; }
+    .ctr-position-value { font-size:1.5rem;line-height:1.2;color:#004177;font-variant-numeric:tabular-nums; }
+    .ctr-member-leaderboard { padding:clamp(.75rem,2vw,1.25rem); }
+    .ctr-member-leaderboard li[aria-current="true"] { background:#eef4fb;box-shadow:inset 3px 0 #004177; }
+    @media(max-width:575.98px) { .ctr-top-lists { grid-template-columns:1fr; } }
+  </style>
   <div class="ctr-top-lists mb-3">
     @foreach(['age' => 'Overall CTR · '.($ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group').' · all genders', 'overall' => 'Overall CTR · all ages and genders'] as $scope => $label)
       @php
         $summary = $ratingTopTen['summary'][$scope] ?? null;
       @endphp
-      <section class="ctr-top-list"><h4 class="h6">{{ $label }}</h4>
-        @if($summary && $summary['player'])<x-ctr-badge size="inline" :score="$summary['player']['score']" :overall="true" /><p class="mb-0">Rating position #{{ $summary['player']['position'] }} of {{ $summary['total'] }}</p>
-        @else<p class="mb-0">No comparable published-player rating position available.</p>@endif
+      <section class="ctr-top-list ctr-position-card">
+        <h4 class="h6">{{ $label }}</h4>
+        @if($summary && $summary['player'])
+          <div class="d-flex align-items-center flex-wrap gap-2">
+            <p class="mb-0"><span class="visually-hidden">Rating position </span><strong class="ctr-position-value">#{{ $summary['player']['position'] }}</strong> <span class="small text-muted">of {{ $summary['total'] }}</span></p>
+            <x-ctr-badge size="inline" :score="$summary['player']['score']" :overall="true" />
+          </div>
+        @else
+          <p class="small mb-0">No comparable published-player rating position available.</p>
+        @endif
       </section>
     @endforeach
   </div>
   @if($ratingTopTen['as_of'])<p class="small text-muted">Saved through {{ $ratingTopTen['as_of'] }}.@if($ratingTopTen['stale']) Latest saved estimates; an update is pending.@endif</p>@endif
   @if($ratingTopTen['reason'])<p role="status">{{ $ratingTopTen['reason'] }}</p>@endif
   @if(!($ratingTopTen['can_browse'] ?? false))
-    <h4 class="h6">Your age-group Top 10</h4>
+    <section class="ctr-top-list ctr-member-leaderboard" aria-labelledby="ctr-age-top-ten-heading">
+    <h4 class="h6" id="ctr-age-top-ten-heading">Your age-group Top 10</h4>
     <p class="small text-muted">Overall CTR · {{ $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable' }} · {{ \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable' }}</p>
     @if($ratingTopTen['selected_age'] === 'unknown')
       <p class="small text-muted">A valid birth date is needed to show your player's age-group Top 10.</p>
     @else
-      <ol class="list-group list-group-flush mb-4" aria-label="Your age-group Top 10 ratings" data-plus-age-top-ten>
+      <ol class="list-group list-group-flush mb-0" aria-label="Your age-group Top 10 ratings" data-plus-age-top-ten>
         @forelse($ratingTopTen['lists']['overall']['players'] ?? [] as $member)
           <li class="list-group-item d-flex align-items-start gap-2" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif>
             <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif</span><span class="d-inline-flex flex-column align-items-center" style="width:4rem;flex-shrink:0"><x-ctr-badge size="inline" :score="$member['score']" :overall="true" /></span>
@@ -29,26 +46,7 @@
         @empty<li class="list-group-item text-muted">No comparable published-player ratings available for this age group.</li>@endforelse
       </ol>
     @endif
-    <h4 class="h6">Check a player's rating</h4>
-    <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="d-flex flex-wrap gap-2 mb-3">
-      @foreach(['month', 'scope', 'scale'] as $historyFilter)<input type="hidden" name="{{ $historyFilter }}" value="{{ $ratingHistory[$historyFilter] ?? '' }}">@endforeach
-      <label class="visually-hidden" for="ctr-player-search">Player name</label>
-      <input class="form-control" style="max-width:24rem" type="search" id="ctr-player-search" name="rating_search" minlength="2" maxlength="100" value="{{ $ratingTopTen['search']['query'] }}" placeholder="Enter at least 2 characters">
-      <button class="btn btn-primary" type="submit">Search</button>
-    </form>
-    @if(mb_strlen($ratingTopTen['search']['query']) >= 2)
-      <ul class="list-unstyled" aria-label="Player rating search results">
-        @forelse($ratingTopTen['search']['players'] as $match)
-          @php
-            $searchQuery = array_intersect_key($ratingHistory, array_flip(['month', 'scope', 'scale'])) + ['rating_search' => $ratingTopTen['search']['query'], 'rating_search_player' => $match['id']];
-          @endphp
-          <li class="border-top py-2 d-flex flex-wrap align-items-center gap-2"><strong class="text-break">{{ $match['name'] }}</strong><a class="btn btn-sm btn-outline-primary" style="min-height:44px" href="{{ route('my.tennis.rating', ['player' => $ratingPlayer->id] + $searchQuery) }}" data-rating-link>View rating<span class="visually-hidden"> for {{ $match['name'] }}</span></a></li>
-        @empty<li class="small text-muted">No comparable published-player rating found. Try a different name.</li>@endforelse
-      </ul>
-    @endif
-    @if($match = $ratingTopTen['search']['selected'] ?? null)
-      <p class="alert alert-info" role="status" data-rating-search-result><strong>{{ $match['name'] }}</strong> · <x-ctr-badge size="inline" :score="$match['score']" :overall="true" /> <span class="small">· {{ $match['confidence'] }} confidence</span></p>
-    @endif
+    </section>
   @else
   <h4 class="h6">Explore ratings · Full list</h4>
   <form method="get" action="{{ route('my.tennis.rating', $ratingPlayer) }}" data-rating-filters class="ctr-filters mb-3">
@@ -57,10 +55,12 @@
     <div><label for="ctr-rating-gender">Gender</label><select id="ctr-rating-gender" name="rating_gender" class="form-select"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_gender'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-level">Rating level</label><select id="ctr-rating-level" name="rating_level" class="form-select">@foreach(['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_level'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE) === $size)>{{ $size }}</option>@endforeach</select></div>
-    <noscript><button type="submit" class="btn btn-primary">Show ratings</button></noscript>
+    @if($ratingFragment ?? true)<noscript>@endif
+    <button type="submit" class="btn btn-primary">Show ratings</button>
+    @if($ratingFragment ?? true)</noscript>@endif
   </form>
-  <style>.ctr-top-lists{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}.ctr-top-list{min-width:0;border:1px solid #dce7e2;border-radius:14px;padding:1rem;background:#fff}.ctr-top-list li{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere}.ctr-top-list .ctr-top-score{font-variant-numeric:tabular-nums;color:#004177}.ctr-top-list small{display:block;color:#62766e}@media(max-width:767.98px){.ctr-top-lists{grid-template-columns:1fr}}</style>
-  <div class="ctr-top-lists">
+  <style>.ctr-full-list li{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere}.ctr-full-list .ctr-top-score{font-variant-numeric:tabular-nums;color:#004177}.ctr-full-list small{display:block;color:#62766e}</style>
+  <div class="ctr-full-list">
     @foreach($ratingTopTen['lists'] as $key => $list)
       <section class="ctr-top-list" aria-label="{{ $list['label'] }} ratings" data-top-ten-cohort="{{ $key }}">
         <h4 class="h6" tabindex="-1" data-rating-list-focus>Rating positions</h4>

@@ -10,7 +10,7 @@ use Tests\TestCase;
 
 class PlayerRatingHeaderPresentationTest extends TestCase
 {
-    private function renderHeader(int $month = 11, array $changes = []): array
+    private function renderHeader(int $month = 11, array $changes = [], array $viewData = []): array
     {
         $player = new Player; $player->setRawAttributes(['id' => 42, 'name' => 'Example', 'surname' => 'Player']);
         $points = [
@@ -25,15 +25,35 @@ class PlayerRatingHeaderPresentationTest extends TestCase
             'cohort' => 'orange ball · singles', 'ball_stage' => 'orange', 'current_group_label' => 'Orange ball',
             'axis' => PlayerRatingHistoryDisplay::axis($points, 'full'),
             'evidence' => ['rows' => [], 'included' => 3, 'new' => 0, 'matches' => 3, 'wins' => 2, 'losses' => 1, 'finishes' => 0, 'pages' => 1, 'page' => 1, 'total' => 0]];
-        $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => array_replace($history, $changes)])->render();
+        $html = view('frontend.my-tennis.rating', $viewData + ['ratingPlayer' => $player, 'ratingHistory' => array_replace($history, $changes)])->render();
         if (getenv('CT_RATING_HEADER_QA') === '1') {
-            $fixture = isset($changes['reason']) ? 'withheld' : (isset($changes['points']) ? 'local' : ($month === 11 ? 'latest' : 'historical'));
+            $fixture = ($viewData['embeddedRating'] ?? false) ? 'overview' : (isset($changes['reason']) ? 'withheld' : (isset($changes['points']) ? 'local' : ($month === 11 ? 'latest' : 'historical')));
             $directory = storage_path('framework/testing/rating-header-qa');
             \Illuminate\Support\Facades\File::ensureDirectoryExists($directory);
             file_put_contents($directory.'/'.$fixture.'.html', '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/vendor/css/core.css"><title>Local synthetic rating preview</title></head><body>'.$html.'</body></html>');
         }
         $document = new DOMDocument; @$document->loadHTML('<?xml encoding="utf-8" ?>'.$html);
         return [$html, new DOMXPath($document)];
+    }
+
+    public function test_embedded_overview_shows_the_saved_rating_and_positions_before_the_top_ten(): void
+    {
+        [$html, $xpath] = $this->renderHeader(viewData: ['embeddedRating' => true, 'ratingTopTen' => [
+            'visible' => true, 'can_browse' => false, 'selected_age' => 'u13',
+            'age_options' => ['u13' => 'U13 and younger'], 'filters' => ['rating_gender' => 'girls', 'rating_per_page' => 10],
+            'as_of' => '2026-11-03', 'stale' => false, 'reason' => null,
+            'summary' => ['age' => ['player' => ['score' => 72, 'position' => 2], 'total' => 5]],
+            'lists' => ['overall' => ['players' => [['id' => 42, 'name' => 'Example Player', 'position' => 2, 'score' => 72]]]],
+        ]]);
+
+        $overview = $xpath->query('//*[@id="ctr-panel-compare" and contains(@class, "active")]')->item(0);
+        $this->assertNotNull($overview);
+        $this->assertSame(1, $xpath->query('.//*[@data-current-rating-summary]', $overview)->length);
+        $this->assertLessThan(strpos($html, 'Your rating positions'), strpos($html, 'Latest saved rating'));
+        $this->assertLessThan(strpos($html, 'Your age-group Top 10'), strpos($html, 'Your rating positions'));
+        $this->assertStringNotContainsString('name="rating_search"', $html);
+        $this->assertStringNotContainsString('name="rating_per_page"', $html);
+        $this->assertStringNotContainsString('rating_per_page=10', $html);
     }
 
     public function test_header_contains_the_only_latest_summary_and_embedded_navigation(): void
@@ -53,7 +73,9 @@ class PlayerRatingHeaderPresentationTest extends TestCase
 
     public function test_historical_selected_month_keeps_its_own_distinct_badge(): void
     {
+        request()->query->set('rating_section', 'history');
         [, $xpath] = $this->renderHeader(10);
+        $this->assertSame(1, $xpath->query('//*[@id="ctr-panel-progress" and contains(@class, "active")]')->length);
         $selected = $xpath->query('//*[@data-selected-month-summary]')->item(0);
         $this->assertSame(1, $xpath->query('.//*[@data-ctr-badge]', $selected)->length);
         $this->assertStringContainsString('61.1', $selected->textContent);

@@ -88,8 +88,6 @@ class MyTennisController extends Controller
             'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
             'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
             'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,overall,standard',
-            'rating_search' => 'nullable|string|max:100',
-            'rating_search_player' => 'nullable|integer|min:1',
             'rating_page' => 'nullable|integer|min:1|max:200', 'rating_per_page' => 'nullable|integer|in:25,50,100,500']);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', $this->ratingViewData($request, $player, $history, $filters))
@@ -102,7 +100,7 @@ class MyTennisController extends Controller
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
-                array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page', 'rating_search', 'rating_search_player'])))),
+                array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])))),
         ];
     }
 
