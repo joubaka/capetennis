@@ -30,7 +30,7 @@ class CtrMarketingTest extends TestCase
         $home = $this->get(route('home'))->assertOk()->assertSee('data-home-ctr', false)
             ->assertSee('Now open')->assertSee('Upgrade to Plus now!')
             ->assertSee('href="'.route('ctr.index').'"', false);
-        $landing = $this->get(route('ctr.index'))->assertOk()->assertSee('Explore Player Plus')->assertSee('R69.00')->assertSee('R699.00')
+        $landing = $this->get(route('ctr.index'))->assertOk()->assertSee('Upgrade to Plus now!')->assertSee('R69.00')->assertSee('R699.00')
             ->assertDontSee('Your CTR access is active')->assertDontSee('Open CTR ratings')->assertDontSee('data-ctr-rating', false)
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->get(route('player-plus.index'))->assertRedirect(route('login'));

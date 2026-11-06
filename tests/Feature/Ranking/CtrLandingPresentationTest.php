@@ -27,7 +27,7 @@ class CtrLandingPresentationTest extends TestCase
         // Compile the actual page sections; the shared site shell is excluded from this isolated fixture.
         $html = Blade::render($style[1].$content[1], ['isSuperUser' => false]);
         foreach (['R69.00', 'R699.00', 'Both plans renew automatically', 'Monthly purchases are currently unavailable.',
-            'No actual player data', 'Explore Player Plus', 'Purchase details', 'Private history requires a linked account'] as $text) {
+            'No actual player data', 'Upgrade to Plus now!', 'Purchase details', 'Private history requires a linked account'] as $text) {
             $this->assertStringContainsString($text, $html);
         }
         $this->assertStringNotContainsString('Open CTR ratings', $html);

@@ -6,19 +6,17 @@
 .ctr-intro *{box-sizing:border-box}
 .ctr-intro h1,.ctr-intro h2,.ctr-intro h3{color:inherit}
 .ctr-intro .ctr-eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin:0 0 1rem}
-.ctr-intro-hero{display:grid;grid-template-columns:1.05fr 1fr;gap:2.5rem;align-items:center;background:#172e45;border-radius:24px;padding:clamp(1.5rem,4vw,3.25rem);color:#fff;overflow:hidden}
-.ctr-intro .ctr-intro-hero h1{font-size:clamp(2.5rem,4.2vw,3.8rem);line-height:1.04;letter-spacing:-.055em;color:#fff!important;max-width:10ch;margin:0 0 1.25rem}
-.ctr-intro .ctr-intro-hero h1{display:flex;align-items:flex-start;gap:.65rem;max-width:100%}
-.ctr-intro-hero h1 .ctr-mark{margin-top:.15em;width:.85em!important;height:.85em!important}
-.ctr-intro-hero h1 span{min-width:0;max-width:10ch}
-.ctr-intro-hero .ctr-eyebrow{color:#b8d8f5}
+.ctr-intro-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:2.5rem;align-items:center;background:radial-gradient(ellipse at 90% 5%,#244d75,transparent 65%),linear-gradient(115deg,#102438,#132f49);border:1px solid #395c7f;border-radius:1rem;padding:clamp(1.5rem,4vw,3.25rem);color:#fff;overflow:hidden}
+.ctr-intro .ctr-intro-hero h1{font-size:clamp(2.5rem,4.2vw,3.8rem);line-height:1.08;letter-spacing:-.045em;color:#fff!important;max-width:16ch;margin:0 0 1.25rem;text-wrap:balance}
+.ctr-intro-hero h1 span,.ctr-intro-hero .ctr-eyebrow{color:#ffbd70}
+.ctr-intro-hero .ctr-eyebrow{display:inline-block;background:#ffbd701a;border:1px solid #ffbd7080;border-radius:2rem;padding:.35rem .7rem;letter-spacing:.07em}
 .ctr-hero-description{font-size:1.05rem;line-height:1.75;color:#e0ebf5;max-width:34rem;margin-bottom:1.6rem}
 .ctr-intro-actions{display:flex;flex-wrap:wrap;gap:.75rem}
 .ctr-intro-actions a{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;white-space:normal;line-height:1.4;padding:.8rem 1.15rem;border-radius:9px;font-weight:600}
 .ctr-intro .ctr-primary{background:#004177;color:#ffffff;border:1px solid #004177}
 .ctr-intro .ctr-primary:hover{background:#00345f;color:#ffffff}
-.ctr-intro-hero .ctr-primary{background:#b8d8f5;border-color:#b8d8f5;color:#172e45}
-.ctr-intro-hero .ctr-primary:hover{background:#d8eaff;border-color:#d8eaff;color:#172e45}
+.ctr-intro-hero .ctr-primary{background:#ffab45;border-color:#ffbd70;color:#172e45;font-weight:800}
+.ctr-intro-hero .ctr-primary:hover{background:#ffc077;border-color:#ffc077;color:#172e45}
 .ctr-intro .ctr-secondary{border:1px solid #89a9c9;color:#fff;background:transparent}
 .ctr-intro .ctr-secondary:hover{background:#ffffff12;color:#fff}
 .ctr-hero-note{font-size:.78rem;color:#c6d8ea;margin:1rem 0 0;line-height:1.6}
@@ -95,7 +93,6 @@
 .ctr-intro-actions a{flex:1 1 auto}
 .ctr-offer-links{gap:.2rem 1rem}}@media(max-width:575.98px){.ctr-intro-hero{padding:1.25rem;gap:1.25rem;border-radius:18px}
 .ctr-intro .ctr-intro-hero h1{font-size:clamp(1.85rem,5.5vw,2.1rem);line-height:1.1;max-width:100%;gap:.5rem;margin-bottom:.85rem}
-.ctr-intro-hero h1 span{max-width:13ch}
 .ctr-intro-hero .ctr-eyebrow{font-size:.65rem;letter-spacing:.1em;margin-bottom:.65rem}
 .ctr-hero-description{font-size:.9rem;line-height:1.6;margin-bottom:1.1rem}
 .ctr-hero-note{margin-top:.75rem}}@media(max-width:399.98px){.ctr-offer-pricing{padding:1rem}
@@ -109,12 +106,16 @@
   <x-player-plus-stepper :current="1" />
   <section class="ctr-intro-hero" aria-labelledby="ctr-title">
     <div>
-      <p class="ctr-eyebrow">Cape Tennis · Player Plus</p>
+      <p class="ctr-eyebrow">{{ $plusSalesOpen ? 'Player Plus · Now open' : 'Cape Tennis · Player Plus' }}</p>
       <x-player-plus-coming-soon class="mb-3" />
-      <h1 id="ctr-title"><x-ctr-mark size="heading" /><span>Discover CTR Ratings</span></h1>
-      <p class="ctr-hero-description">What should I play next? How am I progressing? Player Plus helps primary-school players, beginners and their families understand playing strength and explore the journey from Red Ball through Orange, Green and Yellow Ball to TSA events.</p>
+      @if($plusSalesOpen)
+        <h1 id="ctr-title">See your <span>game grow.</span></h1>
+      @else
+        <h1 id="ctr-title">Discover <span>CTR Ratings</span></h1>
+      @endif
+      <p class="ctr-hero-description">Get to know your Cape Tennis Rating (CTR), follow your progress and find the right tournament for your level. Player Plus helps players and families explore the pathway from Red Ball to TSA events.</p>
       <div class="ctr-intro-actions">
-        <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
+        <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Upgrade to Plus now!' : 'Discover Player Plus' }} <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
         <a class="btn ctr-secondary" href="{{ route('my.tennis', ['tab' => 'rating']) }}">Preview in My Tennis</a>
       </div>
       <p class="ctr-hero-note">For one player and their linked parents or guardians.<br>Essential tournament information stays free.</p>
@@ -141,7 +142,7 @@
       <div class="ctr-feature-details"><p>Start with your current rated ball level in My Tennis. The pathway brings together your saved ball-level rating and eligible published singles participation, so you and your coach can discuss the next event types to explore.</p><p>Progression benchmarks need suitable, comparable evidence. They are guidance for that conversation, not automatic promotion or entry approval. Always check the event’s age, ball-level, nomination and entry requirements before registering.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow 12 months of saved rating history and the recorded singles results behind changes in playing strength, where evidence is available.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow up to 12 months of saved rating history and see the eligible singles results behind each estimate.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
       <div class="ctr-feature-details"><p>Your history follows the ball level of your latest saved rating across the available monthly snapshots. Select a month to review its estimate and the eligible evidence behind it. Months without enough evidence may have no rating.</p><p>Read the curve alongside confidence, result dates and comparison-group context. A change in opponents or comparison group can affect an estimate; a higher number alone does not prove improvement, and ratings from different ball levels are not interchangeable.</p></div>
     </details>
     <details class="ctr-intro-feature">
@@ -149,15 +150,18 @@
       <div class="ctr-feature-details"><p>CTR is an estimate of playing strength from eligible recorded evidence. Check the saved update date and confidence label together with the number: sparse or older evidence needs more care, and confidence is not a guarantee of accuracy.</p><p>A provisional within-group estimate is not calibrated against other groups. Missing or non-comparable evidence may leave a rating or position unavailable. Buying Player Plus does not create results, guarantee a rating, or change tournament rankings or selection.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Search by name and select one eligible published player to see their available rating and confidence. Compare playing strength where ratings share a comparable scale.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
-      <div class="ctr-feature-details"><p>Use the eligible-player lookup to select the person you mean and review their available published rating and confidence. It gives context for preparation; it does not predict a match result or reveal their private rating history.</p><p>Compare only ratings on the same comparable scale. A local or disconnected estimate cannot be compared directly with a player in another group, and some players may have no available rating. Opponent lookup does not link that player to your account or grant access to private records.</p></div>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Use Opponent Insights to revisit recorded meetings, season results and recent encounters.</p><span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
+      <div class="ctr-feature-details"><p>Review eligible published results from recorded meetings. Dates may be estimated, and the available results may cover only part of the playing history.</p><p>Compare only ratings on the same comparable scale. A local or disconnected estimate cannot be compared directly with a player in another group, and some players may have no available rating. Opponent lookup does not link that player to your account or grant access to private records.</p></div>
     </details>
   </div>
 
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">
-    <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Their tennis journey.<br>Your choice of plan.</h2><p class="ctr-offer-copy">One named player. Shared with their linked parents or guardians. Choose monthly or annual access and keep the focus on their progress.</p></div>
+    <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Their tennis journey.<br>Your choice of plan.</h2><p class="ctr-offer-copy">One named player. Shared with their linked parents or guardians. Review the available plans and payment options below.</p></div>
     <div class="ctr-offer-pricing">
       <x-player-plus-pricing />
+      @if($plusSalesOpen && \App\Services\Performance\PlayerPlusService::monthlyReady())
+        <p class="ctr-offer-copy mt-2">You can also use your Cape Tennis wallet to pay once for 12 months. Wallet purchases have no automatic renewal.</p>
+      @endif
       <div class="ctr-intro-actions">
         @if($plusSalesOpen)
           <a class="btn ctr-primary" href="{{ route('player-plus.index') }}">Choose a player <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
