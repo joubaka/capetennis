@@ -38,8 +38,11 @@ class EventPagePerformanceTest extends TestCase
         $secondRegistration = \App\Models\Registration::factory()->create();
         $firstRegistration->players()->attach($alice);
         $secondRegistration->players()->attach($bob);
+        $played = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $firstRegistration->id, 'registration2_id' => $secondRegistration->id]);
+        \App\Models\FixtureResult::create(['fixture_id' => $played->id, 'set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
         $first = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $firstRegistration->id, 'registration2_id' => $secondRegistration->id]);
         $later = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id, 'registration1_id' => $firstRegistration->id, 'registration2_id' => $secondRegistration->id]);
+        $this->insertSnapshot($event, $draw->id, $played->id, $venue->id, 'individual', '2026-10-10 07:30:00');
         $this->insertSnapshot($event, $draw->id, $first->id, $venue->id, 'individual', '2026-10-10 08:00:00');
         $this->insertSnapshot($event, $draw->id, $later->id, $venue->id, 'individual', '2026-10-10 09:00:00');
         $teamFixture = TeamFixture::create(['draw_id' => $draw->id, 'match_nr' => 1, 'fixture_type' => 1]);

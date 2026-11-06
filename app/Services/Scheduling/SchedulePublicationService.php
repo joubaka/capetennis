@@ -87,7 +87,12 @@ final class SchedulePublicationService
             ?? DB::table('published_schedule_assignments')->where('event_id', $event->id)->whereIn('draw_id', $draws->keys())->get();
         $individualIds = $snapshots->where('fixture_kind', 'individual')->pluck('fixture_id');
         $teamIds = $snapshots->where('fixture_kind', 'team')->pluck('fixture_id');
-        $individual = Fixture::with($includeParticipants ? ['fixtureResults', 'registration1.players', 'registration2.players'] : ['fixtureResults'])
+        $firstMatchDrawIds = $draws->filter(fn ($draw) => $draw->settings?->showsFirstMatchOnly())->keys();
+        $individual = Fixture::query()
+            ->when($includeParticipants, fn ($query) => $query->with(['registration1.players', 'registration2.players']))
+            ->when($firstMatchDrawIds->isNotEmpty(), fn ($query) => $query->withExists([
+                'fixtureResults' => fn ($results) => $results->whereIn('fixtures.draw_id', $firstMatchDrawIds),
+            ]))
             ->whereIn('draw_id', $draws->keys())->whereIn('id', $individualIds)->get()->keyBy('id');
         $team = TeamFixture::without($includeParticipants ? ['draw'] : ['draw', 'teamResults', 'fixturePlayers'])
             ->with($includeParticipants ? ['fixtureResults', 'teamTie', 'team1', 'team2'] : [])->publicDrawFixtures()
@@ -95,6 +100,7 @@ final class SchedulePublicationService
         foreach ($individual->concat($team) as $fixture) $fixture->setRelation('draw', $draws->get($fixture->draw_id));
         if ($includeParticipants) app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true);
         $venues = Venue::whereIn('id', $snapshots->pluck('venue_id'))->get()->keyBy('id');
+        $venueOrder = app(VenueMatchOrder::class);
         $rows = $snapshots->map(function ($row) use ($individual, $team, $draws, $venues, $includeParticipants) {
             $fixture = ($row->fixture_kind === 'team' ? $team : $individual)->get($row->fixture_id);
             if (! $fixture || (int) $fixture->draw_id !== (int) $row->draw_id) return null;
@@ -120,24 +126,28 @@ final class SchedulePublicationService
                         ? [$fixture->tie_display['home'], $fixture->tie_display['away']]
                         : [$fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')])
                     : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]] : []);
-        })->filter()->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))->values();
-        $publicRows = $rows->groupBy('draw_id')->flatMap(function ($rows, $drawId) use ($draws) {
-            if (! $draws[$drawId]->settings?->showsFirstMatchOnly()) return $rows;
-            $seen = []; $visible = [];
-            $rr = in_array($draws[$drawId]->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
-                || $rows->contains(fn ($row) => $row['fixture_kind'] === 'individual' && (strtoupper((string) $row['_fixture']->stage) === 'RR' || $row['_fixture']->draw_group_id !== null));
-            foreach ($rows as $row) {
-                $fixture = $row['_fixture'];
-                if ($row['fixture_kind'] === 'team') { $visible[] = $row; continue; }
-                if ($fixture->fixtureResults->isNotEmpty()) continue;
-                $ids = array_values(array_filter([(int) $fixture->registration1_id, (int) $fixture->registration2_id]));
-                $unseen = array_filter($ids, fn ($id) => ! isset($seen[$id]));
-                if ($ids && ($rr ? (bool) $unseen : count($unseen) === count($ids))) $visible[] = $row;
-                foreach ($ids as $id) $seen[$id] = true;
-            }
-            return $visible;
-        })->sort(fn ($left, $right) => app(VenueMatchOrder::class)->compare($left['_fixture'], $right['_fixture']))
-            ->map(fn ($row) => array_diff_key($row, ['_fixture' => true]))->values();
+        })->filter()->sort(fn ($left, $right) => $venueOrder->compare($left['_fixture'], $right['_fixture']))->values();
+        if ($firstMatchDrawIds->isNotEmpty()) {
+            // Keep the original venue order while applying each draw's visibility rule.
+            $rows = $rows->groupBy('draw_id', preserveKeys: true)->map(function ($rows, $drawId) use ($draws) {
+                if (! $draws[$drawId]->settings?->showsFirstMatchOnly()) return $rows;
+                $seen = [];
+                $visible = [];
+                $rr = in_array($draws[$drawId]->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)
+                    || $rows->contains(fn ($row) => $row['fixture_kind'] === 'individual' && (strtoupper((string) $row['_fixture']->stage) === 'RR' || $row['_fixture']->draw_group_id !== null));
+                foreach ($rows as $position => $row) {
+                    $fixture = $row['_fixture'];
+                    if ($row['fixture_kind'] === 'team') { $visible[$position] = $row; continue; }
+                    if ($fixture->fixture_results_exists) continue;
+                    $ids = array_values(array_filter([(int) $fixture->registration1_id, (int) $fixture->registration2_id]));
+                    $unseen = array_filter($ids, fn ($id) => ! isset($seen[$id]));
+                    if ($ids && ($rr ? (bool) $unseen : count($unseen) === count($ids))) $visible[$position] = $row;
+                    foreach ($ids as $id) $seen[$id] = true;
+                }
+                return $visible;
+            })->collapseWithKeys()->sortKeys();
+        }
+        $publicRows = $rows->map(fn ($row) => array_diff_key($row, ['_fixture' => true]))->values();
         if ($projectedSnapshots === null) request()->attributes->set($cacheKey, $publicRows);
         return $publicRows;
     }
