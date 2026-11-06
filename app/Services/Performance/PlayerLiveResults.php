@@ -45,7 +45,7 @@ class PlayerLiveResults
             ->latest('score_updated_at')->latest('team_fixtures.id')->limit(self::LIMIT * 2)->get();
 
         $team = $this->eligibleTeamLineups($team);
-        app(TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true, selectedPlayerId: $player->id);
+        app(TeamFixtureLineupPresenter::class)->prepare($team, publicDraw: true, selectedPlayerId: $player->id, includeProfileIds: true);
 
         return $individual->concat($team->map(fn (TeamFixture $fixture) => $this->teamResult($fixture)))
             ->filter()->sortByDesc('recorded_at')->take(self::LIMIT)->values();
@@ -69,7 +69,8 @@ class PlayerLiveResults
         if (!$winner && !$outcome->isDraw($fixture)) return null;
 
         $own = $home ? $fixture->registration1 : $fixture->registration2;
-        $opponents = ($home ? $fixture->registration2 : $fixture->registration1)->players->pluck('full_name');
+        $opponents = ($home ? $fixture->registration2 : $fixture->registration1)->players
+            ->map(fn (Player $opponent) => ['name' => $opponent->full_name, 'player_id' => $opponent->id]);
         $score = $fixture->isWalkover() ? 'W/O' : $this->score($fixture->fixtureResults, 'registration', $home);
         if ($fixture->isRetired()) $score = trim($score.' RET');
 
@@ -94,8 +95,8 @@ class PlayerLiveResults
         $outcome = app(TeamRubberResultService::class)->outcome($fixture);
         if (!$outcome['complete'] || !$outcome['winner']) return null;
 
-        $opponents = collect($lineup[$home ? 'away' : 'home']['players'])->pluck('name');
-        if ($opponents->isEmpty() || $opponents->contains(fn ($name) => !$name || $name === 'TBD')) return null;
+        $opponents = collect($lineup[$home ? 'away' : 'home']['players']);
+        if ($opponents->isEmpty() || $opponents->contains(fn ($opponent) => !$opponent['name'] || $opponent['name'] === 'TBD')) return null;
 
         return $this->row(
             $fixture,
@@ -196,7 +197,8 @@ class PlayerLiveResults
             'recorded_at' => $recordedAt,
             'event' => $fixture->draw->event->name,
             'draw' => $fixture->draw->drawName,
-            'opponents' => $opponents->filter()->join(' / '),
+            'opponents' => $opponents->pluck('name')->filter()->join(' / '),
+            'opponent_players' => $opponents->filter(fn ($opponent) => filled($opponent['name']))->values()->all(),
             'outcome' => $outcome,
             'score' => $score,
             'url' => route($route, $fixture->draw_id),

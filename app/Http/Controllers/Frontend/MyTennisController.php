@@ -132,15 +132,13 @@ class MyTennisController extends Controller
             $liveResults = $liveResultsPrefetch ? collect()
                 : app(\App\Services\Performance\PlayerLiveResults::class)->forPlayer($request->user(), $player);
         }
-        $pastRatings = [];
+        $opponentIds = collect($record['results']['rows'] ?? [])->pluck('opponent_id')
+            ->merge($this->liveOpponentIds($liveResults ?? collect()));
         if ($section === 'opponents') {
             $opponentIds = collect($record['opponents']['rows'] ?? [])->pluck('id')
-                ->push($record['opponent']['id'] ?? null)->filter()->unique()->values()->all();
-            if ($opponentIds) {
-                $pastRatings = app(\App\Services\Performance\PlayerRatingTopTen::class)
-                    ->forMatchPlayers($request->user(), $player, $opponentIds);
-            }
+                ->push($record['opponent']['id'] ?? null);
         }
+        $pastRatings = $this->matchRatings($request, $player, $opponentIds);
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
             'upcoming' => $upcoming, 'pastRatings' => $pastRatings, 'liveResults' => $liveResults,
             'liveResultsPrefetch' => $liveResultsPrefetch,
@@ -153,10 +151,25 @@ class MyTennisController extends Controller
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
 
+        $liveResults = app(\App\Services\Performance\PlayerLiveResults::class)->forPlayer($request->user(), $player);
         return response()->view('frontend.my-tennis.record-live-results', [
             'recordPlayer' => $player,
-            'liveResults' => app(\App\Services\Performance\PlayerLiveResults::class)->forPlayer($request->user(), $player),
+            'liveResults' => $liveResults,
+            'pastRatings' => $this->matchRatings($request, $player, $this->liveOpponentIds($liveResults)),
         ])->header('Cache-Control', 'private, no-store');
+    }
+
+    private function liveOpponentIds(\Illuminate\Support\Collection $results): \Illuminate\Support\Collection
+    {
+        return $results->flatMap(fn ($result) => collect($result['opponent_players'] ?? [])->pluck('player_id'));
+    }
+
+    private function matchRatings(Request $request, Player $player, \Illuminate\Support\Collection $ids): array
+    {
+        $opponentIds = $ids->filter()->unique()->values()->all();
+
+        return $opponentIds ? app(\App\Services\Performance\PlayerRatingTopTen::class)
+            ->forMatchPlayers($request->user(), $player, $opponentIds) : [];
     }
 
     public function pathwayInfo(Request $request, \App\Models\Player $player, string $stage)

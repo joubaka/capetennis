@@ -72,7 +72,10 @@
   @else
     @if($recordSection === 'record')
       <div class="results-toolbar">
-        <h2 class="h5 mb-0">Saved match history</h2>
+        <div>
+          <h2 class="h5 mb-0">Saved match history</h2>
+          @if($pastRatings ?? [])<p class="record-note mb-0">Badges show the latest saved Overall CTR.</p>@endif
+        </div>
     @endif
     <form method="get" class="record-filter {{ $recordSection === 'opponents' ? 'mb-3' : '' }}" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => $recordSection]) }}{{ $recordSection === 'opponents' ? '#past-opponents' : '' }}">
       @if($record['opponent'] || request()->integer('opponent'))<input type="hidden" name="opponent" value="{{ $record['opponent']['id'] ?? request()->integer('opponent') }}">@endif
@@ -104,7 +107,7 @@
           <p class="record-note">{{ \Carbon\CarbonImmutable::createFromFormat('!Y-m', $record['record_month'])->format('F Y') }} · <a href="{{ request()->fullUrlWithQuery(['record_month' => null, 'page' => null]) }}#match-results">Clear month filter</a></p>
           @if(!$record['results']['total'])<p class="record-note" role="status">No saved match results for this month.</p>@endif
         @endif
-        @include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page'])
+        @include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page', 'matchRatings' => $pastRatings ?? []])
       </section>
       <aside aria-label="Results trends and milestones">
       @include('frontend.my-tennis.record-monthly')

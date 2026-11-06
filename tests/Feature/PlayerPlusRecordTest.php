@@ -172,7 +172,8 @@ class PlayerPlusRecordTest extends TestCase
         $this->mock(\App\Services\Performance\PlayerLiveResults::class)->shouldReceive('forPlayer')
             ->once()->with($user, $player)->andReturn(collect());
         $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
-        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldNotReceive('forMatchPlayers');
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldReceive('forMatchPlayers')->once()
+            ->with($user, $player, [43])->andReturn([43 => ['score' => 62.4]]);
         $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
         \Illuminate\Support\Facades\File::ensureDirectoryExists($path.'/layouts');
         file_put_contents($path.'/layouts/contentNavbarLayout.blade.php', '@yield("content")');
@@ -182,6 +183,7 @@ class PlayerPlusRecordTest extends TestCase
             $response = app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $player);
             $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
             $this->assertStringContainsString('Latest results', $response->getContent());
+            $this->assertStringContainsString('CTR 62.4', $response->getContent());
         } finally { \Illuminate\Support\Facades\File::deleteDirectory($path); }
     }
 

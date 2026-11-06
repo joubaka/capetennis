@@ -44,8 +44,11 @@ class MyTennisLiveResultsTest extends TestCase
         $this->actingAs($user)->get($url)->assertOk()->assertDontSee('VisibleOpponent');
         $second = $fixture->fixtureResults()->create(['set_nr' => 2, 'registration1_score' => 3, 'registration2_score' => 6]);
         $fixture->update(['match_status' => FixtureState::STATUS_COMPLETED, 'winner_registration' => $registrations[1]->id]);
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldReceive('forMatchPlayers')->twice()
+            ->withArgs(fn (User $viewer, Player $selected, array $ids) => $viewer->is($user) && $selected->is($player) && $ids === [$opponent->id])
+            ->andReturn([$opponent->id => ['score' => 64.6]]);
         $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
-            ->assertSee('VisibleOpponent')->assertSee('Win')->assertSee('6-2 6-3');
+            ->assertSee('VisibleOpponent')->assertSee('CTR 64.6')->assertSee('Win')->assertSee('6-2 6-3');
         $second->update(['registration1_score' => 4]);
         $this->get($url)->assertOk()->assertSee('6-2 6-4')->assertDontSee('6-2 6-3');
 
@@ -85,7 +88,10 @@ class MyTennisLiveResultsTest extends TestCase
 
         Gate::define('player-premium-rating', fn () => true);
         $url = route('my.tennis.record.live', $player);
-        $this->actingAs($user)->get($url)->assertOk()->assertSee('TeamOpponent')->assertSee('Loss')->assertSee('4-6');
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldReceive('forMatchPlayers')->once()
+            ->withArgs(fn (User $viewer, Player $selected, array $ids) => $viewer->is($user) && $selected->is($player) && $ids === [$opponent->id])
+            ->andReturn([$opponent->id => ['score' => 63.7]]);
+        $this->actingAs($user)->get($url)->assertOk()->assertSee('TeamOpponent')->assertSee('CTR 63.7')->assertSee('Loss')->assertSee('4-6');
         $fixture->update(['numSets' => 3]);
         $this->get($url)->assertOk()->assertDontSee('TeamOpponent');
         $fixture->update(['numSets' => 1]);

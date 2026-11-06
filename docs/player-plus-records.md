@@ -18,6 +18,11 @@ checks the authorized fragment every 15 seconds. Warmed tabs fetch that fragment
 when opened. The live scores and their posting times are independent of the
 saved match history, season statistics and CTR.
 
+Latest results and saved match rows show the latest comparable Overall CTR
+beside eligible opponents. Resolve ratings from the published fixture lineup
+or authorized saved match identities. Leave the name unbadged when there is
+no eligible comparable rating or no resolved player profile.
+
 `PlayerRatingHistoryService::recordSource()` applies the existing saved-history
 publication, source-change and TeamSheet context guards. The saved evidence is
 not a complete career archive. Missing records do not establish that a player
