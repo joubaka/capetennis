@@ -19,6 +19,10 @@ Essential tournament information remains free. Draw alerts remain a historical d
 
 The player purchase page shows a linked account only an availability summary (available, awaiting update, or no eligible evidence). It does not reveal a pre-purchase rating or private match history. Sponsors receive the general disclosures and no private availability summary. Page reads do not calculate ratings or request a refresh. A missing Plus schema disables purchases safely, without breaking the player-selection or order-list page.
 
+The named-player page leads with membership and purchase availability. It shows
+checkout steps only when a plan can be chosen. Authorized viewers open their
+rating in My Tennis, and payers manage renewals through My Plus orders.
+
 Before a new checkout, the payer confirms the versioned purchase details, named player and displayed price. An outdated quote is rejected, while an existing checkout keeps its original price. Acceptance version, actual order price and actor are recorded in the canonical append-only audit. Payer order history is private and paginated; player links do not grant access to another payer's orders. Membership expiry is visible, including after purchases are paused.
 
 ## Sales pause

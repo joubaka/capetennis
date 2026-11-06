@@ -127,24 +127,27 @@ class PlayerWorkspaceContextTest extends TestCase
             if (in_array($name, ['record', 'events'], true)) {
                 $response->assertDontSee('data-rating-snapshot', false)->assertSee('data-profile-rating-badge', false)->assertSee('66.6');
                 $this->assertTrue($response->viewData('workspace')['canViewRating']);
+            } elseif ($name === 'offer') {
+                $response->assertDontSee('data-rating-snapshot', false)->assertDontSee('data-workspace-player-selector', false)
+                    ->assertSee(route('player-plus.orders.index', ['player' => $player->id]));
             } else {
                 $response->assertSee('data-rating-snapshot', false);
             }
-            $response->assertSee('data-workspace-player-selector', false);
+            if ($name !== 'offer') $response->assertSee('data-workspace-player-selector', false);
             $this->assertSame($player->id, $response->viewData('workspace')['player']->id);
             $this->export($name, $response);
         }
     }
 
-    public function test_entitled_offer_reuses_one_history_read_for_readiness_and_header(): void
+    public function test_entitled_offer_keeps_rating_details_in_my_tennis(): void
     {
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $user = User::factory()->create(); $player = Player::factory()->create(['userId' => $user->id]);
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->once()->andReturn($this->history());
         $response = $this->actingAs($user)->get(route('player-plus.player', $player))->assertOk();
-        $response->assertSee('data-rating-snapshot', false);
-        $this->assertSame(66.6, $response->viewData('workspace')['snapshot']['points'][0]['score']);
+        $response->assertDontSee('data-rating-snapshot', false)
+            ->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']));
     }
 
     public function test_opponents_loads_schedule_and_record_with_only_the_header_rating_summary(): void

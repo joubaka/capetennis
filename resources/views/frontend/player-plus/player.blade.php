@@ -8,32 +8,71 @@
     .pp-player .pp-plan-choices .pp-plan-choice:last-of-type{margin-bottom:1.25rem}
     .pp-player .pp-plan-choice .pp-choice-terms{font-size:.9rem}
     .pp-player .pp-purchase .pp-plan-note{padding:.75rem 1rem;background:#f1f5fa;border-left:3px solid #004177;border-radius:6px}
-    .pp-player .pp-layout{display:block!important;max-width:760px;margin:auto}.pp-player .pp-plan-choices{padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-plan-choices h2{color:#172e45;font-size:1.5rem}.pp-player .pp-plan-choice{display:flex;flex-direction:column;gap:.5rem;text-align:left;width:100%;padding:1.25rem;margin:1rem 0;background:#eef4fa;border:1px solid #9ab4cf;border-radius:12px;color:#172e45;min-height:44px}.pp-player .pp-plan-choice:hover{border-color:#004177;background:#e5eff8}.pp-player .pp-plan-choice>span:last-child{align-self:flex-start;background:#ff9f43;border-radius:7px;padding:.5rem 1rem;color:#172e45;font-weight:700}.pp-player [hidden]{display:none!important}.pp-player .pp-purchase [data-plus-change-plan]{width:auto;margin:0 0 1rem}
+    .pp-player .pp-plan-choices{padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-plan-choices h2{color:#172e45;font-size:1.5rem}.pp-player .pp-plan-choice{display:flex;flex-direction:column;gap:.5rem;text-align:left;width:100%;padding:1.25rem;margin:1rem 0;background:#eef4fa;border:1px solid #9ab4cf;border-radius:12px;color:#172e45;min-height:44px}.pp-player .pp-plan-choice:hover{border-color:#004177;background:#e5eff8}.pp-player .pp-plan-choice>span:last-child{align-self:flex-start;background:#ff9f43;border-radius:7px;padding:.5rem 1rem;color:#172e45;font-weight:700}.pp-player [hidden]{display:none!important}.pp-player .pp-purchase [data-plus-change-plan]{width:auto;margin:0 0 1rem}
   </style>
   <style>
-    .pp-player{max-width:1120px;color:#243e50;font-size:1rem;line-height:1.65}.pp-player .small,.pp-player small{font-size:.875rem}.pp-player .pp-nav{display:flex;flex-wrap:wrap;gap:.25rem 1.5rem;justify-content:space-between;margin-bottom:1rem}.pp-player .pp-nav a{min-height:44px;display:inline-flex;align-items:center}
-    .pp-player .pp-hero{background:linear-gradient(115deg,#172e45,#004177);color:#fff;border-radius:18px;padding:clamp(1.5rem,4vw,2.5rem);margin-bottom:1.5rem}.pp-player .pp-eyebrow{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin:0 0 .75rem}.pp-player .pp-hero h1{color:#fff;font-size:clamp(1.8rem,4vw,2.5rem);line-height:1.2;letter-spacing:-.025em;margin:0 0 .75rem}.pp-player .pp-intro{color:#dee9f5;max-width:65ch;margin:0}.pp-player .pp-profile{color:#dee9f5;margin:1rem 0 0;font-size:.875rem}
-    .pp-player .pp-layout{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:1.5rem;align-items:start}.pp-player .pp-layout>*{min-width:0}.pp-player .pp-benefits{margin:0}.pp-player .pp-status{border:1px solid #dce5ef;border-left:4px solid #004177;background:#eef4fa;border-radius:12px;padding:1.1rem 1.25rem;line-height:1.65;margin-bottom:1.25rem}.pp-player .pp-status p{margin:.35rem 0 0;color:#38516e}.pp-player .pp-status[data-plus-readiness="available"]{border-left-color:#258164;background:#eef7f2}.pp-player .pp-status h2{font-size:1rem;color:#172e45;margin:0}
-    .pp-player .pp-purchase{border:1px solid #c8d8e4;border-radius:16px;padding:1.5rem;background:#fff;margin-bottom:1rem}.pp-player .pp-purchase h2{font-size:1.25rem;color:#172e45;margin:0}.pp-player .pp-plan-price{font-size:2rem;font-weight:700;color:#172e45;margin:.5rem 0 0;line-height:1.3}.pp-player .pp-plan-price span{font-size:1rem;font-weight:400}.pp-player .pp-plan-note{color:#526c78;margin:.65rem 0 1.25rem}.pp-player .pp-consents{border:0;padding:0;margin:1.25rem 0 0;min-width:0}.pp-player .pp-consents legend{font-size:1rem;font-weight:600;color:#172e45;margin-bottom:.75rem}.pp-player .pp-consent{display:flex;gap:.75rem;align-items:flex-start;padding:.65rem 0;margin:0;cursor:pointer;font-size:.9375rem;line-height:1.6}.pp-player .pp-consent input{flex:0 0 20px;width:20px;height:20px;margin-top:.25rem;accent-color:#004177}.pp-player .pp-purchase .btn{width:100%;margin-top:1.25rem;min-height:48px}.pp-player .pp-sponsor-note{background:#fff6eb;border:1px solid #f2d6b8;border-radius:10px;padding:1rem;margin-bottom:1rem;color:#62401d}.pp-player .pp-plan-availability{font-size:.9375rem;color:#526c78;margin:0 0 1rem}.pp-player .pp-actions{margin-top:1.25rem;padding:1.5rem;border:1px solid #dce5ef;border-radius:16px;background:#fff}.pp-player .pp-actions h2{font-size:1.2rem;color:#172e45}.pp-player .pp-action-links{display:flex;gap:.75rem;flex-wrap:wrap}.pp-player .pp-footer{border-top:1px solid #dce5ef;margin-top:1.5rem;padding-top:1rem}.pp-player .pp-error-summary{margin-bottom:1.5rem}.pp-player .pp-field-error{color:#a12222;font-size:.875rem;margin:.25rem 0}
-    @media(min-width:992px){.pp-player .pp-details{grid-column:1;grid-row:1}.pp-player .pp-checkout{grid-column:2;grid-row:1}}@media(max-width:991.98px){.pp-player .pp-layout{grid-template-columns:1fr}.pp-player .pp-benefits>ul{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:575.98px){.pp-player .pp-purchase,.pp-player .pp-actions{padding:1.2rem}.pp-player .pp-benefits>ul{grid-template-columns:1fr}.pp-player .pp-action-links{flex-direction:column}.pp-player .pp-action-links .btn{width:100%}}
+    .pp-player { max-width: 880px; color: #243e50; font-size: 1rem; line-height: 1.65; }
+    .pp-player .small, .pp-player small { font-size: .875rem; }
+    .pp-player .pp-membership-header {
+      background: #172e45;
+      border-top: 3px solid #ff9f43;
+      padding: clamp(1rem, 3vw, 1.5rem);
+      margin-bottom: 1rem;
+    }
+    .pp-player .pp-membership-header .ct-workspace-title { font-size: clamp(1.4rem, 4vw, 2rem); }
+    .pp-player .pp-membership-header .ct-workspace-header-navigation { margin-top: .75rem; padding-top: .65rem; }
+    .pp-player .pp-membership-header .pp-rating-link {
+      color: #172e45;
+      background: #ff9f43;
+      border-color: #ff9f43;
+      font-weight: 600;
+    }
+    .pp-player .pp-membership-header .pp-rating-link:hover { color: #172e45; background: #ffbd7a; border-color: #ffbd7a; }
+    .pp-player .pp-status {
+      border: 1px solid #dce5ef;
+      border-left: 4px solid #004177;
+      background: #eef4fa;
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .pp-player .pp-status p { margin: .35rem 0 0; color: #38516e; }
+    .pp-player .pp-status h2 { font-size: 1rem; color: #172e45; margin: 0; }
+    .pp-player .pp-status.pp-paused { border-left-color: #b56514; background: #fff6eb; }
+    .pp-player .pp-status[data-plus-readiness="available"] { border-left-color: #258164; background: #eef7f2; }
+    .pp-player .pp-purchase{border:1px solid #c8d8e4;border-radius:16px;padding:1.5rem;background:#fff;margin-bottom:1rem}.pp-player .pp-purchase h2{font-size:1.25rem;color:#172e45;margin:0}.pp-player .pp-plan-price{font-size:2rem;font-weight:700;color:#172e45;margin:.5rem 0 0;line-height:1.3}.pp-player .pp-plan-price span{font-size:1rem;font-weight:400}.pp-player .pp-plan-note{color:#526c78;margin:.65rem 0 1.25rem}.pp-player .pp-consents{border:0;padding:0;margin:1.25rem 0 0;min-width:0}.pp-player .pp-consents legend{font-size:1rem;font-weight:600;color:#172e45;margin-bottom:.75rem}.pp-player .pp-consent{display:flex;gap:.75rem;align-items:flex-start;padding:.65rem 0;margin:0;cursor:pointer;font-size:.9375rem;line-height:1.6}.pp-player .pp-consent input{flex:0 0 20px;width:20px;height:20px;margin-top:.25rem;accent-color:#004177}.pp-player .pp-purchase .btn{width:100%;margin-top:1.25rem;min-height:48px}.pp-player .pp-sponsor-note{background:#fff6eb;border:1px solid #f2d6b8;border-radius:10px;padding:1rem;margin-bottom:1rem;color:#62401d}.pp-player .pp-plan-availability{font-size:.9375rem;color:#526c78;margin:0 0 1rem}.pp-player .pp-error-summary{margin-bottom:1.5rem}.pp-player .pp-field-error{color:#a12222;font-size:.875rem;margin:.25rem 0}
+    @media (max-width: 575.98px) { .pp-player .pp-purchase { padding: 1.2rem; } }
   </style>
   @php
     $membershipStatusOnly = ($purchaseBlocked ?? false) || ($adminAccess ?? null)?->mode === 'suspended'
       || (($adminAccess ?? null)?->mode === 'grant' && $adminAccess->starts_at->lte(now()) && $adminAccess->ends_at->isFuture())
       || ($membership && $membership->starts_at->lte(now()) && $membership->ends_at->isFuture());
+    $showCheckout = !$membershipStatusOnly && $enabled && \App\Services\Performance\PlayerPlusService::monthlyReady();
+    $ordersUrl = route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]);
+    $myTennisUrl = route('my.tennis', [
+      'player' => ($linked || $canViewRating) ? $player->id : null,
+      'tab' => $canViewRating ? 'rating' : null,
+    ]);
   @endphp
-  <x-player-workspace-header :workspace="$workspace ?? null" :title="'Player Plus for '.$player->full_name" eyebrow="Cape Tennis · Optional Player Plus">
-    <p>@if($membershipStatusOnly || $canViewRating)Check this player's membership status below.@elseif(!$enabled)New purchases are currently paused. Check this player’s membership and rating availability below.@else Choose a plan for this player, then review the price and renewal terms before paying.@endif</p><p class="small">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
-    <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">← Choose another player</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">My Plus orders →</a></nav></x-slot:navigation>
+  <x-player-workspace-header class="pp-membership-header" :title="'Player Plus for '.$player->full_name" eyebrow="Cape Tennis · Player Plus">
+    @if($showCheckout)<p>Choose a plan, then review the price and renewal terms before paying.</p>@endif
+    <p class="small">Profile #{{ $player->id }} @if($player->dateOfBirth) · Born {{ substr($player->dateOfBirth, 0, 4) }} @endif</p>
+    <x-slot:navigation>
+      <nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation">
+        @if($canViewRating)
+          <a class="btn pp-rating-link" href="{{ $myTennisUrl }}">Back to My Tennis · Rating</a>
+        @else
+          <a class="btn" href="{{ $myTennisUrl }}">Back to My Tennis</a>
+        @endif
+        <a class="btn" href="{{ $ordersUrl }}">My Plus orders</a>
+        <a class="btn" href="{{ route('player-plus.index', ['player' => $workspace['player']->id ?? null]) }}">Choose another player</a>
+      </nav>
+    </x-slot:navigation>
   </x-player-workspace-header>
-  @unless($membershipStatusOnly)<x-player-plus-stepper :current="3" />@endunless
+  @if($showCheckout)<x-player-plus-stepper :current="3" />@endif
   @if($errors->any())
     <section class="alert alert-danger pp-error-summary" role="alert" aria-labelledby="pp-error-heading"><h2 class="h6" id="pp-error-heading">Please review your checkout details</h2><ul class="mb-0">@foreach($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul></section>
   @endif
-  @if($readiness)
-    <section class="pp-status text-body" aria-label="Rating availability" data-plus-readiness="{{ $readiness['state'] }}"><h2>{{ $readiness['label'] }}</h2><p>{{ $readiness['description'] }}</p></section>
-  @endif
-  <div class="pp-layout">
     <section class="pp-checkout" aria-label="Player Plus membership and checkout">
       @unless($linked)<p class="pp-sponsor-note"><strong>You are sponsoring {{ $player->name }}.</strong> Only the player and accounts already linked to them can use their private Player Plus benefits. Payment does not link the player to your account.</p>@endunless
       @if($purchaseBlocked ?? false)
@@ -46,7 +85,14 @@
         <p class="alert alert-success">This player is covered until {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer can manage automatic renewal in My Plus orders.@else This existing once-off term has no automatic renewal or charge.@endif</p>
       @else
         @if($membership && $linked)<p class="alert alert-secondary">Membership expired on {{ $membership->ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }}. @if($membership->order?->isRecurring())The payer should check payment and renewal status in My Plus orders.@else No renewal payment has been taken automatically.@endif</p>@endif
-        @if($enabled && \App\Services\Performance\PlayerPlusService::monthlyReady())
+        @unless($showCheckout)
+          <section class="pp-status pp-paused" aria-label="Purchases paused"><h2>Purchases are paused</h2><p>New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p></section>
+        @endunless
+      @endif
+      @if($readiness)
+        <section class="pp-status" aria-label="Rating availability" data-plus-readiness="{{ $readiness['state'] }}"><h2>{{ $readiness['label'] }}</h2><p>{{ $readiness['description'] }}</p></section>
+      @endif
+      @if($showCheckout)
           <section class="pp-plan-choices" data-plus-plan-choices hidden aria-labelledby="pp-plan-heading">
             <h2 id="pp-plan-heading" tabindex="-1">Choose a plan</h2>
             <p>For {{ $player->full_name }} · One named player</p>
@@ -119,15 +165,11 @@
           @else
             <p class="pp-plan-availability">Monthly purchases are currently unavailable. Annual PayFast and once-off wallet options are available above.</p>
           @endif
-        @else
-          <section class="pp-status" aria-label="Purchases paused"><h2>Purchases are paused</h2><p>New purchases are currently paused. Existing verified memberships keep their benefits until expiry.</p></section>
-        @endif
       @endif
     </section>
-  </div>
-  <p class="small">To stop a PayFast subscription, open <strong>My Plus orders</strong> from My Profile or your player dashboard, choose the order, then <strong>Stop automatic renewal</strong>. Only the payer can cancel. Paid access continues until expiry. Once-off wallet purchases have no renewal to cancel.</p>
-  <script src="{{ asset('assets/js/player-plus-stepper.js') }}?v={{ filemtime(public_path('assets/js/player-plus-stepper.js')) }}" defer></script>
-  <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}" defer></script>
-  <p class="pp-footer"><a class="{{ $canViewRating ? 'btn btn-primary' : '' }}" href="{{ route('my.tennis', ['player' => ($linked || $canViewRating) ? $player->id : null, 'tab' => $canViewRating ? 'rating' : null]) }}">← Back to My Tennis</a></p>
+  <x-player-plus-renewal-help />
+  @if($showCheckout)
+    <script src="{{ asset('assets/js/player-plus-stepper.js') }}?v={{ filemtime(public_path('assets/js/player-plus-stepper.js')) }}" defer></script>
+  @endif
 </div>
 @endsection

@@ -83,15 +83,16 @@ see the full-list filters below the positions. Rating history links open the
 history section directly. Opponent comparisons remain scoped to eligible
 published fixtures and saved meetings.
 
-Dedicated player views and Plus offer/order/history/details pages use
-`PlayerWorkspaceContext` for the same header. Its selector contains at most 100
+Dedicated player views and Plus order/history/details pages use
+`PlayerWorkspaceContext` for the shared header. Its selector contains at most 100
 existing related profiles, retaining an explicitly selected related player.
 The selector's labelled View action opens My Tennis; it never changes an order,
 checkout player or payer. Route-bound players and the payer's order player remain
 authoritative over query parameters. Generic billing pages accept a `player`
 navigation query only for an existing relationship. Unrelated sponsors receive
-neither a private snapshot nor private player-view links. Pathway and entitled
-offer headers reuse the history already read for their page content/readiness.
+neither a private snapshot nor private player-view links. The named-player
+offer uses a compact membership header and links authorized viewers to their
+rating in My Tennis.
 
 Locked navigation carries an allowlisted feature key (`record`, `opponents`,
 `pathway`, `events`, `rating`) and the selected player to My Tennis. Each click,
