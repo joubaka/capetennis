@@ -39,6 +39,18 @@
     }
     .ctr-history .ctr-overview-snapshot h3 { color:#fff;font-size:1rem;margin:0 0 .5rem; }
     .ctr-history .ctr-overview-snapshot p { margin:.35rem 0 0;color:#e0ebf5;font-size:.875rem; }
+    .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-trend { width:100%;max-width:42rem;margin:1rem 0 .5rem; }
+    .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-trend svg { height:auto; }
+    .ctr-history .ctr-overview-snapshot figcaption { color:#e0ebf5;font-size:.8125rem; }
+    .ctr-history .ctr-overview-snapshot .ct-rating-snapshot:has([data-rating-mini-trend]) { display:block; }
+    .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-score { flex-direction:row;flex-wrap:wrap;align-items:center; }
+    @media(min-width:768px) {
+      .ctr-history .ctr-overview-snapshot .ct-rating-snapshot:has([data-rating-mini-trend]) {
+        display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:.5rem 1.5rem;align-items:start;
+      }
+      .ctr-history .ctr-overview-snapshot .ct-rating-snapshot > :is(h3,p) { grid-column:1 / -1; }
+      .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-trend { margin:0; }
+    }
     @media(max-width:767.98px) { .ctr-history .ctr-section-tabs .nav-link { padding:.4rem .25rem;font-size:.8rem; } }
     .ctr-history .ctr-heading { display:flex;flex-wrap:wrap;justify-content:space-between;gap:.75rem;align-items:center; }
     .ctr-history .ctr-stats { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin:1.25rem 0; }
@@ -104,7 +116,7 @@
   <div class="tab-pane {{ $activeRatingSection === 'compare' ? 'active show' : '' }}" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
     @if($ratingFragment)
       <div class="ctr-overview-snapshot">
-        @include('frontend.my-tennis.rating-snapshot')
+        @include('frontend.my-tennis.rating-snapshot', ['expandedTrend' => true])
       </div>
     @endif
     @include('frontend.my-tennis.rating-top-ten')
