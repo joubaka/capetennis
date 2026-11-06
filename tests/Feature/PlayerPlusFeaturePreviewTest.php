@@ -19,7 +19,8 @@ class PlayerPlusFeaturePreviewTest extends TestCase
         $this->mock(PlayerPlusRecordService::class)->shouldNotReceive('forPlayer');
         foreach (['record' => 'Playing Record', 'opponents' => 'Opponent Insights', 'pathway' => 'Tennis pathway', 'events' => 'Past-event ratings', 'rating' => 'Player rating'] as $feature => $title) {
             $response = $this->actingAs($user)->get(route('my.tennis.feature-preview', ['player' => $player, 'feature' => $feature]))
-                ->assertOk()->assertSee($title)
+                ->assertOk()->assertSee($title)->assertSee('Blurred example')
+                ->assertSee('data-plus-sample', false)
                 ->assertSee('View membership and availability')->assertDontSee('data-plus-preview-link', false)
                 ->assertHeader('Cache-Control', 'no-store, private');
             $this->assertMatchesRegularExpression('/<article[^>]*data-plus-feature-panel="'.$feature.'"(?![^>]* hidden)[^>]*>/', $response->getContent());

@@ -49,14 +49,20 @@ class MyTennisDashboardIntegrationTest extends TestCase
         $sibling = Player::factory()->create(['userId' => $user->id, 'email' => 'second-player@example.test']);
         $this->actingAs($user);
         $standard = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()
-            ->assertSee('Date of birth')->assertSee('Edit profile')->assertSee('Explore Player Plus')
+            ->assertSee('Date of birth')->assertSee('Edit profile')->assertSee('Preview Plus')
             ->assertDontSee('data-plus-locked-navigation', false)->assertDontSee('data-rating-mini-trend', false)
             ->assertDontSee(route('my.tennis.record', $player), false);
+        foreach (['rating', 'record', 'opponents', 'pathway'] as $feature) {
+            $standard->assertSee(route('my.tennis.feature-preview', ['player' => $player, 'feature' => $feature]), false);
+        }
         $this->assertTabTargets($standard->getContent());
         $dom = new \DOMDocument; @$dom->loadHTML($standard->getContent()); $xpath = new \DOMXPath($dom);
         $this->assertSame(1, $xpath->query('//*[@data-player-profile-header]//select[@id="my-tennis-player"]')->length);
         $this->assertSame(1, $xpath->query('//*[@data-player-profile-header]//*[@id="my-tennis-tabs"]')->length);
         $this->export('standard', $standard);
+        if (getenv('CT_DASHBOARD_QA_HTML') === '1') {
+            $this->export('plus-preview', $this->get(route('my.tennis.feature-preview', ['player' => $player, 'feature' => 'rating']))->assertOk());
+        }
         $this->get(route('my.tennis.record', $player))->assertForbidden();
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $plus = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()
@@ -74,7 +80,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
             ->assertSee(route('my.tennis.event-history', $player), false)
             ->assertDontSee('aria-label="Player Plus views"', false));
         $this->get(route('my.tennis', ['player' => $sibling->id]))->assertOk()
-            ->assertSee('second-player@example.test')->assertSee('Explore Player Plus')
+            ->assertSee('second-player@example.test')->assertSee('Preview Plus')
             ->assertDontSee(route('my.tennis.record', $sibling), false);
         $this->export('manage', $this->get(route('my.tennis', ['tab' => 'manage']))->assertOk()
             ->assertSee('Manage player profiles')->assertSee('data-player-row="'.$sibling->id.'"', false)

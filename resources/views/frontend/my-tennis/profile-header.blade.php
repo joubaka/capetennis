@@ -18,7 +18,7 @@
     @elseif(in_array($workspaceTab ?? 'profile', ['profile', 'activity', 'manage'], true))
       <div class="ct-my-tennis-rating-badge" data-profile-plus-preview>
         <x-ctr-mark size="heading" />
-        <a href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => $headerPlayer->id]) : route('player-plus.player', $headerPlayer) }}">Explore Player Plus</a>
+        <a class="btn btn-sm btn-outline-primary" href="{{ route('my.tennis.feature-preview', ['player' => $headerPlayer, 'feature' => 'rating']) }}">Preview Plus</a>
       </div>
     @endif
   @endif

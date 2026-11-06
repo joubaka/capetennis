@@ -274,14 +274,14 @@ class PlayerPathwayTest extends TestCase
         Gate::define('player-premium-rating', function ($user, $candidate) use (&$entitled) { return $entitled && $candidate->id === 1; });
         $this->actingAs($this->actor(10, false));
         $locked = $this->get(route('my.tennis', ['player' => 1]))->assertOk()
-            ->assertSee('data-profile-plus-preview', false)->assertSee('Explore Player Plus')->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false)
+            ->assertSee('data-profile-plus-preview', false)->assertSee('Preview Plus')->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false)
             ->assertDontSee('id="my-tennis-rating-tab"', false)->assertDontSee('data-rating-preview', false)
             ->assertDontSee('data-rating-url=', false);
         $this->assertTrue($locked->headers->hasCacheControlDirective('private'));
         $this->assertTrue($locked->headers->hasCacheControlDirective('no-store'));
         $entitled = true;
         $this->get(route('my.tennis', ['player' => 1]))->assertOk()->assertSee('aria-label="CTR 67.9 · Green/Yellow ball"', false)
-            ->assertDontSee('Explore Player Plus')->assertSee('tab=rating', false)->assertDontSee('data-rating-preview', false)
+            ->assertDontSee('Preview Plus')->assertSee('tab=rating', false)->assertDontSee('data-rating-preview', false)
             ->assertDontSee('data-rating-url=', false);
         // Entitlement to this player does not allow an unlinked viewer to load the badge.
         $this->actingAs($this->actor(30, false));
