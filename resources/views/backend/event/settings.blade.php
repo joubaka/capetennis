@@ -264,7 +264,7 @@
       <span>Send result emails for this event</span>
       <span class="badge bg-label-secondary" data-result-state="result-notifications-enabled">{{ $event->result_notifications_enabled ? 'On' : 'Off' }}</span>
     </label>
-    <p class="small text-muted">Email players and linked parents when a completed, published result is entered or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
+    <p class="small text-muted">Result emails to players and linked parents are scheduled for {{ \App\Services\MatchResultNotificationService::SEND_DELAY_MINUTES }} minutes after a completed, published result is saved or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
     <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
       <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" {{ ($event->result_auto_refresh_enabled ?? true) ? 'checked' : '' }}>
       <span>Automatically refresh results and standings pages</span>

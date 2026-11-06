@@ -61,7 +61,8 @@ class PlayerPlusDirectCheckoutTest extends TestCase
         $this->assertDatabaseCount('player_plus_orders', 0);
         $response = $this->post($url, $data)->assertOk()->assertViewIs('frontend.player-plus.launch')
             ->assertHeader('Cache-Control', 'no-store, private')->assertSee('data-plus-payfast-launch', false)
-            ->assertSee('player-plus-checkout.js')->assertSee('name="amount" value="699.00"', false);
+            ->assertSee('player-plus-checkout.js')->assertSee('name="amount" value="699.00"', false)
+            ->assertDontSee('assets/js/main.js', false)->assertDontSee('code.jquery.com', false);
         $order = PlayerPlusOrder::sole();
         $response->assertSee(e(route('player-plus.orders.return', $order)), false)->assertSee(e(route('player-plus.orders.show', $order)), false);
         $this->assertNotNull($order->payfast_handed_off_at);

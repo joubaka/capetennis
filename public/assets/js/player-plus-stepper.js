@@ -6,7 +6,29 @@
   const forms = [...page.querySelectorAll('[data-plus-plan]')];
   const steps = [...page.querySelectorAll('[data-plus-step]')];
   const backStep = page.querySelector('[data-plus-step-back]');
+  let pendingButton;
+  let pendingLabel;
+  forms.forEach(form => {
+    form.addEventListener('submit', event => {
+      if (pendingButton) {
+        event.preventDefault();
+        return;
+      }
+      if (!form.querySelector('[name="recurring_consent"]')) return;
+      pendingButton = form.querySelector('button[type="submit"], button:not([type])');
+      pendingLabel = pendingButton.textContent;
+      pendingButton.disabled = true;
+      pendingButton.textContent = 'Opening PayFast…';
+    });
+  });
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted || !pendingButton) return;
+    pendingButton.disabled = false;
+    pendingButton.textContent = pendingLabel;
+    pendingButton = null;
+  });
   function show(plan, focus = true) {
+    if (pendingButton) return;
     const selected = forms.find(form => form.dataset.plusPlan === plan);
     choices.hidden = Boolean(selected);
     forms.forEach(form => {

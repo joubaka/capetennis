@@ -507,7 +507,7 @@ class SeriesController extends Controller
    abort_unless((int) $event->series_id === (int) $series->id, 403);
 
     // 1️⃣ Copy event
-    $newEvent = $event->replicate();
+    $newEvent = $event->replicate(['result_notifications_enabled']);
 
     $newEvent->start_date = $event->start_date;
     $newEvent->end_date = $event->end_date;

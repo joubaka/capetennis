@@ -339,6 +339,8 @@ Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->n
 // Event viewing remains public. Every event-management action requires an
 // authenticated user and is additionally authorized in EventController.
 Route::resource('events', EventController::class)->only(['index', 'show']);
+Route::get('announcement-inbox', \App\Http\Controllers\Frontend\AnnouncementInboxController::class)
+  ->middleware('auth')->name('announcement-inbox');
 Route::get('events/{event}/documents/{file}', [FileController::class, 'publicShow'])
   ->name('events.documents.show');
 Route::resource('events', EventController::class)

@@ -15,7 +15,7 @@ class EventResultControlsTest extends TestCase
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('super-user');
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['result_notifications_enabled' => false]);
         $other = Event::factory()->create();
         $this->assertFalse($event->fresh()->result_notifications_enabled);
         $this->assertTrue($event->fresh()->result_auto_refresh_enabled);
@@ -31,7 +31,7 @@ class EventResultControlsTest extends TestCase
         $this->patchJson(route('admin.events.settings.update', $event), ['name' => 'Updated event'])->assertOk();
         $this->assertTrue($event->fresh()->result_notifications_enabled);
         $this->assertFalse($event->fresh()->result_auto_refresh_enabled);
-        $this->assertFalse($other->fresh()->result_notifications_enabled);
+        $this->assertTrue($other->fresh()->result_notifications_enabled);
         $this->assertTrue($other->fresh()->result_auto_refresh_enabled);
         $this->patchJson(route('admin.events.settings.update', $event), ['result_notifications_enabled' => false])->assertOk();
         $this->assertFalse($event->fresh()->result_notifications_enabled);
@@ -43,7 +43,7 @@ class EventResultControlsTest extends TestCase
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('admin');
-        $event = Event::factory()->create();
+        $event = Event::factory()->create(['result_notifications_enabled' => false]);
         $this->actingAs($admin)->patchJson(route('admin.events.settings.update', $event), [
             'result_notifications_enabled' => true, 'result_auto_refresh_enabled' => false,
         ])->assertForbidden();

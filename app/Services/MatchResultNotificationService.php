@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 
 final class MatchResultNotificationService
 {
+    public const SEND_DELAY_MINUTES = 30;
+
     public function record(Fixture|TeamFixture $fixture): void
     {
         DB::transaction(function () use ($fixture): void {
@@ -33,7 +35,7 @@ final class MatchResultNotificationService
                 ]);
                 // Use the durable queue even when the web application's default is sync.
                 SendMatchResultNotification::dispatch($notification->id)->onConnection('database')
-                    ->delay(now()->addMinutes(30))->afterCommit();
+                    ->delay(now()->addMinutes(self::SEND_DELAY_MINUTES))->afterCommit();
             }
         });
     }

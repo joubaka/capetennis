@@ -108,6 +108,10 @@
   .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.2vw, 2rem); font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-bottom: .65rem !important; }
   .home-ctr h2 span { color: #ffb45b; }
   .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
+  .home-ctr-benefits { color: #e4efff; margin: .55rem 0 0; padding-inline-start: 1.15rem; }
+  .home-ctr-benefits li + li { margin-top: .3rem; }
+  .home-ctr p.home-ctr-availability { border-top: 1px solid rgba(228,239,255,.3); margin-top: .8rem; padding-top: .7rem; }
+  .home-ctr-availability strong { color: #ffca8b; }
   .home-ctr { row-gap: 0; }
   .home-ctr-copy { min-width: 0; }
   .home-ctr-examples { grid-column: 1; }
@@ -174,7 +178,19 @@
       <div class="home-ctr-copy">
         <x-player-plus-coming-soon class="mb-2" />
         <h2 class="h4 mb-1" id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
-        <p>Player Plus · What should I play next? Follow your rating and progress, check an eligible opponent’s rating, and explore the pathway from Red Ball to Yellow Ball and TSA events.</p>
+        <p>Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
+        <ul class="home-ctr-benefits">
+          <li>Track your rating and see how it changes over time.</li>
+          <li>Compare with eligible opponents.</li>
+          <li>Explore the pathway from Red Ball and Orange Ball to Yellow Ball and TSA events.</li>
+        </ul>
+        <p class="home-ctr-availability">
+          @if(\App\Services\Performance\PlayerPlusService::salesEnabled())
+            <strong>Player Plus is available.</strong> Unlock CTR insights for a player by activating their Player Plus membership.
+          @else
+            <strong>Part of Player Plus.</strong> CTR insights unlock when a player's Player Plus membership is activated. Sign-ups are currently closed.
+          @endif
+        </p>
       </div>
       <div class="home-ctr-examples">
         <div class="home-ctr-badges" role="group" aria-label="Example CTR badges">

@@ -16,9 +16,9 @@
             <button type="button" class="btn btn-sm btn-outline-secondary ms-auto" data-announcement-close>Close</button>
           </div>
           @foreach($event->announcements as $announcement)
-            <details class="event-announcement border rounded p-3 mb-2" data-announcement
+            <details id="event-announcement-{{ $announcement->id }}" class="event-announcement border rounded p-3 mb-2" data-announcement
               data-posted-at="{{ $announcement->created_at?->getTimestampMs() }}"
-              data-revision="{{ $announcement->id }}:{{ hash('sha256', $announcement->title.'|'.$announcement->message) }}">
+              data-revision="{{ $announcement->readRevision() }}">
               <summary class="event-announcement-title">
                 <span>{{ filled($announcement->title) ? $announcement->title : 'Event update' }}</span>
                 <span class="badge bg-label-success" data-announcement-badge>New</span>
@@ -70,11 +70,10 @@
         outline: 2px solid var(--announcement-accent);
         outline-offset: 2px;
       }
-      [data-announcement-menu-badge] { color: #fff; background: #146c43; }
-      [data-announcement-menu-badge][data-recent-unread] { background: #9c3f00; }
       .event-announcements summary { cursor: pointer; }
       .event-announcements [data-announcement-toggle] { white-space: normal; min-height: 44px; text-align: left; }
       .event-announcement-title { overflow-wrap: anywhere; font-weight: 600; }
+      .event-announcement { scroll-margin-top: 6rem; }
       .event-announcement-title .badge { margin-left: .5rem; }
       .event-announcements .event-information-content { overflow-wrap: anywhere; overflow-x: auto; }
       .event-announcements .event-information-content img { max-width: 100%; height: auto; }
@@ -84,6 +83,6 @@
         .event-announcements h5 { font-size: 1rem; }
       }
     </style>
-    <script src="{{ asset('assets/js/event-announcements.js') }}?v={{ filemtime(public_path('assets/js/event-announcements.js')) }}" defer></script>
   @endonce
+  @include('layouts.sections.announcement-script')
 @endif

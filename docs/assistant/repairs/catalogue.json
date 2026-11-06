@@ -313,11 +313,11 @@
       "id": "RK-008",
       "title": "Player Plus requires repeated checkout clicks and manual navigation after verified payment",
       "scope": "Player Plus consent-to-PayFast handoff and payer-only return navigation; no provider payment execution from this guide.",
-      "symptoms": "A payer confirms purchase, then repeats Pay and Continue to PayFast; returning after payment requires navigating through membership details to ratings.",
-      "cause": "Purchase creation, canonical handoff and signed form submission were separate screens, and the provider returned to the billing receipt.",
-      "fix": "Use the direct consent workflow: canonical start, accurate immutable-price and plan comparison, current matching terms audit, then canonical handoff under the same transaction. Render the signed POST bridge with one automatic submission and a visible manual fallback. Reused mismatched or already handed-off attempts stay on their saved order review without repricing, repeat handoff or false new acceptance. The dedicated read-only provider return checks completed verified paid flags, an active purchased term, absence of reconciliation, real player linkage and entitlement before opening My Tennis's rating tab. Pending returns use bounded read-only status checks with request timeouts; sponsors and closed or review cases retain their receipt.",
-      "verification": "On 2026-11-02 all six scoped Player Plus feature classes passed against guarded local MySQL ct_testing: 77 tests, 743 assertions. Six JavaScript tests passed for one-shot fake-form submission, manual fallback, bounded polling, timeout recovery and safe destination handling. No provider or live payment was initiated.",
-      "limits": "Both explicit purchase and recurring consents, exact saved amounts, payer ownership, idempotency, five-minute expiry, signature and COMPLETE verification remain mandatory. Provider return query parameters never activate membership. Normal order receipts and renewal management remain accessible. This guide authorizes no production action, payment or deployment.",
+      "symptoms": "A payer confirms purchase, then repeats Pay and Continue to PayFast, or a repeat submission redirects the payer to a pending order during handoff. Returning after payment can require navigating through membership details to ratings.",
+      "cause": "Purchase creation and signed handoff originally required separate screens. A second review POST during an in-flight handoff can replace the first navigation with the pending order receipt. The shared dashboard layout also loads assets the handoff does not need.",
+      "fix": "Use the direct consent workflow: canonical start, accurate immutable-price and plan comparison, current matching terms audit, then canonical handoff under the same transaction. Lock the recurring review submit button during navigation and use a standalone signed POST bridge with automatic submission and a visible manual fallback. Reused mismatched or already handed-off attempts stay on their saved order review without repricing, repeat handoff or false new acceptance. The read-only provider return checks completed verified paid flags, an active purchased term, absence of reconciliation, real player linkage and entitlement before opening My Tennis's rating tab. Pending returns use bounded read-only status checks with request timeouts; sponsors and closed or review cases retain their receipt.",
+      "verification": "Isolated Plus and registration regression tests verify the signed standalone handoff and immutable order on replay. Local browser fixtures verify that a pending review blocks a second submit and plan changes, and that back-forward restoration unlocks the form. No payment was completed.",
+      "limits": "An order marked handed off establishes app state only. Compare the first checkout POST and any repeat in the access log and look for independent PayFast evidence before attributing a pending order to provider rejection. Preserve both explicit consents, exact amounts, payer ownership, idempotency, five-minute expiry, signature and COMPLETE verification. Provider return query parameters never activate membership. This guide authorizes no production action, payment or deployment.",
       "assistant_action": "guide_only",
       "sources": [
         "app/Http/Controllers/Frontend/PlayerPlusController.php",
@@ -325,7 +325,8 @@
       ],
       "tests": [
         "tests/Feature/PlayerPlusDirectCheckoutTest.php",
-        "tests/Feature/PlayerPlusMonthlyTest.php"
+        "tests/Feature/PlayerPlusMonthlyTest.php",
+        "tests/Browser/player-plus-stepper.cjs"
       ]
     },
     {

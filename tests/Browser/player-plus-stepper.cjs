@@ -89,6 +89,29 @@ const fixture = name => fs.readFileSync(path.join(root, `storage/framework/testi
       }
     }
     assert.equal(posts, 0, 'choosing and reviewing plans creates no checkout or payment');
-    console.log('Player Plus stepper passed at 320, 390, 768 and 1440px. No POSTs made.');
+    await page.setContent(fixture('player-monthly'), { waitUntil: 'networkidle' });
+    await page.addScriptTag({ content: script });
+    await page.locator('[data-plus-choose="monthly"]').click();
+    const monthly = page.locator('[data-plus-plan="monthly"]');
+    await monthly.locator('[name="confirm"]').check();
+    await monthly.locator('[name="recurring_consent"]').check();
+    const prevented = await monthly.evaluate(form => {
+      const results = [];
+      form.addEventListener('submit', event => {
+        results.push(event.defaultPrevented);
+        event.preventDefault();
+      });
+      form.requestSubmit();
+      form.requestSubmit();
+      return results;
+    });
+    assert.deepEqual(prevented, [false, true], 'only the first valid payment submission can navigate');
+    assert.equal(await monthly.getByRole('button', { name: 'Opening PayFast…' }).isDisabled(), true);
+    await monthly.locator('[data-plus-change-plan]').click();
+    assert.equal(await monthly.isVisible(), true, 'a plan change cannot interrupt the pending submission');
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+    assert.equal(await monthly.getByRole('button', { name: /Continue to PayFast/ }).isEnabled(), true);
+    assert.equal(posts, 0, 'submission checks never contact the provider');
+    console.log('Player Plus stepper and duplicate-submit guard passed at local browser QA. No POSTs made.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

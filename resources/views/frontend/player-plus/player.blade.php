@@ -122,7 +122,7 @@
     </section>
   </div>
   <p class="small">To stop a PayFast subscription, open <strong>My Plus orders</strong> from My Profile or your player dashboard, choose the order, then <strong>Stop automatic renewal</strong>. Only the payer can cancel. Paid access continues until expiry. Once-off wallet purchases have no renewal to cancel.</p>
-  <script src="{{ asset('assets/js/player-plus-stepper.js') }}" defer></script>
+  <script src="{{ asset('assets/js/player-plus-stepper.js') }}?v={{ filemtime(public_path('assets/js/player-plus-stepper.js')) }}" defer></script>
   <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}" defer></script>
   <p class="pp-footer"><a class="{{ $canViewRating ? 'btn btn-primary' : '' }}" href="{{ route('my.tennis', ['player' => ($linked || $canViewRating) ? $player->id : null, 'tab' => $canViewRating ? 'rating' : null]) }}">← Back to My Tennis</a></p>
 </div>

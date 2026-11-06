@@ -21,6 +21,12 @@ class Announcement extends Model
   {
     return $this->belongsTo(Event::class);
   }
+
+  public function readRevision(): string
+  {
+    return $this->id.':'.hash('sha256', $this->title.'|'.$this->message);
+  }
+
   public function getIsHiddenAttribute(): bool
   {
     return $this->trashed();
