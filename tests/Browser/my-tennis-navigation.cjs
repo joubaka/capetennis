@@ -29,6 +29,7 @@ async function run() {
       const ratingWarmup = new Promise(resolve => { finishRatingWarmup = resolve; });
       let documentLoads = 0;
       let ratingFragmentLoads = 0;
+      let liveScore = '6–2';
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', async route => {
         const request = route.request();
@@ -65,6 +66,10 @@ async function run() {
         if (url.pathname.endsWith('/rating') && request.headers()['x-requested-with'] === 'XMLHttpRequest') {
           ratingFragmentLoads++;
           return route.fulfill({ contentType: 'text/html', body: fixture('rating-fragment') });
+        }
+        if (url.pathname.endsWith('/live-results')) {
+          return route.fulfill({contentType: 'text/html', body:
+            `<section data-my-tennis-live-results="${url.pathname}"><h2>Recent results</h2><p>${liveScore}</p></section>`});
         }
         if (url.pathname.endsWith('/match-reminder')) return route.fulfill({ json: { players: [] } });
         const asset = path.resolve(publicRoot, '.' + url.pathname);
@@ -137,6 +142,11 @@ async function run() {
         }
         await active(name);
         if (name === 'Results') {
+          const live = workspace.locator('[data-my-tennis-live-results]');
+          await live.getByText('6–2', {exact: true}).waitFor();
+          liveScore = '7–5';
+          await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+          await live.getByText('7–5', {exact: true}).waitFor();
           const chart = workspace.getByRole('region', { name: 'Recorded matches by month' });
           await chart.getByText('Monthly counts and match links').click();
           const october = chart.getByRole('link', { name: 'Oct 2026' });

@@ -169,6 +169,8 @@ class PlayerPlusRecordTest extends TestCase
         $service = Mockery::mock(PlayerPlusRecordService::class);
         $service->shouldReceive('forPlayer')->once()->with($player, ['year' => 2026], false)->andReturn($this->record([$this->row()]));
         $this->app->instance(PlayerPlusRecordService::class, $service);
+        $this->mock(\App\Services\Performance\PlayerLiveResults::class)->shouldReceive('forPlayer')
+            ->once()->with($user, $player)->andReturn(collect());
         $this->mock(\App\Services\PlayerWorkspaceContext::class)->shouldReceive('forPlayer')->once()->with($user, $player)->andReturn([]);
         $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldNotReceive('forMatchPlayers');
         $path = storage_path('framework/testing/record-layout-'.bin2hex(random_bytes(5)));
@@ -179,7 +181,7 @@ class PlayerPlusRecordTest extends TestCase
         try {
             $response = app(\App\Http\Controllers\Frontend\MyTennisController::class)->playingRecord($request, $player);
             $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
-            $this->assertStringContainsString('Results', $response->getContent());
+            $this->assertStringContainsString('Latest results', $response->getContent());
         } finally { \Illuminate\Support\Facades\File::deleteDirectory($path); }
     }
 

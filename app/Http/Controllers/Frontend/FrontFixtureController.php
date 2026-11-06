@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Frontend;
 
 use App\Services\Draw\CapeTennisDraw;
+use App\Services\Draw\PublicDrawResultsRevision;
 use App\Http\Controllers\Controller;
 use App\Models\Draw;
 use App\Models\Player;
@@ -171,16 +172,37 @@ class FrontFixtureController extends Controller
 
 
 
-  public function drawFixtures($id)
+  public function drawFixtures(Request $request, $id)
   {
     // Load draw + event
     $draw = Draw::with('event')->findOrFail($id);
 
-    app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
+    $liveMode = $request->header('X-Draw-Live');
+    $liveResultsFragment = $liveMode === 'fragment';
+    $revisionRequest = $liveMode === 'revision';
+    $user = $request->user();
+    $visibility = app(PublicTournamentVisibility::class);
+    $visibility->ensureDrawIsVisible($draw, $liveResultsFragment || $revisionRequest ? null : $user);
 
     // Resolve the base format semantically so event type database ids can vary.
     $isTeamEvent = ! $draw->event?->isInterprovincialTrials() && ($draw->event?->isTeam()
       || (! $draw->event?->isIndividual() && (int) $draw->event?->eventType === 3));
+
+    $canPreview = $user?->can('view', $draw) ?? false;
+    $autoRefresh = $draw->event->result_auto_refresh_enabled ?? true;
+    if ($liveResultsFragment || $revisionRequest) {
+      abort_if($canPreview, 403);
+      if ($revisionRequest) {
+        return response()->json([
+          'enabled' => $autoRefresh,
+          'revision' => $autoRefresh ? app(PublicDrawResultsRevision::class)->forDraw($draw, $isTeamEvent) : null,
+        ])->header('Cache-Control', 'private, no-store');
+      }
+    }
+    $liveResultsRevision = $draw->published && ! $canPreview && $autoRefresh && ! $liveResultsFragment
+      && ($user === null || $visibility->eventIsVisible($draw->event))
+      ? app(PublicDrawResultsRevision::class)->forDraw($draw, $isTeamEvent)
+      : null;
 
     // ---------------------------------------------------------
     // FIXTURE LOADERS
@@ -197,7 +219,7 @@ class FrontFixtureController extends Controller
         'region2Name'
       ])
         ->where('draw_id', $id)
-        ->when(!auth()->user()?->can('view', $draw), fn ($query) => $query->publicDrawFixtures())
+        ->when(! $canPreview, fn ($query) => $query->publicDrawFixtures())
         ->inPlayOrder()
         ->get();
 
@@ -220,14 +242,17 @@ class FrontFixtureController extends Controller
     $this->hidePrivateSchedule($draw, $fixtures);
     if ($isTeamEvent) {
       $fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures);
-      app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: !auth()->user()?->can('view', $draw));
+      app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures, publicDraw: ! $canPreview);
     }
     
     // ---------------------------------------------------------
     // Empty fixtures
     // ---------------------------------------------------------
     if ($fixtures->isEmpty()) {
-      return view('frontend.fixture.empty', ['draw' => $draw, 'event' => $draw->event]);
+      return response()->view('frontend.fixture.empty', [
+        'draw' => $draw, 'event' => $draw->event, 'liveResultsRevision' => $liveResultsRevision,
+        'liveResultsFragment' => $liveResultsFragment, 'isTeamEvent' => $isTeamEvent,
+      ])->header('Cache-Control', 'private, no-store');
     }
 
     // ---------------------------------------------------------
@@ -237,12 +262,14 @@ class FrontFixtureController extends Controller
       'fixtures' => $fixtures,
       'draw' => $draw,
       'event' => $draw->event,
+      'liveResultsRevision' => $liveResultsRevision,
+      'liveResultsFragment' => $liveResultsFragment,
     ];
 
     // ---------------------------------------------------------
     // ADMIN / CONVENOR VIEW
     // ---------------------------------------------------------
-    if (Auth::check()) {
+    if (! $liveResultsFragment && Auth::check()) {
       $user = auth()->user();
       $eventId = $draw->event?->id;
 
@@ -261,11 +288,10 @@ class FrontFixtureController extends Controller
     // ---------------------------------------------------------
     // FRONTEND VIEWS
     // ---------------------------------------------------------
-    if ($isTeamEvent) {
-      return view('frontend.fixture.draw-fixtures-show-team', $data);
-    }
-
-    return view('frontend.fixture.draw-fixtures-show', $data);
+    return response()->view(
+      $isTeamEvent ? 'frontend.fixture.draw-fixtures-show-team' : 'frontend.fixture.draw-fixtures-show',
+      $data,
+    )->header('Cache-Control', 'private, no-store');
   }
 
   public function drawFixturesRound($event, $var, $type)
@@ -314,7 +340,13 @@ class FrontFixtureController extends Controller
 
   private function hidePrivateSchedule(Draw $draw, $fixtures): void
   {
-    app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixtures);
+    if ($fixtures->isEmpty()) {
+      return;
+    }
+
+    $schedule = app(\App\Services\Scheduling\SchedulePublicationService::class);
+    $rows = $schedule->publishedRows($draw->event, includeParticipants: false, drawId: $draw->id);
+    $schedule->projectFixtures($fixtures, $rows);
   }
 
   public function saveScore(Request $request, TeamFixture $fixture)

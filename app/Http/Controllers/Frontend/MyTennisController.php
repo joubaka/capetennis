@@ -127,6 +127,12 @@ class MyTennisController extends Controller
         $upcoming = $section === 'opponents' ? app(\App\Services\Performance\PlayerUpcomingMatchInsights::class)
             ->forPlayer($request->user(), $player, (int) ($filters['upcoming_page'] ?? 1)) : null;
         $record = app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer($player, $filters, $request->user()->hasRole('super-user'));
+        $liveResultsPrefetch = $section === 'record' && $request->prefetch();
+        $liveResults = null;
+        if ($section === 'record') {
+            $liveResults = $liveResultsPrefetch ? collect()
+                : app(\App\Services\Performance\PlayerLiveResults::class)->forPlayer($request->user(), $player);
+        }
         $pastRatings = [];
         if ($section === 'opponents') {
             $opponentIds = collect($record['opponents']['rows'] ?? [])->pluck('id')
@@ -137,10 +143,21 @@ class MyTennisController extends Controller
             }
         }
         return response()->view('frontend.my-tennis.playing-record', ['recordPlayer' => $player, 'recordSection' => $section,
-            'upcoming' => $upcoming, 'pastRatings' => $pastRatings,
+            'upcoming' => $upcoming, 'pastRatings' => $pastRatings, 'liveResults' => $liveResults,
+            'liveResultsPrefetch' => $liveResultsPrefetch,
             'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player),
             'record' => $record])
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function liveResults(Request $request, \App\Models\Player $player)
+    {
+        abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
+
+        return response()->view('frontend.my-tennis.record-live-results', [
+            'recordPlayer' => $player,
+            'liveResults' => app(\App\Services\Performance\PlayerLiveResults::class)->forPlayer($request->user(), $player),
+        ])->header('Cache-Control', 'private, no-store');
     }
 
     public function pathwayInfo(Request $request, \App\Models\Player $player, string $stage)

@@ -1,8 +1,8 @@
 # Player Plus records
 
-Playing Record and Opponent Insights are private My Tennis views of existing
-saved match evidence. `MyTennisController::playingRecord()` enforces
-`PlayerRatingAccess` before reading results; purchasing Plus or sponsoring an
+Playing Record and Opponent Insights are private My Tennis views.
+`MyTennisController::playingRecord()` and `liveResults()` enforce
+`PlayerRatingAccess` before reading results. Purchasing Plus or sponsoring an
 entry does not establish a player relationship.
 
 See [dashboard access and integration](player-dashboard-access.md) for reviewed
@@ -10,6 +10,13 @@ new-link rules, retained historical relationships, shared navigation and
 standard-versus-Plus visibility.
 
 ## Evidence scope
+
+Latest results reads completed Cape Tennis fixtures posted or corrected in the
+last seven days. It checks the selected player's fixture assignment and event,
+draw and applicable team tie publication on each read. The visible Results tab
+checks the authorized fragment every 15 seconds. Warmed tabs fetch that fragment
+when opened. The live scores and their posting times are independent of the
+saved match history, season statistics and CTR.
 
 `PlayerRatingHistoryService::recordSource()` applies the existing saved-history
 publication, source-change and TeamSheet context guards. The saved evidence is

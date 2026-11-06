@@ -132,14 +132,11 @@ class EventController extends Controller
       'announcements',
       'files',
       'eventCategories.category',
-      'eventCategories.registrations.players',
-      'eventCategories.categoryEventRegistrations.registration.players',
       'draws.draw_types',
       'draws.venues',
       'draws.settings',
       'draws.settings.drawFormat',
       'draws.flexibleMonrad',
-      'draws.order_of_play.venue',
       'series',
       'eventTypeModel',
     ])->findOrFail($id);
@@ -192,6 +189,11 @@ class EventController extends Controller
 
     if (!$canViewEvent) {
         return response()->view('frontend.event.unavailable', ['event' => $event], 404);
+    }
+
+    $eventView = \App\Support\EventTypePresentation::template($event);
+    if (in_array($eventView, ['individual', 'cavaliers_trials', 'parentChildDoubles'], true)) {
+      $event->loadMissing('eventCategories.categoryEventRegistrations.registration.players');
     }
 
     $regions = $event->regions;
@@ -333,17 +335,16 @@ class EventController extends Controller
     $drawIds = $eventDraws->pluck('id');
     $matchProgress = app(\App\Services\EventMatchProgressService::class)->forEvent($event);
 
-      $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
-      $allPublicIndividualFixtures = Fixture::with('orderOfPlay.venue')->whereIn('draw_id', $drawIds)->get();
-      $pageData->attachDraws($allPublicIndividualFixtures, $allEventDraws);
-      $publication->projectFixtures($allPublicIndividualFixtures);
-      $individualFixturesByDraw = $allPublicIndividualFixtures->groupBy('draw_id');
-      foreach ($eventDraws as $publicDraw) {
-        $publicFixtures = $individualFixturesByDraw->get($publicDraw->id, collect());
-        $publicFixtures = $publicFixtures->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
-        $publicDraw->setRelation('order_of_play', $publicFixtures
-          ->map(fn ($fixture) => $fixture->orderOfPlay)->filter()->sortBy('time')->values());
-      }
+    $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+    $scheduleRows = $eventDraws->isEmpty() ? collect() : $publication->publishedRows($event, includeParticipants: false);
+    $firstIndividualSchedules = $scheduleRows->where('fixture_kind', 'individual')
+      ->groupBy('draw_id')->map(fn ($rows) => $rows->min('scheduled_at'));
+    foreach ($eventDraws as $draw) {
+      $firstTime = $firstIndividualSchedules->get($draw->id);
+      $draw->setRelation('order_of_play', $firstTime === null ? collect() : collect([
+        new \App\Models\OrderOfPlay(['time' => $firstTime]),
+      ]));
+    }
     // Private scoring shortcuts remain available when public times are hidden.
     $scoringVenues = collect();
     if ($canScoreEvent) {
@@ -363,52 +364,31 @@ class EventController extends Controller
     // ---------------------------------------------------------
     $venueFixtureKind = \App\Support\EventTypePresentation::venueFixtureKind($event);
     if ($venueFixtureKind === 'team') {
-      $fixturesPerVenue = TeamFixture::with(['team1', 'team2', 'venue'])
+      $fixturesPerVenue = TeamFixture::query()->without(['teamResults', 'fixturePlayers', 'draw'])
         ->whereIn('draw_id', $drawIds)
         ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())
-        ->orderBy('scheduled_at')
-        ->get();
+        ->get(['id', 'draw_id', 'home_rank_nr', 'rank_nr', 'away_rank_nr', 'round_nr', 'tie_nr', 'rubber_sequence', 'match_nr']);
     } elseif ($venueFixtureKind === 'individual') {
-      $fixturesPerVenue = Fixture::with([
-        'registration1.players',
-        'registration2.players',
-        'venue',
-        'orderOfPlay',
-        'orderOfPlay.venue',
-      ])
+      $fixturesPerVenue = Fixture::query()
         ->whereIn('draw_id', $drawIds)
-        ->orderBy('match_nr')
-        ->orderBy('id')
-        ->get();
+        ->get(['id', 'draw_id', 'play_order', 'round', 'match_nr']);
     } else {
       $fixturesPerVenue = collect();
     }
 
-      $pageData->attachDraws($fixturesPerVenue, $allEventDraws);
-      app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($fixturesPerVenue);
-      $fixturesPerVenue = $fixturesPerVenue->sort(fn ($left, $right) => app(\App\Services\Scheduling\VenueMatchOrder::class)->compare($left, $right))->values();
-      // This page uses these fixtures only for venue/date shortcuts. Detailed
-      // lineups are prepared by the dedicated fixture and scoring pages.
+    // Venue/date links only need timing and ordering data.
+    $pageData->attachDraws($fixturesPerVenue, $allEventDraws);
+    $publication->projectFixtures($fixturesPerVenue, $scheduleRows);
+    $venueOrder = app(\App\Services\Scheduling\VenueMatchOrder::class);
+    $fixturesPerVenue = $fixturesPerVenue->sort($venueOrder->compare(...))->values();
     $fixturesPerVenueGrouped = $fixturesPerVenue
       ->groupBy(fn($fx) => $fx instanceof TeamFixture
         ? ($fx->venue?->name ?? 'Unassigned')
         : ($fx->venue?->name ?? $fx->orderOfPlay?->venue?->name ?? 'Unassigned'));
-
-    // ---------------------------------------------------------
-    // TEAM FIXTURES
-    // ---------------------------------------------------------
-    // The team venue collection already uses this exact draw/visibility scope
-    // and has its public schedule and lineups prepared.
-    if ($venueFixtureKind === 'team') {
-      $teamFixtures = $fixturesPerVenue->sortBy('id')->values();
-    } else {
-      $teamFixtures = TeamFixture::whereIn('draw_id', $drawIds)
-        ->when(! $canPreviewUnpublishedDraws, fn ($query) => $query->publicDrawFixtures())->get();
-      $pageData->attachDraws($teamFixtures, $allEventDraws);
-      app(\App\Services\Scheduling\SchedulePublicationService::class)->projectFixtures($teamFixtures);
-    }
-    $ties = $teamFixtures->groupBy('tie_nr');
-    $rounds = $teamFixtures->groupBy('round_nr');
+    $fixturesByDay = $venueFixtureKind === 'team'
+      ? $fixturesPerVenue->filter(fn ($fixture) => $fixture->scheduled_at)
+        ->groupBy(fn ($fixture) => $fixture->scheduled_at->toDateString())
+      : collect();
 
     // ---------------------------------------------------------
     // USER CLOTHING ORDERS
@@ -455,16 +435,16 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // NOMINATION LOOKUP
     // ---------------------------------------------------------
-    $nomRegisteredLookup = $event->eventCategories
+    $nomRegisteredLookup = $eventView === 'cavaliers_trials' ? $event->eventCategories
       ->flatMap(
         fn($cat) =>
-        $cat->registrations->flatMap(
+        $cat->categoryEventRegistrations->flatMap(
           fn($reg) =>
-          $reg->players->map(fn($p) => $p->id . '-' . $cat->id)
+          $reg->registration?->players->map(fn($p) => $p->id . '-' . $cat->id) ?? []
         )
       )
       ->flip()
-      ->all();
+      ->all() : [];
 
     Log::debug('EVENT SHOW: completed', [
       'event_id' => $event->id,
@@ -490,33 +470,11 @@ class EventController extends Controller
         ->groupBy('category_id');
     }
 
-$fixtures = $teamFixtures;
-$fixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($fixtures->filter(fn ($fixture) => $fixture->scheduled_at));
-
-$fixturesByDay = $fixtures->groupBy(function($fx) {
-    return Carbon::parse($fx->scheduled_at)->toDateString();
-});
-
-$drawsForDay = $fixtures
-    ->map(fn($fx) => $fx->draw)
-    ->filter()
-    ->unique('id')
-    ->sortBy(fn($draw) => $draw->draw_types?->ageCategory ?? '');
-
-$venues = $fixturesPerVenue
-    ->map(fn($fx) => $fx->venue)
-    ->filter()
-    ->unique('id')
-    ->sortBy('name')
-    ->values();
-
 return view('frontend.event.show', compact(
       'matchProgress',
       'fixturesPerVenueGrouped',
-      'regions',
       'fixturesByDay',
-      'rounds',
-      'ties',
+      'regions',
       'eventDraws',
       'clothings',
       'clothingItems',
@@ -541,7 +499,6 @@ return view('frontend.event.show', compact(
       'canEnter',
       'canWithdraw',
       'entryCloseAt',
-      'venues',
       'scoringVenues',
       'categoryResults',
       'entryCount',

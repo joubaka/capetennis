@@ -53,7 +53,11 @@
     }
   </style>
   @include('frontend.my-tennis.profile-header', ['workspaceTab' => $recordSection, 'ratingPlayer' => $recordPlayer])
-  @if($recordSection === 'record' && $record['reason'])<h2 class="h5">Results</h2>@endif
+  @if($recordSection === 'record')
+    @isset($liveResults)
+      @include('frontend.my-tennis.record-live-results')
+    @endisset
+  @endif
   @if($recordSection === 'opponents' && isset($upcoming))
     @include('frontend.my-tennis.record-upcoming')
   @endif
@@ -68,7 +72,7 @@
   @else
     @if($recordSection === 'record')
       <div class="results-toolbar">
-        <h2 class="h5 mb-0">Results</h2>
+        <h2 class="h5 mb-0">Saved match history</h2>
     @endif
     <form method="get" class="record-filter {{ $recordSection === 'opponents' ? 'mb-3' : '' }}" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => $recordSection]) }}{{ $recordSection === 'opponents' ? '#past-opponents' : '' }}">
       @if($record['opponent'] || request()->integer('opponent'))<input type="hidden" name="opponent" value="{{ $record['opponent']['id'] ?? request()->integer('opponent') }}">@endif
@@ -77,7 +81,7 @@
       <button class="btn btn-outline-primary" type="submit">Apply</button>
     </form>
     @if($recordSection === 'record')</div>@endif
-    @if($record['stale'])<p class="record-note" role="status">An update is pending. These are the last saved results.</p>@endif
+    @if($record['stale'])<p class="record-note" role="status">{{ $recordSection === 'record' ? 'The saved history and season stats are waiting for their next update.' : 'An update is pending. These are the last saved results.' }}</p>@endif
     @if(!$record['played'])<div class="record-sheet" role="status">No saved match results for this season.</div>@endif
     @if($recordSection === 'record')
       <div class="results-grid">
@@ -91,7 +95,7 @@
       @endif
       @if($record['form'])
         <div class="results-form">
-          <strong class="record-note">Latest five results</strong>
+          <strong class="record-note">Latest five saved results</strong>
           @foreach($record['form'] as $formMatch)<span class="badge" style="background:{{ $formMatch['won'] ? '#004177' : '#172e45' }};color:#fff" aria-label="{{ $formMatch['won'] ? 'Win' : 'Loss' }} against {{ $formMatch['opponent'] }} on {{ $formMatch['date'] }}">{{ $formMatch['won'] ? 'W' : 'L' }}</span>@endforeach
           <span class="record-note">Order may be approximate.</span>
         </div>

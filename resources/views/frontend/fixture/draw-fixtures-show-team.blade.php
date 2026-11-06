@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends(($liveResultsFragment ?? false) ? 'frontend.fixtures.partials.live-results-layout' : 'layouts/layoutMaster')
 
 @section('title', ($draw->drawName ?? 'Tournament') . ' matches')
 

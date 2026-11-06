@@ -8,6 +8,74 @@
   let renderedUrl = pageKey(new URL(window.location.href));
   let scope = null;
   let warmDisabled = false;
+  const liveResultsSelector = '[data-my-tennis-live-results]';
+  const liveResultsInterval = 15000;
+  let stopLiveResults = null;
+
+  function mountLiveResults(workspace, immediately = false) {
+    stopLiveResults?.();
+    let panel = workspace.querySelector(liveResultsSelector);
+    if (!panel) return;
+
+    const url = new URL(panel.dataset.myTennisLiveResults, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    let timer;
+    let request;
+    let stopped = false;
+
+    function schedule(delay = liveResultsInterval) {
+      window.clearTimeout(timer);
+      if (!stopped && !document.hidden && !request) timer = window.setTimeout(refresh, delay);
+    }
+
+    async function refresh() {
+      if (stopped || document.hidden || !panel.isConnected) return;
+      request = new AbortController();
+      const {signal} = request;
+      const timeout = window.setTimeout(() => request.abort(), 10000);
+      try {
+        const response = await fetch(url, {
+          headers: {Accept: 'text/html'}, credentials: 'same-origin', cache: 'no-store', signal,
+        });
+        if (stopped || signal.aborted) return;
+        if (response.redirected || [401, 403, 404, 419].includes(response.status)) {
+          panel.remove();
+          disableCache();
+          stopLiveResults?.();
+          return;
+        }
+        if (!response.ok) return;
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const next = page.querySelector(liveResultsSelector);
+        if (!stopped && !signal.aborted && next && !panel.isEqualNode(next)) {
+          const focused = panel.contains(document.activeElement);
+          panel.replaceWith(next);
+          panel = next;
+          if (focused) panel.querySelector('h2, h3')?.focus({preventScroll: true});
+        }
+      } catch {
+        // Keep the last successful response during a transient network failure.
+      } finally {
+        window.clearTimeout(timeout);
+        request = null;
+        schedule();
+      }
+    }
+
+    function visibilityChanged() {
+      if (document.hidden) request?.abort();
+      schedule(0);
+    }
+    document.addEventListener('visibilitychange', visibilityChanged);
+    stopLiveResults = () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      request?.abort();
+      document.removeEventListener('visibilitychange', visibilityChanged);
+      stopLiveResults = null;
+    };
+    schedule(immediately ? 0 : liveResultsInterval);
+  }
 
   function pageKey(url) {
     return url.pathname + url.search;
@@ -40,6 +108,14 @@
 
   function remember(target, key, page) {
     if (scope === target && target.keys.has(key)) {
+      // Warm the Results tab without retaining scores whose visibility may change.
+      if (page.workspace.querySelector(liveResultsSelector)) {
+        const workspace = page.workspace.cloneNode(true);
+        const panel = workspace.querySelector(liveResultsSelector);
+        panel.replaceChildren();
+        panel.hidden = true;
+        page = {...page, workspace};
+      }
       target.ready.set(key, {page, expires: Date.now() + cacheLifetime});
     }
   }
@@ -102,6 +178,7 @@
     workspace.dispatchEvent(new CustomEvent('my-tennis:unmounting', {bubbles: true}));
     workspace.replaceWith(next);
     next.dispatchEvent(new CustomEvent('my-tennis:mounted', {bubbles: true}));
+    mountLiveResults(next, true);
     warmTabs(next, page);
 
     const active = next.querySelector('[data-my-tennis-link][aria-current="page"]');
@@ -229,6 +306,7 @@
   }, true);
   document.addEventListener('my-tennis:invalidate', disableCache);
   window.addEventListener('pagehide', () => {
+    stopLiveResults?.();
     pending?.abort();
     pending = null;
     disableCache();
@@ -240,6 +318,7 @@
   // Defer runs before the controls mount on DOMContentLoaded. Keep a pristine
   // copy of the initial tab so returning to it does not clone enhanced widgets.
   const initialWorkspace = document.querySelector(workspaceSelector);
+  if (initialWorkspace) mountLiveResults(initialWorkspace);
   const initialPage = initialWorkspace && document.readyState === 'interactive'
     ? {title: document.title, workspace: initialWorkspace.cloneNode(true)}
     : null;

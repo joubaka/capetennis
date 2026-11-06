@@ -436,6 +436,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Jobs/SendMastersInvitationEmailJob.php"],
       "tests": ["tests/Unit/MastersInvitationEmailTest.php"]
+    },
+    {
+      "id": "RK-030",
+      "title": "Public event and draw pages become slow under concurrent viewing",
+      "scope": "Public tournament overview and the frontend.fixtures.index draw page.",
+      "symptoms": "Event and draw requests accumulate during busy play, including automatic refresh requests from open spectator tabs.",
+      "cause": "The overview loaded detailed fixture and registration relationships for summaries, a single draw reloaded published schedule rows for sibling draws, and every open tab periodically rendered the whole draw page.",
+      "fix": "Use narrow overview fixture projections and count pending progress in SQL. Scope schedule reads to the requested draw before loading assignments and preserve first-match-only ordering. Check an opaque public result and schedule revision with jitter and backoff, then fetch the public fragment on change. Reconcile display details periodically through the same public renderer so hidden roster edits do not change the revision.",
+      "verification": "Exercise the overview query budget, selected-draw scope, working schedule isolation, same-second score edits, unpublication and retry behavior. Compare identical synthetic tournament data before and after under concurrent HTTP load, with full draw and revision requests measured separately.",
+      "limits": "Guide only. Local results depend on fixture size, database and concurrency. This does not authorize production profiling, configuration or deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Frontend/EventController.php", "app/Services/EventMatchProgressService.php", "app/Services/Scheduling/SchedulePublicationService.php", "app/Services/Draw/PublicDrawResultsRevision.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/EventPagePerformanceTest.php", "tests/Feature/EventMatchProgressTest.php", "tests/Feature/Draw/DrawScheduleProjectionScopeTest.php", "tests/Feature/Draw/PublicFixtureEmptyStateTest.php", "tests/Frontend/draw-live-results.test.cjs"]
     }
   ]
 }

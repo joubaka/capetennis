@@ -148,6 +148,44 @@ class PublicFixtureEmptyStateTest extends TestCase
         $this->get(route('frontend.fixtures.index', 999999))->assertNotFound();
     }
 
+    public function test_live_draw_checks_detect_scores_without_exposing_working_schedule_or_other_draws(): void
+    {
+        $draw = $this->draw(true);
+        $fixture = $this->tie($draw, true);
+        $other = $this->tie($this->draw(true), true);
+        $url = route('frontend.fixtures.index', $draw);
+        $check = fn () => $this->get($url, ['X-Draw-Live' => 'revision'])->assertOk()->assertJsonPath('enabled', true);
+        $original = $check()->json('revision');
+        $this->get($url)->assertOk()->assertSee('data-draw-revision="'.$original.'"', false);
+
+        $fixture->update(['scheduled_at' => '2026-10-10 17:30:00']);
+        $other->update(['match_status' => 3]);
+        $check()->assertJsonPath('revision', $original);
+
+        $foreignPlayer = \App\Models\Player::factory()->create();
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'slot_no' => 1, 'team1_id' => $foreignPlayer->id]);
+        $foreignPlayer->update(['name' => 'Private roster change']);
+        $check()->assertJsonPath('revision', $original);
+
+        $result = \App\Models\TeamFixtureResult::create([
+            'team_fixture_id' => $fixture->id, 'set_nr' => 1, 'team1_score' => 6, 'team2_score' => 3,
+        ]);
+        $scored = $check()->json('revision');
+        $this->assertNotSame($original, $scored);
+        $result->update(['team2_score' => 4]);
+        $this->assertNotSame($scored, $check()->json('revision'));
+
+        $this->get($url, ['X-Draw-Live' => 'fragment'])->assertOk()
+            ->assertSee('data-live-results="team-fixtures"', false)
+            ->assertDontSee('<html', false)->assertDontSee('17:30')->assertDontSee('js/live-results.js');
+        $draw->event->update(['result_auto_refresh_enabled' => false]);
+        $this->get($url, ['X-Draw-Live' => 'revision'])->assertOk()
+            ->assertExactJson(['enabled' => false, 'revision' => null]);
+        $draw->update(['published' => false]);
+        $this->get($url, ['X-Draw-Live' => 'revision'])->assertForbidden();
+        $this->get($url, ['X-Draw-Live' => 'fragment'])->assertForbidden();
+    }
+
     public function test_pairing_headers_use_compact_labels_and_preserve_full_team_names(): void
     {
         $draw = $this->draw(true);

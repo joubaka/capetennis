@@ -78,4 +78,30 @@ class EventMatchProgressTest extends TestCase
         $draw->update(['published' => false]);
         $this->assertSame(['finished' => 0, 'total' => 0], app(EventMatchProgressService::class)->forEvent($event));
     }
+
+    public function test_tournament_progress_counts_unplayed_rubbers_without_hydrating_them(): void
+    {
+        $event = Event::factory()->create(['eventType' => 3]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        TeamFixture::query()->insert(array_map(fn ($match) => [
+            'draw_id' => $draw->id,
+            'match_nr' => $match,
+            'fixture_type' => 2,
+            'numSets' => 1,
+        ], range(1, 450)));
+        $playedId = TeamFixture::where('draw_id', $draw->id)->where('match_nr', 1)->value('id');
+        TeamFixtureResult::create([
+            'team_fixture_id' => $playedId,
+            'set_nr' => 1,
+            'team1_score' => 6,
+            'team2_score' => 2,
+        ]);
+        $hydratedIds = [];
+        TeamFixture::retrieved(function (TeamFixture $fixture) use (&$hydratedIds): void {
+            $hydratedIds[] = $fixture->id;
+        });
+
+        $this->assertSame(['finished' => 1, 'total' => 450], app(EventMatchProgressService::class)->forEvent($event));
+        $this->assertSame([$playedId], $hydratedIds);
+    }
 }

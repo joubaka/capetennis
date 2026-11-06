@@ -2340,6 +2340,7 @@ Route::middleware('auth')->group(function () {
   Route::get('/my-tennis/rating-history/refresh-status', [\App\Http\Controllers\Frontend\PlayerRatingHistoryRefreshController::class, 'status'])->middleware(['role:super-user', 'throttle:120,1,history-status:'])->name('my.tennis.rating.refresh-status');
   Route::get('/my-tennis/players/{player}/rating', [MyTennisController::class, 'rating'])->middleware('throttle:30,1')->name('my.tennis.rating');
   Route::get('/my-tennis/players/{player}/record/{section?}', [MyTennisController::class, 'playingRecord'])->where('section', 'record|opponents')->middleware('throttle:30,1')->name('my.tennis.record');
+  Route::get('/my-tennis/players/{player}/live-results', [MyTennisController::class, 'liveResults'])->middleware('throttle:20,1,my-tennis-live-results:')->name('my.tennis.record.live');
   Route::get('/my-tennis/players/{player}/pathway', [MyTennisController::class, 'pathway'])->middleware('throttle:30,1')->name('my.tennis.pathway');
   Route::get('/my-tennis/players/{player}/pathway/info/{stage}', [MyTennisController::class, 'pathwayInfo'])->middleware('throttle:60,1')->name('my.tennis.pathway.info');
   Route::get('/my-tennis/match-reminder', \App\Http\Controllers\Frontend\MatchReminderController::class)->name('my.tennis.match-reminder');

@@ -49,9 +49,9 @@ final class SchedulePublicationService
     }
 
     /** Snapshot timing; optional names always come from current event records. */
-    public function publishedRows(Event $event, bool $includeParticipants = true): Collection
+    public function publishedRows(Event $event, bool $includeParticipants = true, ?int $drawId = null): Collection
     {
-        return $this->visibleRows($event, $includeParticipants);
+        return $this->visibleRows($event, $includeParticipants, drawId: $drawId);
     }
 
     /** Project the scoped publication in memory; never change public snapshots or flags. */
@@ -72,13 +72,15 @@ final class SchedulePublicationService
         return $this->visibleRows($event, true, $snapshots, $affectedDrawIds);
     }
 
-    private function visibleRows(Event $event, bool $includeParticipants, ?Collection $projectedSnapshots = null, ?Collection $affectedDrawIds = null): Collection
+    private function visibleRows(Event $event, bool $includeParticipants, ?Collection $projectedSnapshots = null, ?Collection $affectedDrawIds = null, ?int $drawId = null): Collection
     {
         if (! app(\App\Services\PublicTournamentVisibility::class)->eventIsVisible($event)) return collect();
         // Metadata-only reads must never replace the default participant cache.
         $cacheKey = 'published_schedule_rows_'.$event->id.($includeParticipants ? '' : '_timing');
+        if ($drawId !== null) $cacheKey .= '_draw_'.$drawId;
         if ($projectedSnapshots === null && request()->attributes->has($cacheKey)) return request()->attributes->get($cacheKey);
         $draws = $event->draws()->with('settings')->where('published', true)
+            ->when($drawId !== null, fn ($query) => $query->whereKey($drawId))
             ->where(fn ($query) => $query->where('oop_published', true)
                 ->when($affectedDrawIds !== null, fn ($query) => $query->orWhereIn('id', $affectedDrawIds)))->get()->keyBy('id');
         $snapshots = $projectedSnapshots?->whereIn('draw_id', $draws->keys())
@@ -142,8 +144,11 @@ final class SchedulePublicationService
 
     public function projectFixtures(Collection $fixtures, ?Collection $scheduleRows = null): Collection
     {
-        $events = $fixtures->map(fn ($fixture) => $fixture->draw?->event_id ?? $fixture->draws?->event_id)->filter()->unique();
-        $rows = ($scheduleRows ?? $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id), includeParticipants: false)))->keyBy('fixture_key');
+        if ($scheduleRows === null) {
+            $events = $fixtures->map(fn ($fixture) => $fixture->draw?->event_id ?? $fixture->draws?->event_id)->filter()->unique();
+            $scheduleRows = $events->flatMap(fn ($id) => $this->publishedRows(Event::findOrFail($id), includeParticipants: false));
+        }
+        $rows = $scheduleRows->keyBy('fixture_key');
         $venues = Venue::whereIn('id', $rows->pluck('venue_id')->filter()->unique())->get()->keyBy('id');
         foreach ($fixtures as $fixture) {
             $team = $fixture instanceof TeamFixture;

@@ -5,22 +5,67 @@
   const status = document.querySelector('[data-live-results-status]');
   let stopped = status?.dataset.autoRefresh === '0';
   let busy = false;
+  let failures = 0;
+  let timer;
+  let revision = status?.dataset.drawRevision;
+  const usesRevision = Boolean(revision);
+  // Reconcile display-only metadata without exposing hidden roster changes
+  // through the public score and schedule revision.
+  let reconcileAfter = Date.now() + 5 * 60 * 1000 + Math.random() * 60000;
   const editing = () => document.activeElement?.matches('input, select, textarea, [contenteditable="true"]')
     || document.querySelector('.modal.show, [data-live-results] form');
+  const schedule = () => {
+    clearTimeout(timer);
+    if (!stopped && !document.hidden) {
+      const delay = Math.min(30000 * 2 ** failures, 240000);
+      timer = setTimeout(refresh, delay + Math.random() * 10000);
+    }
+  };
   const refresh = async () => {
-    if (stopped || busy || document.hidden || editing()) return;
+    if (stopped || busy || document.hidden) return;
+    if (editing()) {
+      schedule();
+      return;
+    }
     busy = true;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(window.location.href, { cache: 'no-store', credentials: 'same-origin', signal: controller.signal });
-      if ([401, 403, 404].includes(response.status)) {
-        stopped = true;
-        regions.forEach(region => region.replaceChildren());
-        if (status) status.textContent = 'These results are no longer available. Return to the tournament page.';
-        return;
+      const request = async mode => {
+        const response = await fetch(window.location.href, {
+          cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
+          headers: mode ? { 'X-Draw-Live': mode } : {},
+        });
+        if ([401, 403, 404].includes(response.status)) {
+          stopped = true;
+          regions.forEach(region => region.replaceChildren());
+          if (status) status.textContent = 'These results are no longer available. Return to the tournament page.';
+          return null;
+        }
+        if (!response.ok || response.redirected) throw new Error('Results unavailable');
+        return response;
+      };
+      let nextRevision;
+      if (usesRevision) {
+        const check = await request('revision');
+        if (!check) return;
+        const result = await check.json();
+        if (!result.enabled) {
+          stopped = true;
+          status.dataset.autoRefresh = '0';
+          status.textContent = 'Automatic updates are off for this event. Reload this page to see the latest results.';
+          return;
+        }
+        nextRevision = result.revision;
+        if (!nextRevision) throw new Error('Missing draw revision');
+        if (nextRevision === revision && Date.now() < reconcileAfter) {
+          failures = 0;
+          showChecked();
+          return;
+        }
       }
-      if (!response.ok || response.redirected) throw new Error('Results unavailable');
+      const response = await request(usesRevision ? 'fragment' : null);
+      if (!response) return;
       const page = new DOMParser().parseFromString(await response.text(), 'text/html');
       const refreshedStatus = page.querySelector('[data-live-results-status]');
       for (const region of regions) {
@@ -64,19 +109,27 @@
         if (focusedIndex >= 0) region.querySelectorAll(focusables)[focusedIndex]?.focus({ preventScroll: true });
         window.scrollTo(position.x, position.y);
       }
+      revision = nextRevision;
+      reconcileAfter = Date.now() + 5 * 60 * 1000 + Math.random() * 60000;
+      failures = 0;
       if (refreshedStatus?.dataset.autoRefresh === '0') {
         stopped = true;
         if (status) { status.dataset.autoRefresh = '0'; status.textContent = refreshedStatus.textContent; }
-      } else if (status) status.textContent = `Results checked at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. Updates every 30 seconds.`;
+      } else showChecked();
     } catch {
+      failures++;
       if (status) status.textContent = 'Updates are temporarily unavailable. Showing the last loaded results; retrying automatically.';
     } finally {
       clearTimeout(timeout);
       busy = false;
+      schedule();
     }
   };
-  setInterval(refresh, 30000);
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  const showChecked = () => {
+    if (status) status.textContent = `Results checked at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`;
+  };
+  schedule();
+  document.addEventListener('visibilitychange', schedule);
   // Delegation survives replacing fixture disclosures during refresh.
   document.addEventListener('toggle', event => {
     const round = event.target;

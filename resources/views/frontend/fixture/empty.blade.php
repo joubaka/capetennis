@@ -1,4 +1,4 @@
-@extends('layouts/layoutMaster')
+@extends(($liveResultsFragment ?? false) ? 'frontend.fixtures.partials.live-results-layout' : 'layouts/layoutMaster')
 
 @section('title', ($draw->drawName ?? 'Tournament') . ' matches')
 
@@ -6,7 +6,7 @@
   @if($draw->published)
     @include('frontend.fixtures.partials.live-results-status')
   @endif
-  <div @if($draw->published) data-live-results="{{ $draw->isTeamDraw() ? 'team-fixtures' : 'individual-fixtures' }}" @endif>
+  <div @if($draw->published) data-live-results="{{ ($isTeamEvent ?? $draw->isTeamDraw()) ? 'team-fixtures' : 'individual-fixtures' }}" @endif>
   <div class="card" data-live-results-empty>
     <div class="card-body">
       <h3 class="mb-2">{{ $draw->drawName }}</h3>

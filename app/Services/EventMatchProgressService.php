@@ -15,7 +15,7 @@ final class EventMatchProgressService
         $progress = ['finished' => 0, 'total' => 0];
         $drawIds = app(PublicTournamentVisibility::class)->publishedDrawsFor($event)->select('draws.id');
 
-        Fixture::query()->whereIn('draw_id', clone $drawIds)
+        $individual = Fixture::query()->whereIn('draw_id', clone $drawIds)
             ->where(fn ($status) => $status->whereNull('match_status')
                 ->orWhereNotIn('match_status', [FixtureState::STATUS_BYE, FixtureState::STATUS_DOUBLE_BYE]))
             // Some historical consolation walkovers only saved the winner.
@@ -32,22 +32,28 @@ final class EventMatchProgressService
                             ->where(fn ($targets) => $targets->whereColumn('feeders.parent_fixture_id', 'fixtures.id')
                                 ->orWhereColumn('feeders.loser_parent_fixture_id', 'fixtures.id'));
                     });
-            })
+            });
+        $progress['total'] = (clone $individual)->count();
+
+        $individualOutcome = app(IndividualMatchOutcomeService::class);
+        $individual->where(fn ($outcomes) => $outcomes->whereHas('fixtureResults')
+            ->orWhere('match_status', FixtureState::STATUS_RETIRED))
             ->with(['fixtureResults', 'draw.settings'])
-            ->chunkById(200, function ($fixtures) use (&$progress) {
+            ->chunkById(200, function ($fixtures) use (&$progress, $individualOutcome) {
                 foreach ($fixtures as $fixture) {
-                    $progress['total']++;
-                    $outcome = app(IndividualMatchOutcomeService::class);
-                    $progress['finished'] += $outcome->winner($fixture) !== null || $outcome->isDraw($fixture) ? 1 : 0;
+                    $progress['finished'] += $individualOutcome->winner($fixture) !== null || $individualOutcome->isDraw($fixture) ? 1 : 0;
                 }
             });
 
-        TeamFixture::query()->without('fixturePlayers')->whereIn('draw_id', clone $drawIds)
-            ->publicDrawFixtures()
-            ->chunkById(200, function ($fixtures) use (&$progress) {
+        $team = TeamFixture::query()->without('fixturePlayers')->whereIn('draw_id', clone $drawIds)
+            ->publicDrawFixtures();
+        $progress['total'] += (clone $team)->count();
+
+        $teamOutcome = app(TeamRubberResultService::class);
+        $team->whereHas('teamResults')
+            ->chunkById(200, function ($fixtures) use (&$progress, $teamOutcome) {
                 foreach ($fixtures as $fixture) {
-                    $progress['total']++;
-                    $progress['finished'] += app(TeamRubberResultService::class)->outcome($fixture)['complete'] ? 1 : 0;
+                    $progress['finished'] += $teamOutcome->outcome($fixture)['complete'] ? 1 : 0;
                 }
             });
 
