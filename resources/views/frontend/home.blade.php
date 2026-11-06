@@ -103,21 +103,22 @@
   .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
   .ranking-link:hover .ranking-name { color: #14796e; }
   .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
-  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 0%, rgba(51,103,157,.22), transparent 60%), linear-gradient(115deg, #172e45, #102940); border: 1px solid rgba(127,173,220,.22); border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr) auto; isolation: isolate; overflow: hidden; padding: 1.45rem 1.65rem; position: relative; }
-  .home-ctr::after { background: linear-gradient(90deg, transparent calc(50% - 1px), #fff calc(50% - 1px), #fff calc(50% + 1px), transparent calc(50% + 1px)), linear-gradient(0deg, transparent 24%, #fff 24%, #fff calc(24% + 2px), transparent calc(24% + 2px), transparent 74%, #fff 74%, #fff calc(74% + 2px), transparent calc(74% + 2px)); border: 2px solid #fff; content: ''; height: 17rem; opacity: .1; pointer-events: none; position: absolute; right: 3rem; top: -4rem; transform: rotate(-22deg); width: 10rem; z-index: -1; }
-  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.2vw, 2rem); font-weight: 800; letter-spacing: -.035em; line-height: 1.15; margin-bottom: .65rem !important; }
-  .home-ctr h2 span { color: #ffb45b; }
-  .home-ctr p { color: #e4efff; font-size: .95rem; line-height: 1.6; margin: 0; max-width: 76ch; }
-  .home-ctr-benefits { color: #e4efff; margin: .55rem 0 0; padding-inline-start: 1.15rem; }
-  .home-ctr-benefits li + li { margin-top: .3rem; }
-  .home-ctr p.home-ctr-availability { border-top: 1px solid rgba(228,239,255,.3); margin-top: .8rem; padding-top: .7rem; }
-  .home-ctr-availability strong { color: #ffca8b; }
-  .home-ctr { row-gap: 0; }
+  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 5%, #244d75, transparent 65%), linear-gradient(115deg, #102438, #132f49); border: 1px solid #395c7f; border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: clamp(1rem, 3vw, 3rem); grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); padding: clamp(1.2rem, 3vw, 2.5rem); }
+  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.85rem, 3.5vw, 3.25rem); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; margin: .8rem 0 .65rem; text-wrap: balance; }
+  .home-ctr h2 span, .home-ctr-open { color: #ffbd70; }
+  .home-ctr-open { background: #ffbd701a; border: 1px solid #ffbd7080; border-radius: 2rem; display: inline-block; font-size: .75rem; font-weight: 800; letter-spacing: .07em; padding: .35rem .7rem; text-transform: uppercase; }
+  .home-ctr p { color: #e4efff; font-size: 1rem; line-height: 1.55; margin: 0; max-width: 50ch; }
+  .home-ctr-benefits { color: #e4efff; display: flex; flex-wrap: wrap; gap: .35rem 1rem; list-style: none; margin: .75rem 0 1.1rem; padding: 0; }
+  .home-ctr-benefits li { align-items: baseline; display: flex; font-size: .85rem; gap: .35rem; }
+  .home-ctr-benefits li::before { background: #ffbd70; border-radius: 50%; content: ''; height: .3rem; width: .3rem; }
+  .home-ctr p.home-ctr-availability { font-size: .85rem; margin: .75rem 0 1rem; }
   .home-ctr-copy { min-width: 0; }
-  .home-ctr-examples { grid-column: 1; }
-  .home-ctr > .btn { grid-column: 2; grid-row: 1 / 3; }
-  .home-ctr-badges { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+  .home-ctr-examples { background: #0e243a66; border: 1px solid #9ec9f24a; border-radius: .85rem; isolation: isolate; overflow: hidden; padding: clamp(.75rem, 2vw, 1.5rem); position: relative; text-align: center; }
+  .home-ctr-examples::before { background: linear-gradient(90deg, transparent 49%, #fff 49% 51%, transparent 51%), linear-gradient(0deg, transparent 24%, #fff 24% 25%, transparent 25% 75%, #fff 75% 76%, transparent 76%); border: 2px solid #fff; content: ''; height: 16rem; inset: -2.5rem auto auto 50%; opacity: .12; pointer-events: none; position: absolute; transform: translateX(-50%) rotate(-20deg); width: 9rem; z-index: -1; }
+  .home-ctr-example-title { color: #fff; font-size: .9rem; font-weight: 800; letter-spacing: .06em; margin-bottom: .65rem; text-transform: uppercase; }
+  .home-ctr-badges { display: flex; gap: clamp(.25rem, 1.5vw, 1.15rem); justify-content: center; }
   .home-ctr-badge-preview { align-items: center; display: flex; flex-direction: column; gap: .35rem; }
+  .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 8vw, 7rem) !important; margin-inline: 0 !important; width: clamp(3.75rem, 8vw, 7rem) !important; }
   .home-ctr-badge-preview > .small { display: none; }
   .home-ctr-badge-label { color: #e4efff; font-size: .75rem; font-weight: 700; }
   .home-ctr-example-note { color: #c4d5eb; font-size: .7rem; margin-top: .5rem; }
@@ -137,15 +138,9 @@
     .home-layout { padding-top: 5rem; }
   }
   @media (max-width: 767.98px) {
-    .home-ctr { gap: .8rem 1rem; grid-template-columns: minmax(0, 1fr) 6rem; padding: 1rem; }
-    .home-ctr-copy { grid-column: 1 / -1; }
-    .home-ctr-examples { grid-column: 2; grid-row: 2; text-align: center; }
-    .home-ctr-badges { justify-content: center; margin-top: 0; }
-    .home-ctr-badge-preview [data-ctr-badge] { width: 5rem !important; height: 5rem !important; }
-    .home-ctr-example-note { font-size: .6rem; line-height: 1.35; }
-    .home-ctr::after { right: -2rem; }
-    .home-ctr-badge-preview--extra { display: none; }
-    .home-layout .home-ctr .btn { grid-column: 1; grid-row: 2; justify-self: start; font-size: .85rem; padding: .65rem .75rem; }
+    .home-ctr { grid-template-columns: minmax(0, 1fr); }
+    .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 17vw, 5.5rem) !important; width: clamp(3.75rem, 17vw, 5.5rem) !important; }
+    .home-ctr-badge-preview [data-ctr-badge] > svg:not(:first-child) { display: none; }
     body { overflow-x: hidden; }
     .content-backdrop { max-width: 100%; }
     .home-controls { min-width: 0; padding: .8rem; }
@@ -173,32 +168,37 @@
 @section('content')
 <div class="home-layout row g-4 align-items-start">
   @if(app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
+  @php($plusSalesOpen = \App\Services\Performance\PlayerPlusService::salesEnabled())
   <div class="col-12">
     <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
       <div class="home-ctr-copy">
-        <x-player-plus-coming-soon class="mb-2" />
-        <h2 class="h4 mb-1" id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
-        <p>Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
+        @if($plusSalesOpen)
+          <span class="home-ctr-open">Player Plus · Now open</span>
+          <h2 id="home-ctr-title">See your <span>game grow.</span></h2>
+          <p>Get to know your Cape Tennis Rating (CTR) with Player Plus. Follow your progress and find the right challenge for your level.</p>
+        @else
+          <x-player-plus-coming-soon />
+          <h2 id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
+          <p>Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
+        @endif
         <ul class="home-ctr-benefits">
-          <li>Track your rating and see how it changes over time.</li>
-          <li>Compare with eligible opponents.</li>
-          <li>Explore the pathway from Red Ball and Orange Ball to Yellow Ball and TSA events.</li>
+          <li>Track your rating over time</li>
+          <li>Compare with eligible opponents</li>
+          <li>Explore your tournament pathway</li>
         </ul>
-        <p class="home-ctr-availability">
-          @if(\App\Services\Performance\PlayerPlusService::salesEnabled())
-            <strong>Player Plus is available.</strong> Unlock CTR insights for a player by activating their Player Plus membership.
-          @else
-            <strong>Part of Player Plus.</strong> CTR insights unlock when a player's Player Plus membership is activated. Sign-ups are currently closed.
-          @endif
-        </p>
+        @unless($plusSalesOpen)
+          <p class="home-ctr-availability">CTR insights are part of Player Plus. New sign-ups are currently closed.</p>
+        @endunless
+        <a class="btn btn-warning" href="{{ route('ctr.index') }}">{{ $plusSalesOpen ? 'Upgrade to Plus now!' : 'Explore CTR Ratings' }} <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
       </div>
       <div class="home-ctr-examples">
+        <div class="home-ctr-example-title">The CTR badges</div>
         <div class="home-ctr-badges" role="group" aria-label="Example CTR badges">
-          <div class="home-ctr-badge-preview home-ctr-badge-preview--extra">
+          <div class="home-ctr-badge-preview">
             <x-ctr-badge :score="35.6" stage="red" title="Example Red Ball CTR badge; illustrative score only." />
             <span class="home-ctr-badge-label">Red Ball</span>
           </div>
-          <div class="home-ctr-badge-preview home-ctr-badge-preview--extra">
+          <div class="home-ctr-badge-preview">
             <x-ctr-badge :score="48.2" stage="orange" title="Example Orange Ball CTR badge; illustrative score only." />
             <span class="home-ctr-badge-label">Orange Ball</span>
           </div>
@@ -209,7 +209,6 @@
         </div>
         <div class="home-ctr-example-note">Example badges · illustrative scores</div>
       </div>
-      <a class="btn btn-warning fw-semibold" href="{{ route('ctr.index') }}">Explore CTR Ratings <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
     </section>
   </div>
   @endif

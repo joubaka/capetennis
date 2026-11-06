@@ -58,6 +58,8 @@
     if (root.document.querySelector('[data-plus-payfast-launch]')) launch(root.document.getElementById('payfastForm'));
     const panel = root.document.querySelector('[data-plus-payment-return]');
     if (panel) new PaymentReturn(panel).check();
+    const retry = root.document.querySelector('[data-plus-retry-refresh-ms]');
+    if (retry) root.setTimeout(() => root.location.replace(retry.href), Number(retry.dataset.plusRetryRefreshMs));
   }
   if (typeof module !== 'undefined' && module.exports) module.exports = { launch, PaymentReturn };
   else if (root.document.readyState === 'loading') root.document.addEventListener('DOMContentLoaded', initialize, { once: true });

@@ -64,7 +64,8 @@ class PlayerPlusDirectCheckoutTest extends TestCase
             ->assertSee('player-plus-checkout.js')->assertSee('name="amount" value="699.00"', false)
             ->assertDontSee('assets/js/main.js', false)->assertDontSee('code.jquery.com', false);
         $order = PlayerPlusOrder::sole();
-        $response->assertSee(e(route('player-plus.orders.return', $order)), false)->assertSee(e(route('player-plus.orders.show', $order)), false);
+        $response->assertSee(e(route('player-plus.orders.return', $order)), false)
+            ->assertSee(e(route('player-plus.orders.show', ['order' => $order, 'checkout' => 'cancelled'])), false);
         $this->assertNotNull($order->payfast_handed_off_at);
         $this->assertSame(300, (int) $order->payfast_handed_off_at->diffInSeconds($order->expires_at));
         $this->assertSame(69900, $order->price_cents);
@@ -138,6 +139,70 @@ class PlayerPlusDirectCheckoutTest extends TestCase
         $this->assertDatabaseCount('player_plus_memberships', 1);
         $this->assertDatabaseCount('transactions_pf', 1);
         $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_cancel_return_waits_then_offers_a_fresh_checkout_for_the_same_player(): void
+    {
+        SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '1');
+        SiteSetting::set(PlayerPlusService::MONTHLY_PRICE_SETTING, '6900');
+        $payer = User::factory()->create();
+        $player = Player::factory()->create();
+        $store = route('player-plus.store', $player);
+        $data = array_replace($this->data(6900), ['plan' => 'monthly']);
+        $this->actingAs($payer)->post($store, $data)->assertOk();
+        $order = PlayerPlusOrder::sole();
+        $receipt = route('player-plus.orders.show', $order);
+        $cancelReturn = route('player-plus.orders.show', ['order' => $order, 'checkout' => 'cancelled']);
+        $before = $order->getAttributes();
+
+        $this->actingAs(User::factory()->create())->get($cancelReturn)->assertForbidden();
+        $this->actingAs($payer)->get($cancelReturn.'&payment_status=COMPLETE')
+            ->assertOk()->assertSee('Cancelled or couldn’t finish at PayFast?')->assertSee('href="'.$cancelReturn.'"', false)
+            ->assertSee('data-plus-retry-refresh-ms', false)->assertSee('Check payment status')
+            ->assertDontSee('Start a new checkout');
+        $this->post($store, array_replace($data, ['request_token' => (string) Str::uuid()]))->assertRedirect($receipt);
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertDatabaseCount('player_plus_orders', 1);
+
+        $this->travelTo($order->expires_at);
+        $offer = route('player-plus.player', $player);
+        foreach ([$receipt, $cancelReturn] as $return) {
+            $this->get($return)->assertOk()->assertSee('Start a new checkout')
+                ->assertSee('href="'.$offer.'"', false)->assertDontSee('data-plus-retry-refresh-ms', false);
+        }
+        $this->assertSame($before, $order->fresh()->getAttributes());
+        $this->assertDatabaseCount('player_plus_orders', 1);
+        $page = $this->get($offer)->assertOk();
+        $this->assertSame(1, preg_match('/name="request_token" value="([a-f0-9-]+)"/', $page->getContent(), $match));
+        $this->assertNotSame($order->request_token, $match[1]);
+        $this->post($store, array_replace($data, ['request_token' => $match[1]]))->assertOk()
+            ->assertSee('name="amount" value="69.00"', false);
+
+        $this->assertSame('expired', $order->fresh()->status);
+        $this->assertEquals($order->payfast_handed_off_at, $order->fresh()->payfast_handed_off_at);
+        $this->assertEquals($order->expires_at, $order->fresh()->expires_at);
+        $this->assertDatabaseCount('player_plus_orders', 2);
+        $this->assertDatabaseCount('player_plus_memberships', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_cancel_return_never_offers_restart_for_paid_reconciliation_or_paused_orders(): void
+    {
+        $service = app(PlayerPlusService::class);
+        $order = $this->start();
+        $order = $service->handoff($order, $order->user);
+        $url = route('player-plus.orders.show', ['order' => $order, 'checkout' => 'cancelled']);
+        $this->actingAs($order->user)->travelTo($order->expires_at);
+        SiteSetting::set(PlayerRatingAccess::SETTING, '0');
+        $this->get($url)->assertOk()->assertDontSee('Start a new checkout');
+        SiteSetting::set(PlayerRatingAccess::SETTING, '1');
+        $this->activate($order);
+        $this->get($url)->assertOk()->assertSee('needs Cape Tennis reconciliation')->assertDontSee('Start a new checkout');
+
+        $paid = $this->activate($this->start());
+        $this->actingAs($paid->user)->get(route('player-plus.orders.show', ['order' => $paid, 'checkout' => 'cancelled']))
+            ->assertOk()->assertSee('Payment verified')->assertDontSee('Start a new checkout');
     }
 
     public function test_sponsoring_administrator_keeps_receipt_without_private_rating_destination_or_new_link(): void

@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const {readFileSync} = require('node:fs');
+const {runInNewContext} = require('node:vm');
 const {launch, PaymentReturn} = require('../../public/assets/js/player-plus-checkout.js');
 
 test('launch submits the supplied fake form once and preserves manual fallback on failure', () => {
@@ -10,6 +12,23 @@ test('launch submits the supplied fake form once and preserves manual fallback o
   const blocked = {dataset: {}, submit() { throw new Error('blocked'); }};
   launch(blocked);
   assert.equal(blocked.dataset.plusSubmitted, undefined);
+});
+
+test('an unfinished checkout rechecks its receipt once at the server-provided delay', () => {
+  const source = readFileSync(require.resolve('../../public/assets/js/player-plus-checkout.js'), 'utf8');
+  const link = {href: 'https://fictional.test/player-plus/orders/7?checkout=cancelled', dataset: {plusRetryRefreshMs: '27000'}};
+  const timers = [];
+  const visits = [];
+  runInNewContext(source, {window: {
+    document: {readyState: 'complete', querySelector: selector => selector === '[data-plus-retry-refresh-ms]' ? link : null},
+    setTimeout: (callback, delay) => timers.push({callback, delay}),
+    location: {replace: href => visits.push(href)},
+  }});
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].delay, 27000);
+  assert.deepEqual(visits, []);
+  timers[0].callback();
+  assert.deepEqual(visits, [link.href]);
 });
 
 function harness(responses) {

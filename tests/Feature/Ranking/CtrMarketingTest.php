@@ -27,7 +27,9 @@ class CtrMarketingTest extends TestCase
         $this->get(route('ctr.index').'?member=1&ctr=1')->assertForbidden()->assertHeader('Cache-Control', 'no-store, private');
         $this->get(route('player-plus.terms'))->assertOk()->assertSee('Player Plus purchase details');
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
-        $home = $this->get(route('home'))->assertOk()->assertSee('data-home-ctr', false);
+        $home = $this->get(route('home'))->assertOk()->assertSee('data-home-ctr', false)
+            ->assertSee('Now open')->assertSee('Upgrade to Plus now!')
+            ->assertSee('href="'.route('ctr.index').'"', false);
         $landing = $this->get(route('ctr.index'))->assertOk()->assertSee('Explore Player Plus')->assertSee('R69.00')->assertSee('R699.00')
             ->assertDontSee('Your CTR access is active')->assertDontSee('Open CTR ratings')->assertDontSee('data-ctr-rating', false)
             ->assertHeader('Cache-Control', 'no-store, private');
@@ -43,7 +45,8 @@ class CtrMarketingTest extends TestCase
         SiteSetting::where('key', PlayerRatingAccess::COMING_SOON_SETTING)->delete();
         \Illuminate\Support\Facades\Cache::forget('site_setting.'.PlayerRatingAccess::COMING_SOON_SETTING);
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
-        $this->get(route('home'))->assertOk()->assertSee('data-player-plus-coming-soon', false);
+        $this->get(route('home'))->assertOk()->assertSee('data-player-plus-coming-soon', false)
+            ->assertSee('Explore CTR Ratings')->assertDontSee('Now open');
         $this->get(route('ctr.index'))->assertOk()->assertSee('Coming Soon')
             ->assertDontSee('R69.00')->assertDontSee('R699.00')
             ->assertDontSee('href="'.route('player-plus.index').'"', false);

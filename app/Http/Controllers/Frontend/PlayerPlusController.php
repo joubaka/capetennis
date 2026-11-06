@@ -124,8 +124,22 @@ class PlayerPlusController extends Controller
         abort_unless((int) $order->user_id === (int) $request->user()->id, 403);
         $order->load('player');
         $subscription = PlayerPlusService::monthlyReady() ? ($order->subscription_order_id ? $order->subscriptionOrder?->subscription : $order->subscription) : null;
+        $retrySalesOpen = PlayerPlusService::salesEnabled() && (!$order->isMonthly() || PlayerPlusService::monthlyEnabled());
+        $expired = !$order->expires_at->isFuture();
+        $unpaid = !$order->pay_status && !$order->payfast_paid && !$order->wallet_debited
+            && !$order->activated_at && !$order->term_starts_at && !$order->term_ends_at
+            && !filled($order->reconciliation_reason) && !filled($order->payfast_pf_payment_id);
+        $canClose = $unpaid && $order->status === 'pending' && ($expired || !$order->payfast_handed_off_at);
+        $canRestart = $unpaid && $order->player && $retrySalesOpen
+            && in_array($order->status, ['pending', 'cancelled', 'expired'], true)
+            && ($expired || ($order->status === 'cancelled' && !$order->payfast_handed_off_at));
+        if (($canClose || $canRestart) && app(\App\Services\Performance\PlayerPlusReconciliation::class)->receipts($order)->exists()) {
+            $canClose = $canRestart = false;
+        }
+        $returnedFromCancel = $request->query('checkout') === 'cancelled';
+        $statusUrl = route('player-plus.orders.show', $returnedFromCancel ? ['order' => $order, 'checkout' => 'cancelled'] : $order);
         $form = null;
-        return response()->view('frontend.player-plus.order', compact('order', 'form', 'subscription') + ['workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $order->player)])->header('Cache-Control', 'private, no-store');
+        return response()->view('frontend.player-plus.order', compact('order', 'form', 'subscription', 'canClose', 'canRestart', 'returnedFromCancel', 'retrySalesOpen', 'statusUrl') + ['workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $order->player)])->header('Cache-Control', 'private, no-store');
     }
 
     public function pay(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)

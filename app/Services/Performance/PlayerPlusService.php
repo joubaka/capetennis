@@ -233,7 +233,7 @@ class PlayerPlusService
             $payfast->setSubscription(($order->isMonthly() ? $date->addMonthNoOverflow() : $date->addYearNoOverflow())->toDateString(), $order->isMonthly() ? 3 : 6);
         }
         $payfast->setReturnUrl(route('player-plus.orders.return', $order));
-        $payfast->setCancelUrl(route('player-plus.orders.show', $order));
+        $payfast->setCancelUrl(route('player-plus.orders.show', ['order' => $order, 'checkout' => 'cancelled']));
         return $payfast->getForm();
     }
 

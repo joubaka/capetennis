@@ -49,7 +49,7 @@
   @if($order->activated_at)
     <p class="alert alert-{{ $order->term_ends_at->isFuture() ? 'success' : 'secondary' }}">Payment verified. Purchased membership term: {{ $order->term_starts_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} to {{ $order->term_ends_at->timezone('Africa/Johannesburg')->format('j M Y H:i') }} SAST. @if($order->isRecurring())Subscription payments and purchased terms are recorded separately in My Plus orders.@else {{ $order->term_ends_at->isFuture() ? 'No automatic renewal.' : 'This purchased term has expired. No automatic renewal payment was taken.' }}@endif</p>
     @if($order->reconciliation_reason)<p class="alert alert-warning">An additional payment needs Cape Tennis reconciliation. The original membership term is unchanged. Keep order P{{ $order->id }} as your reference.</p>@endif
-  @elseif($order->status === 'reconciliation_required')
+  @elseif($order->status === 'reconciliation_required' || $order->reconciliation_reason)
     <p class="alert alert-warning">Your payment was received and needs Cape Tennis reconciliation. Membership was not activated. Keep order P{{ $order->id }} as your reference.</p>
   @elseif($order->status === 'pending' && $order->expires_at->isFuture())
     @if($form)
@@ -61,11 +61,27 @@
         <form method="post" action="{{ route('player-plus.orders.pay', $order) }}">@csrf<button class="btn btn-primary" style="min-height:44px">Pay R{{ \App\Services\Performance\PlayerPlusService::amount($order->price_cents) }} with PayFast <i class="ti ti-arrow-right" aria-hidden="true"></i></button></form>
       @else<p class="alert alert-info">Purchases are paused. This order cannot begin payment.</p>@endif
     @else
-      <p class="alert alert-info">Awaiting verified PayFast confirmation. Returning to this page does not activate membership.</p>
-      @unless($returnFlow ?? false)<a href="{{ route('player-plus.orders.show', $order) }}" class="btn btn-outline-primary">Check payment status</a>@endunless
+      @unless($returnFlow ?? false)
+        <p class="alert alert-info">
+          @if($returnedFromCancel ?? false) <strong>Cancelled or couldn’t finish at PayFast?</strong> @endif
+          Awaiting verified PayFast confirmation.
+          @if($retrySalesOpen ?? false)
+            If you cancelled or could not finish, check back after <time datetime="{{ $order->expires_at->toAtomString() }}">{{ $order->expires_at->timezone('Africa/Johannesburg')->format('H:i:s') }} SAST</time>
+            to start a fresh checkout. This gives PayFast time to confirm any payment already made.
+          @else
+            New purchases for this plan are currently paused.
+          @endif
+        </p>
+        <a href="{{ $statusUrl ?? route('player-plus.orders.show', $order) }}" class="btn btn-outline-primary"
+           data-plus-retry-refresh-ms="{{ max(1, $order->expires_at->getTimestamp() - now()->getTimestamp() + 1) * 1000 }}">Check payment status</a>
+        <script src="{{ asset('assets/js/player-plus-checkout.js') }}?v={{ filemtime(public_path('assets/js/player-plus-checkout.js')) }}" defer></script>
+      @endunless
     @endif
   @else<p>This checkout is closed or expired. A delayed payment will be held for reconciliation with the original payer.</p>@endif
-  @if($order->status === 'pending' && (!$order->payfast_handed_off_at || !$order->expires_at->isFuture()))
+  @if($canRestart ?? false)
+    <a href="{{ route('player-plus.player', $order->player) }}" class="btn btn-primary">Start a new checkout</a>
+  @endif
+  @if($canClose ?? false)
     <form class="mt-3" method="post" action="{{ route('player-plus.orders.cancel', $order) }}">@csrf<button class="btn btn-outline-secondary">Close checkout</button></form>
   @endif
   @if($checkoutOpen)<div class="pp-payment-trust"><i class="ti ti-lock" aria-hidden="true"></i><span>Payment is handled by PayFast. Cape Tennis activates access only after verified payment.</span></div>@endif
