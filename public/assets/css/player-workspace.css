@@ -203,16 +203,30 @@
 .ct-my-tennis-nav [data-plus-preview-tab] .ti-lock { flex:none; }
 @media screen {
   .ct-workspace-header-compact[data-player-profile-header] {
-    background: linear-gradient(115deg, #dcecff 0%, #edf5ff 60%, #fff0df 100%);
-    border-color: #aec9e8;
+    background: var(--ct-workspace-navy);
+    border-color: var(--ct-workspace-navy);
     border-top-color: var(--ct-workspace-orange);
   }
-  [data-player-profile-header] .ct-workspace-header-navigation { border-color: #b3cce8; }
-  [data-player-profile-header] .ct-my-tennis-nav a:hover { background: #dcecff; border-color: #7fa6d3; }
+  .ct-workspace-header.ct-workspace-header-compact[data-player-profile-header] .ct-workspace-title { color: #fff !important; }
+  [data-player-profile-header] .ct-workspace-eyebrow,
+  [data-player-profile-header] .ct-my-tennis-secondary-link { color: var(--ct-workspace-orange); }
+  [data-player-profile-header] .ct-my-tennis-rating-badge,
+  [data-player-profile-header] p { color: #e0ebf5; }
+  [data-player-profile-header] .ct-workspace-player-selector label { color: #e0ebf5 !important; }
+  [data-player-profile-header] .ct-workspace-header-navigation { border-color: #70869b; }
+  [data-player-profile-header] .ct-my-tennis-nav a,
+  [data-player-profile-header] .btn { color: #fff; background: #223e59; border-color: #8197ad; }
+  [data-player-profile-header] .ct-my-tennis-nav a:hover,
+  [data-player-profile-header] .btn:hover { color: #fff; background: #304d69; border-color: var(--ct-workspace-orange); }
   [data-player-profile-header] .ct-my-tennis-nav a[aria-current="page"] {
-    background: #194779;
-    border-color: #194779;
-    color: #fff;
+    background: var(--ct-workspace-orange);
+    border-color: var(--ct-workspace-orange);
+    color: var(--ct-workspace-navy);
+  }
+  [data-player-profile-header] .ct-my-tennis-secondary-link:hover { color: #ffd3aa; }
+  [data-player-profile-header] :is(a, button, select, summary, .select2-selection):focus-visible {
+    outline: 3px solid var(--ct-workspace-orange);
+    outline-offset: 3px;
   }
 }
 .ct-my-tennis-rating-badge {

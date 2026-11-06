@@ -51,5 +51,9 @@
     <p>No rating yet. A rating needs enough suitable results.</p>
     @if($snapshot['reason'])<p role="status">{{ $snapshot['reason'] }}</p>@endif
   @endif
-  <p class="ct-rating-snapshot-note">Provisional estimate, not an official ranking.@if($snapshot['as_of']) Saved through {{ $snapshot['as_of'] }}.@endif @if($snapshot['stale']) An update is pending.@endif</p>
+  @if(!$expandedTrend)
+    <p class="ct-rating-snapshot-note">Provisional estimate, not an official ranking.@if($snapshot['as_of']) Saved through {{ $snapshot['as_of'] }}.@endif @if($snapshot['stale']) An update is pending.@endif</p>
+  @elseif($snapshot['stale'])
+    <p class="ct-rating-snapshot-note">An update is pending.</p>
+  @endif
 </section>
