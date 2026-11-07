@@ -22,4 +22,17 @@ final class PublicEventStandingsController extends Controller
             + $standings->forEvent($event, $filters, publishedOnly: true))
             ->header('Cache-Control', 'private, no-store');
     }
+
+    public function privateStandings(Request $request, Event $event, EventStandingsService $standings)
+    {
+        app(PublicTournamentVisibility::class)->ensureEventIsVisible($event, $request->user());
+        $filters = $request->validate([
+            'age' => 'nullable|string|max:50',
+        ]);
+
+        return response()->view('frontend.fixtures.event-standings', ['event' => $event, 'privateStandings' => true]
+            + $standings->forVenueScoring($event, $filters))
+            ->header('Cache-Control', 'private, no-store')
+            ->header('X-Robots-Tag', 'noindex, nofollow');
+    }
 }

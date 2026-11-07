@@ -12,6 +12,7 @@ use App\Support\Audit\AuditModelSubscriber;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 use Mockery;
@@ -136,7 +137,7 @@ class AuditTrailTest extends TestCase
 
     public function test_client_side_button_interaction_is_recorded_for_authenticated_user(): void
     {
-        $this->actingAs($this->superUser)->postJson(route('audit.interactions.store'), [
+        $response = $this->actingAs($this->superUser)->postJson(route('audit.interactions.store'), [
             'action' => 'lesson.mark-attended',
             'label' => 'Mark attended',
             'element' => 'button',
@@ -144,13 +145,48 @@ class AuditTrailTest extends TestCase
             'target_path' => '/backend/practice/10/attendance',
             'viewport_width' => 390,
             'viewport_height' => 844,
-        ])->assertAccepted();
+        ])->assertAccepted()->assertExactJson(['recorded' => true]);
 
         $this->assertDatabaseHas('audit_events', [
             'actor_id' => $this->superUser->id,
             'category' => 'interaction',
             'action' => 'ui.lesson.mark-attended',
+            'request_id' => $response->headers->get('X-Request-Id'),
         ]);
+        $this->assertDatabaseCount('audit_events', 1);
+    }
+
+    public function test_interaction_reports_unavailable_storage_without_throwing_a_connection_error(): void
+    {
+        $this->app->forgetInstance(AuditWriter::class);
+        Schema::shouldReceive('hasTable')->once()->with('audit_events')
+            ->andThrow(new \PDOException('Simulated audit database connection failure'));
+
+        $this->withoutExceptionHandling();
+        $this->withSession(['audit_previous_request_id' => 'previous-audit-test'])
+            ->withHeader('X-Request-Id', 'audit-beacon-test')
+            ->postJson(route('audit.interactions.store'), [
+                'action' => 'clicked.publish',
+                'page_path' => '/events',
+            ])->assertStatus(503)->assertExactJson(['recorded' => false])
+            ->assertHeader('X-Request-Id', 'audit-beacon-test')
+            ->assertSessionHas('audit_previous_request_id', 'previous-audit-test');
+    }
+
+    public function test_request_audit_connection_failure_still_blocks_business_mutations(): void
+    {
+        $this->app->forgetInstance(AuditWriter::class);
+        Schema::shouldReceive('hasTable')->twice()->with('audit_events')
+            ->andThrow(new \PDOException('Simulated audit database connection failure'));
+
+        Route::post('/test-business-mutation', fn () => response()->noContent())
+            ->middleware(\App\Http\Middleware\RecordAuditRequest::class)
+            ->name('test.business-mutation');
+
+        $this->withoutExceptionHandling();
+        $this->expectException(\PDOException::class);
+        $this->expectExceptionMessage('Simulated audit database connection failure');
+        $this->postJson('/test-business-mutation');
     }
 
     public function test_payment_interaction_is_linked_to_owned_registration_order(): void

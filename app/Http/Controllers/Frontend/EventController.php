@@ -319,6 +319,8 @@ class EventController extends Controller
     $canViewDrawById = $pageData->drawViewPermissions($user, $allEventDraws);
     $canPreviewUnpublishedDraws = $canViewDrawById->contains(true);
     $canScoreEvent = (bool) $user?->can('event.score', $event);
+    $canViewPrivateStandings = $event->isTeam() && !$event->standings_published
+      && $user?->can('event-standings.viewPrivateOnFrontPage', $event);
     $pageData->prepareScheduleExistence($event, $allEventDraws);
     $eventDraws = ($canPreviewUnpublishedDraws
       ? $allEventDraws
@@ -507,6 +509,7 @@ return view('frontend.event.show', compact(
       'canManageRegionalTeamSelection',
       'isEventWideAdministrator',
       'canScoreEvent',
+      'canViewPrivateStandings',
       'canViewDrawById'
     ));
   }

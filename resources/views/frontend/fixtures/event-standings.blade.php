@@ -3,10 +3,16 @@
 @section('content')
 <div id="public-age-points" class="container-xxl py-4">
   @php
-    $standingsRoute = ($publicPreview ?? false) ? 'admin.events.standings.preview' : 'frontend.events.standings';
+    $standingsRoute = match (true) {
+        $publicPreview ?? false => 'admin.events.standings.preview',
+        $privateStandings ?? false => 'frontend.events.private-standings',
+        default => 'frontend.events.standings',
+    };
   @endphp
   @if($publicPreview ?? false)
     <div class="alert alert-info" role="status"><strong>Private preview</strong> — this shows the public standings layout using only published draws and ties. Previewing does not publish anything.</div>
+  @elseif($privateStandings ?? false)
+    <div class="alert alert-info" role="status"><strong>Private team standings</strong> for super admins and assigned venue scorers.</div>
   @endif
   <style>
     #public-age-points { max-width: 1120px; min-width: 0; }

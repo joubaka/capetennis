@@ -111,6 +111,9 @@ class AuthServiceProvider extends ServiceProvider
                 ->contains(fn ($region) => $access->canManageRoster($user, $region));
         });
 
+        Gate::define('event-standings.viewPrivateOnFrontPage', fn ($user, \App\Models\Event $event) =>
+            $user->scoringVenueIdForEvent($event->id) !== null);
+
         Gate::define('region-clothing.manage', function ($user, \App\Models\TeamRegion $region) {
             return \App\Models\EventRegion::query()
                 ->with('events')

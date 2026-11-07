@@ -2301,6 +2301,8 @@ Route::prefix('frontend')->middleware('auth')->group(function () {
 //Frotend fixtures (public)
 Route::get('/team-draw/{draw}/standings', [\App\Http\Controllers\Backend\TeamEventRulesController::class, 'publicStandings'])->name('frontend.team-draw.standings');
 Route::get('/events/{event}/standings', \App\Http\Controllers\Frontend\PublicEventStandingsController::class)->name('frontend.events.standings');
+Route::get('/events/{event}/private-standings', [\App\Http\Controllers\Frontend\PublicEventStandingsController::class, 'privateStandings'])
+  ->middleware('can:event-standings.viewPrivateOnFrontPage,event')->name('frontend.events.private-standings');
 Route::get('/events/{event}/convener-standings/{age}', \App\Http\Controllers\Frontend\AgeGroupConvenerStandingsController::class)
   ->middleware('auth')->name('frontend.events.convener-standings');
 Route::get('frontend/fixtures/draw/index/{id}', [FrontFixtureController::class, 'drawFixtures'])->name('frontend.fixtures.index');

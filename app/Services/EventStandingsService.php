@@ -24,6 +24,13 @@ final class EventStandingsService
         return $this->calculate($event, $filters, true);
     }
 
+    public function forVenueScoring(Event $event, array $filters = []): array
+    {
+        abort_unless($event->isTeam(), 404);
+
+        return $this->calculate($event, $filters, true);
+    }
+
     /** Private operational access uses published results without publishing standings. */
     public function forRegionalConvener(Event $event, \App\Models\User $actor, array $filters = []): array
     {

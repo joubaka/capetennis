@@ -40,11 +40,14 @@
   </div>
 
   <div class="card-body">
-    @if($event->isTeam() && $event->published && $event->standings_published)
+    @php
+      $publicStandings = $event->isTeam() && $event->published && $event->standings_published;
+    @endphp
+    @if($publicStandings || ($canViewPrivateStandings ?? false))
       <div class="border rounded p-3 mb-3" data-event-standings-card>
-        <h5 class="mb-2">Team standings</h5>
+        <h5 class="mb-2">Team standings @unless($publicStandings)<span class="badge bg-label-secondary">Private</span>@endunless</h5>
         <p class="mb-3">See positions by age group, total points and matches won / lost, with boys’, girls’ and mixed results combined.</p>
-        <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('frontend.events.standings', $event) }}">View standings and match statistics</a>
+        <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route($publicStandings ? 'frontend.events.standings' : 'frontend.events.private-standings', $event) }}">View standings and match statistics</a>
       </div>
     @endif
     @include('frontend.event.partials._venue-scoring')

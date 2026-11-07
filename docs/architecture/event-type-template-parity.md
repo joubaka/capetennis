@@ -73,6 +73,14 @@ backfill or conversion is implied by extracting a presentation component.
 
 ## Verification gates
 
+For team events, keep the public and private front-page standings routes separate.
+While public standings are unpublished, the private link in Draws is available
+to super users and active score keepers assigned to a named venue on that event.
+The private route enforces the same access and uses the published draws and ties
+across the event. Its age filter and automatic refresh stay on the private route.
+Venue scoring permissions continue to govern score entry. See
+`PublicEventStandingsTest` for the audience and publication regressions.
+
 - Characterize all legacy template mappings, code-based special workflows,
   family precedence, missing type records and nonlegacy IDs before replacing
   identification branches.

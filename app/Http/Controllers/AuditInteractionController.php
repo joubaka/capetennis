@@ -29,13 +29,13 @@ class AuditInteractionController extends Controller
             abort_unless($subject && (int) $subject->user_id === (int) auth()->id(), 403);
         }
 
-        $writer->record([
+        $recorded = $writer->record([
             'category' => 'interaction',
             'action' => 'ui.'.$validated['action'],
             'subject' => $subject,
             'metadata' => $validated,
-        ]);
+        ]) !== null;
 
-        return response()->json(['recorded' => true], 202);
+        return response()->json(['recorded' => $recorded], $recorded ? 202 : 503);
     }
 }

@@ -34,8 +34,11 @@ class RecordAuditRequest
         $previousRequestId = $request->hasSession() ? $request->session()->get('audit_previous_request_id') : null;
         $this->context->set($request, $requestId, $journeyId, $previousRequestId);
 
+        // The interaction controller records validated browser telemetry itself.
+        $recordRequest = ! $request->routeIs('audit.interactions.store');
+
         try {
-            if ($this->potentialMutation($request)) {
+            if ($recordRequest && $this->potentialMutation($request)) {
                 $routeName = $request->route()?->getName();
                 $this->writer->record([
                     'category' => 'request',
@@ -50,15 +53,21 @@ class RecordAuditRequest
             }
 
             $response = $next($request);
-            $this->record($request, $response->getStatusCode());
+            if ($recordRequest) {
+                $this->record($request, $response->getStatusCode());
+            }
             $response->headers->set('X-Request-Id', $requestId);
 
-            if ($request->hasSession()) {
+            if ($request->hasSession() && ($recordRequest || $response->isSuccessful())) {
                 $request->session()->put('audit_previous_request_id', $requestId);
             }
 
             return $response;
         } catch (Throwable $exception) {
+            if (! $recordRequest) {
+                throw $exception;
+            }
+
             $statusCode = match (true) {
                 $exception instanceof AuthorizationException => 403,
                 $exception instanceof AuthenticationException => 401,

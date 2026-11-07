@@ -2,10 +2,11 @@
 
 namespace Tests\Feature\TeamDraw;
 
-use App\Models\{CategoryEvent, Draw, Event, EventType, Team, TeamFixture, TeamRegion, TeamTie};
+use App\Models\{CategoryEvent, Draw, Event, EventConvenor, EventType, Team, TeamFixture, TeamRegion, TeamTie, User, Venue};
 use App\Services\{EventStandingsService, TeamEventRulesService, TeamFixtureScoreService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class PublicEventStandingsTest extends TestCase
@@ -168,6 +169,77 @@ class PublicEventStandingsTest extends TestCase
         $event->forceFill(['standings_published' => true])->save();
         $public = $this->get(route('frontend.events.standings', $event))->assertOk()->assertDontSee('Private preview');
         $this->assertSame($groups, $public->viewData('ageGroups'));
+    }
+
+    public function test_super_users_and_current_named_venue_scorers_can_open_private_standings_from_the_event_page(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $event = $this->event();
+        $event->forceFill(['standings_published' => false])->save();
+        $visible = $this->draw($event);
+        $visible['draw']->categoryEvent->category->update(['name' => 'U10']);
+        $this->score($visible['rubber']);
+        $hidden = $this->draw($event, 'U12 Hidden');
+        $hidden['draw']->categoryEvent->category->update(['name' => 'U12']);
+        $hidden['draw']->update(['published' => false]);
+        $this->score($hidden['rubber']);
+
+        $scorer = User::factory()->create();
+        $venue = Venue::forceCreate(['name' => 'Private standings venue']);
+        $event->venues()->attach($venue, ['num_courts' => 1]);
+        $assignment = EventConvenor::create([
+            'event_id' => $event->id, 'user_id' => $scorer->id, 'role' => 'score-keeper', 'venue_id' => $venue->id,
+        ]);
+        $superUser = User::factory()->create()->assignRole('super-user');
+        $front = route('events.show', $event);
+        $private = route('frontend.events.private-standings', $event);
+        $public = route('frontend.events.standings', $event);
+
+        $this->get($front)->assertOk()->assertDontSee($private);
+        $this->get($private)->assertForbidden();
+        $this->get($public)->assertNotFound();
+
+        foreach ([$superUser, $scorer] as $allowed) {
+            $this->actingAs($allowed)->get($front)->assertOk()->assertSee('href="'.$private.'"', false);
+            $response = $this->get($private.'?age=U10')->assertOk()
+                ->assertSee('Private team standings')->assertSee('data-points="3"', false)
+                ->assertSee('action="'.$private.'"', false)->assertSee('href="'.$private.'"', false)
+                ->assertDontSee('U12 Hidden')->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+            $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+            $this->assertSame(['U10'], $response->viewData('options')['age']);
+            $this->get($public)->assertNotFound();
+        }
+
+        $assignment->update(['expires_at' => now()->subMinute()]);
+        $this->get($front)->assertOk()->assertDontSee($private);
+        $this->get($private)->assertForbidden();
+        $this->assertFalse($event->fresh()->standings_published);
+    }
+
+    public function test_other_event_roles_and_unscoped_scorers_cannot_open_private_front_page_standings(): void
+    {
+        $event = $this->event();
+        $event->forceFill(['standings_published' => false])->save();
+        $otherEvent = $this->event();
+        $venue = Venue::forceCreate(['name' => 'Other event venue']);
+        $otherEvent->venues()->attach($venue, ['num_courts' => 1]);
+        $ordinary = User::factory()->create();
+        $eventAdmin = User::factory()->create();
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $eventAdmin->id]);
+        $convenor = User::factory()->create();
+        EventConvenor::create(['event_id' => $event->id, 'user_id' => $convenor->id, 'role' => 'hoof']);
+        $eventWideScorer = User::factory()->create();
+        EventConvenor::create(['event_id' => $event->id, 'user_id' => $eventWideScorer->id, 'role' => 'score-keeper']);
+        $otherScorer = User::factory()->create();
+        EventConvenor::create([
+            'event_id' => $otherEvent->id, 'user_id' => $otherScorer->id, 'role' => 'score-keeper', 'venue_id' => $venue->id,
+        ]);
+        $private = route('frontend.events.private-standings', $event);
+
+        foreach ([$ordinary, $eventAdmin, $convenor, $eventWideScorer, $otherScorer] as $denied) {
+            $this->actingAs($denied)->get(route('events.show', $event))->assertOk()->assertDontSee($private);
+            $this->get($private)->assertForbidden();
+        }
     }
 
     public function test_standings_default_private_and_generic_fill_cannot_publish(): void

@@ -449,6 +449,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Http/Controllers/Frontend/EventController.php", "app/Services/EventMatchProgressService.php", "app/Services/Scheduling/SchedulePublicationService.php", "app/Services/Draw/PublicDrawResultsRevision.php", "docs/draw-knowledge/catalogue.md"],
       "tests": ["tests/Feature/EventPagePerformanceTest.php", "tests/Feature/EventMatchProgressTest.php", "tests/Feature/Draw/DrawScheduleProjectionScopeTest.php", "tests/Feature/Draw/PublicFixtureEmptyStateTest.php", "tests/Frontend/draw-live-results.test.cjs"]
+    },
+    {
+      "id": "RK-031",
+      "title": "Browser interaction audit raises a website error during a database connection failure",
+      "scope": "The browser telemetry POST to audit/interactions, including clicks alongside announcement publication.",
+      "symptoms": "A website error references AuditWriter and RecordAuditRequest while checking audit_events for the interaction POST. Verify the separate business request and mail batch independently.",
+      "cause": "Generic request auditing treated the telemetry POST as a critical business mutation and rethrew the audit storage exception before the controller ran.",
+      "fix": "Keep the exact route in request audit middleware for correlation and record its validated canonical interaction in the controller. Return 503 with recorded false when no audit row is written, preserve the previous audited request pointer on failure, and retain critical auditing on business mutations.",
+      "verification": "On 2026-11-07, the isolated SQLite audit trail and view safety suites passed 19 tests with 69 assertions, including a simulated PDO failure, single-row success, request correlation, order ownership and continued fail-closed business auditing.",
+      "limits": "This handles audit storage failure on the interaction route. Diagnose the underlying database connection separately. Verify publication and mail acceptance from their own records. No production verification.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Middleware/RecordAuditRequest.php", "app/Http/Controllers/AuditInteractionController.php", "app/Support/Audit/AuditWriter.php"],
+      "tests": ["tests/Feature/AuditTrailTest.php", "tests/Feature/AuditInteractionViewSafetyTest.php"]
     }
   ]
 }
