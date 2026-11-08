@@ -89,6 +89,17 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
         $this->assertCount(28, $largeColumns['girls']);
         $this->assertNull($largeColumns['girls']->getCollection()->last()['position']);
         $this->assertStringContainsString('per_page=500', $largeColumns['boys']->url(2));
+        $hundredUrl = $url.'?ball_type=overall&age_scope=group&age_group=u13&per_page=100';
+        $hundred = $this->get($hundredUrl)->assertOk();
+        $this->assertSame(100, $hundred->viewData('sections')['u13']['columns']['boys']->perPage());
+        $fragment = $this->get($hundredUrl, ['X-CTR-Directory' => '1'])->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('Vary', 'X-CTR-Directory')
+            ->assertSee('data-ctr-directory', false)
+            ->assertSee('value="100" selected>100 players', false)
+            ->assertSee('Boy27 Synthetic (2013)')
+            ->assertDontSee('<html', false);
+        if ($path = getenv('CT_DIRECTORY_FRAGMENT_HTML')) file_put_contents($path, $fragment->getContent());
         $shared = $this->get($url.'?sort=shared&age_scope=group&age_group=u13&per_page=500')->assertOk()->assertSee('Players per page');
         $this->assertSame(500, $shared->viewData('players')->perPage());
         $this->assertCount(56, $shared->viewData('players'));

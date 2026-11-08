@@ -7,7 +7,9 @@
 @section('content')
 <div class="operational-page">
 @include('backend.partials.operational-controls')
-<div class="ctr-directory">
+<p class="visually-hidden" data-ctr-status role="status"></p>
+@fragment('ctr-directory')
+<div class="ctr-directory" data-ctr-directory>
     <header class="ctr-hero">
         <div><h1>CTR Ratings</h1><p>{{ $ballLevel ? $ratingLabel.' · singles ratings' : 'Cape Tennis all-age singles ratings' }}</p></div>
         <x-ctr-mark size="heading" />
@@ -41,16 +43,16 @@
         <div class="ctr-field"><label for="gender" class="form-label">Gender</label><select name="gender" id="gender" class="form-select" style="min-height:44px"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $key => $label)<option value="{{ $key }}" @selected($gender === $key)>{{ $label }}</option>@endforeach</select></div>
         <div class="ctr-field"><label for="region" class="form-label">Region</label><select name="region" id="region" class="form-select" aria-describedby="ctr-region-hint" style="min-height:44px"><option value="">All regions</option>@foreach($regionOptions as $option)<option value="{{ $option }}" @selected($region === $option)>{{ $option }}</option>@endforeach</select><p class="ctr-field-hint" id="ctr-region-hint">Recorded team affiliations, including past seasons.</p></div>
         <div class="ctr-field ctr-search"><label for="search" class="form-label">Player name</label><input type="search" name="search" id="search" maxlength="100" class="form-control" style="min-height:44px" value="{{ $search }}"></div>
-        <div class="ctr-field"><label for="players-per-page" class="form-label">{{ $groupedOrder ? 'Players per list' : 'Players per page' }}</label><select name="per_page" id="players-per-page" class="form-select" style="min-height:44px">@foreach([10, 25, 50, 100, 500] as $size)<option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>@endforeach</select></div>
+        <div class="ctr-field"><label for="players-per-page" class="form-label">{{ $groupedOrder ? 'Players per list' : 'Players per page' }}</label><select name="per_page" id="players-per-page" class="form-select" style="min-height:44px">@foreach([10, 25, 50, 100, 500] as $size)<option value="{{ $size }}" @selected($perPage === $size)>{{ $size }} players</option>@endforeach</select></div>
         <div class="ctr-filter-actions">
         @unless($comparisonGroup)<details class="ctr-sort-options" @if($sort !== ($allAgesBall ? 'shared' : 'grouped')) open @endif><summary>More options</summary><label for="rating-sort" class="form-label">List order</label><select name="sort" id="rating-sort" class="form-select" style="min-height:44px">@unless($allAgesBall)<option value="grouped" @selected($sort === 'grouped')>Age groups · Boys and Girls</option>@endunless<option value="shared" @selected($sort === 'shared')>Shared-scale order</option><option value="score" @selected($sort === 'score')>Ranked list — all scores</option>@unless($allAgesBall)<option value="age" @selected($sort === 'age')>Rank by age group</option>@endunless</select></details>@endunless
-        <button type="submit" class="btn btn-primary ctr-apply">Show players</button>
+        <button id="ctr-apply-filters" type="submit" class="btn btn-primary ctr-apply">Show players</button>
         </div>
     </form>
     @foreach($errors->all() as $error)<p class="text-danger">{{ $error }}</p>@endforeach
     @if($includeYounger)<p class="small mb-2"><strong>{{ $ageScopeLabel }}</strong> · {{ $groupedOrder ? 'Players from these ages share one list per gender.' : 'Includes all players through this age.' }}</p>@endif
     <div class="ctr-results-intro">
-    <h2 class="ctr-section-title">Player results</h2>
+    <h2 class="ctr-section-title" id="ctr-results" tabindex="-1">Player results</h2>
     <p class="ctr-result-summary"><strong>{{ number_format($players->total()) }} {{ Str::plural('player', $players->total()) }}</strong> · @if($snapshot['reason'])players appear after a valid rating calculation.@elseif($groupedOrder)Highest to lowest shared-scale rating {{ $includeYounger ? 'across the selected ages, separately by gender' : 'within each age group and gender' }}. Positions restart for each list; players awaiting calibration have no position.@elseif($diagnosticOrder)diagnostic score order, highest to lowest {{ $ageOrder ? ($includeYounger ? 'across the selected ages combined' : 'within each current age group') : 'across all saved scores' }}. List numbers are not overall ability positions.@else{{ $withinGroup ? 'highest to lowest within-group singles rating' : ($combined ? 'highest to lowest shared-scale singles rating' : ($unified ? 'highest to lowest singles rating within the selected comparison group' : 'highest to lowest rating within each current age group and gender')) }}. @if($combined)Players awaiting calibration follow without an overall position.@endif @endif</p>
     <details class="ctr-rating-details"><summary>Rating details</summary>
     <div class="ctr-rating-details-body">
@@ -117,5 +119,10 @@
     {{ $players->links('pagination::bootstrap-5') }}
     @endif
     <details class="ctr-other-views"><summary>Other rating views</summary><a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.ratings', ['view' => 'recorded']) }}">Ratings within recorded comparison groups</a></details>
-</div></div></div>
+</div></div>
+@endfragment
+</div>
+@endsection
+@section('page-script')
+<script src="{{ asset('js/ctr-directory.js') }}?v={{ filemtime(public_path('js/ctr-directory.js')) }}" defer></script>
 @endsection

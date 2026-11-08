@@ -66,7 +66,11 @@ class PlayerRatingLeaderboardController extends Controller
             $request->validate($columnPages);
             $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'grouped', isset($settings['per_page']) ? (int) $settings['per_page'] : null, $settings['age_scope'] ?? 'younger', $settings['region'] ?? '', $settings['ball_type'] ?? 'auto');
             $data['refreshStatus'] = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
-            return response()->view('backend.player-performance.profile-ratings', $data)->header('Cache-Control', 'no-store, private');
+            $view = view('backend.player-performance.profile-ratings', $data);
+            $content = $request->header('X-CTR-Directory') === '1' ? $view->fragment('ctr-directory') : $view;
+            return response($content)
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Vary', 'X-CTR-Directory');
         }
         return $this->show($request, $service);
     }
