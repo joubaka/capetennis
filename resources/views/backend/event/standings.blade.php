@@ -1,15 +1,18 @@
 @extends('layouts.backend')
 @section('title', 'Standings – '.$event->name)
+@section('page-style')
+@include('backend.event.partials.standings-style')
+@endsection
 @section('content')
-<div data-backend-wide>
+<div class="event-standings" data-backend-wide>
   @include('backend.event.partials.header', ['eventWorkspaceSubtitle' => 'Event standings and competition statistics', 'eventWorkspaceRegionalOnly' => $regionalOnly ?? false, 'eventWorkspaceHomeUrl' => ($regionalOnly ?? false) ? route('backend.team-selection.index', $event) : route('admin.events.overview', $event)])
-  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3"><h1 class="h4 mb-0">Standings &amp; statistics</h1>@unless($regionalOnly ?? false)<a class="btn btn-outline-primary" href="{{ route('backend.scoreboard.team.show', $event) }}">View match results</a>@endunless</div>
+  <div class="standings-heading d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h1 class="h4 mb-0"><i class="ti ti-trophy" aria-hidden="true"></i> Standings &amp; statistics</h1>@unless($regionalOnly ?? false)<a class="btn btn-outline-primary" href="{{ route('backend.scoreboard.team.show', $event) }}">View match results</a>@endunless</div>
   @if($regionalOnly ?? false)
     <p class="alert alert-info">These running standings show published draws and matches across the event. Draft results are excluded.</p>
   @else
-  <section class="card card-body mb-4">
+  <section class="card card-body mb-4 standings-panel standings-publication">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
-      <div><h2 class="h5 mb-1">Public team standings</h2><span class="badge bg-label-{{ $event->standings_published ? 'success' : 'secondary' }}">{{ $event->standings_published ? 'Published' : 'Unpublished' }}</span></div>
+      <div><h2 class="h5 mb-1">Public team standings</h2><span class="standings-status {{ $event->standings_published ? 'is-published' : 'is-unpublished' }}">{{ $event->standings_published ? 'Published' : 'Unpublished' }}</span></div>
       @can('team-draw.createFormat', $event)
       <div class="d-flex flex-wrap align-items-center gap-2">
       <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('admin.events.standings.preview', $event) }}" target="_blank" rel="noopener">Preview public standings</a>
@@ -25,18 +28,18 @@
     <p class="small text-muted mb-0 mt-3">Publishing shows Team standings and match totals on the public event page and enables public draw standings. Only published draws and ties contribute. These are current running standings, not final tournament placings. Event, draw, schedule and final results publication remain separate.</p>
   </section>
   @endif
-  <section class="card card-body mb-4" aria-label="Combined age group results">
-    <h2 class="h5">Combined results by age group</h2>
+  <section class="card card-body mb-4 standings-panel standings-ages" aria-label="Combined age group results">
+    <h2 class="h5"><i class="ti ti-users" aria-hidden="true"></i> Combined results by age group</h2>
     <p>Choose an age group to combine boys, girls, mixed and every match type. This clears the gender and category filters.</p>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('admin.events.standings', $event) }}">All age groups</a>
+      <a class="btn standings-age-link" @if(!array_filter($filters)) aria-current="page" @endif href="{{ route('admin.events.standings', $event) }}">All age groups</a>
       @foreach(collect($options['age'])->sort(fn ($a, $b) => strnatcasecmp($a, $b)) as $ageOption)
-      <a class="btn {{ ($filters['age'] ?? '') === $ageOption && empty($filters['gender']) && empty($filters['category']) ? 'btn-primary' : 'btn-outline-primary' }}" style="min-height:44px" href="{{ route('admin.events.standings', [$event, 'age' => $ageOption]) }}">{{ $ageOption === 'Unspecified' ? 'Age unspecified' : 'Under '.substr($ageOption, 1) }}</a>
+      <a class="btn standings-age-link" @if(($filters['age'] ?? '') === $ageOption && empty($filters['gender']) && empty($filters['category'])) aria-current="page" @endif href="{{ route('admin.events.standings', [$event, 'age' => $ageOption]) }}">{{ $ageOption === 'Unspecified' ? 'Age unspecified' : 'Under '.substr($ageOption, 1) }}</a>
       @endforeach
     </div>
   </section>
-  <form method="GET" class="card card-body mb-4">
-    <h2 class="h5">Detailed filters</h2>
+  <form method="GET" class="card card-body mb-4 standings-panel standings-filters">
+    <h2 class="h5"><i class="ti ti-adjustments" aria-hidden="true"></i> Detailed filters</h2>
     <div class="row g-3 align-items-end">
       @foreach(['gender' => 'Gender', 'age' => 'Age group', 'category' => 'Category'] as $key => $label)
       <div class="col-12 col-md-3"><label for="standings-{{ $key }}" class="form-label">{{ $label }}</label>
@@ -56,7 +59,7 @@
     @endif
   @endforeach
   @include('frontend.fixtures.partials.team-placement-results')
-  <section class="card mb-4"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
+  <section class="card mb-4 standings-results standings-overall"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>
     @if($mixedRules)<p class="text-warning mb-0 mt-2">Draws use different scoring rules. Totals are shown alphabetically without an overall rank; use each draw's standings for its ranking.</p>@endif
   </div>
@@ -65,18 +68,18 @@
   <h2 class="h4">Region / school standings in each age group</h2>
   <p>Totals follow the selected filters. With only an age selected, boys, girls, mixed and all match types are combined. These are current running ranks, not final tournament placings; tied regions share a rank.</p>
   @forelse($ageStandings as $age => $ageRows)
-  <section class="card mb-4" data-age-standings="{{ $age }}">
+  <section class="card mb-4 standings-results standings-age-results" data-age-standings="{{ $age }}">
     <div class="card-header"><h3 class="h5 mb-0">{{ $age === 'Unspecified' ? 'Age group unspecified' : 'Under '.substr($age, 1).' combined results' }}</h3>
       @if($ageMixedRules[$age])<p class="text-warning mt-2 mb-0">This age group uses different saved scoring rules. Totals are shown alphabetically without a combined rank; see each draw for its ranking.</p>@endif
     </div>
     @include('backend.event.partials.standings-table', ['rows' => $ageRows, 'agePoints' => true])
   </section>
   @empty<p>No age groups match these filters.</p>@endforelse
-  <details class="card card-body mb-4" data-standings-details>
+  <details class="card card-body mb-4 standings-panel standings-filters" data-standings-details>
     <summary style="min-height:44px">Competition statistics and breakdowns</summary>
   <div class="row g-3 mb-4">
     @foreach(['draws' => 'Draws', 'teams' => 'Teams in ties', 'ties' => 'Completed ties', 'rubbers' => 'Completed rubbers'] as $key => $label)
-      <div class="col-6 col-lg-3"><div class="card card-body h-100"><span class="text-muted">{{ $label }}</span><strong class="h3 mb-0">{{ $stats[$key] }}</strong></div></div>
+      <div class="col-6 col-lg-3"><div class="card card-body h-100 standings-stat" data-stat="{{ $key }}"><span class="text-muted">{{ $label }}</span><strong class="h3 mb-0">{{ $stats[$key] }}</strong></div></div>
     @endforeach
   </div>
   <div class="row g-3 mb-4">
@@ -92,7 +95,7 @@
   <h2 class="h4">Standings by draw</h2>
   <p>Ranks follow each draw's saved scoring rules. Teams tied on all configured criteria share a rank. Gender and age groups come from recorded categories, draw names and gender labels; unlabelled groups appear as Unspecified.</p>
   @forelse($sections as $section)
-    <details class="card mb-4" data-standings-details><summary class="card-header" style="min-height:44px"><h3 class="h5 mb-1">{{ $section['draw']->drawName }}</h3><span class="text-muted">{{ $section['category'] }} · {{ $section['gender'] }} · {{ $section['age'] }}</span></summary>
+    <details class="card mb-4 standings-results standings-draw" data-standings-details><summary class="card-header" style="min-height:44px"><h3 class="h5 mb-1">{{ $section['draw']->drawName }}</h3><span class="text-muted">{{ $section['category'] }} · {{ $section['gender'] }} · {{ $section['age'] }}</span></summary>
       @include('backend.event.partials.standings-table', ['rows' => $section['rows'], 'agePoints' => true])
     </details>
   @empty<div class="alert alert-info">No team draws match these filters.</div>@endforelse
