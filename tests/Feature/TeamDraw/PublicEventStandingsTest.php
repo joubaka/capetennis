@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\TeamDraw;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Models\{CategoryEvent, Draw, Event, EventConvenor, EventType, Team, TeamFixture, TeamRegion, TeamTie, User, Venue};
 use App\Services\{EventStandingsService, TeamEventRulesService, TeamFixtureScoreService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -252,6 +253,13 @@ class PublicEventStandingsTest extends TestCase
                 $this->score($singles['rubber']);
             }
             $this->score($reverse['rubber'], away: true);
+            if ($age === 11) {
+                $pending = $reverse['rubber']->replicate();
+                $pending->fill(['rubber_sequence' => 2, 'match_nr' => 2, 'match_status' => 0])->save();
+                app(TeamFixtureScoreService::class)->save($pending, ['set1_home' => 6, 'set1_away' => 2]);
+                $bye = $reverse['rubber']->replicate();
+                $bye->fill(['rubber_sequence' => 3, 'match_nr' => 3, 'match_status' => FixtureState::STATUS_BYE])->save();
+            }
         }
         $hidden = $this->draw($event, 'U11 Hidden Format');
         $this->score($hidden['rubber']);
@@ -263,6 +271,14 @@ class PublicEventStandingsTest extends TestCase
         foreach ([10, 11, 12, 13] as $age) {
             $response->assertSee("U{$age} Boys Singles")->assertSee("U{$age} Boys Reverse Singles");
         }
+        $response->assertSee('2 / 3 matches completed')->assertSee('1 remaining')
+            ->assertSee('2 / 2 matches completed')->assertSee('0 remaining');
+        $this->assertSame([
+            'U10' => ['completed' => 2, 'total' => 2, 'remaining' => 0],
+            'U11' => ['completed' => 2, 'total' => 3, 'remaining' => 1],
+            'U12' => ['completed' => 2, 'total' => 2, 'remaining' => 0],
+            'U13' => ['completed' => 2, 'total' => 2, 'remaining' => 0],
+        ], $response->viewData('ageMatchProgress'));
         $rows = $response->viewData('ageStandings');
         $this->assertSame(['Audit Pine', 'Audit Oak'], array_column($rows['U11'], 'name'));
         $this->assertSame([5, 3], array_column($rows['U11'], 'points'));
@@ -277,8 +293,19 @@ class PublicEventStandingsTest extends TestCase
         $this->get($url.'?age=U11')->assertOk()
             ->assertSee('U11 Boys Reverse Singles')->assertDontSee('U13 Boys Reverse Singles');
 
-        $public = $this->get(route('frontend.events.standings', $event))->assertOk();
+        $public = $this->get(route('frontend.events.standings', $event))->assertOk()
+            ->assertDontSee('data-match-progress', false);
         $this->assertSame([null, null], array_column($public->viewData('ageStandings')['U11'], 'rank'));
+
+        $admin = route('admin.events.standings', $event);
+        $unfiltered = $this->get($admin)->assertOk()->assertDontSee('shown alphabetically');
+        $this->assertSame([5, 3, 3, 3, 3, 3, 3, 3, 3, 0], array_column($unfiltered->viewData('overall'), 'points'));
+        $this->assertSame([1, 2, 2, 2, 2, 2, 2, 2, 2, 10], array_column($unfiltered->viewData('overall'), 'rank'));
+        $this->assertSame([5, 3, 3, 0], array_column($unfiltered->viewData('ageStandings')['U11'], 'points'));
+        $this->assertSame([1, 1], array_column($unfiltered->viewData('ageStandings')['U13'], 'rank'));
+        $filtered = $this->get($admin.'?age=U11')->assertOk();
+        $this->assertSame([5, 3, 3, 0], array_column($filtered->viewData('overall'), 'points'));
+        $this->assertSame([1, 2, 2, 4], array_column($filtered->viewData('overall'), 'rank'));
     }
 
     public function test_other_event_roles_and_unscoped_scorers_cannot_open_private_front_page_standings(): void

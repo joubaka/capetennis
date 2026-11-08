@@ -6,6 +6,7 @@ use App\Models\Draw;
 use App\Models\TeamTie;
 use App\Models\TeamFixture;
 use App\Domain\TeamDraw\RubberType;
+use App\Domain\Draws\Enums\FixtureState;
 
 final class TeamStandingsService
 {
@@ -67,7 +68,7 @@ final class TeamStandingsService
             : ($tie->published_at ? TeamTie::STATUS_PUBLISHED : ($tie->status === TeamTie::STATUS_COMPLETED ? TeamTie::STATUS_VALIDATED : $tie->status))]);
     }
 
-    public function forDraw(Draw $draw, bool $publishedOnly = false, ?array $teamIds = null): array
+    public function forDraw(Draw $draw, bool $publishedOnly = false, ?array $teamIds = null, ?array &$matchProgress = null): array
     {
         if ($draw->team_scoring_rules['undecided'] ?? false) return [];
         $rows = [];
@@ -88,6 +89,11 @@ final class TeamStandingsService
             foreach ($tie->rubbers as $rubber) {
                 $rubber->setRelation('draw', $draw);
                 $outcome = $results->outcome($rubber);
+                if ($matchProgress !== null && $tie->home_team_id !== $tie->away_team_id
+                    && FixtureState::fromInt((int) $rubber->match_status) !== FixtureState::Bye) {
+                    $matchProgress['total']++;
+                    $matchProgress['completed'] += (int) $outcome['complete'];
+                }
                 // Only completed rubbers contribute standings, never provisional sets.
                 if (!$outcome['complete']) { continue; }
                 $points = $results->points($rubber, $outcome);

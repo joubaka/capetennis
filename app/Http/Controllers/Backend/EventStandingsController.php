@@ -57,7 +57,7 @@ class EventStandingsController extends Controller
         $regionalOnly = !$request->user()->can('event-draw.view', $event);
         $data = $regionalOnly
             ? $service->forRegionalConvener($event, $request->user(), $filters)
-            : $service->forEvent($event, $filters);
+            : $service->forAdmin($event, $filters);
 
         return response()->view('backend.event.standings', ['event' => $event, 'regionalOnly' => $regionalOnly] + $data)
             ->header('Cache-Control', 'no-store, private');

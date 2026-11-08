@@ -31,6 +31,8 @@
     #public-age-points .points-card:nth-child(even) .points-card-header { background:#3f6656; border-bottom-color:#a9c0a5; }
     #public-age-points .points-card-header h2 { color:#fff; font-size:1.15rem; font-weight:600; margin:0; }
     #public-age-points .points-card-header span { color:#deebe4; font-size:.75rem; }
+    #public-age-points .points-card-heading { display:flex; flex-wrap:wrap; align-items:baseline; gap:.3rem .75rem; }
+    #public-age-points .points-card-heading span { font-size:.85rem; font-weight:600; }
     #public-age-points .points-table-scroll { overflow-x:auto; }
     #public-age-points .points-table { width:100%; min-width:520px; border-collapse:collapse; }
     #public-age-points .points-position { width:60px; text-align:center; font-size:1.1rem; font-weight:700; color:#365940; }
@@ -105,9 +107,18 @@
         $colors = collect($ageGroups[$age] ?? [])->pluck('color', 'name');
         $hasResults = collect($rows)->contains(fn ($row) => $row['rubber_wins'] + $row['rubber_losses'] > 0);
         $formats = ($privateStandings ?? false) ? ($agePointFormats[$age] ?? []) : [];
+        $progress = ($privateStandings ?? false) ? ($ageMatchProgress[$age] ?? null) : null;
       @endphp
       <section class="points-card" data-age-points="{{ $age }}">
-        <div class="points-card-header"><h2>{{ $age === 'Unspecified' ? 'Age group unspecified' : $age.' standings' }}</h2><span>{{ count($rows) }} regions / schools</span></div>
+        <div class="points-card-header">
+          <div class="points-card-heading">
+            <h2>{{ $age === 'Unspecified' ? 'Age group unspecified' : $age.' standings' }}</h2>
+            @if($progress)
+              <span data-match-progress>{{ $progress['completed'] }} / {{ $progress['total'] }} matches completed · {{ $progress['remaining'] }} remaining</span>
+            @endif
+          </div>
+          <span>{{ count($rows) }} regions / schools</span>
+        </div>
         <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} points table; scroll horizontally if needed">
         <table class="points-table" aria-label="{{ $age }} points by region or school">
           <thead><tr><th scope="col">Pos.</th><th scope="col">Region / school</th><th scope="col">Match points</th><th scope="col">Tie points</th><th scope="col">Total points</th></tr></thead>

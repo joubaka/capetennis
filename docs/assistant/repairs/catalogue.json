@@ -549,7 +549,7 @@
       "cause": "Mixed rules suppress rank in the public presentation, and the encounter matrix is only available for qualifying round-robin draws.",
       "fix": "Rank mixed-rules age groups by total points in the private view and share positions on equal totals. Build format columns from the same published draw rows and region grouping as the age totals, independently of encounter matrix availability.",
       "verification": "Verify points and ranks for multiple ages, including tied totals, a legacy region fixture without a matrix, and an unpublished draw. Confirm the public ranking policy separately.",
-      "limits": "Guide only. The private ranking and breakdown do not change stored results, publication, or public and admin ranking policy.",
+      "limits": "Guide only. The private ranking and breakdown do not change stored results or publication. Public ranking policy is separate. Admin summaries order by total points and use saved secondary criteria when the rules are shared.",
       "assistant_action": "guide_only",
       "sources": ["app/Services/EventStandingsService.php", "app/Http/Controllers/Frontend/PublicEventStandingsController.php"],
       "tests": ["tests/Feature/TeamDraw/PublicEventStandingsTest.php"]

@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Domain\Draws\Enums\FixtureState;
 use App\Models\Event;
 use App\Models\Team;
 
 final class EventStandingsService
 {
     private const METRICS = ['played', 'wins', 'draws', 'losses', 'points', 'match_points', 'tie_points', 'rubber_wins', 'rubber_losses', 'sets_for', 'sets_against', 'games_for', 'games_against'];
+    private const POINTS_ONLY = ['standings_order' => ['points']];
 
     public function forEvent(Event $event, array $filters = [], bool $publishedOnly = false, ?int $drawId = null): array
     {
@@ -31,15 +33,20 @@ final class EventStandingsService
         return $this->calculate($event, $filters, true, privateAgeBreakdown: true);
     }
 
+    public function forAdmin(Event $event, array $filters = []): array
+    {
+        return $this->calculate($event, $filters, false, adminPointsOrder: true);
+    }
+
     /** Private operational access uses published results without publishing standings. */
     public function forRegionalConvener(Event $event, \App\Models\User $actor, array $filters = []): array
     {
         \Illuminate\Support\Facades\Gate::forUser($actor)->authorize('event-standings.view', $event);
         abort_unless($event->isTeam(), 404);
-        return $this->calculate($event, $filters, true);
+        return $this->calculate($event, $filters, true, adminPointsOrder: true);
     }
 
-    private function calculate(Event $event, array $filters, bool $publishedOnly, ?int $drawId = null, bool $privateAgeBreakdown = false): array
+    private function calculate(Event $event, array $filters, bool $publishedOnly, ?int $drawId = null, bool $privateAgeBreakdown = false, bool $adminPointsOrder = false): array
     {
         $teams = Team::query()->without(['team_players', 'team_players_no_profile'])
             ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
@@ -65,7 +72,8 @@ final class EventStandingsService
                 $placementSections[] = compact('draw', 'category', 'gender', 'age', 'results');
                 continue;
             }
-            $rows = app(TeamStandingsService::class)->forDraw($draw, $publishedOnly, $teamIds);
+            $matchProgress = $privateAgeBreakdown ? ['completed' => 0, 'total' => 0] : null;
+            $rows = app(TeamStandingsService::class)->forDraw($draw, $publishedOnly, $teamIds, $matchProgress);
             $legacyRows = [];
             $results = app(TeamRubberResultService::class);
             // Legacy fixtures identify regions directly and have no team tie lifecycle.
@@ -75,6 +83,10 @@ final class EventStandingsService
                 if (!$regions->has($fixture->region1) || !$regions->has($fixture->region2) || $fixture->region1 === $fixture->region2) { continue; }
                 $fixture->setRelation('draw', $draw);
                 $outcome = $results->outcome($fixture);
+                if ($matchProgress !== null && FixtureState::fromInt((int) $fixture->match_status) !== FixtureState::Bye) {
+                    $matchProgress['total']++;
+                    $matchProgress['completed'] += (int) $outcome['complete'];
+                }
                 foreach (['home' => $fixture->region1, 'away' => $fixture->region2] as $side => $regionId) {
                     $legacyRows[$regionId] ??= ['region_id' => $regionId, 'team_id' => null, 'name' => $regions[$regionId]->region_name, 'rank' => null] + array_fill_keys(self::METRICS, 0);
                     $legacyRows[$regionId]['gender_points'] ??= array_fill_keys(['boys', 'girls', 'mixed', 'other'], 0);
@@ -104,7 +116,11 @@ final class EventStandingsService
             }
             unset($legacyRow);
             $rows = app(TeamCompetitionDecisionService::class)->applyStandings($draw, $legacyRows);
-            $sections[] = compact('draw', 'category', 'gender', 'age', 'rows');
+            $section = compact('draw', 'category', 'gender', 'age', 'rows');
+            if ($matchProgress !== null) {
+                $section['matchProgress'] = $matchProgress;
+            }
+            $sections[] = $section;
         }
         $options = [];
         foreach (['gender', 'age', 'category'] as $key) {
@@ -116,6 +132,7 @@ final class EventStandingsService
         $ageGroups = [];
         $ageStandings = [];
         $agePointFormats = [];
+        $ageMatchProgress = [];
         $ageRules = [];
         $ageRuleSets = [];
         $ruleSets = [];
@@ -124,6 +141,13 @@ final class EventStandingsService
         $sharingRules = ($pointSharing['enabled'] ?? false) ? collect($pointSharing['rules'] ?? [])->keyBy('team_id') : collect();
         foreach ($sections as $section) {
             $formatId = $section['draw']->id;
+            if ($privateAgeBreakdown) {
+                $progress = $section['matchProgress'];
+                $ageMatchProgress[$section['age']] ??= ['completed' => 0, 'total' => 0, 'remaining' => 0];
+                $ageMatchProgress[$section['age']]['completed'] += $progress['completed'];
+                $ageMatchProgress[$section['age']]['total'] += $progress['total'];
+                $ageMatchProgress[$section['age']]['remaining'] += $progress['total'] - $progress['completed'];
+            }
             if ($privateAgeBreakdown && $section['rows']) {
                 $agePointFormats[$section['age']][$formatId] = $section['draw']->drawName;
             }
@@ -199,7 +223,7 @@ final class EventStandingsService
         uksort($ageStandings, 'strnatcasecmp');
         foreach ($ageStandings as $age => &$ageRows) {
             $ageRows = array_values($ageRows);
-            if ($ageMixedRules[$age] && !$privateAgeBreakdown) {
+            if ($ageMixedRules[$age] && !$privateAgeBreakdown && !$adminPointsOrder) {
                 usort($ageRows, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
                 continue;
             }
@@ -209,7 +233,7 @@ final class EventStandingsService
                 unset($finalRow);
                 continue;
             }
-            $rankingRules = $ageMixedRules[$age] ? ['standings_order' => ['points']] : $ageRules[$age];
+            $rankingRules = $this->summaryRankingRules($ageRules[$age], $ageMixedRules[$age], $adminPointsOrder);
             $criteria = fn ($row) => $this->criteria($row, $rankingRules);
             usort($ageRows, fn ($a, $b) => ($criteria($b) <=> $criteria($a)) ?: strnatcasecmp($a['name'], $b['name']));
             $previous = null;
@@ -223,11 +247,12 @@ final class EventStandingsService
         }
         unset($ageRows);
         $overall = array_values($overall);
-        if ($mixedRules) {
+        if ($mixedRules && !$adminPointsOrder) {
             usort($overall, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
         } else {
             $rules = $sections ? app(TeamEventRulesService::class)->forDraw($sections[0]['draw']) : app(TeamEventRulesService::class)->defaults();
-            $criteria = fn ($row) => $this->criteria($row, $rules);
+            $rankingRules = $this->summaryRankingRules($rules, $mixedRules, $adminPointsOrder);
+            $criteria = fn ($row) => $this->criteria($row, $rankingRules);
             usort($overall, fn ($a, $b) => ($criteria($b) <=> $criteria($a)) ?: strnatcasecmp($a['name'], $b['name']));
             $previous = null;
             $rank = 0;
@@ -260,7 +285,18 @@ final class EventStandingsService
             }
         }
 
-        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings', 'agePointFormats', 'publicMatrices', 'pointSharingEnabled');
+        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings', 'agePointFormats', 'ageMatchProgress', 'publicMatrices', 'pointSharingEnabled');
+    }
+
+    private function summaryRankingRules(array $rules, bool $mixedRules, bool $adminPointsOrder): array
+    {
+        if ($mixedRules) {
+            return self::POINTS_ONLY;
+        }
+        if ($adminPointsOrder) {
+            $rules['standings_order'] = array_values(array_unique(['points', ...$rules['standings_order']]));
+        }
+        return $rules;
     }
 
     private function criteria(array $row, array $rules): array

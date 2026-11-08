@@ -61,7 +61,7 @@
   @include('frontend.fixtures.partials.team-placement-results')
   <section class="card mb-4 standings-results standings-overall"><div class="card-header"><h2 class="h5 mb-2">{{ array_filter($filters) ? 'Filtered' : 'Full event' }} standings by region / school</h2>
     <p class="mb-0">Totals combine team ties across the selected draws. Completed rubbers earn points; ties count as played once all required rubbers are complete. These are running standings, not final tournament placings.</p>
-    @if($mixedRules)<p class="text-warning mb-0 mt-2">Draws use different scoring rules. Totals are shown alphabetically without an overall rank; use each draw's standings for its ranking.</p>@endif
+    @if($mixedRules)<p class="text-muted mb-0 mt-2">Draws use different scoring rules. Overall positions use total points, and tied totals share a position.</p>@endif
   </div>
   @include('backend.event.partials.standings-table', ['rows' => $overall, 'agePoints' => true])
   </section>
@@ -70,7 +70,7 @@
   @forelse($ageStandings as $age => $ageRows)
   <section class="card mb-4 standings-results standings-age-results" data-age-standings="{{ $age }}">
     <div class="card-header"><h3 class="h5 mb-0">{{ $age === 'Unspecified' ? 'Age group unspecified' : 'Under '.substr($age, 1).' combined results' }}</h3>
-      @if($ageMixedRules[$age])<p class="text-warning mt-2 mb-0">This age group uses different saved scoring rules. Totals are shown alphabetically without a combined rank; see each draw for its ranking.</p>@endif
+      @if($ageMixedRules[$age])<p class="text-muted mt-2 mb-0">Draws in this age group use different scoring rules. Positions use total points, and tied totals share a position.</p>@endif
     </div>
     @include('backend.event.partials.standings-table', ['rows' => $ageRows, 'agePoints' => true])
   </section>
