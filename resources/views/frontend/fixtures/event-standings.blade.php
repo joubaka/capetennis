@@ -121,13 +121,13 @@
         <details class="points-details">
           <summary>Points breakdown and match statistics</summary>
           @if($formats)
-            <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} points by format; scroll horizontally if needed">
+            <div class="points-table-scroll table-responsive" tabindex="0" role="region" aria-label="{{ $age }} points by format; scroll horizontally if needed">
               <table class="points-table points-format-breakdown">
                 <caption class="caption-top">Points by format</caption>
                 <thead><tr>
                   <th scope="col">Region / school</th>
-                  @foreach($formats as $drawId => $format)
-                    <th scope="col"><a href="{{ route('frontend.fixtures.index', $drawId) }}">{{ $format }}</a></th>
+                  @foreach($formats as $format)
+                    <th scope="col">{{ $format }}</th>
                   @endforeach
                   <th scope="col">Total</th>
                 </tr></thead>
@@ -135,7 +135,7 @@
                   @foreach($rows as $row)
                     <tr>
                       <th scope="row">{{ $row['name'] }}</th>
-                      @foreach($formats as $drawId => $format)
+                      @foreach(array_keys($formats) as $drawId)
                         <td data-format-points="{{ $drawId }}">{{ isset($row['format_points'][$drawId]) ? \App\Support\StandingsPoints::format($row['format_points'][$drawId]) : '—' }}</td>
                       @endforeach
                       <td>{{ \App\Support\StandingsPoints::format($row['points']) }}</td>
@@ -161,7 +161,7 @@
       @empty<p class="points-empty">No published points or participants for this age group yet.</p>@endforelse
     </div>
     @if($privateStandings ?? false)
-      <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see each format’s contribution and open its published draw. When formats use different scoring rules, age-group positions use total points and tied totals share a position. Standings reflect completed published results and may change while play continues.</p>
+      <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see each format’s contribution. When formats use different scoring rules, age-group positions use total points and tied totals share a position. Standings reflect completed published results and may change while play continues.</p>
     @else
       <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see opponents, encounter scores and standings for each round-robin draw. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
     @endif

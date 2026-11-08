@@ -231,6 +231,9 @@ class PublicEventStandingsTest extends TestCase
             }
             $rules = app(TeamEventRulesService::class)->defaults();
             $rules['rubbers']['singles']['straight_win'] = $age === 11 ? 5 : 3;
+            if ($age === 13) {
+                $rules['rubbers']['doubles']['straight_win'] = 4;
+            }
             $reverse['draw']->update(['team_scoring_rules' => $rules]);
             if ($age === 13) {
                 $singles['rubber']->delete();
