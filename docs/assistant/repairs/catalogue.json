@@ -540,6 +540,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/TeamEventRulesService.php", "app/Services/TeamRubberResultService.php", "app/Services/TeamStandingsService.php"],
       "tests": ["tests/Feature/TeamDraw/TeamScoringRulesWorkflowTest.php"]
+    },
+    {
+      "id": "RK-038",
+      "title": "Private age standings show points without positions or format details",
+      "scope": "Private team event standings for authorized venue scorers and super users.",
+      "symptoms": "A mixed-rules age group shows dashes instead of positions, or the breakdown is empty despite published draw points.",
+      "cause": "Mixed rules suppress rank in the public presentation, and the encounter matrix is only available for qualifying round-robin draws.",
+      "fix": "Rank mixed-rules age groups by total points in the private view and share positions on equal totals. Build format columns from the same published draw rows and region grouping as the age totals, independently of encounter matrix availability.",
+      "verification": "Verify points and ranks for multiple ages, including tied totals, a legacy region fixture without a matrix, and an unpublished draw. Confirm the public ranking policy separately.",
+      "limits": "Guide only. The private ranking and breakdown do not change stored results, publication, or public and admin ranking policy.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/EventStandingsService.php", "app/Http/Controllers/Frontend/PublicEventStandingsController.php"],
+      "tests": ["tests/Feature/TeamDraw/PublicEventStandingsTest.php"]
     }
   ]
 }

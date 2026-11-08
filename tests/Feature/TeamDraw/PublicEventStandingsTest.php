@@ -238,6 +238,7 @@ class PublicEventStandingsTest extends TestCase
             if ($age === 13) {
                 $singles['rubber']->delete();
                 $singles['tie']->delete();
+                $singles['draw']->update(['team_scoring_rules' => null]);
                 $legacyRubber = TeamFixture::create([
                     'draw_id' => $singles['draw']->id,
                     'region1' => $singles['regions'][0]->id,
