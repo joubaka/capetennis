@@ -18,8 +18,7 @@
     </div>
     <div class="ctr-content">
     @if($refreshStatus['pending'] || $refreshStatus['failed'])
-        <div class="alert alert-info py-2 mb-3" role="status" data-ratings-refresh-message>Updating ratings. This page will refresh automatically when the calculation is ready.</div>
-        <button type="button" class="btn btn-outline-primary mb-3" data-ratings-refresh-retry hidden>Retry ratings update</button>
+        <div class="alert alert-info py-2 mb-3" role="status">A rating update is pending. This page shows the latest available saved ratings.</div>
     @endif
     @if($allAgesBall)<p class="small mb-2">{{ $ratingLabel }} · all ages in one list. Find players by gender, region or name.</p>@else<p class="small mb-2">Find players by ball level, age group, gender or name.</p>@endif
     @if($ballLevel)<p class="small mb-2">{{ $ratingLabel }} uses verified singles and valid published final placings for this ball level. Final-placing-only ratings have low confidence. Ball levels have independent scales; compare only players connected to the same reference group.</p>@endif
@@ -32,16 +31,14 @@
         <div class="col-sm-6 col-lg-3"><label for="ball-type" class="form-label">Ball level</label><select name="ball_type" id="ball-type" class="form-select" style="min-height:44px">@foreach(\App\Services\Performance\BallRatingModel::LABELS as $key => $label)<option value="{{ $key }}" @selected($ballType === $key)>{{ $label }}</option>@endforeach<option value="overall" @selected($ballType === 'overall')>Overall CTR · all ball levels</option></select></div>
         @endif
         @unless($allAgesBall)
-        <div class="col-sm-6 col-lg-3"><label for="age-group" class="form-label">Age group / birth year</label><select name="age_group" id="age-group" class="form-select" style="min-height:44px"><option value="">All ages</option>@foreach(array_diff_key(\App\Services\Performance\PlayerRatingProfileDirectory::birthYearLabels($year), ['u7' => true, 'u8' => true]) as $key => $label)<option value="{{ $key }}" @selected($ageGroup === $key)>{{ $ageScope === 'younger' && preg_match('/^u[0-9]+$/', $key) ? strtoupper($key).' and younger · born '.($year - (int) substr($key, 1)).' or later' : $label }}</option>@endforeach</select></div>
+        <div class="col-sm-6 col-lg-3"><label for="age-group" class="form-label">Age group / birth year</label><select name="age_group" id="age-group" class="form-select" style="min-height:44px"><option value="">All ages</option>@foreach(array_diff_key(\App\Services\Performance\PlayerRatingProfileDirectory::birthYearLabels($year), ['u7' => true, 'u8' => true]) as $key => $label)<option value="{{ $key }}" @selected($ageGroup === $key)>{{ $label }}</option>@endforeach</select></div>
+        <div class="col-sm-6 col-lg-3"><label for="age-scope" class="form-label">Include</label><select name="age_scope" id="age-scope" class="form-select" style="min-height:44px"><option value="group" @selected($ageScope === 'group')>Selected birth-year group only</option><option value="younger" @selected($ageScope === 'younger')>This age and younger</option></select><p class="small text-muted mb-0 mt-1">Choose U9–U18 to combine that age with younger players. Use the ball-level filter for Red and Orange.</p></div>
         @endunless
         <div class="col-sm-6 col-lg-3"><label for="gender" class="form-label">Gender</label><select name="gender" id="gender" class="form-select" style="min-height:44px"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $key => $label)<option value="{{ $key }}" @selected($gender === $key)>{{ $label }}</option>@endforeach</select></div>
         <div class="col-sm-6 col-lg-3"><label for="region" class="form-label">Region</label><select name="region" id="region" class="form-select" style="min-height:44px"><option value="">All regions</option>@foreach($regionOptions as $option)<option value="{{ $option }}" @selected($region === $option)>{{ $option }}</option>@endforeach</select><p class="small text-muted mb-0 mt-1">Recorded team affiliations, including past seasons.</p></div>
         <div class="col-sm-8 col-lg-4"><label for="search" class="form-label">Player name</label><input type="search" name="search" id="search" maxlength="100" class="form-control" style="min-height:44px" value="{{ $search }}"></div>
         <div class="col-sm-4 col-lg-2 d-flex align-items-end"><button class="btn btn-primary w-100" style="min-height:44px">Show players</button></div>
         <div class="col-sm-6 col-lg-3"><label for="players-per-page" class="form-label">{{ $groupedOrder ? 'Players per list' : 'Players per page' }}</label><select name="per_page" id="players-per-page" class="form-select" style="min-height:44px">@foreach([10, 25, 50, 100, 500] as $size)<option value="{{ $size }}" @selected($perPage === $size)>{{ $size }}</option>@endforeach</select></div>
-        @unless($allAgesBall)
-        <div class="col-sm-6 col-lg-3"><label for="age-scope" class="form-label">Include</label><select name="age_scope" id="age-scope" class="form-select" style="min-height:44px"><option value="group" @selected($ageScope === 'group')>Selected birth-year group only</option><option value="younger" @selected($ageScope === 'younger')>This age and younger</option></select><p class="small text-muted mb-0 mt-1">Choose U9–U18 to combine that age with younger players. Use the ball-level filter for Red and Orange.</p></div>
-        @endunless
         @unless($comparisonGroup)<div class="col-12"><details><summary class="py-2">More options</summary><label for="rating-sort" class="form-label">List order</label><select name="sort" id="rating-sort" class="form-select" style="min-height:44px">@unless($allAgesBall)<option value="grouped" @selected($sort === 'grouped')>Age groups · Boys and Girls</option>@endunless<option value="shared" @selected($sort === 'shared')>Shared-scale order</option><option value="score" @selected($sort === 'score')>Ranked list — all scores</option>@unless($allAgesBall)<option value="age" @selected($sort === 'age')>Rank by age group</option>@endunless</select></details></div>@endunless
     </form>
     @foreach($errors->all() as $error)<p class="text-danger">{{ $error }}</p>@endforeach
@@ -110,16 +107,4 @@
     @endif
     <details><summary class="py-2">Other rating views</summary><a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.ratings', ['view' => 'recorded']) }}">Ratings within recorded comparison groups</a></details>
 </div></div></div>
-@if($refreshStatus['pending'] || $refreshStatus['failed'])
-<script>
-window.CTLeaderboardRefresh = {
-    requestUrl: @json(route('backend.player-performance.ratings.refresh')),
-    statusUrl: @json(route('backend.player-performance.ratings.status')),
-    csrf: @json(csrf_token()),
-    version: @json($refreshStatus['version']),
-    snapshotVersion: @json($refreshStatus['snapshot_version'] ?? null)
-};
-</script>
-<script src="{{ asset('assets/js/player-ratings-leaderboard-refresh.js') }}?v={{ filemtime(public_path('assets/js/player-ratings-leaderboard-refresh.js')) }}"></script>
-@endif
 @endsection

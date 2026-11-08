@@ -7,8 +7,6 @@
   let scheduled = false;
   let running = false;
   let pending = false;
-  let version = null;
-  let polling = false;
   const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#039;'}[char]));
 
   root.CTPlayerRatings = {
@@ -63,37 +61,6 @@
     }).join('');
     node.dataset.ratingDone = '1';
   }
-  function status(data) {
-    if (!data) return;
-    document.querySelectorAll('[data-rating-status]').forEach(node => {
-      const message = 'Saved ratings last updated: ' + (data.last_updated || 'Not yet updated')
-        + (data.failed ? ' · Update failed; retry pending.' : (data.pending ? ' · Update pending.' : ' · Up to date.'));
-      if (node.textContent !== message) node.textContent = message;
-    });
-    document.querySelectorAll('[data-rating-detail-version]').forEach(link => {
-      link.hidden = link.dataset.ratingDetailVersion === data.version;
-    });
-    if (version !== null && version !== data.version) {
-      cache.clear();
-      document.querySelectorAll('[data-rating-player], [data-rating-registration], [data-rating-fixture]').forEach(node => {
-        delete node.dataset.ratingDone;
-        node.innerHTML = '';
-      });
-      schedule();
-    }
-    version = data.version;
-  }
-  async function poll() {
-    if (document.hidden || polling || running) return;
-    polling = true;
-    try {
-      const firstField = document.querySelector('[data-rating-field]:not([data-rating-field="0"])')?.dataset.ratingField;
-      const endpoint = config.endpoint + (firstField ? '?category_event_id=' + encodeURIComponent(firstField) : '');
-      const response = await fetch(endpoint, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
-      if (response.ok) { status((await response.json()).status); schedule(); }
-    } catch (_) { /* Retain the last successful badges during network failures. */ }
-    finally { polling = false; }
-  }
   async function scan() {
     if (running) { pending = true; return; }
     const groups = new Map();
@@ -130,7 +97,6 @@
           const response = await fetch(config.endpoint + '?' + params, {credentials: 'same-origin', headers: {'Accept':'application/json'}});
           if (!response.ok) continue;
           const data = await response.json();
-          status(data.status);
           batch.forEach(entry => {
             const ratings = data.ratings[entry.identityKey] || [];
             cache.set(entry.key, ratings);
@@ -144,9 +110,7 @@
   const observer = new MutationObserver(schedule);
   function boot() {
     observer.observe(document.body, {childList:true, subtree:true});
-    schedule(); poll();
-    root.setInterval(poll, 60000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+    schedule();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

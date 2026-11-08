@@ -15,6 +15,7 @@
       <a class="btn btn-outline-primary" href="{{ route('backend.team-draw.standings', $draw) }}">Standings</a>
     </div>
   </div>
+  @include('backend.schedule.partials.draw-day-publication', ['publicationDraw' => $draw])
   @include('backend.team-draw.partials.organiser-decisions')
   @if(app(\App\Services\TeamRoundRobinMatrixService::class)->supports($draw))
     @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => app(\App\Services\TeamRoundRobinMatrixService::class)->forDraw($draw)])

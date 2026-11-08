@@ -64,7 +64,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => 'Unavailable', 'built_at' => 'Not yet updated', 'snapshot_stale' => true]);
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('badgeSnapshot');
         $this->get(route('backend.player-performance.ratings'))->assertOk()->assertDontSee('Visible Profile')->assertSee('Ratings are currently unavailable')
-            ->assertSee('This page will refresh automatically')->assertSee('Retry ratings update')->assertSee('CTLeaderboardRefresh')->assertSee('player-ratings-leaderboard-refresh.js')->assertDontSee('data-rating-position=', false);
+            ->assertSee('This page shows the latest available saved ratings.')->assertDontSee('Retry ratings update')->assertDontSee('CTLeaderboardRefresh')->assertDontSee('player-ratings-leaderboard-refresh.js')->assertDontSee('data-rating-position=', false);
     }
 
     public function test_current_age_gender_rating_order_uses_canonical_headline_and_resets_positions(): void
@@ -368,7 +368,7 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->assertSee('this does not mean the player has no rating evidence')->assertDontSee('Saved ability estimates are withheld')
             ->assertDontSee('99.9/100')->assertDontSee('Medium confidence')->assertDontSee('Rating evidence')
             ->assertDontSee('Unrated players')->assertDontSee('Last successful calculation:')
-            ->assertSee('This page will refresh automatically')->assertSee('CTLeaderboardRefresh');
+            ->assertSee('This page shows the latest available saved ratings.')->assertDontSee('CTLeaderboardRefresh');
     }
 
     public function test_failed_refresh_keeps_successful_ratings_and_labels_their_evidence_date(): void
@@ -383,8 +383,8 @@ class PlayerRatingLeaderboardTest extends TestCase
 
         $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
             ->assertSee('62.0/100')->assertSee('Last successful calculation: 2026-10-09 08:00:00')
-            ->assertSee('evidence as of 2026-10-09')->assertSee('This page will refresh automatically')
-            ->assertSee('Retry ratings update')->assertDontSee('Rating unavailable')
+            ->assertSee('evidence as of 2026-10-09')->assertSee('This page shows the latest available saved ratings.')
+            ->assertDontSee('Retry ratings update')->assertDontSee('Rating unavailable')
             ->assertDontSee('A background update is pending.');
     }
 

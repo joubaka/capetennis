@@ -38,16 +38,18 @@
                                     <div class="mb-2">{{ $fx->fixtureResults->sortBy('set_nr')->map(fn ($set) => $set->team1_score.'-'.$set->team2_score)->implode(', ') }}</div>
                                 @endif
                                 @can('team-fixture.saveScore', $fx)
+                                    @php $restoreScore = (string) old('score_fixture_id') === (string) $fx->id; @endphp
                                     <form method="POST" action="{{ route('frontend.fixtures.score.store', $fx->id) }}">
-                                        <input type="hidden" name="participant_revision" value="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}">
+                                        <input type="hidden" name="score_fixture_id" value="{{ $fx->id }}">
+                                        <input type="hidden" name="participant_revision" value="{{ $restoreScore ? old('participant_revision') : app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}">
                                         @csrf
                                         @for($set = 1; $set <= ($fx->draw->team_scoring_rules ? app(\App\Services\TeamRubberResultService::class)->rules($fx)['sets_to_win'] * 2 - 1 : 3); $set++)
                                             @php $existing = $fx->fixtureResults->firstWhere('set_nr', $set); @endphp
                                             <div class="d-flex align-items-center gap-1 mb-1">
                                                 <label class="small mb-0">Set {{ $set }}</label>
-                                                <input type="number" min="0" max="99" name="set{{ $set }}_home" aria-label="Home set {{ $set }}" value="{{ old('set'.$set.'_home', $existing?->team1_score) }}" class="form-control form-control-sm" style="width:70px" @required($set === 1)>
+                                                <input type="number" min="0" max="99" name="set{{ $set }}_home" aria-label="Home set {{ $set }}" value="{{ $restoreScore ? old('set'.$set.'_home') : $existing?->team1_score }}" class="form-control form-control-sm" style="width:70px" @required($set === 1)>
                                                 <span>-</span>
-                                                <input type="number" min="0" max="99" name="set{{ $set }}_away" aria-label="Away set {{ $set }}" value="{{ old('set'.$set.'_away', $existing?->team2_score) }}" class="form-control form-control-sm" style="width:70px" @required($set === 1)>
+                                                <input type="number" min="0" max="99" name="set{{ $set }}_away" aria-label="Away set {{ $set }}" value="{{ $restoreScore ? old('set'.$set.'_away') : $existing?->team2_score }}" class="form-control form-control-sm" style="width:70px" @required($set === 1)>
                                             </div>
                                         @endfor
                                         <button type="submit" class="btn btn-sm btn-primary">Save scores</button>

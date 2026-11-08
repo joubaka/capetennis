@@ -45,6 +45,48 @@ class SchedulePublicationTest extends TestCase
         $this->assertSame(0, app(EventVenueScheduleService::class)->clearDay($event, $scope, $publication->revision($event))['count']);
     }
 
+    public function test_draw_calendar_shows_configured_days_with_counts_for_this_draw_only(): void
+    {
+        [$event, $draw, $venue] = $this->context();
+        $sibling = Draw::factory()->create(['event_id' => $event->id]);
+        $fixture = Fixture::factory()->create(['draw_id' => $sibling->id, 'round' => 1, 'match_status' => 0]);
+        OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $sibling->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-10-11 10:00:00', 'duration_minutes' => 60]);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $scope = ['event' => $event->id, 'draw_id' => $draw->id];
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', $scope))
+            ->assertOk()
+            ->assertViewHas('days', fn ($days) => $days->all() === ['2026-10-09' => 0, '2026-10-10' => 1, '2026-10-11' => 0])
+            ->assertDontSee('Publish Day 2');
+        $this->get(route('backend.event-venue-schedule.calendar', $scope + ['date' => '2026-10-10']))
+            ->assertOk()
+            ->assertSee('name="draw_id" value="'.$draw->id.'"', false)
+            ->assertSee('name="date" value="2026-10-10"', false);
+    }
+
+    public function test_draw_calendar_can_hide_a_previous_snapshot_after_the_draw_becomes_private(): void
+    {
+        [$event, $draw, , $fixture] = $this->context();
+        $publication = app(SchedulePublicationService::class);
+        $scope = ['date' => '2026-10-10', 'draw_id' => $draw->id];
+        $publication->publish($event, $scope);
+        $draw->update(['published' => false]);
+        OrderOfPlay::where('fixture_id', $fixture->id)->update(['time' => '2026-10-11 08:00:00']);
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+
+        $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', ['event' => $event->id] + $scope))
+            ->assertOk()->assertViewHas('retainedCount', 1)->assertSee('Visibility blocked')->assertSee('Hide times');
+        $this->post(route('backend.event-venue-schedule.calendar.hide', $event), $scope + ['revision' => $publication->revision($event)])
+            ->assertRedirect();
+        $this->assertDatabaseCount('published_schedule_assignments', 0);
+        $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixture->id, 'time' => '2026-10-11 08:00:00']);
+    }
+
     public function test_day_clear_rejects_played_locked_and_stale_selections_without_changes(): void
     {
         [$event, $draw, $venue, $fixture] = $this->context();

@@ -1,4 +1,13 @@
 @if($ratingTopTen['visible'] ?? false)
+@php
+  $canBrowse = $ratingTopTen['can_browse'] ?? false;
+  $ageLabel = $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable';
+  $genderLabel = \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable';
+  $positionLabels = $canBrowse
+      ? ['age' => 'Overall CTR · '.$ageLabel.' · all genders', 'overall' => 'Overall CTR · all ages and genders']
+      : ['age' => 'Overall CTR · '.$ageLabel.' · '.$genderLabel];
+  $hasRatingPosition = !empty($ratingTopTen['summary']['age']['player']) || ($canBrowse && !empty($ratingTopTen['summary']['overall']['player']));
+@endphp
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
   <h3 class="h5" id="player-top-ten-heading"><x-ctr-mark class="me-2" />Your rating positions</h3>
   <style>
@@ -11,8 +20,9 @@
     .ctr-member-leaderboard li[aria-current="true"] { background:#eef4fb;box-shadow:inset 3px 0 #004177; }
     @media(max-width:575.98px) { .ctr-top-lists { grid-template-columns:1fr; } }
   </style>
-  <div class="ctr-top-lists mb-3">
-    @foreach(['age' => 'Overall CTR · '.($ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group').' · all genders', 'overall' => 'Overall CTR · all ages and genders'] as $scope => $label)
+  @if($hasRatingPosition)
+  <div class="{{ $canBrowse ? 'ctr-top-lists ' : '' }}mb-3">
+    @foreach($positionLabels as $scope => $label)
       @php
         $summary = $ratingTopTen['summary'][$scope] ?? null;
       @endphp
@@ -24,17 +34,19 @@
             <x-ctr-badge size="inline" :score="$summary['player']['score']" :overall="true" />
           </div>
         @else
-          <p class="small mb-0">No comparable published-player rating position available.</p>
+          <p class="small mb-0">Position unavailable.</p>
         @endif
       </section>
     @endforeach
   </div>
+  @else
+    <p class="small text-muted mb-3">No comparable position yet.</p>
+  @endif
   @if($ratingTopTen['as_of'])<p class="small text-muted">Saved through {{ $ratingTopTen['as_of'] }}.@if($ratingTopTen['stale']) Latest saved estimates; an update is pending.@endif</p>@endif
-  @if($ratingTopTen['reason'])<p role="status">{{ $ratingTopTen['reason'] }}</p>@endif
-  @if(!($ratingTopTen['can_browse'] ?? false))
+  @if(!$canBrowse)
     <section class="ctr-top-list ctr-member-leaderboard" aria-labelledby="ctr-age-top-ten-heading">
     <h4 class="h6" id="ctr-age-top-ten-heading">Your age-group Top 10</h4>
-    <p class="small text-muted">Overall CTR · {{ $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable' }} · {{ \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable' }}</p>
+    <p class="small text-muted">{{ $positionLabels['age'] }}</p>
     @if($ratingTopTen['selected_age'] === 'unknown')
       <p class="small text-muted">A valid birth date is needed to show your player's age-group Top 10.</p>
     @else
@@ -43,7 +55,9 @@
           <li class="list-group-item d-flex align-items-start gap-2" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif>
             <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif</span><span class="d-inline-flex flex-column align-items-center" style="width:4rem;flex-shrink:0"><x-ctr-badge size="inline" :score="$member['score']" :overall="true" /></span>
           </li>
-        @empty<li class="list-group-item text-muted">No comparable published-player ratings available for this age group.</li>@endforelse
+      @empty
+        <li class="list-group-item text-muted"><span role="status">{{ $ratingTopTen['reason'] ? 'Rating comparisons unavailable.' : 'No ratings for this age group.' }}</span></li>
+      @endforelse
       </ol>
     @endif
     </section>
@@ -59,7 +73,12 @@
     <button type="submit" class="btn btn-primary">Show ratings</button>
     @if($ratingFragment ?? true)</noscript>@endif
   </form>
-  <style>.ctr-full-list li{display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:center;padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere}.ctr-full-list .ctr-top-score{font-variant-numeric:tabular-nums;color:#004177}.ctr-full-list small{display:block;color:#62766e}</style>
+  <style>
+    .ctr-full-list li { padding:.7rem 0;border-top:1px solid #edf1ef;overflow-wrap:anywhere; }
+    .ctr-full-list .ctr-player-row { display:grid;grid-template-columns:2rem minmax(0,1fr) auto;gap:.5rem;align-items:center; }
+    .ctr-full-list .ctr-top-score { font-variant-numeric:tabular-nums;color:#004177; }
+    .ctr-full-list small { display:block;color:#62766e; }
+  </style>
   <div class="ctr-full-list">
     @foreach($ratingTopTen['lists'] as $key => $list)
       <section class="ctr-top-list" aria-label="{{ $list['label'] }} ratings" data-top-ten-cohort="{{ $key }}">
@@ -71,8 +90,10 @@
         </div>
         <ol class="list-unstyled mb-0">
           @forelse($list['players'] as $member)
-            <li value="{{ $member['position'] }}" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif><span aria-hidden="true">{{ $member['position'] }}</span><span>{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small>Your selected player</small>@endif<small>{{ $member['confidence'] }} confidence</small></span><span class="ctr-top-score d-inline-flex flex-column align-items-center" style="width:4rem"><x-ctr-badge size="inline" :score="$member['score']" :overall="$key === 'overall'" :stage="$key === 'overall' ? null : $key" /></span></li>
-          @empty<li class="small text-muted">No comparable published-player ratings available.</li>@endforelse
+            <li class="ctr-player-row" value="{{ $member['position'] }}" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif><span aria-hidden="true">{{ $member['position'] }}</span><span>{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small>Your selected player</small>@endif<small>{{ $member['confidence'] }} confidence</small></span><span class="ctr-top-score d-inline-flex flex-column align-items-center" style="width:4rem"><x-ctr-badge size="inline" :score="$member['score']" :overall="$key === 'overall'" :stage="$key === 'overall' ? null : $key" /></span></li>
+          @empty
+            <li class="small text-muted"><span role="status">{{ $ratingTopTen['reason'] ? 'Rating comparisons unavailable.' : 'No ratings for these filters.' }}</span></li>
+          @endforelse
         </ol>
         @if(isset($list['pagination']) && $list['pagination']['total'] > 0)
           @php

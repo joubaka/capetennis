@@ -72,6 +72,11 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 @if($batch)
 @php($coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count())
 @if($coveredPlayers)<p>Selected batch: {{ $coveredPlayers }} distinct players covered; {{ $batch->serverAcceptedPlayerCount() }} players with a mail-server-accepted contact; {{ count($batch->recipients) }} emails; {{ count($batch->issues ?? []) }} missing contacts.</p>@endif
+@if($batch?->status === 'scheduled' && !empty($batch->options['scheduled_for']))
+  <p role="status">Announcement email delivery is scheduled to begin at {{ \Illuminate\Support\Carbon::parse($batch->options['scheduled_for'])->setTimezone(config('app.timezone'))->format('H:i') }} or when the next queue worker runs.</p>
+@elseif(!empty($batch?->options['announcement_mail_issue']))
+  <p class="alert alert-warning" role="status">{{ $batch->options['announcement_mail_issue'] }}</p>
+@endif
 @endif
 @if($batch && $batch->approved_at && $summary && !$summary['all_server_accepted'])<p class="text-muted">Mail-server acceptance is not yet confirmed for every approved email.</p>@endif
 @include('backend.partials.mail-report',['report'=>$historyReport,'reportEvent'=>$event,'reportTitle'=>$reportContext['report_scope']==='all' ? 'All event email history' : ($reportContext['report_scope']==='invitations' ? 'Invitation email history' : 'Selected batch email history')])

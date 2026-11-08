@@ -2,6 +2,7 @@
   $workspaceUrl = route('backend.draw.roundrobin.show', $draw);
   $flexibleWorkspace = $draw->usesFlexibleMonrad();
   $workspacePublicationSurface = $workspaceSurface ?? ($flexibleWorkspace ? 'flexible' : 'standalone');
+  $workspaceHasDayPublication = in_array($workspaceSurface ?? '', ['roundrobin', 'flexible'], true) && auth()->user()?->can('event.manage', $draw->event);
   $workspaceDraws = $draw->event->draws->where('event_id', $draw->event_id)->sort(fn ($left, $right) => strnatcasecmp($left->drawName, $right->drawName) ?: $left->id <=> $right->id)->values();
 @endphp
 <x-backend.page-header :title="$draw->drawName" :subtitle="$draw->event->name" eyebrow="Draw workspace" icon="ti-tournament" class="draw-workspace-header" data-backend-wide data-workspace-context="{{ $workspaceContext ?? '' }}">
@@ -15,7 +16,7 @@
       @can('event.manage', $draw->event)
         <a class="btn btn-sm btn-primary" data-draw-next-schedule @if(!$draw->isTeamDraw() && !$draw->drawFixtures()->exists()) hidden @endif href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule matches</a>
       @endcan
-      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $workspacePublicationSurface, 'publicationDropdown' => true])
+      @include('backend.draw.partials.publication-controls', ['publicationDraw' => $draw, 'publicationSurface' => $workspacePublicationSurface, 'publicationDropdown' => true, 'publicationByDay' => $workspaceHasDayPublication])
       <details class="draw-workspace-tools" data-individual-draw-tools><summary class="btn btn-sm btn-outline-secondary">More tools</summary><div class="draw-workspace-tools-panel">
       @can('replaceAlternate', $draw)
         <a class="btn btn-sm btn-outline-secondary" href="{{ route('draw.alternate.show', $draw) }}">Replace with alternate</a>
@@ -94,6 +95,9 @@
       <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to draws</a>
   </x-slot:actions>
 </x-backend.page-header>
+@if($workspaceHasDayPublication)
+  @include('backend.schedule.partials.draw-day-publication', ['publicationDraw' => $draw, 'workspaceDayPublication' => true])
+@endif
 @once
   <link rel="stylesheet" href="{{ asset('css/draw-workspace-navigation.css') }}?v={{ filemtime(public_path('css/draw-workspace-navigation.css')) }}">
   <script src="{{ asset('js/draw-workspace-navigation.js') }}?v={{ filemtime(public_path('js/draw-workspace-navigation.js')) }}" defer></script>

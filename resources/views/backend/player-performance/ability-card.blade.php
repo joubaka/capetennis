@@ -1,8 +1,7 @@
 <div class="card mb-4"><div class="card-body">
     @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
         @php($ratingStatus = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status())
-        <p class="small" data-rating-status>Saved ratings last updated: {{ $ratingStatus['last_updated'] ?? 'Not yet updated' }} · {{ $ratingStatus['failed'] ? 'Update failed; retry pending.' : ($ratingStatus['pending'] ? 'Update pending.' : 'Up to date.') }}</p>
-        <p class="small"><a href="{{ request()->fullUrl() }}" data-rating-detail-version="{{ $ratingStatus['version'] }}" hidden>Reload this page for the latest detailed rating and evidence.</a></p>
+        <p class="small">Saved ratings last updated: {{ $ratingStatus['last_updated'] ?? 'Not yet updated' }} · {{ $ratingStatus['failed'] ? 'Update failed; retry pending.' : ($ratingStatus['pending'] ? 'Update pending.' : 'Up to date.') }}</p>
     @endif
     @if($ability['snapshot_stale'] ?? false)<p class="alert alert-warning text-dark">Last successful update: {{ $ability['snapshot_as_of'] ?? 'Pending' }}. Awaiting the background refresh.</p>@endif
     @if(($ballType ?? 'overall') !== 'overall' || ($comparisonGroup ?? '') !== '')

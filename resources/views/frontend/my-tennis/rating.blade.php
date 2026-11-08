@@ -42,6 +42,7 @@
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-trend { width:100%;max-width:42rem;margin:1rem 0 .5rem; }
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-trend svg { height:auto; }
     .ctr-history .ctr-overview-snapshot figcaption { color:#e0ebf5;font-size:.8125rem; }
+    .ctr-history .ctr-rating-status { color:#52677b;margin:0;padding:.5rem .75rem;background:#f1f5fa;border-radius:8px; }
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot:has([data-rating-mini-trend]) { display:block; }
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-score { flex-direction:row;flex-wrap:wrap;align-items:center; }
     @media(min-width:768px) {
@@ -71,6 +72,9 @@
     @keyframes ctr-update-spin { to { transform:rotate(360deg); } }
     @media(prefers-reduced-motion:reduce) { .ctr-history [data-history-refresh]:disabled::before { animation:none; } }
     .ctr-history .ctr-chart-scroll { overflow-x:auto;max-width:100%;border:1px solid #dbe4ef;border-radius:14px;background:linear-gradient(#f7f9fc,#fff);padding:.75rem; }
+    .ctr-history .ctr-history-chart { container-type:inline-size; }
+    .ctr-history .ctr-chart-hint { display:none; }
+    @container (width < calc(660px + 1.5rem + 2px)) { .ctr-history .ctr-chart-hint { display:block; } }
     .ctr-history .ctr-method { border-top:1px solid #e0e7e3;margin-top:1.5rem;padding-top:1rem; }
     @media(max-width:991.98px) { .ctr-history .ctr-stats { grid-template-columns:1fr;gap:.65rem; } }
     @media(max-width:767.98px) { .ctr-history .ctr-filters { grid-template-columns:1fr; } }
@@ -90,7 +94,7 @@
   <x-player-workspace-header compact title="Player rating" :subtitle="$ratingPlayer->full_name" heading="h2" heading-id="player-rating-heading" data-rating-hero>
       @if(auth()->user()?->hasRole('super-user'))<span class="badge mt-3">Super Admin preview</span>@endif
     <x-slot:summary>
-      @include('frontend.my-tennis.rating-snapshot')
+      @include('frontend.my-tennis.rating-snapshot', ['compactUnavailable' => true])
     </x-slot:summary>
     <x-slot:navigation>
     <a href="{{ route('my.tennis', ['player' => $ratingPlayer->id]) }}">Back to My Tennis profile</a>
@@ -116,7 +120,7 @@
   <div class="tab-pane {{ $activeRatingSection === 'compare' ? 'active show' : '' }}" id="ctr-panel-compare" role="tabpanel" aria-labelledby="ctr-tab-compare" tabindex="0">
     @if($ratingFragment)
       <div class="ctr-overview-snapshot">
-        @include('frontend.my-tennis.rating-snapshot', ['expandedTrend' => true])
+        @include('frontend.my-tennis.rating-snapshot', ['expandedTrend' => true, 'compactUnavailable' => true])
       </div>
     @endif
     @include('frontend.my-tennis.rating-top-ten')
@@ -149,7 +153,8 @@
     @if(!empty($point['historical_connection']))<p role="status" class="alert alert-warning"><strong>Low confidence — historical connection.</strong> The selected estimate needs an older match link dated {{ $point['connection_reference_date'] ?? 'unknown' }} ({{ $point['connection_age_days'] ?? '?' }} days old), even if this player has recent results.</p>@endif
     @if(($point['connection_status'] ?? '') === 'disconnected')<p role="status" class="alert alert-warning"><strong>Provisional rating · low confidence.</strong> This estimate is based on {{ ($point['evidence_basis'] ?? null) === 'finish_only' ? 'published final placings only' : 'this player’s connected evidence group' }}. It is not yet calibrated against other comparison groups; the same number in another group does not establish equal ability.</p>@endif
     <div class="ctr-heading mb-2"><h3 class="h5 mb-0">{{ ucfirst($ratingHistory['cohort']) }} progress</h3><span class="small text-muted">CTR out of 100</span></div>
-    <p class="small text-muted d-sm-none mb-2">Swipe the chart to see all months. Tap a point to explore its results.</p>
+    <div class="ctr-history-chart">
+    <p class="ctr-chart-hint small text-muted mb-2">Scroll the chart sideways to see all months.</p>
     <div class="ctr-chart-scroll" role="region" aria-label="Rating chart; scroll horizontally on small screens" tabindex="0">
       <svg viewBox="0 0 660 270" role="group" aria-label="{{ ucfirst($ratingHistory['cohort']) }} monthly rating history; axis {{ $axis['min'] }} to {{ $axis['max'] }}" style="width:100%;min-width:660px;max-height:360px">
         <title>{{ ucfirst($ratingHistory['cohort']) }} monthly rating history</title>
@@ -164,6 +169,7 @@
         @endforeach
         @foreach($ratingHistory['months'] as $index => $month)<text x="{{ 45 + $index * 53 }}" y="250" text-anchor="middle" font-size="11" fill="#334e60">{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M') }}</text>@endforeach
       </svg>
+    </div>
     </div>
     <div class="ctr-legend mt-2"><span><i class="ctr-line-key" aria-hidden="true"></i>Same comparison group</span><span><i class="ctr-line-key ctr-line-key-dashed" aria-hidden="true"></i>Group or reference changed</span><span>Missing months remain gaps</span></div>
     <p class="small text-muted mt-2 mb-0">Dashed lines mark changes in comparison group or reference. Compare changes within solid sections.</p>

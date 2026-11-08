@@ -462,6 +462,32 @@
       "assistant_action": "guide_only",
       "sources": ["app/Http/Middleware/RecordAuditRequest.php", "app/Http/Controllers/AuditInteractionController.php", "app/Support/Audit/AuditWriter.php"],
       "tests": ["tests/Feature/AuditTrailTest.php", "tests/Feature/AuditInteractionViewSafetyTest.php"]
+    },
+    {
+      "id": "RK-032",
+      "title": "Score entry times out while a venue schedule is being applied",
+      "scope": "Team fixture score submissions and the event venue schedule apply transaction.",
+      "symptoms": "A score submission fails with MySQL error 1205 while acquiring the event row lock. Correlate request attempt and completion timestamps with overlapping schedule changes. The timeout alone does not identify the lock holder.",
+      "cause": "Schedule apply held the event lock while searching for court assignments. Team score saves acquire the same lock to serialize with changes to fixtures and participants.",
+      "fix": "Calculate assignments before the write transaction. Under the existing lock order, rebuild the planning revision without repeating the slot search and retain exact assignment validation before persisting. Reject stale plans if a score or other edit changes the inputs. For recognized pre-commit score contention, preserve inputs and the original participant revision for the affected fixture only. Treat post-commit failures separately because the score may already exist.",
+      "verification": "The isolated MySQL two-connection regression passed both cases: a score commits during planning or just before the write transaction, the stale plan writes no bookings, and a fresh plan applies. The isolated SQLite score regressions passed for the busy response, fixture-scoped form restoration, rollback, and errors after commit.",
+      "limits": "Guide only. The final save still uses locks. This does not authorize changing production database settings, replaying requests, or deploying.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Scheduling/EventVenueScheduleService.php", "app/Services/TeamFixtureScoreService.php", "app/Http/Controllers/Frontend/TeamFixtureFrontendController.php"],
+      "tests": ["tests/Feature/Draw/VenueScheduleScoreConcurrencyTest.php", "tests/Feature/TeamDraw/TeamScoringRulesWorkflowTest.php", "tests/Feature/TeamDraw/TeamScoreTransactionBoundaryTest.php"]
+    },
+    {
+      "id": "RK-033",
+      "title": "A filtered saved calendar offers a whole-event day publication action",
+      "scope": "Organizer scheduling and publication for individual draws and team draws.",
+      "symptoms": "An all-days calendar is filtered to a draw or venue, but a day action under More schedule tools is labelled for all venues and draws.",
+      "cause": "The duplicate day forms posted a date and revision while dropping the filters shown in the current view.",
+      "fix": "Open a dated calendar with the current filters, or use Schedule by day on the draw workspace. Use the existing explicit publish and hide endpoints with date, scope and the reviewed schedule revision. Hiding removes published snapshots and keeps bookings. See DK-13.",
+      "verification": "Local isolated SQLite coverage on 2026-11-08 confirmed filtered day counts, retained snapshot removal, stale and foreign scope rejection, and publication isolation. Frontend day publication tests passed.",
+      "limits": "Guide only. Review the date and scope before any live action. Publishing a moved match replaces its prior snapshot, and draw and team-tie visibility are separate.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/EventVenueScheduleController.php", "app/Services/Scheduling/SchedulePublicationService.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/Draw/HeadOfficePublicationControlsTest.php", "tests/Frontend/head-office-day-publication.test.cjs"]
     }
   ]
 }

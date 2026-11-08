@@ -140,13 +140,15 @@ class AllEventEmailSetupTest extends TestCase
         $response = $this->postJson(route('admin.events.announcements.store', $event), [
             'title' => 'Announcement regression', 'message' => '<p>Exact announcement content</p>',
             'sendMail' => 1, 'confirm_recipients' => 1, 'recipient_hash' => $service->recipientHash($event),
-        ])->assertOk()->assertJsonPath('mail.queued', 1);
+        ])->assertOk()->assertJsonPath('mail.scheduled', 1);
         $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
+        $this->assertSame('scheduled', $batch->status);
+        $job = Queue::pushed(\App\Jobs\QueueEventAnnouncementEmails::class)->sole();
+        $this->travelTo($job->delay);
+        $job->handle($service);
         $this->assertNotNull($batch->approved_at);
         $this->assertSame($event->id, $batch->event_id);
-        $reportUrl = $event->isTeam()
-            ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => $batch->id, 'report_scope' => 'batch'])
-            : route('backend.event-mail-log.index', $event);
+        $reportUrl = route('backend.event-communications.index', ['event' => $event->id, 'batch' => $batch->id, 'report_scope' => 'batch']);
         $response->assertJsonPath('report_url', $reportUrl);
         if ($event->isTeam()) {
             $this->assertEqualsCanonicalizing($players->take(2)->map(fn ($player) => 'player:'.$player->id)->all(), $batch->recipients[0]['player_keys']);

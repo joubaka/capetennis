@@ -22,6 +22,12 @@ The batch reports success for every approved recipient only when the expected co
 
 Retry only a failed email through its exact preview and fresh approval. Accepted or uncertain attempts cannot be automatically retried. Old invitation logs without an immutable signed snapshot require a fresh message review.
 
+## Event announcement emails
+
+Publishing from **Announcements** makes the post visible immediately. If the event manager also confirms participant email, the application saves the reviewed recipients and message and schedules a database queue job for three minutes after publication. Staff copies are handled separately. The worker starts preparing the participant emails at or after the scheduled time, and the managed mail rate limit still applies.
+
+Before preparing emails, the worker verifies that the announcement is visible, the sender can still manage the event, and the approved contacts still match their player associations. A batch that fails these checks stops before participant mail is queued. Managers with access to the event's **Communications** page can review the batch status there.
+
 ## Database changes
 
 The implementation adds only these migrations:

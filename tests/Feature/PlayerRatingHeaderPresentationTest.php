@@ -27,7 +27,8 @@ class PlayerRatingHeaderPresentationTest extends TestCase
             'evidence' => ['rows' => [], 'included' => 3, 'new' => 0, 'matches' => 3, 'wins' => 2, 'losses' => 1, 'finishes' => 0, 'pages' => 1, 'page' => 1, 'total' => 0]];
         $html = view('frontend.my-tennis.rating', $viewData + ['ratingPlayer' => $player, 'ratingHistory' => array_replace($history, $changes)])->render();
         if (getenv('CT_RATING_HEADER_QA') === '1') {
-            $fixture = ($viewData['embeddedRating'] ?? false) ? 'overview' : (isset($changes['reason']) ? 'withheld' : (isset($changes['points']) ? 'local' : ($month === 11 ? 'latest' : 'historical')));
+            $fixture = ($viewData['ratingTopTen']['can_browse'] ?? false) ? 'admin-empty'
+                : (($viewData['embeddedRating'] ?? false) ? 'overview' : (isset($changes['reason']) ? 'withheld' : (isset($changes['points']) ? 'local' : ($month === 11 ? 'latest' : 'historical'))));
             $directory = storage_path('framework/testing/rating-header-qa');
             \Illuminate\Support\Facades\File::ensureDirectoryExists($directory);
             file_put_contents($directory.'/'.$fixture.'.html', '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/vendor/css/core.css"><title>Local synthetic rating preview</title></head><body>'.$html.'</body></html>');
@@ -88,7 +89,27 @@ class PlayerRatingHeaderPresentationTest extends TestCase
         [$html, $xpath] = $this->renderHeader(11, ['reason' => 'Source publication changed']);
         $this->assertSame(0, $xpath->query('//*[@data-rating-hero]//*[@data-ctr-badge]')->length);
         $this->assertStringContainsString('Source publication changed', $html);
-        $this->assertStringContainsString('No rating yet.', $html);
+        $this->assertStringContainsString('Rating update pending.', $html);
+        $this->assertStringNotContainsString('No rating yet.', $html);
+    }
+
+    public function test_empty_admin_overview_shows_one_position_status_and_a_separate_empty_list_message(): void
+    {
+        [$html, $xpath] = $this->renderHeader(changes: ['reason' => 'Source publication changed'], viewData: [
+            'embeddedRating' => true,
+            'ratingTopTen' => [
+                'visible' => true, 'can_browse' => true, 'selected_age' => 'u13',
+                'age_options' => ['u13' => 'U13 and younger'],
+                'filters' => ['rating_age' => 'u13', 'rating_gender' => 'girls', 'rating_level' => 'overall', 'rating_per_page' => 25],
+                'as_of' => null, 'stale' => false, 'reason' => 'Saved ratings are not available yet.',
+                'summary' => [], 'lists' => ['overall' => ['label' => 'Overall CTR', 'players' => []]],
+            ],
+        ]);
+
+        $this->assertSame(0, $xpath->query('//*[@id="ctr-panel-compare"]//*[@data-rating-mini-trend]')->length);
+        $this->assertSame(0, $xpath->query('//*[contains(@class, "ctr-position-card")]')->length);
+        $this->assertSame(1, $xpath->query('//*[@data-top-ten-cohort]//*[@role="status"]')->length);
+        $this->assertStringContainsString('Rating update pending.', $html);
     }
 
     public function test_header_keeps_local_finishing_only_and_historical_qualifiers_with_the_badge(): void

@@ -274,7 +274,12 @@
   <div class="alert alert-info mb-3">Add matches - {{ \Carbon\Carbon::parse($planningDate)->format('D j M Y') }}{{ !empty($planningScope['draw_id']) ? ' · selected draw' : '' }}{{ !empty($planningScope['venue_id']) ? ' · selected venue' : '' }}. This batch uses only this day and preserves existing saved times. Use Edit saved times from the calendar to change existing bookings.</div>
   @endif
 @endif
-  @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id,'date'=>$planningDate] + ($guideSelection->count() === 1 ? ['draw_id'=>$guideSelection->first()->id] : []) + (!empty($planningScope['origin_draw_id']) ? ['origin_draw_id'=>$planningScope['origin_draw_id']] : [])) }}">Back to this saved day</a>@endif
+  @php
+    $savedCalendarScope = ['event' => $event->id]
+      + array_intersect_key($planningScope ?? [], array_flip(['draw_id', 'venue_id', 'origin_draw_id']))
+      + ($guideSelection->count() === 1 ? ['draw_id' => $guideSelection->first()->id] : []);
+  @endphp
+  @if($planningDate)<a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', $savedCalendarScope + ['date' => $planningDate]) }}">Back to this saved day</a>@endif
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div class="workspace-header">
       <div class="text-uppercase text-primary fw-semibold small">Event schedule workspace</div>
@@ -301,7 +306,7 @@
       @else
         <button type="button" class="btn btn-outline-secondary" id="toggle-day-box-planner" aria-pressed="{{ $teamProgrammeDefault ? 'true' : 'false' }}">{{ $teamProgrammeDefault ? 'Select specific matches' : 'Plan rounds across days' }}</button>
       @endif
-      <a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $event) }}">Saved schedule</a></div>
+      <a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $savedCalendarScope) }}">Review saved days</a></div>
   </div>
 
   @if(($adaptationNotices ?? collect())->isNotEmpty())
@@ -1742,7 +1747,7 @@
         const date = day.start.slice(0,10);
         const suggested = result.matches.filter(row => row.scheduled_at.startsWith(date)).length;
         const fixed = (result.existing_matches || []).filter(row => selectedDraws.has(Number(row.draw_id)) && row.scheduled_at.startsWith(date)).length;
-        return `<li>${escapeHtml(date)} · ${suggested} suggested · ${fixed} already saved</li>`;
+        return `<li>Day ${programmeDays.indexOf(day) + 1} · ${escapeHtml(date)} · ${suggested} suggested · ${fixed} already saved</li>`;
       }).join('');
       const ageSummary = ages.length ? ` · ${ages.map(age => `Under ${age}`).join(', ')}` : '';
       document.getElementById('preview-summary').insertAdjacentHTML('beforeend', `<div class="col-12"><div class="border rounded p-3"><strong>${scopeDate ? 'Selected day' : 'All playing days'}${ageSummary}</strong><ul class="small mb-0 mt-2">${counts}</ul></div></div>`);
@@ -1768,7 +1773,11 @@
     replanAll.classList.toggle('d-none', !appliedVenueIds.length || appliedVenueIds.every(id => replanVenueIds.includes(id)));
     keepAll.classList.toggle('d-none', replanVenueIds.length === 0);
     const hasSuggestions = result.matches.length > 0;
-    const scheduleComplete = !result.unscheduled.length && !hasSuggestions && (result.existing_matches || []).length > 0;
+    const selectedKeys = new Set(result.input.selected_fixture_keys || []);
+    const savedKeys = new Set((result.existing_matches || []).map(fixtureKey));
+    const selectedAlreadySaved = selectedKeys.size > 0 && [...selectedKeys].every(key => savedKeys.has(key));
+    const scheduleComplete = !result.unscheduled.length && !hasSuggestions
+      && (selectedKeys.size ? selectedAlreadySaved : savedKeys.size > 0);
     const applyPreview = document.getElementById('apply-preview');
     const applyLabel = result.input.programme_save_date ? 'Save selected day' : result.input.programme?.days?.length ? 'Save complete event schedule' : 'Save matches that fit';
     applyPreview.innerHTML = `<i class="ti ti-device-floppy me-1"></i>${applyLabel}`;
@@ -1776,11 +1785,20 @@
     applyPreview.disabled = !!result.preview_only || !hasSuggestions || ((!!result.input.programme?.days?.length || !!result.input.day_batch) && result.unscheduled.length > 0);
     applyPreview.classList.toggle('d-none', scheduleComplete);
     continueToDraws.classList.toggle('d-none', !scheduleComplete);
-    const previewMessage = result.preview_only ? 'Preview only — uses unsaved age setup. Nothing has been saved or published. Save age setup and generate a new preview before saving match times.' : result.unscheduled.length
-      ? 'Preview needs attention. Resolve every unscheduled match before applying.'
-      : scheduleComplete
-        ? 'Schedule already saved. Continue to the tournament draws.'
-        : 'Preview ready. Review every venue before applying.';
+    let previewMessage = 'Preview ready. Review every venue before saving.';
+    if (result.preview_only) {
+      previewMessage = 'Save the age setup and generate a fresh preview before saving match times.';
+    } else if (result.unscheduled.length) {
+      previewMessage = hasSuggestions
+        ? 'Review the reasons under Matches remaining to schedule before saving.'
+        : 'No times fit this selection. Check Matches remaining to schedule for the reason beside each match.';
+    } else if (selectedAlreadySaved && scheduleComplete) {
+      previewMessage = 'The selected matches already have saved times. Keep them as they are, or choose to replan saved matches and preview again.';
+    } else if (scheduleComplete) {
+      previewMessage = 'Saved times were kept fixed. Continue to the tournament draws to review them.';
+    } else if (!hasSuggestions) {
+      previewMessage = 'There are no new times to save. Review the selected matches and their saved times.';
+    }
     const previewTone = result.unscheduled.length ? 'danger' : 'success';
     setStatus(document.getElementById('schedule-status'), previewMessage, previewTone);
     setStatus(document.getElementById('review-status'), previewMessage, previewTone);

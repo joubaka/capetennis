@@ -74,7 +74,8 @@ class PlayerRatingGroupDirectoryTest extends TestCase
                     }
                 }
             }
-            $response = $this->get(route('backend.player-performance.ratings'))->assertOk();
+            $response = $this->get(route('backend.player-performance.ratings'))->assertOk()
+                ->assertDontSee('CTLeaderboardRefresh')->assertDontSee('player-ratings-leaderboard-refresh.js');
             $this->assertSame('younger', $response->viewData('ageScope'));
         } finally {
             CarbonImmutable::setTestNow();

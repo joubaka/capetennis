@@ -38,9 +38,19 @@
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h3 class="mb-1">Saved schedule</h3><p class="text-muted mb-0">{{ $event->name }}</p></div><a class="btn btn-outline-primary" href="{{ route('headOffice.show', $event) }}">Back to draws</a></div>
   @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
+  <h5 class="mb-1">Choose a day</h5>
+  <p class="small text-muted mb-2">Open a day to review saved matches, add bookings, or change which times players can see.</p>
   <nav class="d-flex gap-2 overflow-auto pb-2 mb-3" aria-label="Schedule days" data-schedule-day-navigation>
     <a class="btn text-nowrap {{ $date === 'all' ? 'btn-primary' : 'btn-outline-primary' }}" href="{{ route('backend.event-venue-schedule.calendar',['event'=>$event->id]+array_replace($scope,['date'=>'all'])) }}">All days</a>
-    @forelse($days as $day => $count)<a class="btn text-nowrap {{ $day === $date ? 'btn-primary' : 'btn-outline-primary' }}" @if($day === $date) aria-current="date" @endif href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id]+array_replace($scope,['date'=>$day])) }}">Day {{ $event->start_date ? (int) \Carbon\Carbon::parse($event->start_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($day)->startOfDay()) + 1 : $loop->iteration }} · {{ \Carbon\Carbon::parse($day)->format('D j M') }} <span class="badge bg-white text-primary ms-1">{{ $count }} event matches</span></a>@empty<span class="text-muted">No saved match times yet.</span>@endforelse
+    @forelse($days as $day => $count)
+      @php
+        $dayDate = \Carbon\Carbon::parse($day)->startOfDay();
+        $dayNumber = $event->start_date ? (int) \Carbon\Carbon::parse($event->start_date)->startOfDay()->diffInDays($dayDate) + 1 : $loop->iteration;
+      @endphp
+      <a class="btn text-nowrap {{ $day === $date ? 'btn-primary' : 'btn-outline-primary' }}" @if($day === $date) aria-current="date" @endif href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id]+array_replace($scope,['date'=>$day])) }}">@if($dayNumber > 0)Day {{ $dayNumber }} · @endif{{ $dayDate->format('D j M') }} <span class="badge bg-white text-primary ms-1">{{ $count }} saved</span></a>
+    @empty
+      <span class="text-muted">No schedule dates yet.</span>
+    @endforelse
   </nav>
   <p class="small mb-2"><strong>Viewing:</strong> {{ $date === 'all' ? 'All days' : \Carbon\Carbon::parse($date)->format('D j M Y') }} · {{ !empty($scope['venue_id']) ? ($venues->firstWhere('id', (int) $scope['venue_id'])?->name ?? 'Selected venue') : 'All venues' }} · {{ !empty($scope['draw_id']) ? ($draws->firstWhere('id', (int) $scope['draw_id'])?->drawName ?? 'Selected draw') : 'All draws' }}</p>
   <div class="d-flex flex-wrap gap-2 mb-3">
@@ -72,7 +82,7 @@
         <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button type="submit" class="btn {{ $fullyPrivate ? 'btn-primary' : 'btn-outline-secondary' }}" aria-pressed="{{ $fullyPrivate ? 'true' : 'false' }}" @disabled($fullyPrivate)><i class="ti ti-eye-off me-1" aria-hidden="true"></i>{{ $fullyPrivate ? 'Hidden from players' : 'Hide times' }}</button></form>
         <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish',$event) }}">@csrf<input type="hidden" name="revision" value="{{ $revision }}">@foreach($scope as $key=>$value)<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endforeach<button type="submit" class="btn {{ $fullyPublished ? 'btn-success' : 'btn-outline-success' }}" aria-pressed="{{ $fullyPublished ? 'true' : 'false' }}" @disabled($fullyPublished || (($savedCount === 0) && ($retainedCount === 0)))><i class="ti ti-world me-1" aria-hidden="true"></i>{{ $updatedCount || ($retainedCount > 0) ? 'Publish updates' : ($fullyPublished ? 'Published' : 'Publish') }}</button></form>
       </div>
-    @else<span class="small text-muted align-self-center">Choose a day to publish all venues or filter to a venue and draw.</span>@endif
+    @else<span class="small text-muted align-self-center">Choose a day above to publish or hide times in the selected venue and draw scope.</span>@endif
   </div></div></section>
   <p class="small text-muted mb-3">Hiding times keeps all saved bookings and results. Saved changes stay private until published. Existing public times stay visible until you publish updates or hide them.</p>
   <details class="card calendar-filters mb-3" @if($date !== 'all' && empty($scope['draw_id'])) open @endif>
@@ -115,41 +125,18 @@
     </div></td><td data-label="Visibility"><div><span class="badge {{ $row['publication_state']==='Published'?'bg-label-success':'bg-label-warning' }}">{{ $row['publication_state'] }}</span></div></td></tr>@empty<tr><td colspan="5" class="text-muted py-4">No saved matches match these filters. Use {{ $date === 'all' ? 'Schedule more matches' : 'Add matches to this day' }} above to add matches here.</td></tr>@endforelse
   </tbody></table></div></div>
   {{ $savedPages->links() }}
-  @if(($retainedCount > 0))<div class="alert alert-info mt-3"><strong>Previous public times are still visible</strong><p class="mb-2 small">These match times were moved or removed privately. Publish updates or hide this day and venue to change what players see.</p>@foreach($retained as $row)<div class="small">{{ $row['draw_name'] }} · match {{ $row['fixture_id'] }} · {{ $date === 'all' ? substr($row['scheduled_at'],0,16) : substr($row['scheduled_at'],11,5) }} · {{ $row['venue_name'] }} / {{ $row['court'] }}</div>@endforeach</div>@endif
+  @if($retainedCount > 0)
+    <div class="alert alert-info mt-3">
+      <strong>Previous times are still published</strong>
+      <p class="mb-2 small">These bookings were moved or removed privately. Publish updates or hide the previous times to remove them from the public schedule.</p>
+      @foreach($retained as $row)
+        <div class="small">{{ $row['draw_name'] }} · match {{ $row['fixture_id'] }} · {{ $date === 'all' ? substr($row['scheduled_at'],0,16) : substr($row['scheduled_at'],11,5) }} · {{ $row['venue_name'] }} / {{ $row['court'] }} · {{ $row['visible'] ? 'Visible to players' : 'Visibility blocked' }}</div>
+      @endforeach
+    </div>
+  @endif
   {{ $retainedPages->links() }}
   <details class="card card-body mt-3" id="calendar-tools"><summary style="min-height:44px">More schedule tools</summary>
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3"><p class="text-muted mb-0">{{ $unscheduledCount }} matches remain without a day or time{{ !empty($scope['draw_id']) ? ' in this draw' : ' across the event' }}.</p><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.audit', ['event'=>$event->id]+$scope) }}">Run schedule audit</a></div>
-  @if($date === 'all')
-    <div class="mb-3">
-      <h5 class="mb-1">Publish one day at a time</h5>
-      <p class="small text-muted mb-2">Each button publishes that whole day's saved times across all venues and draws, including any updates. Other days keep their current state, except moved matches replace their previous public times. Draws and team ties must also be published for players to see their times.</p>
-      <div class="row g-3">
-        @foreach($days as $day => $count)
-          @php($savedCount = (int) ($dailySavedCounts[$day] ?? 0))
-          <div class="col-12 col-md-6 col-lg-4"><div class="card h-100"><div class="card-body">
-            <h6 class="mb-1">Day {{ $event->start_date ? (int) \Carbon\Carbon::parse($event->start_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($day)->startOfDay()) + 1 : $loop->iteration }} · {{ \Carbon\Carbon::parse($day)->format('D j M Y') }}</h6>
-            <div class="small mb-1">{{ $savedCount }} saved {{ Str::plural('match', $savedCount) }}</div>
-            <div class="small text-muted mb-3">Whole day · all venues and draws</div>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-              <a class="btn btn-sm btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $event->id]+array_replace($scope,['date' => $day])) }}">Edit schedule</a>
-              <form method="post" action="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}">
-                @csrf
-                <input type="hidden" name="revision" value="{{ $revision }}">
-                <input type="hidden" name="date" value="{{ $day }}">
-                <button type="submit" class="btn btn-sm btn-success" @disabled($savedCount === 0)>Publish Day {{ $event->start_date ? (int) \Carbon\Carbon::parse($event->start_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($day)->startOfDay()) + 1 : $loop->iteration }}</button>
-              </form>
-              <form method="post" action="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}">
-                @csrf
-                <input type="hidden" name="revision" value="{{ $revision }}">
-                <input type="hidden" name="date" value="{{ $day }}">
-                <button type="submit" class="btn btn-sm btn-outline-danger">Hide Day {{ $event->start_date ? (int) \Carbon\Carbon::parse($event->start_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($day)->startOfDay()) + 1 : $loop->iteration }}</button>
-              </form>
-            </div>
-          </div></div></div>
-        @endforeach
-      </div>
-    </div>
-  @endif
     @if($date !== 'all')
       <details class="mt-3"><summary style="min-height:44px">Clear saved times for this day</summary><p class="small text-muted">Clear only this day{{ !empty($scope['draw_id']) ? ' in the selected draw' : ' across all draws' }}{{ !empty($scope['venue_id']) ? ' at the selected venue' : '' }}. Fixtures and results remain. Played matches and locked draws cannot be cleared. Published times remain until you publish updates or hide them.</p>
         <form method="post" action="{{ route('backend.event-venue-schedule.calendar.clear', $event) }}" onsubmit="return confirm('Clear all saved match times in this day and selected filters? Fixtures and results remain. Published times remain until you publish updates or hide them.');">

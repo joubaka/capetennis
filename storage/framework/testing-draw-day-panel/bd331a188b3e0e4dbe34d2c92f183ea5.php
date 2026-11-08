@@ -1,0 +1,74 @@
+<section id="day-batch-workflow" class="workspace-section mb-3">
+  <div class="section-body">
+    <h5>1. Select draws</h5>
+    <p class="small text-muted">Choose one or more draws to plan this day.</p>
+    <div class="d-flex flex-wrap gap-2 mb-3"><button type="button" class="btn btn-sm btn-outline-primary" id="day-batch-all">Select all ready draws</button><button type="button" class="btn btn-sm btn-outline-secondary" id="day-batch-clear">Clear selection</button></div>
+    <div id="day-batch-draws" class="row g-2 mb-3"></div>
+    <p id="day-batch-selection-count" class="small fw-semibold" role="status" aria-live="polite"></p>
+    <details class="mb-3 day-batch-order-options">
+      <summary>Draw order (optional)</summary>
+      <div class="pt-3">
+        <label class="form-label" for="day-batch-order-mode">Scheduling order</label>
+        <select id="day-batch-order-mode" class="form-select mb-2"><option value="mixed">Mix draws · fill available courts</option><option value="sequential">In order · finish each draw's round first</option></select>
+        <p class="small text-muted">Mix draws fills courts sooner. In order follows the draw list within each round.</p>
+        <div id="day-batch-order"></div>
+      </div>
+    </details>
+    <button type="button" class="btn btn-primary" id="day-batch-next-courts">Continue to day &amp; courts</button>
+
+    <section id="day-batch-courts-step" class="border-top pt-3 mt-3" hidden>
+      <h5>2. Set up courts for this day</h5>
+      <div class="row g-3 mb-3"><div class="col-md-4"><label class="form-label" for="day-batch-date">Playing day</label><select id="day-batch-date" class="form-select"></select></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-start">Starts</label><input id="day-batch-start" class="form-control" type="time" value="08:00" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-end">Finishes</label><input id="day-batch-end" class="form-control" type="time" value="18:00" required></div></div>
+      <p class="small">Tick only the courts available this day. Unticking a court does not remove it from the venue. Saved times stay in place unless you choose to replan.</p>
+      <button type="button" class="btn btn-sm btn-outline-secondary mb-3" data-bs-toggle="modal" data-bs-target="#venue-management-modal">Advanced: edit venue inventory</button>
+      <div id="day-batch-venues" class="mb-3"></div>
+      <div class="row g-3 mb-3"><div class="col-6 col-md-4"><label class="form-label" for="day-batch-duration">Match minutes</label><input id="day-batch-duration" class="form-control" type="number" min="15" max="480" value="<?php echo e($scheduleDraft['duration']); ?>" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-rest">Player rest minutes</label><input id="day-batch-rest" class="form-control" type="number" min="0" max="480" value="<?php echo e($scheduleDraft['player_rest']); ?>" required></div><div class="col-6 col-md-4"><label class="form-label" for="day-batch-gap">Court gap minutes</label><input id="day-batch-gap" class="form-control" type="number" min="0" max="120" value="<?php echo e($scheduleDraft['court_gap']); ?>" required></div></div>
+      <p class="small text-muted">These times apply to the selected unplayed matches, including timed draws. Draw defaults stay unchanged. Tick replan below to replace saved match times.</p>
+      <label class="d-block mb-2"><input id="day-batch-limit" class="form-check-input me-2" type="checkbox" <?php if($scheduleDraft['limit_daily_matches']): echo 'checked'; endif; ?>>Optional: maximum 3 matches per player per day, including conditional play-offs</label>
+      <div class="d-flex flex-wrap gap-2 align-items-center mb-3"><button type="button" id="day-batch-save-timing" class="btn btn-sm btn-outline-secondary">Save timing settings</button><span class="small text-muted">Save settings to enable or disable the event's daily limit. This does not change existing match times.</span></div>
+      <label class="d-block mb-3"><input id="day-batch-replan" class="form-check-input me-2" type="checkbox">Also replan selected saved matches on this day</label>
+      <div class="mb-3" id="day-batch-gender-order" hidden>
+        <label class="form-label" for="day-batch-gender-waves">Gender order within each team round</label>
+        <select id="day-batch-gender-waves" class="form-select">
+          <option value="combined">Together</option>
+          <option value="girls_then_boys">Girls first · boys use courts as they free up</option>
+          <option value="boys_then_girls">Boys first · girls use courts as they free up</option>
+        </select>
+      </div>
+      <details id="day-batch-team-options" class="mb-3" hidden><summary>Team scheduling options</summary><p class="small mt-2">Saved position bands remain in force. Without position bands, each team tie stays at one venue and court group. Use Advanced tools to change position bands or custom tie destinations.</p><div class="row g-2"><label class="col-md-6">Round progression<select id="day-batch-progression" class="form-select"><option value="team_ready">Next round when the team's preceding tie is ready</option><option value="all_round">Finish the whole preceding team round first</option></select></label><label class="col-md-6">Tie allocation<select id="day-batch-tie-allocation" class="form-select"><option value="balanced">Balance available team ties</option><option value="complete_tie">Prefer completing the current tie</option></select></label></div></details>
+      <button type="button" id="day-batch-next-rounds" class="btn btn-primary">Continue to rounds</button>
+    </section>
+
+    <section id="day-batch-rounds-step" class="border-top pt-3 mt-3" hidden>
+      <h5>3. Choose rounds for this day</h5>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($savedDayReplan ?? false): ?><p class="alert alert-info">Loaded only this selection's saved matches for <?php echo e(\Carbon\Carbon::parse($planningDate)->format('D j M')); ?>. Unscheduled matches are not added. Played matches and locked draws stay fixed. Changes remain private until published.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <p class="small text-muted">Choose rounds, then preview the selected matches. Expand a round to choose individual matches. Earlier qualifying matches need saved times.</p>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($pendingSecondRoundRobinDraws ?? collect())->isNotEmpty()): ?>
+        <div class="alert alert-info mb-3" id="pending-second-round-robin">
+          <h6>Second round-robin stages await progression</h6>
+          <p class="small">Schedule the first stage now. After its results are complete, review and confirm progression in the draw to make the second-stage matches available here.</p>
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $pendingSecondRoundRobinDraws; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $pendingDraw): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+            <a class="d-block" href="<?php echo e(route('backend.draw.roundrobin.show', $pendingDraw)); ?>"><?php echo e($pendingDraw->drawName); ?> — review progression</a>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($pendingPlayoffDraws->isNotEmpty()): ?>
+        <div class="alert alert-info mb-3" id="pending-playoff-rounds">
+          <h6>Add playoffs to the scheduling list</h6>
+          <p class="small">Select the draws below, then click Prepare playoff fixtures. Their playoff rounds will appear below for scheduling, even before round-robin results are complete. Players remain undecided until they qualify.</p>
+          <form id="prepare-playoff-form" method="POST" action="<?php echo e(route('backend.event-venue-schedule.prepare-playoffs', $event)); ?>">
+            <?php echo csrf_field(); ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $pendingPlayoffDraws; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $playoffDraw): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <div class="mb-2" data-playoff-draw="<?php echo e($playoffDraw->id); ?>" data-playoff-protected="<?php echo e($playoffDraw->locked || $playoffDraw->published ? '1' : '0'); ?>"><label><input type="checkbox" name="draw_ids[]" value="<?php echo e($playoffDraw->id); ?>" class="form-check-input me-2" <?php if(!$playoffDraw->locked && !$playoffDraw->published): echo 'checked'; endif; ?> <?php if($playoffDraw->locked || $playoffDraw->published): echo 'disabled'; endif; ?>> <?php echo e($playoffDraw->drawName); ?> <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($playoffDraw->locked || $playoffDraw->published): ?><span class="small text-muted">(unpublish and unlock this draw first)</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></label></div>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <button class="btn btn-outline-primary" type="submit">Prepare playoff fixtures</button>
+          </form>
+        </div>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <div id="day-batch-rounds"></div>
+      <button type="button" id="day-batch-preview" class="btn btn-primary">Preview selected matches</button>
+    </section>
+    <div id="day-batch-status" class="mt-3" role="status" aria-live="polite"></div>
+  </div>
+</section>
+<?php /**PATH C:\wamp64\www\ct\resources\views/backend/schedule/partials/day-batch.blade.php ENDPATH**/ ?>

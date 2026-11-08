@@ -5,9 +5,9 @@
         'field' => $context instanceof \App\Models\CategoryEvent ? $context->id : 0,
         'category' => $context instanceof \App\Models\Category ? $context->id : 0])
     @if($svg)
-        <tspan data-rating-player="{{ $playerId }}" data-rating-svg="1" data-rating-draw="{{ $markerContext['draw'] }}" data-rating-field="{{ $markerContext['field'] }}" data-rating-category="{{ $markerContext['category'] }}">
+        <tspan data-rating-done="1" data-rating-player="{{ $playerId }}" data-rating-svg="1" data-rating-draw="{{ $markerContext['draw'] }}" data-rating-field="{{ $markerContext['field'] }}" data-rating-category="{{ $markerContext['category'] }}">
     @else
-        <span data-rating-player="{{ $playerId }}" data-rating-draw="{{ $markerContext['draw'] }}" data-rating-field="{{ $markerContext['field'] }}" data-rating-category="{{ $markerContext['category'] }}">
+        <span data-rating-done="1" data-rating-player="{{ $playerId }}" data-rating-draw="{{ $markerContext['draw'] }}" data-rating-field="{{ $markerContext['field'] }}" data-rating-category="{{ $markerContext['category'] }}">
     @endif
     @if($rating)
         @if($svg)

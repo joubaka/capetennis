@@ -3,9 +3,12 @@
 namespace App\Services;
 
 use App\Domain\Draws\Enums\FixtureState;
+use App\Exceptions\TeamScoreBusyException;
 use App\Models\TeamFixture;
 use App\Models\TeamFixtureResult;
+use Illuminate\Contracts\Database\ConcurrencyErrorDetector;
 use Illuminate\Support\Facades\DB;
+use PDOException;
 
 class TeamFixtureScoreService
 {
@@ -15,7 +18,8 @@ class TeamFixtureScoreService
      */
     public function save(TeamFixture $fixture, array $scores): void
     {
-        DB::transaction(function () use ($fixture, $scores): void {
+        $readyToCommit = false;
+        $persist = function () use ($fixture, $scores, &$readyToCommit): void {
             $event = \App\Models\Event::whereKey($fixture->draw->event_id)->lockForUpdate()->firstOrFail();
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
             abort_if((int) $draw->event_id !== (int) $event->id, 409, 'Fixture event changed.');
@@ -73,7 +77,23 @@ class TeamFixtureScoreService
                 : ($current->teamResults->isEmpty() ? FixtureState::STATUS_PENDING : FixtureState::STATUS_PARTIAL)]);
             if ($canonical) { app(TeamStandingsService::class)->refreshTie($tie); }
             app(MatchResultNotificationService::class)->record($current);
-        });
+            $readyToCommit = true;
+        };
+
+        $connection = DB::connection();
+        $ownsTransaction = $connection->transactionLevel() === 0;
+        try {
+            $connection->transaction($persist);
+        } catch (PDOException $exception) {
+            // A commit or after-commit callback can fail after the score has been stored.
+            // Nested contention must propagate so the caller can abort its outer transaction.
+            if (!$ownsTransaction || $readyToCommit || $connection->transactionLevel() !== 0
+                || !app(ConcurrencyErrorDetector::class)->causedByConcurrencyError($exception)) {
+                throw $exception;
+            }
+
+            throw new TeamScoreBusyException($exception);
+        }
     }
 
     public function delete(TeamFixture $fixture): void

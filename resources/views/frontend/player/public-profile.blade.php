@@ -25,8 +25,10 @@
     <p class="eyebrow">Cape Tennis player</p>
     <h1>{{ $displayName }}<x-player-rating :player-id="$ratingPlayerId" /></h1>
     <p class="notice">This public profile currently shows the player’s name only. Personal contact, birth, account and registration information stays private.</p>
+    @role('super-user')
+      <a href="{{ route('backend.player-performance.show', ['player' => $ratingPlayerId, 'ball_type' => 'overall']) }}">View saved CTR ratings</a>
+    @endrole
     <a href="{{ url('/') }}">&larr; Back to Cape Tennis</a>
   </main>
-  @include('draw.partials.player-rating-assets')
 </body>
 </html>

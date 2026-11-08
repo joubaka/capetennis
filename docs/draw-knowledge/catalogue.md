@@ -168,6 +168,8 @@ Paths below are relative to the repository root. Test references are executable 
 
 **Solution:** `app/Services/Scheduling/SchedulePublicationService.php` and hub projections represent partial, changed and preview-only states.
 
+The draw workspace's **Schedule by day** panel uses the same scoped status and revision-checked actions as the team hub. Show configured days even when they are empty. Calendar day counts and actions follow the selected draw and venue. A previous snapshot can still be hidden after its working booking moves or its draw becomes private. The calendar shows whether players can currently see that snapshot.
+
 Single public draw pages scope schedule reads to the draw before loading assignments. Keep all assignments within that draw for first-match-only ordering. Public live checks compare scores and published times, then request the draw fragment on change. Jitter and failure backoff spread the checks across open tabs. A slower reconciliation uses the same public rendering path for roster and other display details, so the revision never depends on hidden team roster data. See repair guide RK-030.
 
 My Tennis upcoming individual fixtures open the same format-aware public draw as the tournament listing through `public.roundrobin.show`. That route checks draw visibility and redirects Flexible Monrad draws to their dedicated view. Team fixtures use their draw's fixture page. See `PlayerUpcomingMatchInsights` and `tests/Feature/PlayerUpcomingMatchInsightsTest.php`.

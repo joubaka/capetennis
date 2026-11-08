@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\QueueEventAnnouncementEmails;
 use App\Jobs\SendBulkEmailJob;
 use App\Models\Announcement;
 use App\Models\BulkEmailLog;
 use App\Models\CategoryEvent;
 use App\Models\CategoryEventRegistration;
 use App\Models\Event;
+use App\Models\EventCommunicationBatch;
 use App\Models\EventNomination;
 use App\Models\EventType;
 use App\Models\Player;
@@ -17,6 +19,7 @@ use App\Models\TeamRegion;
 use App\Models\User;
 use App\Services\EventAnnouncementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Spatie\Permission\Models\Role;
@@ -43,22 +46,120 @@ class EventAnnouncementAudienceTest extends TestCase
         $response->assertOk()
             ->assertSee('nominated@example.com')
             ->assertSee('registered@example.com');
-        $response->assertSee('Publish and send emails')->assertSee('email delivery requested for')->assertSee('syncSaveLabel', false);
+        $response->assertSee('Publish and schedule emails')->assertSee('scheduled to begin about 3 minutes later')->assertSee('syncSaveLabel', false);
         if (getenv('CT_BATCHES121314_QA')) {
             Announcement::create(['event_id' => $event->id, 'title' => 'Weather update', 'message' => '<p>Play starts at 10:00.</p>']);
             $page = $this->get(route('admin.events.announcements', $event))->assertOk();
             file_put_contents(storage_path('app/batches121314-qa/announcements.html'), $page->getContent());
         }
 
-        $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 2)
-            ->assertJsonPath('message', 'Announcement published and 2 emails queued. Staff copies: 1 queued.');
+        $this->freezeSecond();
+        $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk()
+            ->assertJsonPath('mail.scheduled', 2)
+            ->assertJsonPath('message', 'Announcement published. Participant emails are scheduled to begin in about 3 minutes. Staff copies: 1 queued.');
+
+        $this->assertDatabaseCount('announcements', 1);
+        $this->assertSame(0, BulkEmailLog::where('payload->recipient_kind', 'players')->count());
+        $job = Queue::pushed(QueueEventAnnouncementEmails::class)->sole();
+        $this->assertSame('database', $job->connection);
+        $this->assertTrue($job->delay->equalTo(now()->addMinutes(3)));
+
+        $this->runScheduledJob($job);
+        $job->handle(app(EventAnnouncementService::class));
 
         $this->assertEqualsCanonicalizing(
             [$nominated->email, $registered->email],
             BulkEmailLog::query()->where('payload->recipient_kind', 'players')->pluck('recipient_email')->all(),
         );
         Queue::assertPushed(SendBulkEmailJob::class, 3);
+    }
+
+    public function test_database_queue_honors_delay_when_the_default_is_sync(): void
+    {
+        Queue::swap(Queue::getFacadeRoot()->queue);
+        Bus::fake([fn ($job) => $job instanceof SendBulkEmailJob && $job->connection !== 'database']);
+        config(['queue.default' => 'sync']);
+        $this->freezeSecond();
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'scheduled@example.test');
+
+        $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk();
+        $this->assertDatabaseCount('jobs', 1);
+        $this->assertDatabaseHas('jobs', ['available_at' => now()->addMinutes(3)->timestamp]);
+        $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
+        $job = new QueueEventAnnouncementEmails($batch->id);
+
+        $this->travel(179)->seconds();
+        $job->handle(app(EventAnnouncementService::class));
+        $this->assertSame(0, $batch->logs()->count());
+
+        $this->travel(1)->second();
+        $job->handle(app(EventAnnouncementService::class));
+        $this->assertSame('enqueued', $batch->logs()->sole()->payload['queue_state']);
+        $this->assertDatabaseCount('jobs', 2);
+    }
+
+    public function test_delayed_email_keeps_reviewed_content_and_never_adds_new_addresses(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'original@example.test');
+        $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk();
+        $this->patchJson(route('admin.announcements.update', Announcement::sole()), [
+            'title' => 'Updated', 'message' => '<p>Later edit.</p>',
+        ])->assertOk();
+        $this->nominate($event, $category, 'new@example.test');
+
+        $this->runScheduledJob(Queue::pushed(QueueEventAnnouncementEmails::class)->sole());
+
+        $log = EventCommunicationBatch::where('options->source', 'announcement')->sole()->logs()->sole();
+        $this->assertSame('original@example.test', $log->recipient_email);
+        $this->assertStringContainsString('Please read this update.', $log->payload['body']);
+        $this->assertStringNotContainsString('Later edit.', $log->payload['body']);
+    }
+
+    public function test_changed_optional_contact_cancels_delayed_email(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $player = $this->nominate($event, $category, 'original@example.test');
+        $player->update(['email_2' => 'second@example.test']);
+        $response = $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk();
+        $player->update(['email_2' => 'replacement@example.test']);
+
+        $this->runScheduledJob(Queue::pushed(QueueEventAnnouncementEmails::class)->sole());
+
+        $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
+        $this->assertSame('cancelled', $batch->status);
+        $this->assertSame(0, $batch->logs()->count());
+        $this->get($response->json('report_url'))->assertOk()->assertSee('The confirmed recipient list changed before sending.');
+    }
+
+    public function test_hiding_an_announcement_before_dispatch_cancels_the_participant_email(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'scheduled@example.test');
+        $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk();
+        $this->patchJson(route('admin.announcements.toggle', Announcement::sole()))
+            ->assertOk()->assertJsonPath('hidden', true);
+
+        $this->runScheduledJob(Queue::pushed(QueueEventAnnouncementEmails::class)->sole());
+
+        $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
+        $this->assertSame('cancelled', $batch->status);
+        $this->assertSame(0, $batch->logs()->count());
+    }
+
+    public function test_revoking_event_management_before_dispatch_cancels_the_participant_email(): void
+    {
+        [$admin, $event, $category] = $this->eventAdmin();
+        $this->nominate($event, $category, 'scheduled@example.test');
+        $this->publishWithCurrentAudience($admin, $event, runScheduledJob: false)->assertOk();
+        $event->admins()->detach($admin);
+
+        $this->runScheduledJob(Queue::pushed(QueueEventAnnouncementEmails::class)->sole());
+
+        $batch = EventCommunicationBatch::where('options->source', 'announcement')->sole();
+        $this->assertSame('cancelled', $batch->status);
+        $this->assertSame(0, $batch->logs()->count());
     }
 
     public function test_announcement_log_preserves_event_and_initiating_actor(): void
@@ -71,15 +172,17 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->assertSame($admin->id, $payload['created_by']);
     }
 
-    public function test_zero_queued_announcement_returns_error_feedback_while_preserving_publication_result(): void
+    public function test_failed_announcement_schedule_preserves_publication(): void
     {
         [$admin, $event, $category] = $this->eventAdmin();
         $this->nominate($event, $category, 'announce@example.test');
-        $this->mock(\App\Services\BulkMailDispatcher::class)->shouldReceive('dispatch')->twice()
-            ->andReturn(['total' => 1, 'queued' => 0, 'skipped' => 0, 'failed' => 1, 'invalid' => 0, 'duplicate' => 0]);
+        Queue::swap(Queue::getFacadeRoot()->queue);
+        Bus::fake([SendBulkEmailJob::class]);
+        config(['queue.connections.database.table' => 'missing_announcement_queue']);
         $this->publishWithCurrentAudience($admin, $event)->assertOk()->assertJsonPath('success', true)
-            ->assertJsonPath('mail_level', 'error')->assertJsonPath('mail.queued', 0)->assertJsonPath('mail.failed', 1);
+            ->assertJsonPath('mail_level', 'error')->assertJsonPath('mail.scheduled', 0)->assertJsonPath('mail.failed', 1);
         $this->assertDatabaseCount('announcements', 1);
+        $this->assertSame(0, EventCommunicationBatch::where('options->source', 'announcement')->count());
     }
 
     public function test_player_in_both_groups_is_queued_once(): void
@@ -93,7 +196,7 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->attachPaidRegistration($category, $player);
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 4);
+            ->assertJsonPath('mail.scheduled', 4);
 
         $this->assertDatabaseCount('bulk_email_logs', 5);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'overlap@example.com']);
@@ -122,7 +225,7 @@ class EventAnnouncementAudienceTest extends TestCase
         }
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.scheduled', 1);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'active-paid@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'unpaid@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'withdrawn@example.com']);
@@ -144,7 +247,7 @@ class EventAnnouncementAudienceTest extends TestCase
 
         $this->assertSame(['valid@example.com'], $recipients->all());
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1)->assertJsonPath('mail.skipped', 2)->assertJsonPath('mail.invalid', 2)
+            ->assertJsonPath('mail.scheduled', 1)->assertJsonPath('mail.skipped', 2)->assertJsonPath('mail.invalid', 2)
             ->assertJsonPath('mail_level', 'warning');
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'other-event@example.com']);
         $this->assertDatabaseMissing('bulk_email_logs', ['recipient_email' => 'other-paid@example.com']);
@@ -170,7 +273,7 @@ class EventAnnouncementAudienceTest extends TestCase
         $team->players()->attach($rosterPlayer, ['rank' => 1, 'pay_status' => 0]);
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.scheduled', 1);
 
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'roster@example.com']);
     }
@@ -201,7 +304,7 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->nominate($event, $category, 'linked@example.com');
 
         $this->publishWithCurrentAudience($admin, $event)->assertOk()
-            ->assertJsonPath('mail.queued', 1);
+            ->assertJsonPath('mail.scheduled', 1);
 
         $this->assertDatabaseCount('bulk_email_logs', 2);
         $this->assertDatabaseHas('bulk_email_logs', ['recipient_email' => 'linked@example.com']);
@@ -297,15 +400,27 @@ class EventAnnouncementAudienceTest extends TestCase
         $this->assertDatabaseCount('bulk_email_logs', 1);
     }
 
-    private function publishWithCurrentAudience(User $admin, Event $event)
+    private function publishWithCurrentAudience(User $admin, Event $event, bool $runScheduledJob = true)
     {
-        return $this->actingAs($admin)->postJson(route('admin.events.announcements.store', $event), [
+        $response = $this->actingAs($admin)->postJson(route('admin.events.announcements.store', $event), [
             'title' => 'Event update',
             'message' => '<p>Please read this update.</p>',
             'sendMail' => 1,
             'confirm_recipients' => 1,
             'recipient_hash' => app(EventAnnouncementService::class)->recipientHash($event),
         ]);
+
+        if ($runScheduledJob && $response->json('mail.scheduled')) {
+            $this->runScheduledJob(Queue::pushed(QueueEventAnnouncementEmails::class)->sole());
+        }
+
+        return $response;
+    }
+
+    private function runScheduledJob(QueueEventAnnouncementEmails $job): void
+    {
+        $this->travelTo($job->delay);
+        $job->handle(app(EventAnnouncementService::class));
     }
 
     /** @return array{User, Event, CategoryEvent} */

@@ -1,7 +1,7 @@
 @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
 <style>@media print { .player-rating-badge { display:none !important; } }</style>
 @php
-    // Use the same component for initial and refreshed badges; only escaped data is substituted in JS.
+    // Use the same component for server-rendered badges and badges for dynamically loaded rows; only escaped data is substituted in JS.
     $stampTemplates = [];
     foreach (['unknown' => null, 'red' => 'red', 'orange' => 'orange', 'green' => 'green', 'yellow' => 'yellow', 'standard' => 'standard'] as $stageKey => $ballStage) {
         foreach ([false, true] as $localStamp) {

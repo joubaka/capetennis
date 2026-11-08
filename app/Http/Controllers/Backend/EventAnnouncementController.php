@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Announcement;
+use App\Services\EventCommunicationService;
 use App\Services\EventAnnouncementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -31,7 +32,7 @@ class EventAnnouncementController extends Controller
     $snapshot = $announcements->audienceSnapshot($event);
     $announcementRecipients = $snapshot['recipients'];
     $announcementExcluded = $snapshot['excluded'];
-    $announcementRecipientHash = hash('sha256', $announcementRecipients->pluck('email')->toJson());
+    $announcementRecipientHash = $announcements->hashRecipients($announcementRecipients);
 
     return view('backend.event.announcements', compact(
       'event',
@@ -74,7 +75,7 @@ class EventAnnouncementController extends Controller
         ]);
       }
 
-      $currentHash = hash('sha256', $recipients->pluck('email')->toJson());
+      $currentHash = $announcements->hashRecipients($recipients);
       if (! hash_equals($currentHash, (string) ($data['recipient_hash'] ?? ''))) {
         throw ValidationException::withMessages([
           'confirm_recipients' => 'The recipient list changed. Review the current recipients and confirm again.',
@@ -91,28 +92,44 @@ class EventAnnouncementController extends Controller
       'id' => $announcement->id,
     ]);
 
-    $mailStats = null;
-    if (!empty($data['sendMail'])) {
-      Log::info('[EventAnnouncement] 📧 Sending emails...');
-      $mailStats = $announcements->dispatch($announcement, $recipients, $request->user(), $excluded);
-    } else {
-      Log::info('[EventAnnouncement] ⏭️ sendMail not checked, skipping emails');
+    $batch = null;
+    $mailRequested = !empty($data['sendMail']);
+    if ($mailRequested) {
+      try {
+        $batch = $announcements->schedule($announcement, $recipients, $request->user(), $excluded);
+      } catch (\Throwable) {
+        Log::warning('Participant announcement emails could not be scheduled.', ['announcement_id' => $announcement->id]);
+      }
     }
 
-    $copyStats = $announcements->dispatchCopies($announcement, $request->user());
-    $message = (!empty($data['sendMail'])
-      ? $this->mailFeedbackMessage($mailStats ?? [])
-      : 'Announcement published on the event page. No participant emails requested.')
-      .$announcements->copyFeedback($copyStats);
+    $copyStats = $announcements->dispatchCopies($announcement, $request->user(), $batch ? $recipients : null);
+    $mailStats = $mailRequested ? [
+      'total' => $recipients->count() + $excluded->count(),
+      'scheduled' => $batch ? $recipients->count() : 0,
+      'skipped' => $excluded->count(),
+      'invalid' => $excluded->count(),
+      'failed' => $batch ? 0 : $recipients->count(),
+    ] : null;
+    $message = match (true) {
+      $batch !== null => 'Announcement published. Participant emails are scheduled to begin in about '.EventAnnouncementService::EMAIL_DELAY_MINUTES.' minutes.',
+      $mailRequested => 'Announcement published. Participant emails could not be scheduled. Review the event Email Log before retrying.',
+      default => 'Announcement published on the event page. No participant emails requested.',
+    };
+    if ($batch && $excluded->isNotEmpty()) {
+      $message .= ' '.$excluded->count().' player(s) have no valid contact address.';
+    }
+    $reportUrl = $batch && app(EventCommunicationService::class)->managesWholeEvent($event, $request->user())
+      ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => $batch->id, 'report_scope' => 'batch'])
+      : route('backend.event-mail-log.index', $event);
 
     return response()->json([
       'success' => true,
       'id' => $announcement->id,
       'mail' => $mailStats,
       'copies' => $copyStats,
-      'mail_level' => $mailStats !== null && $mailStats['queued'] === 0 ? 'error' : (($mailStats['skipped'] ?? 0) || ($mailStats['failed'] ?? 0) || $copyStats['skipped'] || $copyStats['failed'] ? 'warning' : 'success'),
-      'report_url' => $mailStats !== null && $event->isTeam() ? route('backend.event-communications.index', ['event' => $event->id, 'batch' => \App\Models\EventCommunicationBatch::where('event_id', $event->id)->where('options->source', 'announcement')->where('options->announcement_id', $announcement->id)->latest('id')->value('id'), 'report_scope' => 'batch']) : route('backend.event-mail-log.index', $event),
-      'message' => $message,
+      'mail_level' => $mailRequested && ! $batch ? 'error' : (($mailStats['skipped'] ?? 0) || $copyStats['skipped'] || $copyStats['failed'] ? 'warning' : 'success'),
+      'report_url' => $reportUrl,
+      'message' => $message.$announcements->copyFeedback($copyStats),
     ]);
   }
 
@@ -196,21 +213,5 @@ class EventAnnouncementController extends Controller
       ]);
     }
   }
-
-  /** @param array<string, int> $stats */
-  private function mailFeedbackMessage(array $stats): string
-  {
-    $queued = (int) ($stats['queued'] ?? 0);
-    $skipped = (int) ($stats['skipped'] ?? 0);
-    $failed = (int) ($stats['failed'] ?? 0);
-
-    $message = "Announcement published and {$queued} email".($queued === 1 ? '' : 's').' queued.';
-    if ($skipped || $failed) {
-      $message .= " {$skipped} skipped; {$failed} failed.";
-    }
-
-    return $message;
-  }
-
 
 }

@@ -75,6 +75,12 @@ reads do not calculate ratings. No migration or change to canonical results,
 rankings, publication, registration, finance or premium-access configuration is
 required. Existing audience, roster and token boundaries apply unchanged.
 
+The current CTR pages and name badges read the last successful database snapshot.
+An open page keeps its rendered badges. Dynamically loaded rows make an authorized
+saved-rating lookup when they appear. Family views show a Top 10 and the selected
+player’s position from the same eligible age and gender group. Super users can
+browse the directory and choose a birth-year group or include younger players.
+
 Saved format manifests recapture complete event-court, allocation and schedule
 scopes, including empty scopes. Changes invalidate saved estimates. Internal
 strength, disconnected local scores and other players' provenance are not

@@ -1337,11 +1337,14 @@ class EventVenueScheduleTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('mail.total', 1)
-            ->assertJsonPath('mail.queued', 1)
+            ->assertJsonPath('mail.scheduled', 1)
             ->assertJsonPath('copies.total', 1)
             ->assertJsonPath('copies.queued', 1);
         $announcement = Announcement::where('event_id', $event->id)->sole();
         $this->assertSame('Final court allocation', $announcement->title);
+        $job = Queue::pushed(\App\Jobs\QueueEventAnnouncementEmails::class)->sole();
+        $this->travelTo($job->delay);
+        $job->handle($announcementService);
         $this->assertDatabaseHas('bulk_email_logs', [
             'related_id' => $announcement->id,
             'mail_type' => 'event_announcement',

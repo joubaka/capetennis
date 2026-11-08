@@ -170,7 +170,7 @@ class OrganiserSetupJourneyTest extends TestCase
             ->assertSee(e(route('backend.draw.roundrobin.show', $draw).'?review=publication#matrix'), false);
         $this->get(route('backend.draw.roundrobin.show', [$draw, 'review' => 'publication']))->assertOk()
             ->assertSee('data-publication-review-toggle', false)
-            ->assertSee('id="rr-publish-draw"', false)->assertSee('id="rr-publish-schedule"', false)
+            ->assertSee('id="rr-publish-draw"', false)->assertSee('data-draw-day-publication', false)->assertDontSee('id="rr-publish-schedule"', false)
             ->assertSee('Draw and schedule publish separately.');
         $venue = Venue::forceCreate(['name' => 'Synthetic Trials courts']);
         OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'court' => '1', 'venue_id' => $venue->id]);

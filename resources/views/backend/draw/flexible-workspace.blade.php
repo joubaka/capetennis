@@ -37,9 +37,6 @@
           <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id]) }}">Schedule multiple draws</a>
         </div>
       </div>
-      @can('publish', $draw)
-        <button type="button" class="btn btn-outline-secondary mb-3" data-workspace-publish-schedule="{{ route('draw.toggle.publish.schedule', $draw) }}">{{ $draw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}</button>
-      @endcan
       <div id="fm-timetable"></div>
     </div>
   </section>

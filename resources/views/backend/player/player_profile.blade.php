@@ -46,6 +46,9 @@
             <div class="user-info text-center">
               <h4 class="mb-1">{{$player->full_name}}<x-player-rating :player-id="$player->id" /></h4>
               <span class="text-muted small">Player profile</span>
+              @role('super-user')
+                <a class="btn btn-outline-primary mt-2" href="{{ route('backend.player-performance.show', ['player' => $player->id, 'ball_type' => 'overall']) }}">View saved CTR ratings</a>
+              @endrole
 
             </div>
           </div>

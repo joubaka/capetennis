@@ -39,10 +39,13 @@ class TeamBulkTransportReadinessTest extends TestCase
         $response = $this->actingAs($actor)->postJson(route('admin.events.announcements.store', $event), [
             'title' => 'Team arrangements', 'message' => '<p>Every roster player receives this announcement.</p>',
             'sendMail' => 1, 'confirm_recipients' => 1, 'recipient_hash' => $service->recipientHash($event),
-        ])->assertOk()->assertJsonPath('mail.queued', 9);
+        ])->assertOk()->assertJsonPath('mail.scheduled', 9);
         $snapshot = EventCommunicationBatch::where('options->source', 'announcement')->whereNotNull('approved_at')->sole();
         $response->assertJsonPath('report_url', route('backend.event-communications.index', ['event' => $event->id, 'batch' => $snapshot->id, 'report_scope' => 'batch']));
         $this->assertSame(8, collect($snapshot->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'])->unique()->count());
+        $job = Queue::pushed(\App\Jobs\QueueEventAnnouncementEmails::class)->sole();
+        $this->travelTo($job->delay);
+        $job->handle($service);
         $this->mock(MailAccountManager::class)->shouldReceive('getMailer')->times(10)->andReturn('array');
         foreach (BulkEmailLog::all() as $log) {
             $job = new SendBulkEmailJob($log->id);
@@ -52,8 +55,10 @@ class TeamBulkTransportReadinessTest extends TestCase
         }
 
         $this->assertCount(10, Mail::mailer('array')->getSymfonyTransport()->messages());
-        $message = Mail::mailer('array')->getSymfonyTransport()->messages()->first()->getOriginalMessage();
-        $this->assertSame($snapshot->recipients[0]['html'], $message->getHtmlBody());
+        $message = Mail::mailer('array')->getSymfonyTransport()->messages()->first(
+            fn ($sent) => $sent->getOriginalMessage()->getTo()[0]->getAddress() === $snapshot->recipients[0]['email'],
+        )->getOriginalMessage();
+        $this->assertSame($service->renderBatch($snapshot), $message->getHtmlBody());
         $this->assertSame(0, EventCommunicationBatch::where('status', 'draft')->count());
         $this->assertDatabaseCount('bulk_email_logs', 10);
         $this->assertSame(0, BulkEmailLog::where('recipient_email', 'like', 'discard-imported%')->count());

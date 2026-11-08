@@ -267,34 +267,43 @@ final class EventVenueScheduleController extends Controller
             return response()->view('backend.schedule.scheduled-matches-by-draw', compact('event', 'scope') + $review)
                 ->header('Cache-Control', 'no-store, private');
         }
+        $revision = $publication->revision($event);
         $working = $publication->workingRows($event);
-        $dailySavedCounts = $working->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))->map->count();
         $published = $publication->publishedRows($event)->keyBy('fixture_key');
         $publishedAssignments = $publication->publishedAssignments($event)->keyBy('fixture_key');
-        $days = $working->concat($published->values())->groupBy(fn ($row) => substr($row['scheduled_at'], 0, 10))
-            ->map(fn ($rows) => $rows->pluck('fixture_key')->unique()->count())->sortKeys();
+        $inSelectedScope = fn ($row) => (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
+            && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']);
+        $bookingDate = fn ($row) => substr($row['scheduled_at'], 0, 10);
+        $days = $working->filter($inSelectedScope)->countBy($bookingDate)
+            ->union($publishedAssignments->filter($inSelectedScope)->countBy($bookingDate)->map(fn () => 0));
         if ($event->start_date) {
             $start = \Carbon\Carbon::parse($event->start_date)->startOfDay();
             $end = $event->end_date ? \Carbon\Carbon::parse($event->end_date)->startOfDay() : $start->copy();
             for ($day = $start->copy(), $i = 0; $day->lte($end) && $i < 31; $day->addDay(), $i++) {
                 if (! $days->has($day->toDateString())) $days->put($day->toDateString(), 0);
             }
-            $days = $days->sortKeys();
         }
+        $days = $days->sortKeys();
         $date = $scope['date'] ?? 'all';
         $scope['date'] = $date;
         $filter = fn ($row) => ($date === 'all' || substr($row['scheduled_at'], 0, 10) === $date)
-            && (empty($scope['venue_id']) || (int) $row['venue_id'] === (int) $scope['venue_id'])
-            && (empty($scope['draw_id']) || (int) $row['draw_id'] === (int) $scope['draw_id']);
+            && $inSelectedScope($row);
         $rows = $working->filter($filter)->map(function ($row) use ($publishedAssignments, $published) {
             $public = $publishedAssignments->get($row['fixture_key']);
             $same = $public && collect(['scheduled_at', 'venue_id', 'court', 'duration'])->every(fn ($key) => (string) $row[$key] === (string) $public[$key]);
             return $row + ['publication_state' => $same ? ($published->has($row['fixture_key']) ? 'Published' : 'Not publicly visible') : ($public ? 'Updates private' : 'Private')];
         });
         $workingKeys = $rows->pluck('fixture_key');
-        $retained = $published->values()->filter($filter)->reject(fn ($row) => $workingKeys->contains($row['fixture_key']));
         $venues = $event->venues()->get()->concat($event->draws()->with('venues')->get()->flatMap(fn ($draw) => $draw->venues))->unique('id')->sortBy('name');
         $draws = $event->draws()->orderBy('drawName')->get();
+        $venuesById = $venues->keyBy('id');
+        $drawsById = $draws->keyBy('id');
+        $retained = $publishedAssignments->filter($filter)->reject(fn ($row) => $workingKeys->contains($row['fixture_key']))
+            ->map(fn ($row) => $row + [
+                'draw_name' => $drawsById->get($row['draw_id'])?->drawName ?? 'Draw',
+                'venue_name' => $venuesById->get($row['venue_id'])?->name ?? 'Venue',
+                'visible' => $published->has($row['fixture_key']),
+            ])->values();
         $publicationCounts = $rows->countBy('publication_state');
         $savedCount = $rows->count();
         $retainedCount = $retained->count();
@@ -319,8 +328,7 @@ final class EventVenueScheduleController extends Controller
         $pendingPlayoffs = app(\App\Services\Scheduling\PlayoffScheduleReadinessService::class)->pending(
             $draws->when(!empty($scope['draw_id']), fn ($items) => $items->where('id', (int) $scope['draw_id']))
         );
-        $revision = $publication->revision($event);
-        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'pendingPlayoffs', 'dailySavedCounts', 'publicationCounts', 'savedCount', 'retainedCount', 'savedPages', 'retainedPages'));
+        return view('backend.schedule.saved-calendar', compact('event', 'scope', 'days', 'date', 'rows', 'retained', 'venues', 'draws', 'revision', 'unscheduledCount', 'pendingPlayoffs', 'publicationCounts', 'savedCount', 'retainedCount', 'savedPages', 'retainedPages'));
     }
 
     public function editDay(Request $request, Event $event, EventVenueScheduleService $scheduler,

@@ -21,12 +21,14 @@
       @disabled($publicationFlexible && ($publicationDraw->locked || !$publicationDraw->flexibleMonrad?->graph))>
       {{ $publicationDraw->published ? 'Unpublish draw' : 'Publish draw' }}
     </button>
+    @unless($publicationByDay ?? false)
     <button type="button" class="btn btn-sm {{ $publicationDraw->oop_published ? 'btn-success' : 'btn-outline-primary' }}"
       aria-pressed="{{ $publicationDraw->oop_published ? 'true' : 'false' }}"
       @if($publicationSurface === 'roundrobin') id="rr-publish-schedule" data-url="{{ route('draw.toggle.publish.schedule', $publicationDraw) }}"
       @else data-workspace-publish-schedule="{{ route('draw.toggle.publish.schedule', $publicationDraw) }}" @endif>
       {{ $publicationDraw->oop_published ? 'Unpublish schedule' : 'Publish schedule' }}
     </button>
+    @endunless
     <span class="small text-muted" role="status" aria-live="polite" data-publication-status>Draw and schedule publish separately.</span>
     @if($publicationDropdown)</div>@endif
   </div>

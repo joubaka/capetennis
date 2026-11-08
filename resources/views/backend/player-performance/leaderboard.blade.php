@@ -40,8 +40,7 @@
         <p class="text-muted ratings-status mb-2">Last successful calculation: {{ $snapshot['built_at'] }} · evidence as of {{ $snapshot['snapshot_as_of'] ?? 'unknown' }}.</p>
     @endif
     @if($refreshStatus['pending'] || $refreshStatus['failed'])
-        <div class="alert alert-info py-2 mb-3" role="status" data-ratings-refresh-message>Updating ratings. This page will refresh automatically when the calculation is ready.</div>
-        <button type="button" class="btn btn-outline-primary mb-3" data-ratings-refresh-retry hidden>Retry ratings update</button>
+        <div class="alert alert-info py-2 mb-3" role="status">A rating update is pending. This page shows the latest available saved ratings.</div>
     @endif
     @if(!$refreshStatus['pending'] && !$refreshStatus['failed'] && $snapshot['reason'])<div class="alert alert-warning" role="status">{{ $snapshot['reason'] }}</div>@endif
     @if($limitReason)<div class="alert alert-warning" role="status">{{ $limitReason }}</div>@endif
@@ -100,16 +99,4 @@
     </div>
 </div></div>
 </div>
-@if($refreshStatus['pending'] || $refreshStatus['failed'])
-<script>
-window.CTLeaderboardRefresh = {
-    requestUrl: @json(route('backend.player-performance.ratings.refresh')),
-    statusUrl: @json(route('backend.player-performance.ratings.status')),
-    csrf: @json(csrf_token()),
-    version: @json($refreshStatus['version']),
-    snapshotVersion: @json($refreshStatus['snapshot_version'] ?? null)
-};
-</script>
-<script src="{{ asset('assets/js/player-ratings-leaderboard-refresh.js') }}?v={{ filemtime(public_path('assets/js/player-ratings-leaderboard-refresh.js')) }}"></script>
-@endif
 @endsection

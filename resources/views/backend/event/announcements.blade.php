@@ -111,7 +111,7 @@
           <label class="form-check-label" for="announcement_send_email">
             {{ $event->isTeam() ? 'Email all team roster players and linked parents' : 'Email all nominated and active paid registered players' }}
           </label>
-          <div class="form-text">Confirm the recipients to email participants. Every new announcement also emails a copy to you, this event's admins and super users, even when participant email is unchecked.</div>
+          <div class="form-text">The announcement publishes immediately. Participant emails are scheduled to begin about {{ \App\Services\EventAnnouncementService::EMAIL_DELAY_MINUTES }} minutes later. Every new announcement also queues staff copies for you, this event's admins and super users.</div>
         </div>
 
         <div id="announcementRecipientReview" class="border rounded p-3 mt-3 d-none">
@@ -200,7 +200,7 @@ function setFormFeedback(message = '', type = 'danger') {
 }
 
 function syncSaveLabel() {
-  saveLabel.textContent = announcementId.value ? 'Save changes' : (announcementSendEmail.checked ? 'Publish and send emails' : 'Publish announcement');
+  saveLabel.textContent = announcementId.value ? 'Save changes' : (announcementSendEmail.checked ? 'Publish and schedule emails' : 'Publish announcement');
 }
 function setSaving(saving) {
   saveButton.disabled = saving;
@@ -273,7 +273,7 @@ document.addEventListener('click', async e => {
     announcementRecipientReview.classList.add('d-none');
     modalTitle.textContent = 'Edit announcement';
     saveLabel.textContent = 'Save changes';
-    setFormFeedback('Editing changes the public announcement only. Emails from the original publication are not resent.', 'info');
+    setFormFeedback('Editing changes the public announcement only. Scheduled emails keep the version originally published.', 'info');
     modal.show();
   } catch (error) {
     AppFeedback.fromError(error, 'Failed to load the announcement.');

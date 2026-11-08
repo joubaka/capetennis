@@ -23,6 +23,11 @@ final class EventVenueScheduleService
 
     public function preview(Event $event, array $options): array
     {
+        return $this->buildPreview($event, $options);
+    }
+
+    private function buildPreview(Event $event, array $options, bool $revisionOnly = false): array
+    {
         if (array_key_exists('draft_age_setups', $options) && (empty($options['programme']) || empty($options['draft_age_setups']))) {
             throw new \InvalidArgumentException('Unsaved age setups require a complete programme preview.');
         }
@@ -645,6 +650,54 @@ final class EventVenueScheduleService
                 $tieGroups[$key] = $group;
             }
         }
+        $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
+            ...(! empty($options['draft_age_setups']) ? ['draft_age_setups' => $options['draft_age_setups']] : []),
+            ...($programmeSaveDate !== null ? ['programme_save_date' => $programmeSaveDate] : []),
+            ...($disciplineOrders ? ['team_discipline_order' => $disciplineOrders] : []),
+            'match_timing' => collect($nodes)->map(fn ($node) => ['duration' => $node['duration'], 'court_gap' => $node['court_gap']])->all(),
+            'preview_moves' => array_values($previewMoves),
+            'preview_frozen_keys' => $frozenKeys,
+            'day_batch' => $dayBatch, 'draw_order_mode' => $drawOrderMode, 'draw_order' => $drawOrder,
+            'selected_fixture_keys' => $selectedFixtureKeys, 'reschedule_existing' => (bool) ($options['reschedule_existing'] ?? false),
+            'limit_daily_matches' => $limitDailyMatches,
+            'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'), 'round_progression' => $roundProgression,
+            'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
+            'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
+            'allow_partial' => (bool) ($options['allow_partial'] ?? false),
+            'round_venue_setups' => $roundSetups->values()->all(),
+            'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
+            'gender_waves' => $genderWaves,
+            'gender_wave_release' => $genderRelease,
+            'draw_rounds' => $drawRounds,
+            'programme' => $programme, 'day_scope' => $dayScope, 'full_day_scope' => $fullDay, 'day_court_labels' => ($dayScope || $fullDay) ? $courtLabels : null,
+            'day_venue_groups' => $dayVenueGroups,
+            'full_day_venue_windows' => $fullDayVenueWindows, 'full_day_court_starts' => $fullDayCourtStarts,
+            'full_day_tie_destinations' => $tieDestinations,
+            'full_day_destination_pools' => $destinationPools,
+            'tie_allocation' => $tieAllocation,
+            'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
+                'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
+            'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
+                'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
+        ];
+
+        // Hash the planner's derived inputs before it searches for court slots.
+        // The apply recheck rebuilds these inputs without repeating the search.
+        $planningNodes = array_map(fn (array $node) => array_diff_key($node, [
+            'fixture' => true, 'participant_names' => true,
+        ]), $nodes);
+        $planningRevision = hash('sha256', json_encode([
+            $planningNodes, $finished, $externalPhaseDeadlines, $courtLabels,
+        ], JSON_THROW_ON_ERROR));
+        $revision = $this->revision($event, $input + [
+            'availability_revision' => $availabilityRevision,
+            'rank_revision' => $rankChoices,
+            'planning_revision' => $planningRevision,
+        ]);
+        if ($revisionOnly) {
+            return ['revision' => $revision];
+        }
+
         while ($pending) {
             $best = null;
             foreach ($pending as $id => $node) {
@@ -1017,37 +1070,6 @@ final class EventVenueScheduleService
             $kept['warnings'][] = 'Some matches did not fit. Existing bookings were kept fixed so saving this batch cannot overlap a retained match. Use a larger window to change those bookings.';
             return $kept;
         }
-        $input = compact('duration', 'waveMinutes', 'courtGap', 'playerRest') + [
-            ...(! empty($options['draft_age_setups']) ? ['draft_age_setups' => $options['draft_age_setups']] : []),
-            ...($programmeSaveDate !== null ? ['programme_save_date' => $programmeSaveDate] : []),
-            ...($disciplineOrders ? ['team_discipline_order' => $disciplineOrders] : []),
-            'match_timing' => collect($nodes)->map(fn ($node) => ['duration' => $node['duration'], 'court_gap' => $node['court_gap']])->all(),
-            'preview_moves' => array_values($previewMoves),
-            'preview_frozen_keys' => $frozenKeys,
-            'day_batch' => $dayBatch, 'draw_order_mode' => $drawOrderMode, 'draw_order' => $drawOrder,
-            'selected_fixture_keys' => $selectedFixtureKeys, 'reschedule_existing' => (bool) ($options['reschedule_existing'] ?? false),
-            'limit_daily_matches' => $limitDailyMatches,
-            'start' => $start->format('Y-m-d H:i:s'), 'end' => $end?->format('Y-m-d H:i:s'), 'round_progression' => $roundProgression,
-            'draw_ids' => $draws->pluck('id')->sort()->values()->all(), 'venue_ids' => $venueIds->sort()->values()->all(),
-            'replan_venue_ids' => collect($replanVenues)->sort()->values()->all(),
-            'allow_partial' => (bool) ($options['allow_partial'] ?? false),
-            'round_venue_setups' => $roundSetups->values()->all(),
-            'rank_venue_preferences' => $rankRules, 'cross_band_policy' => $crossBandPolicy,
-            'gender_waves' => $genderWaves,
-            'gender_wave_release' => $genderRelease,
-            'draw_rounds' => $drawRounds,
-            'programme' => $programme, 'day_scope' => $dayScope, 'full_day_scope' => $fullDay, 'day_court_labels' => ($dayScope || $fullDay) ? $courtLabels : null,
-            'day_venue_groups' => $dayVenueGroups,
-            'full_day_venue_windows' => $fullDayVenueWindows, 'full_day_court_starts' => $fullDayCourtStarts,
-            'full_day_tie_destinations' => $tieDestinations,
-            'full_day_destination_pools' => $destinationPools,
-            'tie_allocation' => $tieAllocation,
-            'draw_starts' => $drawStarts->map(fn ($time, $drawId) => ['draw_id' => (int) $drawId,
-                'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
-            'venue_starts' => $venueStarts->map(fn ($time, $venueId) => ['venue_id' => (int) $venueId,
-                'start' => $time->format('Y-m-d H:i:s')])->values()->all(),
-        ];
-
         if ($programmeSaveDate !== null) {
             $plan = array_values(array_filter($plan, fn ($row) => substr($row['scheduled_at'], 0, 10) === $programmeSaveDate));
             $existingMatches = array_values(array_filter($existingMatches, fn ($row) => substr($row['scheduled_at'], 0, 10) === $programmeSaveDate));
@@ -1063,22 +1085,36 @@ final class EventVenueScheduleService
             'unscheduled' => $unscheduled, 'warnings' => $warnings, 'venue_change_warnings' => $venueChangeWarnings,
             'automatic_byes' => collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->count(),
             'automatic_fixture_ids' => ($dayScope || $fullDay || $programmeSaveDate !== null) ? [] : collect($nodes)->filter(fn ($node) => $node['selected_round'] && $node['automatic'] && ! $node['played'])->keys()->values()->all(),
-            'revision' => $this->revision($event, $input + ['availability_revision' => $availabilityRevision, 'rank_revision' => $rankChoices]), 'input' => $input,
+            'revision' => $revision, 'input' => $input,
         ];
     }
 
     public function apply(Event $event, array $options, string $expectedRevision): array
     {
         if (array_key_exists('draft_age_setups', $options)) throw new \InvalidArgumentException('Unsaved age setup previews cannot save match times. Save age setup and generate a new preview first.');
-        return DB::transaction(function () use ($event, $options, $expectedRevision) {
-            if (! empty($options['full_day_scope'])) $options['allow_partial'] = false;
-            $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
-            if (! empty($options['full_day_scope']) && $applyVenueIds) throw new \InvalidArgumentException('Save the full day preview together.');
-            if (! empty($options['programme'])) {
-                if ($applyVenueIds) throw new \InvalidArgumentException('Save the complete event programme together after every match fits.');
-                $options['allow_partial'] = false;
-            }
-            unset($options['apply_venue_ids']);
+        if (! empty($options['full_day_scope'])) $options['allow_partial'] = false;
+        $applyVenueIds = array_values(array_unique(array_map('intval', $options['apply_venue_ids'] ?? [])));
+        if (! empty($options['full_day_scope']) && $applyVenueIds) throw new \InvalidArgumentException('Save the full day preview together.');
+        if (! empty($options['programme'])) {
+            if ($applyVenueIds) throw new \InvalidArgumentException('Save the complete event programme together after every match fits.');
+            $options['allow_partial'] = false;
+        }
+        unset($options['apply_venue_ids']);
+
+        // Build assignments before taking write locks. Reject changes made while planning.
+        $startingState = $this->revision($event, []);
+        $preview = $this->preview($event->fresh(), $options);
+        if (! hash_equals($preview['revision'], $expectedRevision)) {
+            throw new \InvalidArgumentException('The draws or venue schedule changed. Generate a fresh preview before applying.');
+        }
+
+        // A partial preview can fall back to keeping existing bookings fixed.
+        $revisionOptions = $options;
+        if (empty($preview['input']['replan_venue_ids'])) {
+            $revisionOptions['replan_venue_ids'] = [];
+        }
+
+        return DB::transaction(function () use ($event, $options, $expectedRevision, $applyVenueIds, $preview, $startingState, $revisionOptions) {
             Venue::orderBy('id')->limit(1)->lockForUpdate()->get();
             DB::table('events')->where('id', $event->id)->lockForUpdate()->get();
             $drawIds = $event->draws()->orderBy('id')->lockForUpdate()->pluck('id');
@@ -1092,8 +1128,8 @@ final class EventVenueScheduleService
             $venueIds = DB::table('draw_venues')->whereIn('draw_id', $drawIds)->pluck('venue_id')->unique()->sort()->values();
             DB::table('venues')->whereIn('id', $venueIds)->orderBy('id')->lockForUpdate()->get();
 
-            $preview = $this->preview($event->fresh(), $options);
-            if (! hash_equals($preview['revision'], $expectedRevision)) {
+            if (! hash_equals($startingState, $this->revision($event, []))
+                || ! hash_equals($expectedRevision, $this->buildPreview($event->fresh(), $revisionOptions, revisionOnly: true)['revision'])) {
                 throw new \InvalidArgumentException('The draws or venue schedule changed. Generate a fresh preview before applying.');
             }
             $previewVenueIds = collect($preview['venues'])->pluck('id')->map(fn ($id) => (int) $id)->all();

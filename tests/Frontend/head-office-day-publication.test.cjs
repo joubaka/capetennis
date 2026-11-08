@@ -1,8 +1,7 @@
 const fs = require('node:fs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const source = fs.readFileSync('public/js/team-draw-mode.js', 'utf8');
-const script = source.slice(source.lastIndexOf('(function (window, document) {'));
+const script = fs.readFileSync('public/js/schedule-day-publication.js', 'utf8');
 const revision = value => value.repeat(64);
 const day = (date, status = 'Unpublished') => ({ date, label: date, status, saved: 1, published: status === 'Published' ? 1 : 0, matched: status === 'Published' ? 1 : 0, pending: status === 'Published' ? 0 : 1 });
 const snapshot = (days, token = 'a', action = 'publish') => ({ success: true, event_id: 123, days, revision: revision(token), action });
@@ -19,7 +18,7 @@ function card(date = '2026-10-09') {
   return { dataset: { date }, main, hide, fields, cloneNode() { return card(''); },
     querySelector(selector) { return fields[selector]; }, querySelectorAll() { return [main, hide]; } };
 }
-function harness(replies, initialUnconfirmed = false, drawId = null) {
+function harness(replies, initialUnconfirmed = false, drawId = null, eventDays = {}) {
   let current = [card('2026-10-09'), card('2026-10-10')], submit, toggle;
   const requests = [];
   const feedback = { textContent: '', classList: classes(), setAttribute() {}, focus() {} };
@@ -27,7 +26,7 @@ function harness(replies, initialUnconfirmed = false, drawId = null) {
   const cards = { replaceChildren(...updated) { current = updated; }, appendChild() {} };
   const template = { content: { firstElementChild: card('') } };
   const fields = { '[data-day-cards]': cards, '[data-day-card-template]': template, '[data-day-feedback]': feedback, '[data-day-status-retry]': retry };
-  const panel = { dataset: { initialUnconfirmed: initialUnconfirmed ? 'true' : 'false', eventId: '123', statusUrl: '/status', publishUrl: '/publish', hideUrl: '/hide', calendarUrl: '/calendar' },
+  const panel = { dataset: { initialUnconfirmed: initialUnconfirmed ? 'true' : 'false', eventId: '123', statusUrl: '/status', publishUrl: '/publish', hideUrl: '/hide', calendarUrl: '/calendar', eventDays: JSON.stringify(eventDays) },
     hasAttribute() { return drawId !== null; },
     setAttribute() {}, querySelector(selector) { const date = selector.match(/data-date="([^"]+)"/); return date ? current.find(row => row.dataset.date === date[1])?.fields['[data-day-toggle]'] : fields[selector]; },
     querySelectorAll() { return current.flatMap(row => [row.main.querySelector('button'), row.hide.querySelector('button')]); },
@@ -69,6 +68,20 @@ test('draw day panel rejects a mismatched scope and never mutates while status i
   await ui.submit(ui.current[0].main);
   assert.equal(ui.requests.length, 1);
   assert.equal(ui.current[0].main.querySelector('button').disabled, true);
+});
+
+test('draw panels keep tournament day numbers and show empty days without publication actions', async () => {
+  const days = { '2026-10-09': 'Day 1 · Fri 9 Oct', '2026-10-10': 'Day 2 · Sat 10 Oct', '2026-10-11': 'Day 3 · Sun 11 Oct' };
+  const ui = harness([{ ...snapshot([day('2026-10-11')]), draw_id: 42 }], true, 42, days);
+  await ui.open();
+  assert.deepEqual(ui.current.map(row => row.fields['[data-day-label]'].textContent), Object.values(days));
+  assert.equal(ui.current[1].fields['[data-day-status]'].textContent, 'Not scheduled');
+  assert.equal(ui.current[1].fields['[data-day-review]'].href, '/calendar?draw_id=42&date=2026-10-10');
+  assert.equal(ui.current[1].main.hidden, true);
+  assert.equal(ui.current[1].main.querySelector('button').disabled, true);
+  await ui.submit(ui.current[1].main);
+  assert.equal(ui.requests.length, 1);
+  assert.equal(ui.current[2].main.hidden, false);
 });
 
 test('one day toggles publish then hide using refreshed revisions and updates every card without reload', async () => {

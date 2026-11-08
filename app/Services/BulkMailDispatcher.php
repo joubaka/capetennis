@@ -24,8 +24,12 @@ class BulkMailDispatcher
         $related = null,
         $recipients = [],
         array $payload = [],
-        bool $allowDuplicates = false
+        bool $allowDuplicates = false,
+        bool $atomicDatabaseQueue = false,
     ): array {
+        if ($atomicDatabaseQueue && \Illuminate\Support\Facades\DB::transactionLevel() === 0) {
+            throw new \LogicException('Atomic database mail queueing requires a transaction.');
+        }
         if (empty($payload['payload_integrity'])) $payload['queue_state'] = 'prepared';
         $recipients = $this->normalizeRecipients($recipients);
         $stats = ['total' => $recipients->count(), 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
@@ -59,6 +63,14 @@ class BulkMailDispatcher
                 BulkEmailLog::create([...$attributes, 'status' => 'skipped', 'skipped_at' => now(), 'error_message' => 'Duplicate email suppressed for this campaign']);
                 $stats['duplicate']++;
                 $stats['skipped']++;
+                continue;
+            }
+            if ($atomicDatabaseQueue) {
+                // A delayed campaign commits its logs and jobs together, so a retry can safely rebuild the whole fan-out.
+                \Illuminate\Support\Facades\Bus::dispatch((new SendBulkEmailJob($log->id, (bool) ($log->payload['manual_retry_only'] ?? false)))
+                    ->onConnection('database')->beforeCommit());
+                BulkEmailLog::whereKey($log->id)->update(['payload->queue_state' => 'enqueued']);
+                $stats['queued']++;
                 continue;
             }
             $submitted = false;

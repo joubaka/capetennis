@@ -2,10 +2,11 @@
 @section('title', 'Review event emails')
 @section('content')
 @include('backend.event.partials.header', ['eventWorkspaceActive' => 'communications', 'eventWorkspaceRegionalOnly' => !app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user())])
+@php($scheduledAnnouncement = ($batch->options['source'] ?? null) === 'announcement' && isset($batch->options['scheduled_for']))
 <div data-mail-review>
 <h4>{{ $event->name }} — Review emails</h4>
 <h5>1. Recipients</h5>@if(($batch->options['source'] ?? null) === 'selection_regions')<p>Recipients are players and parents in {{ count($batch->options['selection_region_ids']) }} selected regions. Review all selected teams and reserves below.</p>@endif
-<p>{{ count($batch->recipients) }} emails. Nothing is sent until you approve below.</p>
+<p>{{ count($batch->recipients) }} emails. {{ $scheduledAnnouncement ? 'This audience was confirmed when the announcement was published.' : 'Nothing is sent until you approve below.' }}</p>
 @if(($batch->options['source'] ?? null) === 'selection_regions' && !empty($batch->options['bcc_emails']))
 <div class="card card-body mb-3"><h5>Extra BCC addresses</h5><p class="text-break">{{ implode(', ', $batch->options['bcc_emails']) }}</p><p class="mb-0">Each extra address receives one hidden copy. Addresses already receiving a player or parent email are not copied again. BCC addresses are hidden from recipients.</p></div>
 @endif
@@ -25,7 +26,16 @@
 <p class="form-text">Changing these checkboxes requires a fresh preview using the button above before approving.</p></form></div>
 @endif
 @if($batch->issues)<div class="alert alert-warning"><strong>Missing contacts</strong><ul class="mb-0">@foreach($batch->issues as $issue)<li>{{ $issue }}</li>@endforeach</ul></div>@endif
-@include('backend.partials.email-sample', ['mailRecipients' => $batch->recipients, 'mailSender' => $batch->options, 'mailSampleHeading' => '2. Message preview'])
+@php
+  $mailRecipients = $batch->recipients;
+  if ($mailRecipients && $scheduledAnnouncement) {
+      $mailRecipients[0]['html'] = \App\Services\EventAnnouncementService::renderBatch($batch);
+  }
+@endphp
+@include('backend.partials.email-sample', ['mailRecipients' => $mailRecipients, 'mailSender' => $batch->options, 'mailSampleHeading' => '2. Message preview'])
+@if($scheduledAnnouncement)
+<a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id, 'report_scope' => 'batch']) }}">View send report</a>
+@else
 <h5>3. Approve</h5>
 <form method="post" action="{{ route('backend.event-communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $batch->token }}">
 @if($batch->issues)<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label>@endif
@@ -40,6 +50,7 @@
 <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', !empty($batch->options['wrap_up']) ? ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id] : ['event' => $event]) }}">Back to composer</a>
 @endif
 </form>
+@endif
 @if(($batch->options['scope'] ?? null)==='rankings')
 <script>document.querySelectorAll('input[name="excluded_player_ids[]"]').forEach(input=>input.addEventListener('change',()=>{const button=document.getElementById('approve-ranking-mail'); button.disabled=true; button.textContent='Update selection above before approving';}));</script>
 @endif

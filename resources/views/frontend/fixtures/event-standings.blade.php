@@ -12,7 +12,7 @@
   @if($publicPreview ?? false)
     <div class="alert alert-info" role="status"><strong>Private preview</strong> — this shows the public standings layout using only published draws and ties. Previewing does not publish anything.</div>
   @elseif($privateStandings ?? false)
-    <div class="alert alert-info" role="status"><strong>Private team standings</strong> for super admins and assigned venue scorers.</div>
+    <div class="alert alert-info text-dark" role="status"><strong>Private team standings</strong> for super admins and assigned venue scorers.</div>
   @endif
   <style>
     #public-age-points { max-width: 1120px; min-width: 0; }

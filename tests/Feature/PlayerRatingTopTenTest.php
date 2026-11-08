@@ -89,11 +89,10 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([1, 2, 3], array_column($result['lists']['overall']['players'], 'id'));
         $this->assertSame('boys', $result['filters']['rating_gender']);
         $this->assertArrayNotHasKey('pagination', $result['lists']['overall']);
-        foreach (['age', 'overall'] as $scope) {
-            $this->assertSame(2, $result['summary'][$scope]['player']['id']);
-            $this->assertSame(2, $result['summary'][$scope]['player']['position']);
-            $this->assertSame(3, $result['summary'][$scope]['total']);
-        }
+        $this->assertSame(['age'], array_keys($result['summary']));
+        $this->assertSame(2, $result['summary']['age']['player']['id']);
+        $this->assertSame(2, $result['summary']['age']['player']['position']);
+        $this->assertSame(3, $result['summary']['age']['total']);
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertStringContainsString('Rating position #2 of 3', strip_tags($html));
         $this->assertStringContainsString('Your age-group Top 10', $html);
@@ -154,16 +153,24 @@ class PlayerRatingTopTenTest extends TestCase
         $access->shouldReceive('allows')->times(4)->with($user, $selected)->andReturnTrue();
         $snapshot = $this->snapshot(array_combine(range(1, 18), range(90, 73)));
         $snapshot['all_age']['ratings'][1]['comparable'] = false;
+        $snapshot['all_age']['ratings'][15]['score'] = 100;
         $snapshot['all_age']['ratings'][17]['score'] = 99;
         $snapshot['all_age']['ratings'][11]['score'] = $snapshot['all_age']['ratings'][10]['score'];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
         $normal = app(PlayerRatingTopTen::class)->build($user, $selected);
         $tampered = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_age' => '', 'rating_gender' => 'girls', 'rating_level' => 'red', 'rating_page' => 200, 'rating_per_page' => 500]);
         $this->assertSame($normal['lists'], $tampered['lists']);
+        $this->assertSame($normal['summary'], $tampered['summary']);
         $this->assertSame(['overall'], array_keys($tampered['lists']));
         $this->assertSame(['rating_age' => 'u11', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_per_page' => 10], $tampered['filters']);
         $this->assertSame([17, 2, 3, 4, 5, 6, 7, 8, 9, 10], array_column($tampered['lists']['overall']['players'], 'id'));
         $this->assertCount(10, $tampered['lists']['overall']['players']);
+        $this->assertSame(14, $tampered['summary']['age']['player']['id']);
+        $this->assertSame(14, $tampered['summary']['age']['player']['position']);
+        $this->assertSame(14, $tampered['summary']['age']['total']);
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $tampered, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertStringContainsString('Rating position #14 of 14', strip_tags($html));
+        $this->assertStringNotContainsString('Peer 15', $html);
         DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
         $revoked = app(PlayerRatingTopTen::class)->build($user, $selected);
         $this->assertSame([], $revoked['lists']['overall']['players']);

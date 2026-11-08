@@ -11,6 +11,11 @@
     if ($before && $before['index'] + 1 === $savedPoint['index'] && $before['group'] !== $savedPoint['group']) $snapshotChanged = true;
   }
 @endphp
+@if(!$snapshotLatest && ($compactUnavailable ?? false))
+<p class="ctr-rating-status small mb-0" role="status" data-rating-snapshot data-current-rating-summary>
+  {{ $snapshot['reason'] || $snapshot['stale'] ? 'Rating update pending.' : 'No rating yet.' }}
+</p>
+@else
 <section class="ct-rating-snapshot" aria-label="Latest saved rating summary" data-rating-snapshot data-current-rating-summary>
   <h3>Latest saved rating</h3>
   @if($snapshotLatest)
@@ -57,3 +62,4 @@
     <p class="ct-rating-snapshot-note">An update is pending.</p>
   @endif
 </section>
+@endif

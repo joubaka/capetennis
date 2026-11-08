@@ -17,7 +17,7 @@ class DrawPublicationToolbarTest extends TestCase
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('admin');
-        $event = Event::factory()->create(['name' => 'U/19 Interpro test', 'eventType' => 5]);
+        $event = Event::factory()->create(['name' => 'U/19 Interpro test', 'eventType' => 5, 'start_date' => '2026-10-09', 'end_date' => '2026-10-11']);
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $actor->id]);
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'drawName' => 'U/19 Boys']);
@@ -43,7 +43,7 @@ class DrawPublicationToolbarTest extends TestCase
         $event = $event->fresh(); $draw->setRelation('event', $event);
         $html = view('backend.draw.partials.workspace-header', ['draw' => $draw, 'workspaceSurface' => 'flexible'])->render();
         $this->assertStringContainsString('data-workspace-publish-draw-proxy', $html);
-        $this->assertStringContainsString('data-workspace-publish-schedule', $html);
+        $this->assertStringNotContainsString('data-workspace-publish-schedule', $html);
         $this->assertLessThan(strpos($html, 'data-individual-draw-tools'), strpos($html, 'data-draw-publication'));
         $this->assertStringContainsString('data-publication-review-toggle', $html);
         $this->assertStringContainsString('Draw: unpublished', $html);
@@ -54,6 +54,9 @@ class DrawPublicationToolbarTest extends TestCase
         $this->assertStringNotContainsString('Step 4 of 5', $html);
         $this->assertStringNotContainsString('Draw 2 of 3', $html);
         $this->assertStringContainsString('data-draw-next-schedule', $html);
+        $this->assertStringContainsString('data-draw-day-publication data-draw-id="'.$draw->id.'"', $html);
+        $this->assertStringContainsString(route('backend.event-venue-schedule.calendar.publication-status', ['event' => $event->id, 'draw_id' => $draw->id]), $html);
+        $this->assertStringContainsString('Day 3', $html);
         $this->assertGreaterThan(strpos($html, 'data-individual-draw-tools'), strpos($html, 'Replace with alternate'));
         foreach ([$previous, $next] as $other) $this->assertStringContainsString(route('backend.draw.roundrobin.show', $other), $html);
         $this->assertStringNotContainsString('PRIVATE FOREIGN DRAW', $html);
@@ -88,6 +91,7 @@ class DrawPublicationToolbarTest extends TestCase
         $this->actingAs(User::factory()->create()->assignRole('admin'));
         $html = view('backend.draw.partials.publication-controls', ['publicationDraw' => $first])->render();
         $this->assertStringNotContainsString('data-workspace-publish', $html);
+        $this->assertSame('', trim(view('backend.schedule.partials.draw-day-publication', ['publicationDraw' => $first])->render()));
         $this->postJson(route('flexible-monrad.publish', $first), ['revision' => 2, 'published' => true])->assertForbidden();
         $this->postJson(route('draw.toggle.publish.schedule', $first))->assertForbidden();
     }

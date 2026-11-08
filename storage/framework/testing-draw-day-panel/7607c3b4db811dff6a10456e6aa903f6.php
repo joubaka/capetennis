@@ -1,0 +1,4 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() && !app(\App\Services\Performance\PlayerRatingAccess::class)->allowsDiscovery(auth()->user())): ?>
+  <span <?php echo e($attributes->class(['badge rounded-pill'])); ?> style="background:#ff9f43;color:#172e45;font-size:1rem;padding:.65rem 1rem;white-space:normal" data-player-plus-coming-soon>Coming Soon</span>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH C:\wamp64\www\ct\resources\views/components/player-plus-coming-soon.blade.php ENDPATH**/ ?>

@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('public/js/head-office-draw-publication.js', 'utf8');
 const bulkSource = fs.readFileSync('public/js/team-draw-mode.js', 'utf8');
-const bulkScript = bulkSource.slice(bulkSource.indexOf('(function (window, document) {'), bulkSource.lastIndexOf('(function (window, document) {'));
+const bulkScript = bulkSource.slice(bulkSource.indexOf('(function (window, document) {'));
 const state = (published = false, second = false) => ({ success: true, event_id: 123,
   draw_states: [{ id: 1, published, locked: false, oop_published: true }, { id: 2, published: second, locked: false, oop_published: false }],
   draw_summary: { published: Number(published) + Number(second), unpublished: 2 - Number(published) - Number(second), status: 'Current' }, changed: [1], unchanged: [], failed: [] });

@@ -108,7 +108,8 @@ class TeamFixtureController extends Controller
 
     // ============================================================
 
-    $event = Draw::when($eventIds !== null, fn($draw) => $draw->whereIn('event_id', $eventIds))->find($request->draw_id)?->event;
+    $selectedDraw = Draw::when($eventIds !== null, fn($draw) => $draw->whereIn('event_id', $eventIds))->find($request->draw_id);
+    $event = $selectedDraw?->event;
     $fixtures = $query->paginate(100)->withQueryString();
     app(\App\Services\TeamFixtureLineupPresenter::class)->prepare($fixtures->getCollection());
 
@@ -136,6 +137,7 @@ class TeamFixtureController extends Controller
       'dateCol',
       'allPlayers',
       'event',
+      'selectedDraw',
     ));
   }
 

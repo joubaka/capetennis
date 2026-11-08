@@ -115,18 +115,20 @@ class PlayerRatingTopTen
                 $result['match_players'] = array_column(array_map(fn ($p) => array_intersect_key($p, array_flip(['id', 'name', 'score', 'confidence'])), $players), null, 'id');
                 return $result;
             }
+            if (!$result['can_browse']) {
+                $population = $selectedAge === 'unknown' ? [] : array_values(array_filter($players,
+                    fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge) && $p['gender'] === $gender));
+                $ranked = $this->positions($population);
+                $result['summary']['age'] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
+                $result['lists'][$key]['players'] = array_slice($ranked, 0, 10);
+                continue;
+            }
             if ($selected && $key === 'overall') {
                 $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge))), 'overall' => $players];
                 foreach ($populations as $scope => $population) {
                     $ranked = $this->positions($population);
                     $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];
                 }
-            }
-            if (!$result['can_browse']) {
-                $population = $selectedAge === 'unknown' ? [] : array_values(array_filter($players,
-                    fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge) && $p['gender'] === $gender));
-                $result['lists'][$key]['players'] = array_slice($this->positions($population), 0, 10);
-                continue;
             }
             if ($selected) $players = array_values(array_filter($players, fn ($p) => ($key !== 'overall' || $this->matchesAgeScope($p['age'], $age)) && ($gender === '' || $p['gender'] === $gender)));
             $ranked = $this->positions($players);

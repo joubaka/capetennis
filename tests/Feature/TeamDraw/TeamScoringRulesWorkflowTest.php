@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\TeamDraw;
 
+use App\Exceptions\TeamScoreBusyException;
 use App\Models\Draw;
 use App\Models\Team;
 use App\Models\TeamFixture;
@@ -10,8 +11,11 @@ use App\Services\TeamEventRulesService;
 use App\Services\TeamFixtureScoreService;
 use App\Services\TeamRubberResultService;
 use App\Services\TeamStandingsService;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use PDOException;
 use Tests\TestCase;
 
 class TeamScoringRulesWorkflowTest extends TestCase
@@ -158,6 +162,56 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['set1_home' => 3, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
         $this->delete(route('frontend.fixtures.score.delete', $this->rubber))->assertRedirect();
         $this->assertSame(0, $this->rubber->teamResults()->count());
+    }
+
+    public function test_busy_score_save_preserves_only_the_submitted_fixture_and_can_be_retried(): void
+    {
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $this->actingAs(\App\Models\User::factory()->create()->assignRole('super-user'));
+        $venue = DB::table('venues')->insertGetId(['name' => 'Court for score entry']);
+        $this->rubber->update(['venue_id' => $venue]);
+        $other = TeamFixture::create(['draw_id' => $this->draw->id, 'team_tie_id' => $this->tie->id,
+            'venue_id' => $venue, 'match_nr' => 2, 'round_nr' => 1, 'rubber_sequence' => 2, 'rubber_code' => 'singles', 'fixture_type' => 1]);
+        $fixturePage = route('frontend.fixtures.venue', $venue);
+        $saveUrl = route('frontend.fixtures.score.store', $this->rubber);
+        $revision = str_repeat('a', 64);
+        $scores = ['set1_home' => 6, 'set1_away' => 0, 'participant_revision' => $revision];
+        $message = 'Scoring is temporarily busy. Your entries are still here. Try saving again in a moment.';
+
+        $service = app(TeamFixtureScoreService::class);
+        $this->mock(TeamFixtureScoreService::class)->shouldReceive('save')->twice()
+            ->andThrow(new TeamScoreBusyException($this->lockWaitTimeout()));
+
+        $this->postJson($saveUrl, $scores)->assertStatus(503)->assertExactJson(['message' => $message]);
+        $this->from($fixturePage)->post($saveUrl, $scores)->assertRedirect($fixturePage)->assertSessionHasErrors('score');
+        $page = $this->get($fixturePage)->assertOk()->assertSeeText($message);
+        $this->assertSame(0, $this->rubber->teamResults()->count());
+        $this->assertDatabaseMissing('draw_audit_logs', ['fixture_id' => $this->rubber->id, 'action' => 'score_saved']);
+
+        $document = new \DOMDocument;
+        $document->loadHTML($page->getContent(), LIBXML_NOERROR | LIBXML_NOWARNING);
+        $xpath = new \DOMXPath($document);
+        $form = '//form[@action="'.$saveUrl.'"]';
+        $this->assertSame('6', $xpath->evaluate('string('.$form.'/descendant::input[@name="set1_home"]/@value)'));
+        $this->assertSame('0', $xpath->evaluate('string('.$form.'/descendant::input[@name="set1_away"]/@value)'));
+        $this->assertSame($revision, $xpath->evaluate('string('.$form.'/input[@name="participant_revision"]/@value)'));
+        $otherForm = '//form[@action="'.route('frontend.fixtures.score.store', $other).'"]';
+        $this->assertSame('', $xpath->evaluate('string('.$otherForm.'/descendant::input[@name="set1_home"]/@value)'));
+
+        $this->app->instance(TeamFixtureScoreService::class, $service);
+        $this->postJson($saveUrl, $scores)->assertConflict();
+        $scores['participant_revision'] = app(\App\Services\TeamParticipantHistoryService::class)->revision($this->rubber);
+        $this->postJson($saveUrl, $scores)->assertOk()->assertJsonPath('success', true);
+        $this->assertSame(1, $this->rubber->teamResults()->count());
+        $this->assertSame(0, $other->teamResults()->count());
+    }
+
+    private function lockWaitTimeout(): QueryException
+    {
+        $pdoError = new PDOException('SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded; try restarting transaction');
+        $pdoError->errorInfo = ['HY000', 1205];
+
+        return new QueryException('test', 'score test query', [], $pdoError);
     }
 
     public function test_event_admin_can_correct_new_completed_tie_but_not_historical_or_locked(): void

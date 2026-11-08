@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\DB;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\DrawAuditLog;
+use App\Exceptions\TeamScoreBusyException;
 use App\Services\TeamFixtureScoreService;
+use Illuminate\Support\Facades\Log;
 
 class TeamFixtureFrontendController extends Controller
 {
@@ -131,9 +133,28 @@ class TeamFixtureFrontendController extends Controller
           $rules["set{$i}_away"] = "{$required}|required_with:set{$i}_home|integer|min:0";
       }
       $rules['participant_revision'] = 'nullable|string|size:64';
-    $validated = $request->validate($rules);
+      $validated = $request->validate($rules);
 
-      app(TeamFixtureScoreService::class)->save($fixture, $validated);
+      try {
+          app(TeamFixtureScoreService::class)->save($fixture, $validated);
+      } catch (TeamScoreBusyException $exception) {
+          $cause = $exception->getPrevious();
+          Log::warning('Team fixture score save blocked by database contention.', [
+              'fixture_id' => $fixture->id,
+              'draw_id' => $fixture->draw_id,
+              'sqlstate' => $cause->errorInfo[0] ?? $cause->getCode(),
+              'driver_code' => $cause->errorInfo[1] ?? null,
+          ]);
+
+          $message = 'Scoring is temporarily busy. Your entries are still here. Try saving again in a moment.';
+          if ($request->expectsJson()) {
+              return response()->json(['message' => $message], 503);
+          }
+
+          return back()->withErrors(['score' => $message])
+              ->withInput($validated + ['score_fixture_id' => $fixture->id]);
+      }
+
       DrawAuditLog::record($fixture->draw_id, $previousSets ? 'score_corrected' : 'score_saved', $fixture->id, [
           'fixture_type' => 'team',
           'previous_sets' => $previousSets,

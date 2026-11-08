@@ -2,17 +2,26 @@
 
 namespace App\Services;
 
+use App\Jobs\QueueEventAnnouncementEmails;
+use App\Mail\AnnouncementMail;
 use App\Models\Announcement;
 use App\Models\Event;
+use App\Models\EventCommunicationBatch;
 use App\Models\Player;
+use App\Models\User;
 use App\Services\TeamSelection\TeamSelectionContactService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class EventAnnouncementService
 {
+    public const EMAIL_DELAY_MINUTES = 3;
+
     /** Queue staff copies separately so participant counts remain unchanged. */
-    public function dispatchCopies(\App\Models\Announcement|\App\Models\TeamSelectionRegionAnnouncement $announcement, \App\Models\User $actor): array
+    public function dispatchCopies(\App\Models\Announcement|\App\Models\TeamSelectionRegionAnnouncement $announcement, User $actor, ?Collection $scheduledRecipients = null): array
     {
         $event = $announcement->event;
         $recipients = collect();
@@ -25,6 +34,7 @@ class EventAnnouncementService
             $alreadyQueued = \App\Models\BulkEmailLog::where('mail_type', 'event_announcement')
                 ->where('related_type', get_class($announcement))->where('related_id', $announcement->id)
                 ->whereIn('status', ['queued', 'sending', 'sent', 'acceptance_unknown'])->pluck('recipient_email');
+            $alreadyQueued = $alreadyQueued->merge($scheduledRecipients?->pluck('email') ?? []);
             $recipients = $recipients->reject(fn ($recipient) => $alreadyQueued->contains($recipient['email']))->values();
 
             if ($recipients->isEmpty()) {
@@ -184,9 +194,14 @@ class EventAnnouncementService
         }
         $players = $this->audiencePlayers($event)->map(fn (Player $player) => [
             'emails' => $this->contacts->emails($player), 'name' => trim($player->name.' '.$player->surname),
+            'player_key' => 'player:'.$player->id,
         ]);
         return [
-            'recipients' => $players->flatMap(fn ($row) => $row['emails']->map(fn ($email) => ['email' => $email, 'name' => $row['name']]))->unique('email')->sortBy('email')->values(),
+            'recipients' => $players->flatMap(fn ($row) => $row['emails']->map(fn ($email) => [
+                'email' => $email, 'name' => $row['name'], 'player_key' => $row['player_key'],
+            ]))->groupBy('email')->map(fn ($matches) => [
+                ...$matches->first(), 'player_keys' => $matches->pluck('player_key')->sort()->values()->all(),
+            ])->sortBy('email')->values(),
             'excluded' => $players->filter(fn ($row) => $row['emails']->isEmpty())->map(fn ($row) => ['name' => $row['name'], 'email' => ''])->values(),
         ];
     }
@@ -204,7 +219,73 @@ class EventAnnouncementService
 
     public function recipientHash(Event $event): string
     {
-        return hash('sha256', $this->recipientEmails($event)->toJson());
+        return $this->hashRecipients($this->recipients($event));
+    }
+
+    public function hashRecipients(Collection $recipients): string
+    {
+        return hash('sha256', $recipients->map(fn (array $recipient) => [
+            $recipient['email'], collect($recipient['player_keys'] ?? [])->sort()->values()->all(),
+        ])->toJson());
+    }
+
+    public function schedule(Announcement $announcement, Collection $recipients, User $actor, Collection $excluded): EventCommunicationBatch
+    {
+        $sendAt = now()->addMinutes(self::EMAIL_DELAY_MINUTES);
+
+        return DB::transaction(function () use ($announcement, $recipients, $actor, $excluded, $sendAt): EventCommunicationBatch {
+            $batch = $this->createBatch($announcement, $recipients, $actor, $excluded, [
+                'scheduled_for' => $sendAt->toIso8601String(),
+                'excluded_recipients' => $excluded->all(),
+            ]);
+            // Both records use the application database and commit together.
+            Bus::dispatch((new QueueEventAnnouncementEmails($batch->id))
+                ->onConnection('database')->delay($sendAt)->beforeCommit());
+
+            return $batch;
+        });
+    }
+
+    public function dispatchScheduled(int $batchId): void
+    {
+        DB::transaction(function () use ($batchId): void {
+            $batch = EventCommunicationBatch::where('options->source', 'announcement')
+                ->whereIn('status', ['scheduled', 'failed'])->lockForUpdate()->find($batchId);
+            if (! $batch || empty($batch->options['scheduled_for']) || now()->lt(Carbon::parse($batch->options['scheduled_for']))) {
+                return;
+            }
+
+            $announcement = Announcement::where('event_id', $batch->event_id)->lockForUpdate()->find($batch->options['announcement_id']);
+            $event = $announcement?->event;
+            $actor = User::find($batch->created_by);
+            $recipients = collect($batch->recipients);
+            $reason = match (true) {
+                ! $event => 'The announcement was hidden or removed before participant emails were queued.',
+                ! $actor || $actor->cannot('event.manage', $event) => 'The sender no longer has permission to manage this event.',
+                ! $this->scheduledRecipientsStillMatch($event, $recipients) => 'The confirmed recipient list changed before sending. Review the current recipients in Communications.',
+                default => null,
+            };
+            if ($reason !== null) {
+                $batch->update(['status' => 'cancelled', 'options' => [...$batch->options, 'announcement_mail_issue' => $reason]]);
+                return;
+            }
+
+            $this->dispatchBatch($announcement, $batch, $recipients, collect($batch->options['excluded_recipients']));
+            $batch->update(['status' => 'approved', 'options' => collect($batch->options)->except('announcement_mail_issue')->all()]);
+        });
+    }
+
+    private function scheduledRecipientsStillMatch(Event $event, Collection $recipients): bool
+    {
+        $current = $this->recipients($event)->keyBy('email');
+
+        return $recipients->every(function (array $reviewed) use ($current): bool {
+            $matching = $current->get($reviewed['email']);
+
+            return $matching !== null
+                && collect($reviewed['player_keys'] ?? [])->sort()->values()->all()
+                    === collect($matching['player_keys'] ?? [])->sort()->values()->all();
+        });
     }
 
     /** @return array{total: int, queued: int, skipped: int, invalid: int, duplicate: int} */
@@ -222,27 +303,59 @@ class EventAnnouncementService
             return ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0];
         }
 
-        $subject = $announcement->title.' – '.$event->name;
-        $html = (new \App\Mail\AnnouncementMail(['event' => $event->name, 'title' => $announcement->title, 'message' => $announcement->message]))->render();
-        $batch = \App\Models\EventCommunicationBatch::create([
-            'event_id' => $event->id, 'created_by' => $actor?->id, 'token' => (string) \Illuminate\Support\Str::uuid(),
-            'subject' => $subject, 'body' => $announcement->message, 'options' => ['source' => 'announcement', 'announcement_id' => $announcement->id],
-            'recipients' => $recipients->map(fn ($recipient) => [...$recipient, 'kind' => 'players', 'subject' => $subject, 'html' => $html])->all(),
-            'issues' => ($excluded ?? collect())->pluck('name')->map(fn ($name) => $name.' — no valid email address')->all(),
-            'fingerprint' => hash('sha256', $recipients->toJson()), 'status' => 'approved', 'approved_at' => now(),
-        ]);
+        $excluded ??= collect();
+        $batch = $this->createBatch($announcement, $recipients, $actor, $excluded);
 
+        return $this->dispatchBatch($announcement, $batch, $recipients, $excluded);
+    }
+
+    private function createBatch(Announcement $announcement, Collection $recipients, ?User $actor, Collection $excluded, array $options = []): EventCommunicationBatch
+    {
+        $event = $announcement->event;
+        $subject = $announcement->title.' – '.$event->name;
+        $scheduled = isset($options['scheduled_for']);
+        $html = $scheduled ? null : (new AnnouncementMail([
+            'event' => $event->name, 'title' => $announcement->title, 'message' => $announcement->message,
+        ]))->render();
+
+        return EventCommunicationBatch::create([
+            'event_id' => $event->id, 'created_by' => $actor?->id, 'token' => (string) Str::uuid(),
+            'subject' => $subject, 'body' => $announcement->message,
+            'options' => ['source' => 'announcement', 'announcement_id' => $announcement->id,
+                'title' => $announcement->title, 'event_name' => $event->name, ...$options],
+            'recipients' => $recipients->map(fn ($recipient) => [...$recipient, 'kind' => 'players', 'subject' => $subject,
+                ...($html === null ? [] : ['html' => $html])])->all(),
+            'issues' => $excluded->pluck('name')->map(fn ($name) => $name.' — no valid email address')->all(),
+            'fingerprint' => hash('sha256', $recipients->toJson()), 'status' => $scheduled ? 'scheduled' : 'approved',
+            'approved_at' => now(),
+        ]);
+    }
+
+    private function dispatchBatch(Announcement $announcement, EventCommunicationBatch $batch, Collection $recipients, Collection $excluded): array
+    {
+        $eventName = $batch->options['event_name'];
+        $title = $batch->options['title'];
+        $html = $batch->recipients[0]['html'] ?? self::renderBatch($batch);
         $stats = ['total' => 0, 'queued' => 0, 'skipped' => 0, 'invalid' => 0, 'duplicate' => 0, 'failed' => 0];
-        foreach ($recipients->concat($excluded ?? collect()) as $recipient) {
+        foreach ($recipients->concat($excluded) as $recipient) {
             $result = app(BulkMailDispatcher::class)->dispatch('event_announcement', $announcement, [$recipient], [
-                'event_id' => $event->id, 'created_by' => $actor?->id,
+                'event_id' => $batch->event_id, 'created_by' => $batch->created_by,
                 'manual_retry_only' => true, 'event_communication_batch_id' => $batch->id,
                 'recipient_kind' => 'players', 'player_keys' => $recipient['player_keys'] ?? (isset($recipient['player_key']) ? [$recipient['player_key']] : []),
-                'event_name' => $event->name, 'title' => $announcement->title,
-                'message' => $announcement->message, 'subject' => $subject, 'body' => $html,
-            ], false);
+                'event_name' => $eventName, 'title' => $title,
+                'message' => $batch->body, 'subject' => $batch->subject, 'body' => $html,
+            ], atomicDatabaseQueue: isset($batch->options['scheduled_for']));
             foreach ($stats as $key => $count) $stats[$key] += $result[$key] ?? 0;
         }
         return $stats;
+    }
+
+    public static function renderBatch(EventCommunicationBatch $batch): string
+    {
+        return (new AnnouncementMail([
+            'event' => $batch->options['event_name'],
+            'title' => $batch->options['title'],
+            'message' => $batch->body,
+        ]))->render();
     }
 }
