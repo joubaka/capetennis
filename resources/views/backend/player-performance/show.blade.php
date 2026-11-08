@@ -19,14 +19,14 @@
 @if($ability['cohorts']->isNotEmpty())
 <div class="card mb-4"><div class="card-body">
     <h2 class="h4">Age-specific comparison evidence</h2>
-    <p>These separate context estimates explain historical evidence. They are not the selected rating shown above and cannot be compared across age groups or ball levels.</p>
+    <p>See what the player’s results show within each age group. Compare these estimates only within the same age and comparison group. The singles CTR above is shown separately.</p>
     @foreach($ability['cohorts'] as $estimate)
         <section class="border rounded p-3 mb-3">
         <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
             <h3 class="h5 mb-0">{{ $estimate['cohort'] }}</h3>
             <strong class="fs-5">{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong>
         </div>
-        <p class="mt-2 mb-2">Evidence confidence: <strong>{{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}</strong> · {{ $estimate['played'] }} played matches · {{ $estimate['direct_opponents'] }} distinct opponents</p>
+        <p class="mt-2 mb-2"><strong>{{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }} confidence</strong> · {{ $estimate['played'] }} played matches · {{ $estimate['direct_opponents'] }} different opponents</p>
         <details>
         <summary class="text-primary py-2">See evidence and comparable players</summary>
         <p class="mt-2">Comparison group {{ $estimate['component'] }}</p>
@@ -58,7 +58,7 @@
         </details>
         </section>
     @endforeach
-    <details><summary>Shared ability method (v6)</summary>
+    <details><summary>How age-group estimates are calculated</summary>
         <p>The latest completed, eligible main Cavaliers trial (reviewed event type 5) provides a model-derived played-match benchmark from its largest connected group; no published trial finishing rank is invented. Trial targets are fixed, with a decaying weight-2 prior. Supporting played evidence has a per-player incident budget of one per event, so extra logging alone does not raise ability. Actual later events can adjust the reference. Unanchored groups remain local and cannot be compared as trial-calibrated.</p>
         <p>Completed public individual and verified team singles matches use a bounded score-margin target: close wins provide less separation than dominant wins. The winner target runs from 0.75 to 1 using the average normalized margin of each set; the loser receives the complement. Deciding tiebreak points are normalized separately from games. Custom or ambiguous score units retain outcome-only evidence. Match weights, event budgets and confidence counts stay unchanged. Published finishing fields supply weaker, explicitly inferred field-relative rank constraints (weight 0.2, centered target span ±1). Adjacent rank links are topology only, not played matches. Unique complete disjoint A/B fields can form one ordered field. When same-event played outcomes already connect the whole field, its rank constraint is omitted. All evidence has a 180-day half-life using own scheduled or conservative event-start dates. Open, A and B have no fixed score bands.</p>
         <p>A regularized Bradley–Terry model with separate quadratic ordinal-field constraints estimates strength relative to connected opponents and published finishing fields. Rank targets and weights are uncalibrated pilot assumptions. The fixed display transform is 100 × logistic(strength). Each comparison group is centered, so 50 is a model midpoint, not a certified standard. Different groups, ages, ball types and contexts are not comparable. Sparse results and inferred-only connections remain limited confidence; a score is withheld if calculation does not converge or processing limits are exceeded.</p>
