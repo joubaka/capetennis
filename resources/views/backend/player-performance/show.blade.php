@@ -2,20 +2,34 @@
 @extends('layouts.backend')
 @section('title', 'Player performance')
 @section('content')
-<div class="operational-page">
+<div class="operational-page mx-auto" style="max-width: 72rem; font-size: 1rem; line-height: 1.55">
 @include('backend.partials.operational-controls')
 
-<h1 class="h3">{{ $player->name }} {{ $player->surname }}</h1>
-<p><a href="{{ route('backend.player-performance.directory') }}">Find another player</a> · As of {{ $performance['as_of'] }}</p>
-@include('backend.player-performance.ability-card')
-@include('backend.player-performance.card')
+<header class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-4">
+    <div>
+        <p class="text-body-secondary mb-1">Player performance</p>
+        <h1 class="h2 mb-1">{{ $player->name }} {{ $player->surname }}</h1>
+        <p class="text-body-secondary mb-0">Evidence as of {{ $performance['as_of'] }}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ route('backend.player-performance.directory') }}">Find another player</a>
+</header>
+@include('backend.player-performance.ability-card', ['performanceDetailPage' => true])
+@include('backend.player-performance.card', ['performanceDetailPage' => true])
+<div id="rating-evidence">
 @if($ability['cohorts']->isNotEmpty())
 <div class="card mb-4"><div class="card-body">
     <h2 class="h4">Age-specific comparison evidence</h2>
     <p>These separate context estimates explain historical evidence. They are not the selected rating shown above and cannot be compared across age groups or ball levels.</p>
     @foreach($ability['cohorts'] as $estimate)
-        <h3 class="h5">{{ $estimate['cohort'] }} · comparison group {{ $estimate['component'] }}</h3>
-        <p><strong>{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong> · Evidence confidence: {{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}</p>
+        <section class="border rounded p-3 mb-3">
+        <div class="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+            <h3 class="h5 mb-0">{{ $estimate['cohort'] }}</h3>
+            <strong class="fs-5">{{ $estimate['score'] === null ? 'Estimate withheld' : number_format($estimate['score'], 1).'/100' }}</strong>
+        </div>
+        <p class="mt-2 mb-2">Evidence confidence: <strong>{{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }}</strong> · {{ $estimate['played'] }} played matches · {{ $estimate['direct_opponents'] }} distinct opponents</p>
+        <details>
+        <summary class="text-primary py-2">See evidence and comparable players</summary>
+        <p class="mt-2">Comparison group {{ $estimate['component'] }}</p>
         <p class="small">{{ $estimate['confidence_explanation'] ?? '' }}</p>
         <p>Own same-cohort evidence: {{ $estimate['recent_played'] }} matches in the last 90 days; {{ number_format($estimate['effective_played'], 2) }} recency-weighted matches; {{ $estimate['direct_opponents'] }} distinct opponents across {{ $estimate['played_events'] }} played events.</p>
         <p>Last direct-match date (schedule/event proxy): {{ $estimate['last_direct_match'] ?? 'None' }}. Last eligible evidence: {{ $estimate['last_eligible_activity'] ?? 'None' }}. Confidence as of {{ $estimate['confidence_as_of'] }}.</p>
@@ -41,6 +55,8 @@
                 <p>No multi-event connection in the retained provenance sample.</p>
             @endforelse
         </details>
+        </details>
+        </section>
     @endforeach
     <details><summary>Shared ability method (v6)</summary>
         <p>The latest completed, eligible main Cavaliers trial (reviewed event type 5) provides a model-derived played-match benchmark from its largest connected group; no published trial finishing rank is invented. Trial targets are fixed, with a decaying weight-2 prior. Supporting played evidence has a per-player incident budget of one per event, so extra logging alone does not raise ability. Actual later events can adjust the reference. Unanchored groups remain local and cannot be compared as trial-calibrated.</p>
@@ -49,7 +65,14 @@
         <p>Shared ability includes verified individual and team singles sources. Doubles and team standings remain separate. Public legacy scores are accepted only when complete canonical outcomes and exact identities can be verified; stored statuses/types are never changed. Saved snapshots refresh in the background; publication flags are checked on every request. Earlier model snapshots remain Pending until a compatible calculation is saved.</p>
     </details>
 </div></div>
+@else
+<div class="card mb-4"><div class="card-body">
+    <h2 class="h4">Age-specific comparison evidence</h2>
+    <p class="mb-0">No age-specific comparison evidence is available for this player.</p>
+</div></div>
 @endif
+</div>
+<div id="performance-results">
 @foreach($performance['disciplines'] as $discipline => $preview)
 <div class="card mb-4"><div class="card-body">
     <h2 class="h4">{{ ucfirst($discipline) }}</h2>
@@ -59,7 +82,9 @@
     @empty
         <p>Unrated: no eligible {{ $discipline }} results.</p>
     @endforelse
-    <p>{{ $preview['finish_count'] }} eligible finishes and {{ $preview['match_count'] }} eligible matches counted from all published history. Evidence below shows the latest {{ $preview['evidence']->count() }} of {{ $preview['evidence_count'] }} finish records and {{ $preview['match_evidence']->count() }} of {{ $preview['match_evidence_count'] }} match records; older eligible results still count.</p>
+    <details>
+    <summary class="text-primary py-2">See finishing results and head-to-head matches</summary>
+    <p class="mt-2">{{ $preview['finish_count'] }} eligible finishes and {{ $preview['match_count'] }} eligible matches counted from all published history. Evidence below shows the latest {{ $preview['evidence']->count() }} of {{ $preview['evidence_count'] }} finish records and {{ $preview['match_evidence']->count() }} of {{ $preview['match_evidence_count'] }} match records; older eligible results still count.</p>
     <div class="table-responsive"><table class="table">
         <thead><tr><th>Event / date</th><th>Category / division</th><th>Finish / field</th><th>Points</th><th>Evidence</th></tr></thead>
         <tbody>
@@ -81,8 +106,12 @@
     @if($preview['reasons'])
         <details><summary>All-history exclusions</summary><ul>@foreach($preview['reasons'] as $reason => $count)<li>{{ $reason }}: {{ $count }} records</li>@endforeach</ul></details>
     @endif
+    </details>
 </div></div>
 @endforeach
-<p>Pilot v2 uses all published history. A scores 50–100, B 0–50, and unlabelled Open cohorts 0–100 separately. Finishes use the saved ranked field, which can exclude unranked entrants; this is not a starter count. Each event's average finish points and band-scaled match win rate contribute equally when both exist, then events are weighted with a 180-day half-life. An ongoing event uses the as-of date until its end date. A main category is A only when uniquely paired with matching B. Ages, genders, Masters, Open and team contexts remain separate. Doubles reflect partnerships. Match scores require published draws/events and verifiable completed score evidence; imported team identities are excluded.</p>
+<details class="mb-4"><summary class="text-primary py-2">How the Performance Score is calculated</summary>
+<p class="mt-2">Pilot v2 uses all published history. A scores 50–100, B 0–50, and unlabelled Open cohorts 0–100 separately. Finishes use the saved ranked field, which can exclude unranked entrants; this is not a starter count. Each event's average finish points and band-scaled match win rate contribute equally when both exist, then events are weighted with a 180-day half-life. An ongoing event uses the as-of date until its end date. A main category is A only when uniquely paired with matching B. Ages, genders, Masters, Open and team contexts remain separate. Doubles reflect partnerships. Match scores require published draws/events and verifiable completed score evidence; imported team identities are excluded.</p>
+</details>
+</div>
 </div>
 @endsection

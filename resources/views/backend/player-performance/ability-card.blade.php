@@ -35,5 +35,5 @@
     @endif
     <p class="alert alert-info text-dark">The shared rating uses one scale across ages within the connected singles reference group. This provisional 0–100 index is not a win probability or an official selection ranking. Disconnected groups and separate age-specific performance scores cannot be compared.</p>
     @endif
-    <p>Calculated {{ $ability['built_at'] }} · <a href="{{ route('backend.player-performance.show', ['player' => $player->id, 'ball_type' => $ballType ?? 'overall', 'comparison_group' => ($comparisonGroup ?? '') !== '' ? $comparisonGroup : null]) }}">View comparison evidence</a></p>
+    <p class="mb-0">Calculated {{ $ability['built_at'] }} · <a href="{{ ($performanceDetailPage ?? false) ? '#rating-evidence' : route('backend.player-performance.show', ['player' => $player->id, 'ball_type' => $ballType ?? 'overall', 'comparison_group' => ($comparisonGroup ?? '') !== '' ? $comparisonGroup : null]) }}">View comparison evidence</a></p>
 </div></div>
