@@ -28,7 +28,7 @@ class PlayerRatingProfileDirectory
         ];
     }
 
-    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group', string $region = '', string $ballType = 'overall'): array
+    public function build(string $ageGroup, string $gender, string $search, string $comparisonGroup = '', string $sort = 'grouped', ?int $perPage = null, string $ageScope = 'group', string $region = '', string $ballType = 'overall', bool $supportedOnly = false): array
     {
         $today = CarbonImmutable::today('Africa/Johannesburg');
         $year = $today->year;
@@ -188,6 +188,18 @@ class PlayerRatingProfileDirectory
         $partition = $groupedOrder ? 'PARTITION BY '.$agePartition.'gender_order, ordering_state ' : ($ageOrder ? 'PARTITION BY '.$agePartition.'ordering_state ' : ($combined ? 'PARTITION BY ordering_state ' : ($unified ? 'PARTITION BY rating_component ' : 'PARTITION BY '.$agePartition.'gender_order ')));
         $ranked = DB::query()->fromSub($query, 'profile_scores')->select('*')->selectRaw('ROW_NUMBER() OVER ('.$partition.'ORDER BY ordering_score IS NULL, ordering_score DESC, surname, name, id) AS position');
         $ordered = DB::query()->fromSub($ranked, 'ranked_profiles');
+        if ($supportedOnly) {
+            $supported = array_filter($headlines, static function (array $rating): bool {
+                $index = $rating['confidence_index'] ?? null;
+
+                return is_numeric($index) && $index >= 40 && $index <= 100
+                    && in_array($rating['confidence_label'] ?? AbilityConfidenceDisplay::label((int) $index), ['Medium', 'High'], true)
+                    && empty($rating['historical_connection'])
+                    && ($rating['evidence_basis'] ?? null) !== 'finish_only';
+            });
+            // Hide rows after ranking so existing positions survive the filter.
+            $ordered->whereIntegerInRaw('id', array_keys($supported));
+        }
         foreach (preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) as $token) {
             $ordered->where(fn ($q) => $q->where('name', 'like', '%'.addcslashes($token, '%_\\').'%')->orWhere('surname', 'like', '%'.addcslashes($token, '%_\\').'%'));
         }
@@ -243,6 +255,6 @@ class PlayerRatingProfileDirectory
             foreach ($section['columns'] as $column) $column->through($withRegions);
         }
         unset($section);
-        return compact('allAgesBall', 'ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup');
+        return compact('allAgesBall', 'ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup', 'supportedOnly');
     }
 }

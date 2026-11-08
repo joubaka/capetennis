@@ -56,6 +56,7 @@ class PlayerRatingLeaderboardController extends Controller
                 'comparison_group' => ['nullable', 'string', 'max:64'],
                 'sort' => ['nullable', \Illuminate\Validation\Rule::in(['grouped', 'shared', 'score', 'age'])],
                 'per_page' => ['nullable', 'integer', \Illuminate\Validation\Rule::in([10, 25, 50, 100, 500])],
+                'supported_only' => ['nullable', 'boolean'],
             ]);
             $columnPages = [];
             foreach (array_keys(\App\Services\Performance\PlayerRatingProfileDirectory::AGE_GROUPS) as $ageKey) {
@@ -64,7 +65,7 @@ class PlayerRatingLeaderboardController extends Controller
                 }
             }
             $request->validate($columnPages);
-            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'grouped', isset($settings['per_page']) ? (int) $settings['per_page'] : null, $settings['age_scope'] ?? 'younger', $settings['region'] ?? '', $settings['ball_type'] ?? 'auto');
+            $data = app(\App\Services\Performance\PlayerRatingProfileDirectory::class)->build($settings['age_group'] ?? '', $settings['gender'] ?? '', trim($settings['search'] ?? ''), $settings['comparison_group'] ?? '', $settings['sort'] ?? 'grouped', isset($settings['per_page']) ? (int) $settings['per_page'] : null, $settings['age_scope'] ?? 'younger', $settings['region'] ?? '', $settings['ball_type'] ?? 'auto', supportedOnly: (bool) ($settings['supported_only'] ?? false));
             $data['refreshStatus'] = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
             $view = view('backend.player-performance.profile-ratings', $data);
             $content = $request->header('X-CTR-Directory') === '1' ? $view->fragment('ctr-directory') : $view;

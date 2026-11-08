@@ -30,7 +30,15 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
             return $player;
         };
         foreach (range(1, 27) as $number) {
-            $add(sprintf('Boy%02d', $number), '2013-01-01', 1, 80 - $number);
+            $boy = $add(sprintf('Boy%02d', $number), '2013-01-01', 1, 80 - $number);
+            if ($number <= 4) {
+                $ratings[$boy->id]['confidence_label'] = 'Medium';
+                $ratings[$boy->id]['confidence_index'] = $number === 3 ? 40 : 65;
+                $ratings[$boy->id]['historical_connection'] = $number === 2;
+                if ($number === 4) {
+                    $ratings[$boy->id]['evidence_basis'] = 'finish_only';
+                }
+            }
             $add(sprintf('Girl%02d', $number), '2013-12-31', 2, 80 - $number);
         }
         $add('LocalPlayer', '2013-05-01', 2, 99, false);
@@ -100,6 +108,17 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
             ->assertSee('Boy27 Synthetic (2013)')
             ->assertDontSee('<html', false);
         if ($path = getenv('CT_DIRECTORY_FRAGMENT_HTML')) file_put_contents($path, $fragment->getContent());
+        $supported = $this->get($hundredUrl.'&supported_only=1')->assertOk();
+        $supportedBoys = $supported->viewData('sections')['u13']['columns']['boys'];
+        $this->assertSame(['Boy01 Synthetic', 'Boy03 Synthetic'], $supportedBoys->pluck('name')->all());
+        $this->assertSame([1, 3], $supportedBoys->pluck('position')->all());
+        $this->assertStringContainsString('supported_only=1', $supportedBoys->url(2));
+        $supportedFragment = $this->get($hundredUrl.'&supported_only=1', ['X-CTR-Directory' => '1'])->assertOk()
+            ->assertSee('Boy03 Synthetic (2013)')
+            ->assertDontSee('Boy02 Synthetic (2013)')
+            ->assertDontSee('Boy04 Synthetic (2013)')
+            ->assertDontSee('Boy05 Synthetic (2013)');
+        if ($path = getenv('CT_SUPPORTED_DIRECTORY_HTML')) file_put_contents($path, $supportedFragment->getContent());
         $shared = $this->get($url.'?sort=shared&age_scope=group&age_group=u13&per_page=500')->assertOk()->assertSee('Players per page');
         $this->assertSame(500, $shared->viewData('players')->perPage());
         $this->assertCount(56, $shared->viewData('players'));

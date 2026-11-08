@@ -15,6 +15,8 @@
     .ctr-directory .ctr-filters .form-label { margin-bottom:.3rem;color:#29425a;font-weight:600; }
     .ctr-directory .ctr-field-hint { margin:.3rem 0 0;color:#4d6277;font-size:.8rem; }
     .ctr-directory .ctr-search { grid-column:span 2; }
+    .ctr-directory .ctr-evidence-filter { grid-column:1/-1; }
+    .ctr-directory .ctr-evidence-filter label { min-height:44px; cursor:pointer; }
     .ctr-directory .ctr-filter-actions { grid-column:1/-1;display:flex;justify-content:space-between;align-items:start;gap:.5rem 1rem;border-top:1px solid #dbe4eb;padding-top:.65rem; }
     .ctr-directory .ctr-apply { margin-inline-start:auto;min-width:10rem; }
     .ctr-directory .ctr-sort-options { flex:1;min-width:0;max-width:24rem; }

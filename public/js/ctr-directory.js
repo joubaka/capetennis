@@ -67,7 +67,7 @@
     });
 
     document.addEventListener('change', event => {
-        if (event.target.id === 'players-per-page' && directory.contains(event.target)) {
+        if (event.target.matches('[data-ctr-auto-submit]') && directory.contains(event.target)) {
             event.target.form?.requestSubmit?.();
         }
     });
