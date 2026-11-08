@@ -32,12 +32,12 @@
       </table></div>
     </div></div>
     <details class="card mb-3" @if($errors->any()) open @endif><summary class="card-header">Advanced rubber points</summary><div class="card-body">
-      <p class="text-muted">Deciding-set losses and close-loss bonuses use the saved values below. Close losses use the greater of normal loss points and close-loss points.</p>
-      <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Rubber</th><th>Deciding loss</th><th>Close loss</th><th>Close game margin</th></tr></thead><tbody>
+      <p class="text-muted">At the exact close game margin, close win overrides the usual winner points when filled in. Close losses use the greater of normal loss points and close-loss points.</p>
+      <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Rubber</th><th>Deciding loss</th><th>Close win</th><th>Close loss</th><th>Close game margin</th></tr></thead><tbody>
         @foreach($rules['rubbers'] as $type => $values)
           @php($available = in_array($type, $availableRubberTypes, true))
           <tr data-rubber-type="{{ $type }}" @class(['text-muted table-light' => !$available])><th>{{ ucwords(str_replace('_', ' ', $type)) }}@unless($available)<small class="d-block fw-normal">Not used in this event</small>@endunless</th>
-          @foreach(['deciding_loss','close_loss','close_game_margin'] as $field)<td><input class="form-control" style="min-width:80px" type="number" min="0" max="100" step="{{ $field === 'close_game_margin' ? 1 : '0.5' }}" required aria-label="{{ ucwords(str_replace('_',' ',$type.' '.$field)) }}" data-rule-name="rules[rubbers][{{ $type }}][{{ $field }}]" @if($available) name="rules[rubbers][{{ $type }}][{{ $field }}]" @else disabled @endif value="{{ $available ? old('rules.rubbers.'.$type.'.'.$field, $values[$field]) : $values[$field] }}"></td>@endforeach
+          @foreach(['deciding_loss','close_win','close_loss','close_game_margin'] as $field)<td><input class="form-control" style="min-width:80px" type="number" min="0" max="100" step="{{ $field === 'close_game_margin' ? 1 : '0.5' }}" @if($field !== 'close_win') required @endif aria-label="{{ ucwords(str_replace('_',' ',$type.' '.$field)) }}" data-rule-name="rules[rubbers][{{ $type }}][{{ $field }}]" @if($available) name="rules[rubbers][{{ $type }}][{{ $field }}]" @else disabled @endif value="{{ $available ? old('rules.rubbers.'.$type.'.'.$field, $values[$field] ?? '') : ($values[$field] ?? '') }}"></td>@endforeach
         </tr>@endforeach
       </tbody></table></div>
     </div></details>

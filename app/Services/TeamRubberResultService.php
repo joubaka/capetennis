@@ -64,10 +64,12 @@ final class TeamRubberResultService
         $winner = $outcome['winner'];
         $loser = $winner === 'home' ? 'away' : 'home';
         $deciding = $outcome[$loser.'_sets'] === $rules['sets_to_win'] - 1 && $rules['sets_to_win'] > 1;
+        $winnerPoints = $deciding ? $rules['deciding_win'] : $rules['straight_win'];
         $loserPoints = $deciding ? $rules['deciding_loss'] : $rules['loss'];
-        if (isset($rules['close_loss'], $rules['close_game_margin']) && abs($outcome['home_games'] - $outcome['away_games']) === $rules['close_game_margin']) {
-            $loserPoints = max($loserPoints, $rules['close_loss']);
+        if (isset($rules['close_game_margin']) && abs($outcome['home_games'] - $outcome['away_games']) === $rules['close_game_margin']) {
+            $winnerPoints = $rules['close_win'] ?? $winnerPoints;
+            $loserPoints = max($loserPoints, $rules['close_loss'] ?? $loserPoints);
         }
-        return [$winner => $deciding ? $rules['deciding_win'] : $rules['straight_win'], $loser => $loserPoints];
+        return [$winner => $winnerPoints, $loser => $loserPoints];
     }
 }

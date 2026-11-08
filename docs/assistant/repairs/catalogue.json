@@ -514,6 +514,32 @@
       "assistant_action": "guide_only",
       "sources": ["app/Http/Controllers/Backend/EventCommunicationController.php"],
       "tests": ["tests/Feature/EventCommunicationsTest.php"]
+    },
+    {
+      "id": "RK-036",
+      "title": "A verified legacy result is excluded from player performance history",
+      "scope": "Read-only player profile history for published legacy individual results and team singles.",
+      "symptoms": "A complete saved score appears as pending or a team draw with a readable age category has no direct event-category link.",
+      "cause": "The profile relied on a completed status or direct category link even when the shared reader could verify the legacy score and category from the stored evidence.",
+      "fix": "Check complete set sequences and any saved winner before counting pending individual results. For legacy team singles without a direct category link or tie, require unique event-side roster matches, exact identities, an agreed cohort, and a complete score. Preserve the specific exclusion reason when any check fails.",
+      "verification": "Use the player performance regression to check counting, partial and conflicting scores, wrong-year rosters, competing identity identifiers and publication. Verify the source status, winner and category remain unmodified.",
+      "limits": "Guide only. A draw name can corroborate a category but cannot establish team membership. No source result, roster or publication repair is authorized by this guide.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/PlayerPerformanceHistoryService.php"],
+      "tests": ["tests/Feature/PlayerPerformancePilotTest.php"]
+    },
+    {
+      "id": "RK-037",
+      "title": "Single-tiebreak team results show no rubbers or standings points",
+      "scope": "Team draws played as one tiebreak with a separate points split for a one-point margin.",
+      "symptoms": "A saved tiebreak appears in the draw, while standings show zero rubbers and points or credit the full win value on a one-point result.",
+      "cause": "Standings count only results complete under the draw's saved rules. A two-set requirement leaves a single score partial. The ordinary win value applies unless a close win value is configured.",
+      "fix": "For this format, set one set to win, regular win and loss values of 3 and 0, and close win and loss values of 2 and 1 at an exact margin of one. Verify the draw snapshot because event rules apply to future draws. For played draws, review saved scores, fixture and tie status, and downstream decisions before any separately authorized correction.",
+      "verification": "Check that saved single-tiebreak scores count in team standings and that two-point and one-point margins produce the configured splits.",
+      "limits": "Guide only. Do not infer a format from score rows alone, bypass the published-draw scoring guard, or re-enter historical scores to refresh standings.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/TeamEventRulesService.php", "app/Services/TeamRubberResultService.php", "app/Services/TeamStandingsService.php"],
+      "tests": ["tests/Feature/TeamDraw/TeamScoringRulesWorkflowTest.php"]
     }
   ]
 }

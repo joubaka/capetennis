@@ -48,6 +48,7 @@
     #public-age-points .points-table thead th { text-align:left; }
     #public-age-points .points-table td.points-position { width:48px; text-align:center; }
     #public-age-points .points-details .points-table thead th:not(:first-child) { width:90px; text-align:right; }
+    #public-age-points .points-format-breakdown th { min-width:8rem; }
     #public-age-points .points-table tbody tr + tr { border-top:1px solid #edf1ec; }
     #public-age-points .points-table tbody th { color:#2d4350; font-weight:600; font-size:.9rem; overflow-wrap:anywhere; }
     #public-age-points .points-pill { display:inline-block; min-width:40px; padding:.35rem .6rem; border-radius:8px; background:#e7f0e5; color:#365940; font-size:1rem; font-weight:700; }
@@ -103,6 +104,7 @@
       @php
         $colors = collect($ageGroups[$age] ?? [])->pluck('color', 'name');
         $hasResults = collect($rows)->contains(fn ($row) => $row['rubber_wins'] + $row['rubber_losses'] > 0);
+        $formats = ($privateStandings ?? false) ? ($agePointFormats[$age] ?? []) : [];
       @endphp
       <section class="points-card" data-age-points="{{ $age }}">
         <div class="points-card-header"><h2>{{ $age === 'Unspecified' ? 'Age group unspecified' : $age.' standings' }}</h2><span>{{ count($rows) }} regions / schools</span></div>
@@ -118,18 +120,51 @@
         </div>
         <details class="points-details">
           <summary>Points breakdown and match statistics</summary>
+          @if($formats)
+            <div class="points-table-scroll" tabindex="0" role="region" aria-label="{{ $age }} points by format; scroll horizontally if needed">
+              <table class="points-table points-format-breakdown">
+                <caption class="caption-top">Points by format</caption>
+                <thead><tr>
+                  <th scope="col">Region / school</th>
+                  @foreach($formats as $drawId => $format)
+                    <th scope="col"><a href="{{ route('frontend.fixtures.index', $drawId) }}">{{ $format }}</a></th>
+                  @endforeach
+                  <th scope="col">Total</th>
+                </tr></thead>
+                <tbody>
+                  @foreach($rows as $row)
+                    <tr>
+                      <th scope="row">{{ $row['name'] }}</th>
+                      @foreach($formats as $drawId => $format)
+                        <td data-format-points="{{ $drawId }}">{{ isset($row['format_points'][$drawId]) ? \App\Support\StandingsPoints::format($row['format_points'][$drawId]) : '—' }}</td>
+                      @endforeach
+                      <td>{{ \App\Support\StandingsPoints::format($row['points']) }}</td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+          @endif
           @forelse($publicMatrices[$age] ?? [] as $matrix)
             @include('backend.team-draw.partials.round-robin-matrix', ['matrix' => $matrix, 'matrixScoring' => false])
           @empty
-            <p class="points-empty">No published round-robin encounters are available for this age group yet.</p>
+            @unless($formats)
+              <p class="points-empty">No published round-robin encounters are available for this age group yet.</p>
+            @endunless
           @endforelse
         </details>
-        @if($ageMixedRules[$age])<p class="points-empty">Points use each draw’s scoring rules. Regions / schools are listed alphabetically.</p>@endif
+        @if($ageMixedRules[$age])
+          <p class="points-empty">Points use each draw’s scoring rules. {{ ($privateStandings ?? false) ? 'Positions use total points.' : 'Regions / schools are listed alphabetically.' }}</p>
+        @endif
         @if(!$hasResults)<p class="points-empty">No completed match points yet.</p>@endif
       </section>
       @empty<p class="points-empty">No published points or participants for this age group yet.</p>@endforelse
     </div>
-    <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see opponents, encounter scores and standings for each round-robin draw. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
+    @if($privateStandings ?? false)
+      <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see each format’s contribution and open its published draw. When formats use different scoring rules, age-group positions use total points and tied totals share a position. Standings reflect completed published results and may change while play continues.</p>
+    @else
+      <p class="points-note">Match points plus tie bonus points equal total points. Expand the breakdown to see opponents, encounter scores and standings for each round-robin draw. Positions follow each draw’s saved scoring and tie-break rules; equal records can share a position. Standings reflect completed published results and may change while play continues. Different scoring rules within an age group mean no combined positions are shown.</p>
+    @endif
   </div>
 </div>
 @include('frontend.fixtures.partials.live-results-script')

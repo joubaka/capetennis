@@ -43,10 +43,10 @@ class PlayerPerformanceHistoryService
                     }
                 }
             }
-            foreach ($this->individualMatches($event, $player, $pilot) as $match) {
+            foreach ($this->individualMatches($event, $player, $pilot, $asOf) as $match) {
                 $this->addMatch($states, $components, $match);
             }
-            foreach ($this->teamMatches($event, $player) as $match) {
+            foreach ($this->teamMatches($event, $player, $asOf) as $match) {
                 $this->addMatch($states, $components, $match);
             }
             $date = CarbonImmutable::parse($event->end_date)->toDateString();
@@ -181,17 +181,29 @@ class PlayerPerformanceHistoryService
             $legacyRr = $fixture->stage === 'RR' && ($fixture->draw->settings?->workflow === null || $fixture->draw->settings?->workflow === 'round_robin');
             $winsNeeded = $hasPreset ? \App\Domain\Draws\Services\TennisScoreFormat::get($format)['wins_needed'] : (int) ceil(max(1, min(5, (int) ($fixture->draw->settings?->num_sets ?: 3))) / 2);
             $maxWins = max($sets->filter(fn ($set) => $set->registration1_score > $set->registration2_score)->count(), $sets->filter(fn ($set) => $set->registration2_score > $set->registration1_score)->count());
-            if (!in_array((int) $fixture->match_status, $sharedNetwork ? [0, 1, 2, 3] : [1, 2, 3], true) || !$expected || !$validation['valid'] || (!$hasPreset && !$credibleLegacy) || ($declared && $declared !== $expected)
+            $verifyPending = $sharedNetwork || $player !== null;
+            if (!in_array((int) $fixture->match_status, $verifyPending ? [0, 1, 2, 3] : [1, 2, 3], true) || !$expected || !$validation['valid'] || (!$hasPreset && !$credibleLegacy) || ($declared && $declared !== $expected)
                 || ($timed && (int) $fixture->match_status !== 1)
-                || ((int) $fixture->match_status === 0 && (!$sharedNetwork || !$this->completeSequence($sets, $winsNeeded, 'registration1_score', 'registration2_score')))
+                || ((int) $fixture->match_status === 0 && (!$verifyPending || !$this->completeSequence($sets, $winsNeeded, 'registration1_score', 'registration2_score')))
                 || ((int) $fixture->match_status === 2 && (!$legacyRr || (!$hasPreset && $maxWins < $winsNeeded)))
                 || ((int) $fixture->match_status === 3 && ($declared !== $expected || (!$hasPreset && $maxWins < $winsNeeded)))) {
-                $reason = $timed && $fixture->stage === 'RR' && $validation['valid'] && ! $winner
+                $scoreReason = $timed && $fixture->stage === 'RR' && $validation['valid'] && ! $winner
                     ? 'Timed round-robin draw; no winner-based rating points are awarded'
                     : 'Match is unfinished, unplayed or has inconsistent winner/score evidence';
+                if ($player && !$sharedNetwork) {
+                    $reason ??= match (true) {
+                        $sets->isEmpty() => 'No saved match score',
+                        $declared && $expected && $declared !== $expected => 'Saved winner disagrees with the score',
+                        !$validation['valid'] => 'Saved score does not match the draw format',
+                        (int) $fixture->match_status === 0 => 'Pending status and saved scores do not verify a complete match',
+                        default => $scoreReason,
+                    };
+                } else {
+                    $reason = $scoreReason;
+                }
             }
             $dateEvidence = $this->confidenceDate($fixture, $event, $asOf ?? CarbonImmutable::today());
-            if ($sharedNetwork && $dateEvidence['confidence_future']) { $reason = 'Match schedule is later than the snapshot date'; }
+            if (($sharedNetwork || ($player && (int) $fixture->match_status === 0)) && $dateEvidence['confidence_future']) { $reason = 'Match schedule is later than the snapshot date'; }
             $targetFirst = !$player || $first->contains('id', $player->id);
             $cohort = $division['cohort'];
             if ($event->frontend_type_view === 'masters') { $cohort = 'masters · '.$cohort; }
@@ -252,11 +264,14 @@ class PlayerPerformanceHistoryService
         $recoveries = $recoveryService->records($event);
         if ($network && !TeamFixture::query()->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id))->whereHas('teamResults')->exists()) { return; }
         $regions = $event->regions()->pluck('team_regions.id')->all();
-        $teams = \App\Models\Team::query()->without('team_players_no_profile')->with(['category.category', 'regions:id,region_name', 'team_players' => fn ($query) => $query->limit(257)])->where(function ($query) use ($event, $regions, $network) {
+        $teamQuery = \App\Models\Team::query()->without('team_players_no_profile')->with(['category.category', 'regions:id,region_name', 'team_players' => fn ($query) => $query->limit(257)]);
+        $legacyRoster = fn ($query) => $query->whereNull('category_event_id')->where('year', CarbonImmutable::parse($event->start_date)->year)->whereIn('region_id', $regions);
+        $eventTeams = (clone $teamQuery)->where(function ($query) use ($event, $network, $legacyRoster) {
             $query->whereHas('category', fn ($field) => $field->where('event_id', $event->id));
-            if ($network) { $query->orWhere(fn ($legacy) => $legacy->whereNull('category_event_id')->where('year', CarbonImmutable::parse($event->start_date)->year)->whereIn('region_id', $regions)); }
+            if ($network) { $query->orWhere($legacyRoster); }
         })->limit(5001)->get()->keyBy('id');
-        if ($teams->count() > 5000 || $teams->contains(fn ($team) => $team->team_players->count() > 256)) { if ($network) { throw new \OverflowException('Team source roster limit exceeded'); } return; }
+        if ($eventTeams->count() > 5000 || $eventTeams->contains(fn ($team) => $team->team_players->count() > 256)) { if ($network) { throw new \OverflowException('Team source roster limit exceeded'); } return; }
+        $legacyTeams = null;
         $query = TeamFixture::query()->publishedTeamTies()->with(['draw.categoryEvent.category', 'teamTie.homeTeam.category', 'teamTie.awayTeam.category', 'fixturePlayers.player1', 'fixturePlayers.player2', 'teamResults'])
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
             ->when($network, fn ($query) => $query->whereHas('teamResults')->where(fn ($types) => $types->whereIn('fixture_type', [0,1,4])->orWhereNull('fixture_type')->orWhereIn('rubber_code', ['singles','reverse_singles'])))
@@ -266,8 +281,25 @@ class PlayerPerformanceHistoryService
             $discipline = $fixture->isDoubles() ? 'doubles' : 'singles';
             $needed = $discipline === 'singles' ? 1 : 2;
             $rows = $fixture->fixturePlayers;
+            $namedLegacySingles = !$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true)
+                && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName);
+            $legacyProfile = !$network && !$fixture->team_tie_id && !$fixture->draw->category_event_id
+                && ($fixture->isSingles() || $namedLegacySingles) && $rows->count() === 1
+                && $fixture->region1 && $fixture->region2 && (int) $fixture->region1 !== (int) $fixture->region2
+                && in_array((int) $fixture->region1, array_map('intval', $regions), true)
+                && in_array((int) $fixture->region2, array_map('intval', $regions), true);
             $ids1 = $rows->pluck('team1_id'); $ids2 = $rows->pluck('team2_id');
             $reason = null; $sourceBySide = []; $resolved = [];
+            $teams = $eventTeams;
+            if ($legacyProfile) {
+                $legacyTeams ??= (clone $teamQuery)->where($legacyRoster)->limit(5001)->get()->keyBy('id');
+                if ($legacyTeams->count() > 5000 || $legacyTeams->contains(fn ($team) => $team->team_players->count() > 256)) {
+                    $reason = 'Legacy team source roster limit exceeded';
+                    $legacyProfile = false;
+                } else {
+                    $teams = $eventTeams->union($legacyTeams);
+                }
+            }
             if ($fixture->teamTie && (int) $fixture->teamTie->draw_id !== (int) $fixture->draw_id) { $reason = 'Team tie does not belong to this draw'; }
             if ($rows->count() !== $needed) { $reason = 'Team match has missing or ambiguous player identities'; }
             foreach ($rows as $row) {
@@ -284,14 +316,14 @@ class PlayerPerformanceHistoryService
                     $snapshot = $row->participant_snapshot[$side] ?? null;
                     $source = $fixture->teamTie?->{($side === 1 ? 'homeTeam' : 'awayTeam')};
                     if (!$fixture->teamTie && $fixture->{'region'.$side}) {
-                        $matches = $teams->filter(function ($team) use ($fixture, $side, $ids1, $ids2, $network) {
+                        $matches = $teams->filter(function ($team) use ($fixture, $side, $ids1, $ids2, $network, $legacyProfile) {
                             if ((int) $team->region_id !== (int) $fixture->{'region'.$side}) { return false; }
-                            if (!$network && (int) $team->category_event_id !== (int) $fixture->draw->category_event_id) { return false; }
+                            if (!$network && !$legacyProfile && (!$team->category_event_id || (int) $team->category_event_id !== (int) $fixture->draw->category_event_id)) { return false; }
                             return ($side === 1 ? $ids1 : $ids2)->diff($team->team_players->pluck('player_id'))->isEmpty();
                         });
                         $source = $matches->count() === 1 ? $matches->first() : null;
                     }
-                    $map = $fixture->draw->team_draw_selection['mixed_sides'][$source?->id] ?? null;
+                    $map = $legacyProfile ? null : ($fixture->draw->team_draw_selection['mixed_sides'][$source?->id] ?? null);
                     $allowed = $map ? [(int) $map['boys'], (int) $map['girls']] : [(int) $source?->id];
                     if ($snapshot) {
                         $historySource = $teams->get($snapshot['source_team_id'] ?? 0);
@@ -309,6 +341,7 @@ class PlayerPerformanceHistoryService
                         }
                     } else {
                         $validMembers = $teams->filter(fn ($team) => in_array((int) $team->id, $allowed, true)
+                            && ($network || $legacyProfile || $team->category_event_id !== null)
                             && $team->team_players->contains('player_id', $row->{'team'.$side.'_id'}));
                         $validMember = $validMembers->count() === 1;
                         if ($validMember) { $sourceBySide[$side] = $validMembers->first(); }
@@ -321,32 +354,48 @@ class PlayerPerformanceHistoryService
             if ($ids1->filter()->count() !== $needed || $ids2->filter()->count() !== $needed || $ids1->merge($ids2)->unique()->count() !== 2 * $needed) { $reason ??= 'Team match has missing or ambiguous player identities'; }
             $winner = $this->completedWinner($fixture->teamResults, 'team1_score', 'team2_score');
             $outcomeFixture = $fixture;
-            if ($network && !$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true) && $discipline === 'singles'
-                && count($sourceBySide) === 2 && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName)) {
+            if (($network || $legacyProfile) && $namedLegacySingles && $discipline === 'singles' && count($sourceBySide) === 2) {
                 // Interpret the verified legacy singleton format only in memory; never repair stored types.
                 $outcomeFixture = clone $fixture; $outcomeFixture->fixture_type = 1;
             }
             $outcome = app(TeamRubberResultService::class)->outcome($outcomeFixture);
             $terminal = $fixture->teamResults->every(fn ($set) => $this->legacyTerminalSet((int) $set->team1_score, (int) $set->team2_score));
-            if (!in_array((int) $fixture->match_status, $network ? [0,1] : [1], true) || !$winner || !$terminal || !$outcome['complete'] || $outcome['winner'] !== ($winner === 1 ? 'home' : 'away')) { $reason = 'Team match is incomplete or has inconsistent score evidence'; }
-            if ($network && (int) $fixture->match_status === 0) {
+            if (!in_array((int) $fixture->match_status, ($network || $legacyProfile) ? [0,1] : [1], true) || !$winner || !$terminal || !$outcome['complete'] || $outcome['winner'] !== ($winner === 1 ? 'home' : 'away')) {
+                if ($network) { $reason = 'Team match is incomplete or has inconsistent score evidence'; }
+                else { $reason ??= $fixture->teamResults->isEmpty() ? 'No saved team match score' : 'Saved team score and status do not verify a complete match'; }
+            }
+            if ($legacyProfile || ($network && (int) $fixture->match_status === 0)) {
                 $neededWins = $fixture->draw->team_scoring_rules !== null ? app(TeamRubberResultService::class)->rules($fixture)['sets_to_win'] : max(1, (int) ceil(($outcomeFixture->numSets ?: ($outcomeFixture->isSingles() ? 3 : 1)) / 2));
-                if (!$this->completeSequence($fixture->teamResults, $neededWins, 'team1_score', 'team2_score')) { $reason = 'Legacy team scores do not establish complete play'; }
+                if (!$this->completeSequence($fixture->teamResults, $neededWins, 'team1_score', 'team2_score')) {
+                    if ($network) { $reason = 'Legacy team scores do not establish complete play'; }
+                    else { $reason ??= 'Legacy team scores do not establish complete play'; }
+                }
             }
             $field = $fixture->draw->categoryEvent;
             $category = $field?->category?->name ?? $fixture->draw->drawName;
             $dateEvidence = $this->evidenceDate($fixture->scheduled_at, $event, $asOf);
-            if ($network && $dateEvidence['confidence_future']) { $reason = 'Team match schedule is later than the snapshot date'; }
-            if ($network && $rows->contains(fn ($row) => !($resolved[$row->id][1] ?? $row->player1) || !($resolved[$row->id][2] ?? $row->player2))) { $reason ??= 'Team match player profile cannot be verified'; }
+            if (($network || $legacyProfile) && $dateEvidence['confidence_future']) { $reason = 'Team match schedule is later than the snapshot date'; }
+            if (($network || $legacyProfile) && $rows->contains(fn ($row) => !($resolved[$row->id][1] ?? $row->player1) || !($resolved[$row->id][2] ?? $row->player2))) { $reason ??= 'Team match player profile cannot be verified'; }
             // Preserve all identity/score/date failures before the legacy demographic gate can overwrite them.
             $allAgeReason = $reason;
             $allAgeContext = $allAgeEvidence ? $this->allAgeTeamContext($sourceBySide, $teams, $regions, $event, $rows) : [];
+            if ($legacyProfile && $reason === null) {
+                $reason = $this->allAgeTeamContext($sourceBySide, $teams, $regions, $event, $rows)['reason'];
+                if ($reason === null && ((int) $sourceBySide[1]->region_id !== (int) $fixture->region1
+                    || (int) $sourceBySide[2]->region_id !== (int) $fixture->region2)) {
+                    $reason = 'Team match player cannot be verified against this event/side';
+                }
+            }
             if ($allAgeEvidence) {
                 $allAgeReason ??= $allAgeContext['reason'];
                 if ($field && (int) $field->event_id !== (int) $event->id) { $allAgeReason ??= 'Team draw category belongs to another event'; }
             }
             $sharedCohort = $this->verifiedTeamCohort($sourceBySide, $event, $fixture->draw->drawName);
-            if ((!$field || (int) $field->event_id !== (int) $event->id) && (!$network || !$sharedCohort)) { $reason = 'Team match category/event cannot be verified'; }
+            $verifiedCategoryFallback = ($network || ($legacyProfile && !$field)) && $sharedCohort !== null;
+            if ((!$field || (int) $field->event_id !== (int) $event->id) && !$verifiedCategoryFallback) {
+                if ($network) { $reason = 'Team match category/event cannot be verified'; }
+                else { $reason ??= 'Team match category/event cannot be verified'; }
+            }
             if ($network && !$sharedCohort) { $reason = 'Team singles age/gender context cannot be verified'; }
             if ($network && (!$fixture->isSingles() && !(!$fixture->rubber_code && in_array($fixture->fixture_type, [null, 0], true) && preg_match('/\bsingles\b/i', $fixture->draw->drawName) && !preg_match('/doubles|mixed/i', $fixture->draw->drawName)))) {
                 $reason = 'Legacy team discipline is ambiguous or doubles';
@@ -357,7 +406,7 @@ class PlayerPerformanceHistoryService
                 'all_age_contexts' => $allAgeContext['contexts'],
                 'all_age_cohort' => $sharedCohort ?? implode(' / ', $allAgeContext['contexts']),
                 'all_age_source_format_reason' => $allAgeContext['format_reason']] : [];
-            $cohort = 'team · '.mb_strtolower(trim(preg_replace('/\s+/u', ' ', $category)));
+            $cohort = 'team · '.mb_strtolower(trim(preg_replace('/\s+/u', ' ', $legacyProfile && $sharedCohort ? $sharedCohort : $category)));
             $targetFirst = !$player || $ids1->contains($player->id);
             $won = $winner === ($targetFirst ? 1 : 2);
             $opponents = $rows->map(fn ($row) => $targetFirst ? ($resolved[$row->id][2] ?? $row->player2) : ($resolved[$row->id][1] ?? $row->player1))->filter()->sortBy('id')->map(fn ($opponent) => trim($opponent->name.' '.$opponent->surname))->implode(' / ');

@@ -28,7 +28,7 @@ final class EventStandingsService
     {
         abort_unless($event->isTeam(), 404);
 
-        return $this->calculate($event, $filters, true);
+        return $this->calculate($event, $filters, true, privateAgeBreakdown: true);
     }
 
     /** Private operational access uses published results without publishing standings. */
@@ -39,7 +39,7 @@ final class EventStandingsService
         return $this->calculate($event, $filters, true);
     }
 
-    private function calculate(Event $event, array $filters, bool $publishedOnly, ?int $drawId = null): array
+    private function calculate(Event $event, array $filters, bool $publishedOnly, ?int $drawId = null, bool $privateAgeBreakdown = false): array
     {
         $teams = Team::query()->without(['team_players', 'team_players_no_profile'])
             ->whereHas('category', fn ($query) => $query->where('event_id', $event->id))
@@ -115,6 +115,7 @@ final class EventStandingsService
         $overall = [];
         $ageGroups = [];
         $ageStandings = [];
+        $agePointFormats = [];
         $ageRules = [];
         $ageRuleSets = [];
         $ruleSets = [];
@@ -122,6 +123,10 @@ final class EventStandingsService
         $pointSharing = $event->team_result_settings['point_sharing'] ?? [];
         $sharingRules = ($pointSharing['enabled'] ?? false) ? collect($pointSharing['rules'] ?? [])->keyBy('team_id') : collect();
         foreach ($sections as $section) {
+            $formatId = $section['draw']->id;
+            if ($privateAgeBreakdown && $section['rows']) {
+                $agePointFormats[$section['age']][$formatId] = $section['draw']->drawName;
+            }
             $ruleSets[] = json_encode(app(TeamEventRulesService::class)->forDraw($section['draw']));
             $ageRuleSets[$section['age']][] = end($ruleSets);
             $ageRules[$section['age']] ??= app(TeamEventRulesService::class)->forDraw($section['draw']);
@@ -144,6 +149,10 @@ final class EventStandingsService
                 }
                 foreach ($row['gender_points'] as $bucket => $points) { $ageStandings[$section['age']][$key]['gender_points'][$bucket] += $points; }
                 foreach (self::METRICS as $metric) { $ageStandings[$section['age']][$key][$metric] += $row[$metric]; }
+                if ($privateAgeBreakdown) {
+                    $ageStandings[$section['age']][$key]['format_points'][$formatId] ??= 0;
+                    $ageStandings[$section['age']][$key]['format_points'][$formatId] += $row['points'];
+                }
                 if ($team) { $overall[$key]['teams'][$team->id] = true; }
                 foreach (self::METRICS as $metric) { $overall[$key][$metric] += $row[$metric]; }
                 // Allocate from original team results only: never from another region's shared total.
@@ -190,7 +199,7 @@ final class EventStandingsService
         uksort($ageStandings, 'strnatcasecmp');
         foreach ($ageStandings as $age => &$ageRows) {
             $ageRows = array_values($ageRows);
-            if ($ageMixedRules[$age]) {
+            if ($ageMixedRules[$age] && !$privateAgeBreakdown) {
                 usort($ageRows, fn ($a, $b) => strnatcasecmp($a['name'], $b['name']));
                 continue;
             }
@@ -200,7 +209,8 @@ final class EventStandingsService
                 unset($finalRow);
                 continue;
             }
-            $criteria = fn ($row) => $this->criteria($row, $ageRules[$age]);
+            $rankingRules = $ageMixedRules[$age] ? ['standings_order' => ['points']] : $ageRules[$age];
+            $criteria = fn ($row) => $this->criteria($row, $rankingRules);
             usort($ageRows, fn ($a, $b) => ($criteria($b) <=> $criteria($a)) ?: strnatcasecmp($a['name'], $b['name']));
             $previous = null;
             $rank = 0;
@@ -250,7 +260,7 @@ final class EventStandingsService
             }
         }
 
-        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings', 'publicMatrices', 'pointSharingEnabled');
+        return compact('sections', 'placementSections', 'overall', 'mixedRules', 'options', 'filters', 'stats', 'breakdowns', 'ageGroups', 'ageMixedRules', 'ageStandings', 'agePointFormats', 'publicMatrices', 'pointSharingEnabled');
     }
 
     private function criteria(array $row, array $rules): array

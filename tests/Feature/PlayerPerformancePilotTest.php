@@ -654,25 +654,30 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertSame($withFinish, $service->forPlayer($player, $asOf)['cohorts']->first()['score']);
     }
 
-    public function test_shared_legacy_status_zero_requires_complete_verified_public_scores_without_changing_v2_or_records(): void
+    public function test_legacy_pending_individual_score_counts_only_when_verified_without_changing_records(): void
     {
         $field = $this->field(Category::factory()->create(['name' => 'Boys U/13']), [1,2], ['results_published' => false]);
-        $fixture = $this->match($field, [[6,4],[6,3]], ['match_status' => 0], '');
+        $fixture = $this->match($field, [[6,4],[6,3]], ['match_status' => 0, 'winner_registration' => null], '');
         $fixture->draw->settings->update(['num_sets' => 3]);
         $player = $field['rows'][0]['players']->first(); $asOf = CarbonImmutable::parse('2026-10-06');
         $shared = app(\App\Services\Performance\PlayerSharedAbilityService::class);
         $estimate = $shared->forPlayer($player, $asOf)['cohorts']->first();
         $this->assertSame('u13 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
         $this->assertSame(0, $fixture->fresh()->match_status);
-        $this->assertNull(app(PlayerPerformancePilotService::class)->forPlayer($player, $asOf)['headline']);
+        $history = app(PlayerPerformancePilotService::class);
+        $this->assertSame(1, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
+        $this->assertNull($fixture->fresh()->winner_registration);
         $fixture->fixtureResults()->where('set_nr',2)->delete();
         $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertSame(0, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
         \App\Models\FixtureResult::create(['fixture_id' => $fixture->id, 'set_nr' => 2, 'registration1_score' => 6, 'registration2_score' => 3]);
         $fixture->update(['winner_registration' => $field['rows'][1]['reg']->id]);
         $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertSame('Saved winner disagrees with the score', $history->forPlayer($player, $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
         $fixture->update(['winner_registration' => $field['rows'][0]['reg']->id]);
         \Illuminate\Support\Facades\DB::table('draws')->where('id', $fixture->draw_id)->update(['published' => false]);
         $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertSame(0, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
     }
 
     private function legacyTeamField(bool $missingCategory = true): array
@@ -712,14 +717,25 @@ class PlayerPerformancePilotTest extends TestCase
         $estimate = $service->forPlayer($data['first'], $asOf)['cohorts']->first();
         $this->assertSame('u10 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
         $this->assertSame(0, $data['fixture']->fresh()->match_status);
+        $history = app(PlayerPerformancePilotService::class);
+        $this->assertSame(1, $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_count']);
+        $this->assertNull($data['draw']->fresh()->category_event_id);
+        $imported = \App\Models\NoProfileTeamPlayer::create([
+            'team_id' => $data['home']->id, 'name' => 'Imported', 'surname' => 'Player', 'rank' => 1, 'pay_status' => 0,
+        ]);
+        $data['row']->update(['team1_no_profile_id' => $imported->id]);
+        $this->assertSame('Team match side has missing or competing identity identifiers', $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
+        $data['row']->update(['team1_no_profile_id' => null]);
         $data['away']->update(['name' => 'u12 Girls']);
         $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
         $data['away']->update(['name' => 'u10 Boys', 'year' => 2025]);
         $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertSame('Team match player cannot be verified against this event/side', $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
         $data['away']->update(['year' => 2026]);
         $duplicate = \App\Models\Team::factory()->create(['name' => 'u10 Boys', 'year' => 2026, 'region_id' => $data['home']->region_id, 'category_event_id' => null]);
         \App\Models\TeamPlayer::create(['team_id' => $duplicate->id, 'player_id' => $data['first']->id, 'rank' => 1]);
         $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertSame(0, $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_count']);
         $duplicate->delete();
         $data['field']['event']->regions()->detach($data['away']->region_id);
         $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());

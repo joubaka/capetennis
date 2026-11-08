@@ -69,7 +69,8 @@ final class TeamEventRulesService
             $rules["rules.{$field}"] = 'required|numeric|min:0|max:100';
         }
         foreach (RubberType::ALL as $type) {
-            $rules["rules.rubbers.{$type}"] = 'required|array:sets_to_win,straight_win,deciding_win,loss,deciding_loss,close_loss,close_game_margin';
+            $rules["rules.rubbers.{$type}"] = 'required|array:sets_to_win,straight_win,deciding_win,loss,deciding_loss,close_win,close_loss,close_game_margin';
+            $rules["rules.rubbers.{$type}.close_win"] = 'nullable|numeric|min:0|max:100';
             $rules["rules.rubbers.{$type}.sets_to_win"] = 'required|integer|min:1|max:2';
             $rules["rules.rubbers.{$type}.close_game_margin"] = 'required|integer|min:0|max:100';
             foreach (['straight_win', 'deciding_win', 'loss', 'deciding_loss', 'close_loss'] as $field) {
@@ -78,6 +79,9 @@ final class TeamEventRulesService
         }
         $validated = $request->validate($rules)['rules'];
         foreach ($validated['rubbers'] as &$rubber) {
+            if (!isset($rubber['close_win'])) {
+                unset($rubber['close_win']);
+            }
             foreach ($rubber as $key => &$value) {
                 $value = in_array($key, ['sets_to_win', 'close_game_margin'], true) ? (int) $value : (float) $value;
             }

@@ -216,6 +216,67 @@ class PublicEventStandingsTest extends TestCase
         $this->assertFalse($event->fresh()->standings_published);
     }
 
+    public function test_private_standings_rank_mixed_rules_and_show_published_points_by_format(): void
+    {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $event = $this->event();
+        $scorer = User::factory()->create()->assignRole('super-user');
+        foreach ([10, 11, 12, 13] as $age) {
+            $singles = $this->draw($event, "U{$age} Boys Singles");
+            $reverse = $this->draw($event, "U{$age} Boys Reverse Singles");
+            $singles['draw']->categoryEvent->category->update(['name' => "U{$age}"]);
+            $reverse['draw']->categoryEvent->category->update(['name' => "U{$age}"]);
+            foreach ($reverse['teams'] as $index => $team) {
+                $team->update(['region_id' => $singles['regions'][$index]->id]);
+            }
+            $rules = app(TeamEventRulesService::class)->defaults();
+            $rules['rubbers']['singles']['straight_win'] = $age === 11 ? 5 : 3;
+            $reverse['draw']->update(['team_scoring_rules' => $rules]);
+            if ($age === 13) {
+                $singles['rubber']->delete();
+                $singles['tie']->delete();
+                $legacyRubber = TeamFixture::create([
+                    'draw_id' => $singles['draw']->id,
+                    'region1' => $singles['regions'][0]->id,
+                    'region2' => $singles['regions'][1]->id,
+                    'fixture_type' => 1,
+                    'round_nr' => 1,
+                    'match_nr' => 1,
+                ]);
+                $this->score($legacyRubber);
+            } else {
+                $this->score($singles['rubber']);
+            }
+            $this->score($reverse['rubber'], away: true);
+        }
+        $hidden = $this->draw($event, 'U11 Hidden Format');
+        $this->score($hidden['rubber']);
+        $hidden['draw']->update(['published' => false]);
+
+        $url = route('frontend.events.private-standings', $event);
+        $response = $this->actingAs($scorer)->get($url)->assertOk()
+            ->assertDontSee('U11 Hidden Format')->assertDontSee('data-team-round-robin-matrix', false);
+        foreach ([10, 11, 12, 13] as $age) {
+            $response->assertSee("U{$age} Boys Singles")->assertSee("U{$age} Boys Reverse Singles");
+        }
+        $rows = $response->viewData('ageStandings');
+        $this->assertSame(['Audit Pine', 'Audit Oak'], array_column($rows['U11'], 'name'));
+        $this->assertSame([5, 3], array_column($rows['U11'], 'points'));
+        $this->assertSame([1, 2], array_column($rows['U11'], 'rank'));
+        $this->assertSame([1, 1], array_column($rows['U13'], 'rank'));
+        $formats = array_flip($response->viewData('agePointFormats')['U11']);
+        $this->assertEquals(5, $rows['U11'][0]['format_points'][$formats['U11 Boys Reverse Singles']]);
+        $this->assertEquals(0, $rows['U11'][0]['format_points'][$formats['U11 Boys Singles']]);
+        $this->assertEquals(3, $rows['U11'][1]['format_points'][$formats['U11 Boys Singles']]);
+        $legacyFormat = array_flip($response->viewData('agePointFormats')['U13'])['U13 Boys Singles'];
+        $this->assertEquals(3, $rows['U13'][0]['format_points'][$legacyFormat]);
+        $this->get($url.'?age=U11')->assertOk()
+            ->assertSee('U11 Boys Reverse Singles')->assertDontSee('U13 Boys Reverse Singles');
+
+        $public = $this->get(route('frontend.events.standings', $event))->assertOk();
+        $this->assertSame([null, null], array_column($public->viewData('ageStandings')['U11'], 'rank'));
+    }
+
     public function test_other_event_roles_and_unscoped_scorers_cannot_open_private_front_page_standings(): void
     {
         $event = $this->event();

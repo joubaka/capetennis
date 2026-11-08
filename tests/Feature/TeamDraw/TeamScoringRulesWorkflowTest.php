@@ -97,6 +97,34 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $this->assertSame([11, 1], array_column(app(TeamStandingsService::class)->forDraw($this->draw->fresh()), 'points'));
     }
 
+    public function test_existing_reverse_singles_results_count_under_single_tiebreak_scoring(): void
+    {
+        $this->rubber->update(['rubber_code' => 'reverse_singles', 'fixture_type' => 4]);
+        $second = TeamFixture::create(['draw_id' => $this->draw->id, 'team_tie_id' => $this->tie->id,
+            'match_nr' => 2, 'round_nr' => 1, 'rubber_sequence' => 2, 'rubber_code' => 'reverse_singles', 'fixture_type' => 4]);
+        $this->save(['set1_home' => 10, 'set1_away' => 8]);
+        app(TeamFixtureScoreService::class)->save($second, ['set1_home' => 10, 'set1_away' => 11]);
+
+        $standings = app(TeamStandingsService::class);
+        $this->assertSame([0, 0], array_column($standings->forDraw($this->draw->fresh()), 'match_points'));
+
+        $rules = $this->draw->team_scoring_rules;
+        $rules['rubbers']['reverse_singles'] = array_replace($rules['rubbers']['reverse_singles'], [
+            'sets_to_win' => 1, 'straight_win' => 3, 'loss' => 0,
+            'close_win' => 2, 'close_loss' => 1, 'close_game_margin' => 1,
+        ]);
+        $this->draw->update(['team_scoring_rules' => $rules]);
+
+        $results = app(TeamRubberResultService::class);
+        foreach ([[$this->rubber->fresh(), ['home' => 3, 'away' => 0]], [$second->fresh(), ['away' => 2, 'home' => 1]]] as [$fixture, $points]) {
+            $this->assertSame($points, $results->points($fixture, $results->outcome($fixture)));
+        }
+        $rows = $standings->forDraw($this->draw->fresh());
+        $this->assertSame([4, 2], array_column($rows, 'match_points'));
+        $this->assertSame([1, 1], array_column($rows, 'rubber_wins'));
+        $this->assertSame([1, 1], array_column($rows, 'rubber_losses'));
+    }
+
     public function test_drawn_tie_awards_event_bonus_and_repeated_save_is_idempotent(): void
     {
         $second = TeamFixture::create(['draw_id' => $this->draw->id, 'team_tie_id' => $this->tie->id,

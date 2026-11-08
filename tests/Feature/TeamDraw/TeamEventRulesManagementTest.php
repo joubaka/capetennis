@@ -33,7 +33,10 @@ class TeamEventRulesManagementTest extends TestCase
         $this->putJson(route('backend.team-rules.update', $event), ['rules' => $rules])->assertOk();
         $this->assertDatabaseCount('team_event_rules', 1);
         $response = $this->get(route('backend.team-rules.edit', $event))->assertOk()->assertSee('Advanced rubber points')->assertSee('Create a pairing format');
-        $this->assertSame(1, substr_count($response->getContent(), 'name="rules[rubbers][singles][close_loss]"'));
+        $this->assertSame(1, substr_count($response->getContent(), ' name="rules[rubbers][singles][close_loss]"'));
+        $rules['rubbers']['singles']['close_win'] = 2;
+        $this->putJson(route('backend.team-rules.update', $event), ['rules' => $rules])->assertOk();
+        $this->assertSame(2, app(TeamEventRulesService::class)->forEvent($event)['rubbers']['singles']['close_win']);
         if (getenv('CT_BATCHES1822_QA')) { file_put_contents(storage_path('app/batches1822-qa/rules.html'), $response->getContent()); }
     }
 
@@ -72,9 +75,9 @@ class TeamEventRulesManagementTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML($response->getContent());
         $xpath = new \DOMXPath($document);
-        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="singles"]//input[not(@disabled)]')->length);
-        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="mixed_doubles"]//input[@disabled]')->length);
-        $this->assertSame(7, $xpath->query('//tr[@data-rubber-type="reverse_doubles"]//input[@disabled]')->length);
+        $this->assertSame(8, $xpath->query('//tr[@data-rubber-type="singles"]//input[not(@disabled)]')->length);
+        $this->assertSame(8, $xpath->query('//tr[@data-rubber-type="mixed_doubles"]//input[@disabled]')->length);
+        $this->assertSame(8, $xpath->query('//tr[@data-rubber-type="reverse_doubles"]//input[@disabled]')->length);
         $submitted = [];
         foreach ($xpath->query('//form[@id="team-event-rules-form"]//input[@name and not(@disabled)]') as $input) {
             $name = $input->getAttribute('name');
