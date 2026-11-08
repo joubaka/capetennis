@@ -488,6 +488,32 @@
       "assistant_action": "guide_only",
       "sources": ["app/Http/Controllers/Backend/EventVenueScheduleController.php", "app/Services/Scheduling/SchedulePublicationService.php", "docs/draw-knowledge/catalogue.md"],
       "tests": ["tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/Draw/HeadOfficePublicationControlsTest.php", "tests/Frontend/head-office-day-publication.test.cjs"]
+    },
+    {
+      "id": "RK-034",
+      "title": "Nightly player ratings miss the host scheduler invocation",
+      "scope": "Scheduled current CTR snapshots and 12-month rating history builds.",
+      "symptoms": "Saved rating timestamps stop advancing overnight while a manually requested refresh can still complete. Compare the host cron and Laravel due times in the same timezone.",
+      "cause": "Laravel evaluates daily jobs on their exact scheduled minute. An offset five-minute host cron skipped the top-of-hour rating jobs.",
+      "fix": "Align the two daily entries in the console kernel to minutes the host cron reaches. Keep current CTR ahead of rating history and preserve the existing overlap protection.",
+      "verification": "On 2026-11-08 the local scheduler listed both adjusted jobs and the regression confirmed both were due on host cron ticks. The adjusted jobs await live verification.",
+      "limits": "Guide only. Verify the current host cron before choosing minutes. This record does not authorize deployment or a production refresh.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Console/Kernel.php"],
+      "tests": ["tests/Unit/PlayerRatingScheduleTest.php"]
+    },
+    {
+      "id": "RK-035",
+      "title": "Event email review fails with an undefined mailRecipients variable",
+      "scope": "Ordinary event email reviews and scheduled announcement email reviews.",
+      "symptoms": "The review page returns HTTP 500 while rendering a compiled Blade view and reports an undefined mailRecipients variable.",
+      "cause": "Blade's raw PHP block matcher can start at an inline @php directive and consume through a later @endphp, leaving the recipient assignment inside a block that never executes.",
+      "fix": "In resources/views/backend/event/communications/preview.blade.php, initialize the review variables together in a closed raw PHP block before any inline @php directive. Preserve the reviewed audience, the ordinary approval form and the scheduled announcement report link.",
+      "verification": "Render both reviews through their authenticated route using synthetic batches. Check the recipient and message preview, the ordinary approval control, the scheduled report link and absence of a send control, and no dispatch from either review.",
+      "limits": "Guide only. A review render failure does not establish queue or delivery status.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Backend/EventCommunicationController.php"],
+      "tests": ["tests/Feature/EventCommunicationsTest.php"]
     }
   ]
 }

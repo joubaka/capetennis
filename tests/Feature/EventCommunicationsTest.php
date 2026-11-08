@@ -146,12 +146,46 @@ class EventCommunicationsTest extends TestCase
         $batch = $this->preview();
         $response = $this->get(route('backend.event-communications.review', [$this->event, $batch]))->assertOk();
         $response->assertSeeInOrder(['1. Recipients', '2. Message preview', '3. Approve'])
-            ->assertSee('confirm_send')->assertSee('id="approve-ranking-mail"', false)->assertSee('Send email');
+            ->assertSee('child@example.test')->assertSee('confirm_send')
+            ->assertSee('id="approve-ranking-mail"', false)->assertSee('Send email')->assertDontSee('View send report');
         $this->assertDatabaseCount('bulk_email_logs', 0);
         Mail::assertNothingSent();
         if (getenv('CT_BATCHES_QA') === '1') {
             file_put_contents(storage_path('app/batches345-qa/email-review.html'), str_replace('http://localhost', 'http://127.0.0.1:8775/ct/public', $response->getContent()));
         }
+    }
+
+    public function test_scheduled_announcement_review_renders_message_and_report_without_send_control(): void
+    {
+        $batch = $this->preview();
+        $subject = 'Court opening update – '.$this->event->name;
+        $recipients = $batch->recipients;
+        $recipients[0]['subject'] = $subject;
+        unset($recipients[0]['html']);
+        $batch->update([
+            'subject' => $subject,
+            'body' => 'Courts open at nine.',
+            'recipients' => $recipients,
+            'options' => [
+                'source' => 'announcement',
+                'scheduled_for' => now()->addHour()->toIso8601String(),
+                'event_name' => $this->event->name,
+                'title' => 'Court opening update',
+            ],
+        ]);
+
+        $this->get(route('backend.event-communications.review', [$this->event, $batch]))
+            ->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertSeeInOrder(['1. Recipients', '2. Message preview', 'View send report'])
+            ->assertSee('child@example.test')
+            ->assertSee($subject)
+            ->assertSee('Courts open at nine.')
+            ->assertDontSee('name="confirm_send"', false);
+
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Bus::assertNothingDispatched();
+        Mail::assertNothingSent();
     }
 
     public function test_closed_unpublished_unpaid_rosters_can_be_emailed_only_after_exact_approval(): void

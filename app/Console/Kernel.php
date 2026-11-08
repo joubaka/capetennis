@@ -13,8 +13,9 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('assistant:prune --apply --limit=1000')->hourly()->withoutOverlapping();
-        $schedule->command('player-ability:refresh')->dailyAt('00:00')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
-        $schedule->command('player-rating-history:refresh')->dailyAt('03:00')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
+        // Hostking invokes schedule:run at :02, :07, :12, and every five minutes thereafter.
+        $schedule->command('player-ability:refresh')->dailyAt('00:02')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
+        $schedule->command('player-rating-history:refresh')->dailyAt('03:02')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
         $schedule->command('player-plus:notifications --apply')->dailyAt('08:30')->timezone('Africa/Johannesburg')->withoutOverlapping();
         $schedule->command('player-plus:publication-notifications')->everyMinute()->withoutOverlapping();
         $schedule->command('teamsheet:sync-tennis')->hourly()->withoutOverlapping(30)->runInBackground()
