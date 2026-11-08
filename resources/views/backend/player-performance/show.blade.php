@@ -1,4 +1,6 @@
-@php($configData = Helper::appClasses())
+@php
+    $configData = Helper::appClasses();
+@endphp
 @extends('layouts.backend')
 @section('title', 'Player performance')
 @section('content')
@@ -29,6 +31,25 @@
         <p class="mt-2 mb-2"><strong>{{ \App\Services\Performance\AbilityConfidenceDisplay::label((int) $estimate['confidence_index'], $estimate) }} confidence</strong> · {{ $estimate['played'] }} played matches · {{ $estimate['direct_opponents'] }} different opponents</p>
         <details>
         <summary class="text-primary py-2">See evidence and comparable players</summary>
+        <dl class="row g-2 my-2">
+            @foreach(['Matches in the last 90 days' => $estimate['recent_played'], 'Events played' => $estimate['played_events'], 'Last match date (may be estimated)' => $estimate['last_direct_match'] ?? 'None'] as $label => $value)
+                <div class="col-12 col-sm">
+                    <dt class="small">{{ $label }}</dt>
+                    <dd class="fw-semibold mb-0">{{ $value }}</dd>
+                </div>
+            @endforeach
+        </dl>
+        <h4 class="h6 mt-3">Estimates within this group</h4>
+        <ul class="list-group list-group-flush mb-3">
+            @include('backend.player-performance.partials.evidence-score-bar', ['name' => $player->name.' '.$player->surname, 'score' => $estimate['score'], 'currentPlayer' => true, 'profileUrl' => null])
+            @forelse($estimate['comparators'] as $comparator)
+                @include('backend.player-performance.partials.evidence-score-bar', ['name' => $comparator['name'], 'score' => $comparator['score'], 'currentPlayer' => false, 'profileUrl' => route('backend.player-performance.show', $comparator['id'])])
+            @empty
+                <li class="list-group-item">No comparable players in this sample.</li>
+            @endforelse
+        </ul>
+        <details class="mb-2">
+        <summary>Evidence sources and calculation details</summary>
         <p class="mt-2">Comparison group {{ $estimate['component'] }}</p>
         <p class="small">{{ $estimate['confidence_explanation'] ?? '' }}</p>
         <p>Own same-cohort evidence: {{ $estimate['recent_played'] }} matches in the last 90 days; {{ number_format($estimate['effective_played'], 2) }} recency-weighted matches; {{ $estimate['direct_opponents'] }} distinct opponents across {{ $estimate['played_events'] }} played events.</p>
@@ -42,11 +63,6 @@
         </p>
         <p class="small">Low, Medium and High describe the strength and freshness of recorded evidence, not rating accuracy or win probability. Inactivity reduces it daily. Dates use the match schedule where credible, otherwise conservative event start dates ({{ $estimate['proxy_dated_matches'] }} matches). Play outside recorded eligible Cape Tennis results is unknown.</p>
         <p>This player: {{ $estimate['played'] }} played matches; {{ $estimate['inferred'] }} weaker finish-order comparisons. Comparison group: {{ $estimate['component_players'] }} players, {{ $estimate['component_played'] }} played matches, {{ $estimate['component_inferred'] }} inferred comparisons. {{ $estimate['bridge_count'] }} narrow connections; {{ $estimate['division_links'] }} inferred A/B links. These links are not played matches.</p>
-        <div class="table-responsive"><table class="table"><thead><tr><th>Comparable player in this group</th><th>Shared estimate</th></tr></thead><tbody>
-            @foreach($estimate['comparators'] as $comparator)
-                <tr><td><a href="{{ route('backend.player-performance.show', $comparator['id']) }}">{{ $comparator['name'] }}</a></td><td>{{ $comparator['score'] === null ? 'Withheld' : number_format($comparator['score'], 1).'/100' }}</td></tr>
-            @endforeach
-        </tbody></table></div>
         <details class="mb-3"><summary>Players connecting multiple event fields</summary>
             <p>Shared entrants connect event evidence, including regional and open tournaments. Event names and regions confer no strength bonus. These are provenance samples, not claims of head-to-head matches.</p>
             @forelse($estimate['anchors'] as $anchor)
@@ -54,6 +70,7 @@
             @empty
                 <p>No multi-event connection in the retained provenance sample.</p>
             @endforelse
+        </details>
         </details>
         </details>
         </section>
@@ -74,16 +91,34 @@
 </div>
 <div id="performance-results">
 @foreach($performance['disciplines'] as $discipline => $preview)
+@php
+    $wins = $preview['cohorts']->sum('wins');
+    $losses = $preview['cohorts']->sum('losses');
+    $matches = $wins + $losses;
+@endphp
 <div class="card mb-4"><div class="card-body">
     <h2 class="h4">{{ ucfirst($discipline) }}</h2>
     @if($preview['truncated'])<p class="alert alert-warning">Limited to the latest 50 fields for this player. Older fields within the window were omitted.</p>@endif
+    @if($matches)
+        <div class="row g-2 mb-2">
+            <div class="col-6"><div class="bg-label-success rounded p-2 px-3"><strong class="fs-4">{{ $wins }}</strong> {{ Str::plural('win', $wins) }}</div></div>
+            <div class="col-6"><div class="bg-label-danger rounded p-2 px-3"><strong class="fs-4">{{ $losses }}</strong> {{ Str::plural('loss', $losses) }}</div></div>
+        </div>
+        <div class="progress mb-2" style="height:.55rem" aria-hidden="true">
+            <div class="progress-bar bg-success" style="width:{{ 100 * $wins / $matches }}%"></div>
+            <div class="progress-bar bg-danger" style="width:{{ 100 * $losses / $matches }}%"></div>
+        </div>
+        <p class="small text-muted mb-2">{{ $matches }} eligible published {{ Str::plural('match', $matches) }}</p>
+    @else
+        <p class="mb-2">No eligible published {{ $discipline }} matches.</p>
+    @endif
+    <details>
+    <summary class="text-primary py-2">See finishing results and head-to-head matches</summary>
     @forelse($preview['cohorts'] as $cohort)
         <p><strong>{{ number_format($cohort['score'], 1) }}/100 — provisional</strong> · {{ $cohort['cohort'] }} ({{ $cohort['band'] }}) · {{ $cohort['finish_count'] }} finishes / {{ $cohort['match_count'] }} matches ({{ $cohort['wins'] }} wins, {{ $cohort['losses'] }} losses) across {{ $cohort['count'] }} events · Latest {{ $cohort['last_played'] }}</p>
     @empty
         <p>Unrated: no eligible {{ $discipline }} results.</p>
     @endforelse
-    <details>
-    <summary class="text-primary py-2">See finishing results and head-to-head matches</summary>
     <p class="mt-2">{{ $preview['finish_count'] }} eligible finishes and {{ $preview['match_count'] }} eligible matches counted from all published history. Evidence below shows the latest {{ $preview['evidence']->count() }} of {{ $preview['evidence_count'] }} finish records and {{ $preview['match_evidence']->count() }} of {{ $preview['match_evidence_count'] }} match records; older eligible results still count.</p>
     <div class="table-responsive"><table class="table">
         <thead><tr><th>Event / date</th><th>Category / division</th><th>Finish / field</th><th>Points</th><th>Evidence</th></tr></thead>
