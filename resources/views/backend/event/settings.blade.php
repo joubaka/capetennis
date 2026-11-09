@@ -295,7 +295,7 @@
   <p>Choose this reusable preset for this team event. Other events keep their own selection criteria.</p>
   <label class="form-label" for="selection-criteria-preset">Selection criteria</label>
   <select id="selection-criteria-preset" class="form-select mb-3" @disabled($selectionCriteriaLocked)>
-    <option value="legacy" @selected($selectionCriteria['preset'] === 'legacy')>Existing selection criteria</option>
+    <option value="legacy" @selected($selectionCriteria['preset'] !== 'platteland_v1')>{{ app(\App\Services\TeamSelectionCriteria::class)->isInterDistricts($event) ? 'Inter-Districts selection criteria (version 1)' : 'Existing selection criteria' }}</option>
     <option value="platteland_v1" @selected($selectionCriteria['preset'] === 'platteland_v1')>Platteland criteria for selection of teams (version 1)</option>
   </select>
   <details class="mb-3">

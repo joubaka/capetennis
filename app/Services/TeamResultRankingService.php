@@ -66,6 +66,7 @@ class TeamResultRankingService
     {
         $criteria = app(TeamSelectionCriteria::class)->context($event, $excludedResultRegionIds);
         $platteland = $criteria['preset'] === TeamSelectionCriteria::PLATTELAND;
+        $interDistricts = $criteria['preset'] === TeamSelectionCriteria::INTER_DISTRICTS;
         if ($platteland) $formats = [RubberType::SINGLES, RubberType::REVERSE_SINGLES];
         $excludedResultRegionIds = $criteria['excluded_result_region_ids'];
         $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
@@ -194,20 +195,28 @@ class TeamResultRankingService
                 foreach ($run as $player) $rows[$player['id']]['cross_band_review'][] = $context;
             }
         }
-        $ranking = collect($rows)->map(function ($row) use ($criteria, $platteland) {
+        $ranking = collect($rows)->map(function ($row) use ($criteria, $platteland, $interDistricts) {
             $row['selection_criteria'] = $criteria;
             $row['ranks'] = array_values(array_unique($row['ranks']));
             $row['teams'] = array_values(array_unique($row['teams']));
             $row['source_team_ids'] = array_values(array_unique($row['source_team_ids']));
             // Conservative weighting if historic rosters disagree; expose the discrepancy for review.
             $row['rank'] = max($row['ranks']);
+            $interDistrictsLastBand = $interDistricts && in_array($row['rank'], [9, 10], true);
             $row['starting_credit'] = count($row['ranks']) === 1 && count($row['source_team_ids']) === 1
                 && ! in_array(false, $row['roster_credit_evidence'], true) ? 1 : 0;
-            $row['roster_credit_reason'] = $row['starting_credit'] ? 'One automatic roster win for the higher player in a confirmed same-team pair.'
-                : (($platteland ? $row['rank'] % 2 === 1 : in_array($row['rank'], [1, 3, 5, 7], true)) ? 'No automatic roster win: the complete same-team pair or historical roster position could not be confirmed unambiguously.' : 'The lower roster position receives no automatic roster win.');
+            $row['roster_credit_reason'] = match (true) {
+                $row['starting_credit'] === 1 => 'One automatic roster win for the higher player in a confirmed same-team pair.',
+                $interDistrictsLastBand => 'Band 9–10 earns points from played wins only.',
+                $platteland ? $row['rank'] % 2 === 1 : in_array($row['rank'], [1, 3, 5, 7], true) => 'No automatic roster win: the complete same-team pair or historical roster position could not be confirmed unambiguously.',
+                default => 'The lower roster position receives no automatic roster win.',
+            };
             unset($row['roster_credit_evidence']);
             $row['credited_wins'] = $row['wins'] + $row['starting_credit'];
-            $row['points_per_win'] = $platteland && $row['rank'] > 8 ? 1 : $this->points($row['rank'], 1);
+            $row['points_per_win'] = match (true) {
+                $platteland && $row['rank'] > 8, $interDistrictsLastBand => 1,
+                default => $this->points($row['rank'], 1),
+            };
             $row['points'] = $row['points_per_win'] * $row['credited_wins'];
             $row['band_index'] = (int) ceil($row['rank'] / 2);
             $row['band'] = (2 * (int) ceil($row['rank'] / 2) - 1).'–'.(2 * (int) ceil($row['rank'] / 2));
@@ -310,7 +319,28 @@ class TeamResultRankingService
         // A pairwise same-team override can cycle against cross-team set differences.
         // Compare the highest remaining roster player from each team instead, using
         // the existing set-difference/direct-result order among eligible players.
-        $ranking = $ranking->groupBy(fn ($row) => $band($row).':'.$row['points'])
+        if ($preset !== TeamSelectionCriteria::INTER_DISTRICTS) {
+            $ranking = $this->applyRosterPrecedence($ranking, $band);
+        }
+        // Roster precedence can separate otherwise unresolved cross-team ties.
+        // Every shared group spanning the selection boundary still needs review.
+        $cutoffKeys = $ranking->take(10)->pluck('_position_key')->intersect($ranking->slice(10)->pluck('_position_key'))->all();
+        $position = 0; $previous = null;
+        return $ranking->map(function ($row, $index) use ($cutoffKeys, &$position, &$previous) {
+            $key = $row['_position_key'];
+            if ($previous !== $key) $position = $index + 1;
+            $previous = $key;
+            $row['position'] = $position;
+            $row['cutoff_tie'] = in_array($key, $cutoffKeys, true);
+            $row['suggested'] = $index < 10 && ! $row['cutoff_tie'];
+            unset($row['_position_key']);
+            return $row;
+        });
+    }
+
+    private function applyRosterPrecedence(Collection $ranking, callable $band): Collection
+    {
+        return $ranking->groupBy(fn ($row) => $band($row).':'.$row['points'])
             ->flatMap(function ($bucket) {
                 $source = fn ($row) => count($row['source_team_ids']) === 1 && count($row['ranks']) === 1 ? $row['source_team_ids'][0] : null;
                 $remaining = $bucket->values();
@@ -330,20 +360,6 @@ class TeamResultRankingService
                 }
                 return $ordered;
             })->values();
-        // Roster precedence can separate otherwise unresolved cross-team ties.
-        // Every shared group spanning the selection boundary still needs review.
-        $cutoffKeys = $ranking->take(10)->pluck('_position_key')->intersect($ranking->slice(10)->pluck('_position_key'))->all();
-        $position = 0; $previous = null;
-        return $ranking->map(function ($row, $index) use ($cutoffKeys, &$position, &$previous) {
-            $key = $row['_position_key'];
-            if ($previous !== $key) $position = $index + 1;
-            $previous = $key;
-            $row['position'] = $position;
-            $row['cutoff_tie'] = in_array($key, $cutoffKeys, true);
-            $row['suggested'] = $index < 10 && ! $row['cutoff_tie'];
-            unset($row['_position_key']);
-            return $row;
-        });
     }
 
     private function orderPlatteland(Collection $ranking, int $teamSize): Collection

@@ -70,6 +70,43 @@ class TeamWorkspaceResultsTest extends TestCase
         $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
     }
 
+    public function test_inter_districts_scores_the_last_band_and_puts_sets_before_roster_order(): void
+    {
+        [$event, , $draw, $lower, $opponent] = $this->groupedScenario(['id' => 242]);
+        $this->makeTeamEvent($event);
+        $lowerMembership = TeamPlayer::where('player_id', $lower->id)->firstOrFail();
+        $lowerMembership->update(['rank' => 10]);
+        TeamPlayer::where('player_id', $opponent->id)->update(['rank' => 9]);
+        $higher = Player::factory()->create();
+        TeamPlayer::create(['team_id' => $lowerMembership->team_id, 'player_id' => $higher->id, 'rank' => 9]);
+        $this->fixture($draw, $lower, $opponent, [[6, 2], [6, 3]]);
+        $this->fixture($draw, $higher, $opponent, [[6, 2], [2, 6], [6, 3]], 4);
+
+        $legacy = $this->groupedRequest($event)->assertOk();
+        $legacy->assertJsonPath('ranking.0.id', $higher->id)->assertJsonPath('ranking.0.points', 0);
+        $event->update(['name' => 'Inter-Districts Tournament Primary Schools 2026']);
+
+        $revised = $this->groupedRequest($event)->assertOk()
+            ->assertJsonPath('ranking.0.id', $lower->id)
+            ->assertJsonPath('ranking.0.points_per_win', 1)
+            ->assertJsonPath('ranking.0.points', 1)
+            ->assertJsonPath('ranking.0.set_difference', 2)
+            ->assertJsonPath('ranking.1.id', $higher->id)
+            ->assertJsonPath('ranking.1.points', 1)
+            ->assertJsonPath('ranking.1.starting_credit', 0)
+            ->assertJsonPath('ranking.2.points', 0);
+        $this->assertStringContainsString('Inter-Districts selection criteria', $revised->json('html'));
+        $this->assertNotSame($legacy->json('criteria_fingerprint'), $revised->json('criteria_fingerprint'));
+
+        $input = ['group_key' => '10-boys', 'region_ids' => $event->regions()->pluck('team_regions.id')->all(),
+            'formats' => ['singles', 'reverse_singles'], 'selected_keys' => [(string) $lower->id], 'reasons' => [], 'version' => 0];
+        $url = route('backend.team-result-selection.store', $event);
+        $this->putJson($url, $input)->assertConflict();
+        $this->putJson($url, $input + ['criteria_fingerprint' => $legacy->json('criteria_fingerprint')])->assertConflict();
+        $this->putJson($url, $input + ['criteria_fingerprint' => $revised->json('criteria_fingerprint')])->assertOk()
+            ->assertJsonPath('draft.snapshot.0.selection_criteria.preset', \App\Services\TeamSelectionCriteria::INTER_DISTRICTS);
+    }
+
     public function test_platteland_preset_settings_are_reusable_event_scoped_and_finalization_locked(): void
     {
         [$event] = $this->groupedScenario(); $this->makeTeamEvent($event);
@@ -895,9 +932,9 @@ class TeamWorkspaceResultsTest extends TestCase
         $this->assertStringContainsString('add a comment if useful', $response->json('html'));
     }
 
-    private function groupedScenario(): array
+    private function groupedScenario(array $eventAttributes = []): array
     {
-        $scenario = $this->scenario();
+        $scenario = $this->scenario($eventAttributes);
         [$event, $category] = $scenario;
         $category->category->update(['name' => 'u/10 Boys']);
         $region = \App\Models\TeamRegion::create(['region_name' => 'Included region', 'short_name' => 'INC']);
@@ -1067,11 +1104,11 @@ class TeamWorkspaceResultsTest extends TestCase
         ], $overrides));
     }
 
-    private function scenario(): array
+    private function scenario(array $eventAttributes = []): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
-        $event = Event::factory()->create();
+        $event = Event::factory()->create($eventAttributes);
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id]);
         $home = Player::factory()->create();

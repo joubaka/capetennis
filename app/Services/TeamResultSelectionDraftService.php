@@ -14,8 +14,9 @@ class TeamResultSelectionDraftService
     public function save(Event $event, array $input, int $actorId): TeamResultSelectionDraft
     {
         $event = $event->fresh();
-        $criteriaFingerprint = app(TeamSelectionCriteria::class)->fingerprint($event);
-        if (isset($event->team_result_settings['criteria_preset']) || isset($input['criteria_fingerprint'])) {
+        $criteria = app(TeamSelectionCriteria::class);
+        $criteriaFingerprint = $criteria->fingerprint($event);
+        if ($criteria->isInterDistricts($event) || isset($event->team_result_settings['criteria_preset']) || isset($input['criteria_fingerprint'])) {
             abort_unless(hash_equals($criteriaFingerprint, $input['criteria_fingerprint'] ?? ''), 409, 'Selection criteria changed. Reload the ranking before saving.');
         }
         $setup = $this->rankings->setup($event);
@@ -25,8 +26,8 @@ class TeamResultSelectionDraftService
         if (array_diff($regions, $setup['regions']->pluck('id')->all()) || array_diff($excludedResultRegions, $setup['regions']->pluck('id')->all()) || array_diff($input['formats'], $setup['formats']->all())) {
             throw ValidationException::withMessages(['setup' => 'Choose regions and singles formats belonging to this event.']);
         }
-        if (app(TeamSelectionCriteria::class)->isPlatteland($event)) {
-            $excludedResultRegions = app(TeamSelectionCriteria::class)->context($event, $excludedResultRegions)['excluded_result_region_ids'];
+        if ($criteria->isPlatteland($event)) {
+            $excludedResultRegions = $criteria->context($event, $excludedResultRegions)['excluded_result_region_ids'];
             $input['formats'] = ['singles', 'reverse_singles'];
         }
         $ranking = $this->rankings->ranking($event, $input['group_key'], $regions, $input['formats'], $excludedResultRegions);
