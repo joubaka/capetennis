@@ -12,6 +12,24 @@ class TeamSelectionPreviewTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_preview_defaults_to_a_saved_group_and_explains_its_reviewed_order(): void
+    {
+        [$event, $team, $region] = $this->scenario();
+        $draft = $this->draft($event, $region, ['1'], [
+            ['id' => 1, 'name' => 'First by calculation', 'draft_position' => 2, 'position' => 1, 'points' => 400],
+            ['id' => 2, 'name' => 'First by review', 'draft_position' => 1, 'position' => 2, 'points' => 350],
+        ]);
+        $draft->update(['group_key' => '11-boys', 'version' => 2]);
+        $url = route('backend.selection-preview.show', $event);
+
+        $this->get($url)->assertOk()->assertSee('Latest saved draft · Version 2')
+            ->assertSee('Full saved ranking')
+            ->assertSeeInOrder(['>First by review</th><td>2</td><td>350', '>First by calculation</th><td>1</td><td>400'], false);
+        $this->get($url.'?age=10&gender=boys')->assertOk()
+            ->assertSee('No saved selection ranking is available for this group.')
+            ->assertDontSee('Full saved ranking');
+    }
+
     public function test_preview_is_private_event_scoped_and_includes_unselected_rosters_without_results(): void
     {
         [$event, $team, $region] = $this->scenario();

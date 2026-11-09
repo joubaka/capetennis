@@ -35,7 +35,7 @@ class SelectionPreviewShareTest extends TestCase
         $this->postJson($url, array_replace($input, ['recipient_ids' => [$recipients[0]->id]]))->assertConflict();
         $viewer = $recipients->first();
         $this->actingAs($viewer)->get(route('backend.selection-preview.show', $event))->assertOk()->assertHeader('Cache-Control', 'no-store, private')
-            ->assertDontSee('id="preview-team-setup"', false)->assertDontSee('Share preview')->assertDontSee('Back to Result Ranks');
+            ->assertDontSee('id="preview-team-setup"', false)->assertDontSee('Share preview')->assertDontSee('View calculated results');
         $this->putJson(route('backend.team-selection-size.store', $event), ['team_size' => 10, 'reserve_count' => 2])->assertForbidden();
         $this->putJson(route('backend.team-result-selection.store', $event), [])->assertForbidden();
         $this->postJson($url, $input)->assertForbidden();

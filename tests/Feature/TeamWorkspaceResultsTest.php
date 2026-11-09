@@ -23,18 +23,18 @@ class TeamWorkspaceResultsTest extends TestCase
         [$event] = $this->groupedScenario();
         $this->makeTeamEvent($event);
         $other = Event::factory()->create(['eventType' => $event->eventType]);
-        $url = route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']);
+        $url = route('backend.selection-preview.show', $event);
 
         $this->get(route('admin.events.overview', $event))->assertOk()
-            ->assertSee('href="'.$url.'#tab-result-rank"', false)
+            ->assertSee('href="'.$url.'"', false)
             ->assertSee('Tournament results');
         $this->get(route('admin.events.overview', $other))->assertOk()
-            ->assertSee('href="'.route('admin.events.teams', [$other, 'roster_tab' => 'result-rank']).'#tab-result-rank"', false)
+            ->assertSee('href="'.route('backend.selection-preview.show', $other).'"', false)
             ->assertDontSee($url);
         $this->get($url)->assertOk()
-            ->assertSee('id="tab-result-rank"', false)
-            ->assertSee('Team selection results')
-            ->assertSee('Preview Selections');
+            ->assertSee('Private selection audit')
+            ->assertSee('No saved')
+            ->assertSee('href="'.route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']), false);
 
         $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
     }

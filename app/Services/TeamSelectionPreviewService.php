@@ -23,7 +23,7 @@ class TeamSelectionPreviewService
             return ['team' => $team, 'group' => $rankings->group($fixture)];
         })->filter(fn ($row) => $row['group'] !== null);
         $finalization = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->with('actor:id,name')->first();
-        $drafts = app(SelectionPreviewSnapshotService::class)->drafts($event, $finalization);
+        $drafts = app(SelectionPreviewSnapshotService::class)->draftsForFinalization($event, $finalization);
         $draftVersions = $drafts->mapWithKeys(fn ($draft, $key) => [$key => (int) $draft->version])->all();
         $navigationGroups = $grouped->pluck('group')->merge($drafts->keys()->map(function ($key) {
             if (! preg_match('/^([1-9][0-9]?)-(boys|girls)$/', $key, $matches)) return null;
@@ -34,7 +34,9 @@ class TeamSelectionPreviewService
         $choices = $navigationGroups->filter(fn ($group) => ($requestedAge === null || $group['age'] === $requestedAge)
             && ($requestedGender === null || $group['gender'] === $requestedGender));
         abort_if(($requestedAge !== null || $requestedGender !== null) && $choices->isEmpty(), 404);
-        $active = $choices->first();
+        $active = $requestedAge === null && $requestedGender === null
+            ? ($choices->first(fn ($group) => $drafts->has($group['key'])) ?? $choices->first())
+            : $choices->first();
         $age = $active['age'] ?? null;
         $gender = $active['gender'] ?? null;
         $activeGroupKey = $active['key'] ?? null;

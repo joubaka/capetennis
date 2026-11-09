@@ -42,7 +42,7 @@
     <a href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
     @if($event->isTeam() && !$event->isInterprovincialTrials())
       @can('event.manage', $event)
-        <a href="{{ route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']).'#tab-result-rank' }}"><i class="ti ti-award" aria-hidden="true"></i>Tournament results</a>
+        <a href="{{ route('backend.selection-preview.show', $event) }}"><i class="ti ti-award" aria-hidden="true"></i>Tournament results</a>
       @endcan
     @endif
   @endcan

@@ -33,6 +33,7 @@ class EventSelectionFinalizationTest extends TestCase
         $this->assertSame(10, $preview['teamSize']);
         $this->assertSame($name, $preview['groups']->first()['selected']->first()['name']);
         $this->get(route('backend.selection-preview.show', ['event' => $event, 'age' => 10, 'gender' => 'boys']))->assertOk()->assertSee('Finalized ranking')
+            ->assertSee('Locked ranking · Saved from draft version 1')->assertSee('Full saved ranking')
             ->assertDontSee('Later draft name')->assertDontSee('id="preview-team-setup"', false);
         $this->putJson(route('backend.team-selection-size.store', $event), ['team_size' => 10, 'reserve_count' => 2])->assertConflict();
         $noteUrl = route('backend.selection-preview-comments.show', $event).'?group_key=10-boys&player_key='.$drafts[0]->snapshot[0]['id'];
@@ -117,7 +118,7 @@ class EventSelectionFinalizationTest extends TestCase
         $viewer = User::factory()->create();
         SelectionPreviewGrant::create(['event_id' => $event->id, 'user_id' => $viewer->id, 'granted_by' => $actor->id]);
         $this->actingAs($viewer)->postJson($url, $unlock)->assertForbidden();
-        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertDontSee('Unlock all saved teams');
+        $this->get(route('backend.selection-preview.show', $event))->assertOk()->assertDontSee('Unlock all saved teams')->assertDontSee('Full saved ranking');
         $other = Event::factory()->create(); $actor->adminEvents()->attach($other);
         $this->actingAs($actor)->postJson(route('backend.selection-finalization.reopen', $other), $unlock)->assertNotFound();
         $this->assertDatabaseCount('event_selection_reopenings', 0);
