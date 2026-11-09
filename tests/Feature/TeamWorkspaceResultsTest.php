@@ -18,6 +18,27 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_tournament_results_shortcut_opens_the_events_selection_workspace(): void
+    {
+        [$event] = $this->groupedScenario();
+        $this->makeTeamEvent($event);
+        $other = Event::factory()->create(['eventType' => $event->eventType]);
+        $url = route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']);
+
+        $this->get(route('admin.events.overview', $event))->assertOk()
+            ->assertSee('href="'.$url.'#tab-result-rank"', false)
+            ->assertSee('Tournament results');
+        $this->get(route('admin.events.overview', $other))->assertOk()
+            ->assertSee('href="'.route('admin.events.teams', [$other, 'roster_tab' => 'result-rank']).'#tab-result-rank"', false)
+            ->assertDontSee($url);
+        $this->get($url)->assertOk()
+            ->assertSee('id="tab-result-rank"', false)
+            ->assertSee('Team selection results')
+            ->assertSee('Preview Selections');
+
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+    }
+
     public function test_platteland_preset_settings_are_reusable_event_scoped_and_finalization_locked(): void
     {
         [$event] = $this->groupedScenario(); $this->makeTeamEvent($event);
