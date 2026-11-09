@@ -90,6 +90,8 @@
 .result-player-identity { min-width: 0; flex: 1; display: grid; gap: .12rem; }
 .result-player-identity strong { font-size: .95rem; color: var(--roster-ink); overflow-wrap: anywhere; }
 .result-player-identity span { color: #526580; font-size: .75rem; overflow-wrap: anywhere; }
+.result-player-name { display: flex; flex-wrap: wrap; align-items: center; gap: .12rem .4rem; }
+.result-player-name .result-player-ctr { padding: .05rem .35rem; line-height: 1.4; white-space: nowrap; }
 .result-player-points { display: grid; text-align: right; flex: 0 0 auto; }
 .result-player-points strong { font-size: 1.12rem; line-height: 1.2; color: var(--roster-ink); }
 .result-player-points span { font-size: .7rem; color: #526580; }

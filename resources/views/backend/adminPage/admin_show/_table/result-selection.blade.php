@@ -32,12 +32,24 @@
   </div>
   <ol data-teams-table class="result-player-list" aria-label="Calculated player ranking and suggested top 10">
   @foreach($ranking as $player)
-    @php $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0; @endphp
+    @php
+      $wonAllCountedBandMatches = !$player['band_attribution_uncertain'] && $player['own_band_record']['wins'] > 0 && $player['own_band_record']['losses'] === 0;
+      $rating = $player['cape_tennis_rating'] ?? null;
+    @endphp
     <li data-result-player="{{ $player['id'] }}" data-player-name="{{ $player['name'] }}" data-player-region="{{ $player['region'] }}" data-player-suggested="{{ $player['suggested'] ? '1' : '0' }}" data-player-cutoff="{{ $player['cutoff_tie'] ? '1' : '0' }}" @class(['result-player-card', 'result-player-card-lost-all' => $player['lost_all_counted_band_matches'], 'result-player-card-won-all' => $wonAllCountedBandMatches])>
       <div class="result-player-heading">
         <label class="result-player-select"><input type="checkbox" class="form-check-input" data-selection-player value="{{ $player['id'] }}" {{ $player['suggested'] ? 'checked' : '' }}><span class="visually-hidden">Select {{ $player['name'] }}</span></label>
         <span class="result-position" title="Calculated position">{{ $player['position'] }}</span>
-        <div class="result-player-identity"><strong>{{ $player['name'] }}</strong><span>{{ $player['region'] }} · {{ implode(', ', $player['teams']) }}</span><span>Roster {{ implode(', ', $player['ranks']) }} · Band {{ $player['band'] }} · {{ $player['wins'] }}W / {{ $player['losses'] }}L</span></div>
+        <div class="result-player-identity">
+          <div class="result-player-name">
+            <strong>{{ $player['name'] }}</strong>
+            @if(is_numeric($rating['score'] ?? null) && is_finite((float) $rating['score']))
+              <span class="result-tag result-player-ctr" title="Informational rating within this comparison group">CTR {{ number_format((float) $rating['score'], 1) }}@if($rating['snapshot_stale']) · Stale @endif<span class="visually-hidden"> · Within-group rating, informational only</span></span>
+            @endif
+          </div>
+          <span>{{ $player['region'] }} · {{ implode(', ', $player['teams']) }}</span>
+          <span>Roster {{ implode(', ', $player['ranks']) }} · Band {{ $player['band'] }} · {{ $player['wins'] }}W / {{ $player['losses'] }}L</span>
+        </div>
         <div class="result-player-points"><strong>{{ $player['points'] }}</strong><span>points</span></div>
       </div>
       <div class="result-player-tags">
@@ -62,8 +74,7 @@
         <div><dt>Set difference</dt><dd>{{ $player['set_difference'] > 0 ? '+' : '' }}{{ $player['set_difference'] }}</dd></div>
       </dl>
       <p class="result-heading-hint">Points: ({{ $player['wins'] }} actual wins + {{ $player['starting_credit'] }} automatic roster win) × {{ $player['points_per_win'] }} = {{ $player['points'] }}. {{ $player['roster_credit_reason'] ?? '' }}</p>
-      @if(isset($player['cape_tennis_rating']))
-        @php $rating = $player['cape_tennis_rating']; @endphp
+      @if($rating !== null)
         <p class="result-review-notice">
           <strong>Cape Tennis rating · {{ $rating['cohort'] }}</strong>:
           @if($rating['score'] !== null)
