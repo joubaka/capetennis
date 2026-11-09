@@ -13,6 +13,32 @@ class EventSelectionFinalizationTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_extended_list_keeps_locked_picks_then_uses_frozen_calculated_order(): void
+    {
+        [$event, $actor, $drafts, $input] = $this->scenario(22, 12);
+        $draft = $drafts[0];
+        $snapshot = collect($draft->snapshot)->map(fn ($row, $index) => array_replace($row, [
+            'position' => $index === 2 ? 2 : $index + 1,
+            'draft_position' => $index === 2 ? 22 : ($index === 21 ? 3 : $index + 1),
+        ]));
+        $picked = $snapshot->slice(6, 12)->values();
+        $draft->update(['snapshot' => $snapshot->all(), 'selected_keys' => $picked->pluck('id')->map('strval')->all()]);
+
+        $url = route('backend.selection-preview.show', ['event' => $event, 'age' => 10, 'gender' => 'boys']);
+        $this->get($url)->assertOk()->assertDontSee('View 1–20 selection list');
+        $this->postJson(route('backend.selection-finalization.store', $event), $input)->assertOk();
+        $draft->update(['snapshot' => []]);
+
+        $response = $this->get($url)->assertOk()->assertSee('View 1–20 selection list');
+        $extended = $response->viewData('groups')->first()['extended_selection'];
+        $this->assertSame($picked->pluck('id')->concat($snapshot->take(6)->pluck('id'))->concat($snapshot->slice(18, 2)->pluck('id'))->all(), $extended->pluck('id')->all());
+        $this->assertSame(['Locked main team' => 10, 'Locked reserve' => 2, 'Additional candidate' => 8], $extended->countBy('list_status')->all());
+
+        $viewer = User::factory()->create();
+        SelectionPreviewGrant::create(['event_id' => $event->id, 'user_id' => $viewer->id, 'granted_by' => $actor->id]);
+        $this->actingAs($viewer)->get($url)->assertOk()->assertDontSee('View 1–20 selection list');
+    }
+
     public function test_all_saved_groups_finalize_atomically_idempotently_and_read_the_frozen_ranking(): void
     {
         [$event, $actor, $drafts, $input] = $this->scenario(13, 12);
@@ -32,6 +58,7 @@ class EventSelectionFinalizationTest extends TestCase
         $preview = app(TeamSelectionPreviewService::class)->preview($event, 10, 'boys');
         $this->assertSame(10, $preview['teamSize']);
         $this->assertSame($name, $preview['groups']->first()['selected']->first()['name']);
+        $this->assertCount(13, $preview['groups']->first()['extended_selection']);
         $this->get(route('backend.selection-preview.show', ['event' => $event, 'age' => 10, 'gender' => 'boys']))->assertOk()->assertSee('Finalized ranking')
             ->assertSee('Locked ranking · Saved from draft version 1')->assertSee('Full saved ranking')
             ->assertDontSee('Later draft name')->assertDontSee('id="preview-team-setup"', false);

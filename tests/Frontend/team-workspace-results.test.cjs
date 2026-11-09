@@ -172,12 +172,13 @@ test('failed draft lookup exposes retry and preserves choices; retry establishes
   assert.deepEqual(editor.state().choices, ['player-5', 'player-6']);
 });
 
-function requestFor(values) {
+function requestFor(values, group = '10-boys', lockedLinks = [], unavailable = null) {
   let request;
-  const category = { value: '10-boys', dataset: { event_id: '241', name: 'u/10 Boys' } };
+  const category = { value: group, dataset: { event_id: '241', name: 'Test group' } };
   const target = { setAttribute() {} };
   const document = {
-    querySelector: selector => selector === '.category-radio:checked' ? category : null,
+    querySelector: selector => ({ '.category-radio:checked': category, '[data-locked-team-unavailable]': unavailable })[selector],
+    querySelectorAll: selector => selector === '[data-locked-team-group]' ? lockedLinks : [],
     getElementById: id => id === 'category-table' ? target : { dataset: { resultUrl: '/results' } },
   };
   const $ = selector => ({
@@ -195,6 +196,18 @@ function requestFor(values) {
     ${loadSource}; loadResults();`)($, document);
   return request;
 }
+
+test('locked team links follow the chosen age and gender before results return', () => {
+  const visibility = () => ({ classList: { toggle(name, hidden) { this.hidden = hidden; } } });
+  const links = ['10-boys', '11-girls'].map(group => ({ ...visibility(), dataset: { lockedTeamGroup: group } }));
+  const unavailable = visibility();
+  requestFor({}, '11-girls', links, unavailable);
+  assert.deepEqual(links.map(link => link.classList.hidden), [true, false]);
+  assert.equal(unavailable.classList.hidden, true);
+  requestFor({}, '11-boys', links, unavailable);
+  assert.deepEqual(links.map(link => link.classList.hidden), [true, true]);
+  assert.equal(unavailable.classList.hidden, false);
+});
 
 test('initial setup sends empty exclusions as a JSON array', () => {
   const request = requestFor({ '[data-result-region]:checked': ['120'], '[data-result-format]:checked': ['singles'] });

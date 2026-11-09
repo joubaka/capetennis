@@ -18,6 +18,37 @@ class TeamWorkspaceResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_calculated_order_links_only_to_groups_with_a_locked_team(): void
+    {
+        [$event, , $draw, $home, $away] = $this->groupedScenario();
+        $this->makeTeamEvent($event);
+        $this->fixture($draw, $home, $away, []);
+        $this->fixture($draw, $home, $away, []);
+        TeamFixture::where('draw_id', $draw->id)->latest('id')->first()->update(['age' => 'u/11 Boys']);
+        $url = route('admin.events.teams', [$event, 'roster_tab' => 'result-rank']);
+
+        $this->get($url)->assertOk()
+            ->assertSee('Calculated tournament order')
+            ->assertSee('Preview Selections')
+            ->assertSee('class="result-persistent-actions"', false)
+            ->assertDontSee('data-locked-team-group=', false);
+
+        \App\Models\EventSelectionFinalization::create([
+            'event_id' => $event->id, 'finalized_by' => auth()->id(), 'draft_versions' => ['11-boys' => 1],
+            'groups' => ['11-boys' => ['draft_version' => 1, 'snapshot' => []]], 'fingerprint' => str_repeat('a', 64),
+            'team_size' => 10, 'reserve_count' => 2, 'finalized_at' => now(),
+        ]);
+
+        $this->get($url)->assertOk()
+            ->assertSee('Suggested order from calculation')
+            ->assertSee('class="result-persistent-actions d-none"', false)
+            ->assertSee('No locked team for this group.')
+            ->assertSee('data-locked-team-group="11-boys"', false)
+            ->assertSee('href="'.e(route('backend.selection-preview.show', ['event' => $event, 'age' => 11, 'gender' => 'boys'])).'"', false)
+            ->assertDontSee('data-locked-team-group="10-boys"', false)
+            ->assertDontSee('Preview Selections');
+    }
+
     public function test_tournament_results_shortcut_opens_the_events_selection_workspace(): void
     {
         [$event] = $this->groupedScenario();

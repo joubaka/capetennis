@@ -72,6 +72,22 @@
         @endforeach
       </div>
       @can('event.manage', $event)
+        @if($group['extended_selection']->isNotEmpty())
+          <details class="card p-3 mt-2">
+            <summary class="fw-semibold">View 1–20 selection list</summary>
+            <p class="mt-2 mb-2">The locked main team and reserves keep their saved order. Additional candidates follow the calculated order captured at selection time, up to 20 players.</p>
+            <div class="table-responsive">
+              <table class="table table-sm mb-0" aria-label="{{ $group['name'] }} 1–20 selection list">
+                <thead><tr><th scope="col">Place</th><th scope="col">Player</th><th scope="col">Selection status</th><th scope="col">Saved calculated position</th></tr></thead>
+                <tbody>
+                  @foreach($group['extended_selection'] as $row)
+                    <tr><td>{{ $loop->iteration }}</td><th scope="row">{{ $row['name'] }}</th><td>{{ $row['list_status'] }}</td><td>{{ $row['position'] ?? '—' }}</td></tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+          </details>
+        @endif
         @if($group['draft']?->snapshot)
           <details class="card p-3 mt-2">
             <summary class="fw-semibold">Full saved ranking</summary>

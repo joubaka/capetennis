@@ -43,7 +43,7 @@ class TeamSelectionPreviewService
         $regionIds = $event->regions()->pluck('team_regions.id')->map('intval')->all();
         $teamSize = $finalization?->team_size ?? max(1, min(12, (int) ($event->team_result_settings['team_size'] ?? 10)));
         $reserveCount = $finalization?->reserve_count ?? max(0, min(12 - $teamSize, (int) ($event->team_result_settings['reserve_count'] ?? 2)));
-        $groups = collect($active ? [$gender] : [])->map(function ($gender) use ($age, $drafts, $grouped, $event, $regionIds, $teamSize, $reserveCount) {
+        $groups = collect($active ? [$gender] : [])->map(function ($gender) use ($age, $drafts, $grouped, $event, $regionIds, $teamSize, $reserveCount, $finalization) {
             $key = $age.'-'.$gender;
             $draft = $drafts->get($key);
             $included = array_intersect($regionIds, $draft?->region_ids ?? $event->team_result_settings['region_ids'] ?? $regionIds);
@@ -90,7 +90,15 @@ class TeamSelectionPreviewService
                     });
                     return ['name' => $team->name, 'region' => $team->regions?->region_name, 'rows' => $rows];
                 })->values();
+            // The snapshot retains the calculated order, including ties.
+            $extendedSelection = $finalization && $draft
+                ? $selection->map(fn ($row) => $row + ['list_status' => $row['reserve'] ? 'Locked reserve' : 'Locked main team'])
+                    ->concat($snapshot->except($selected)->map(fn ($row) => $row + ['list_status' => 'Additional candidate']))
+                    ->take(20)
+                : collect();
+
             return ['name' => 'u/'.$age.' '.ucfirst($gender), 'key' => $key, 'draft' => $draft, 'teams' => $cards, 'selected' => $selection,
+                'extended_selection' => $extendedSelection,
                 'over_capacity' => $selection->where('over_capacity', true)->values(),
                 'missing' => collect(array_diff($selected, $seen))->map(fn ($key) => $snapshot->get($key))->filter()->values()];
         })->filter(fn ($group) => $group['teams']->isNotEmpty() || $group['draft'] !== null)->values();

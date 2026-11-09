@@ -482,6 +482,16 @@
     const category = document.querySelector('.category-radio:checked');
     const target = document.getElementById('category-table');
     if (!category || !target) { if (target) target.textContent = 'No singles fixture age groups found.'; return; }
+    const unavailable = document.querySelector('[data-locked-team-unavailable]');
+    if (unavailable) {
+      let hasLockedTeam = false;
+      document.querySelectorAll('[data-locked-team-group]').forEach(link => {
+        const matchesGroup = link.dataset.lockedTeamGroup === category.value;
+        link.classList.toggle('d-none', !matchesGroup);
+        hasLockedTeam ||= matchesGroup;
+      });
+      unavailable.classList.toggle('d-none', hasLockedTeam);
+    }
     resultRequest?.abort();
     const generation = ++resultGeneration;
     const group = category.value;
@@ -588,7 +598,7 @@
         draftReady = false; autosavePaused = true; autosavePending = false; window.clearTimeout(autosaveTimer);
         $('[data-selection-save], [data-selection-player], [data-selection-reason], [data-draft-select], [data-draft-inline-reason], [data-draft-up], [data-draft-down]').prop('disabled', true);
         const list = document.querySelector('[data-draft-order]'); if (list) window.Sortable?.get(list)?.option('disabled', true);
-        updateDraftProgress(); selectionStatus('Finalized—ranking locked. Open Preview Selections to see the final ranking.'); $('[data-selection-preview]').prop('disabled', false); continueSelectionPreview(); return;
+        updateDraftProgress(); selectionStatus('Event selection is locked.'); $('[data-selection-preview]').prop('disabled', false); continueSelectionPreview(); return;
       }
       if (saveRequestBusy || selectionVersion !== requestedVersion) { selectionStatus('The draft was saved while checking. Retry the draft check to get its latest version.'); return; }
       if (!apply) {
