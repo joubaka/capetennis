@@ -109,14 +109,16 @@
       element(`[data-empty="${key}"]`).hidden = draft[key].length !== 0;
       draft[key].forEach((player, index) => {
         const row = document.createElement('li');
-        row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-center';
+        row.className = 'list-group-item d-flex gap-2 align-items-baseline px-2 py-1';
+        const content = document.createElement('div');
+        content.className = 'd-flex flex-grow-1 flex-wrap gap-1 align-items-center justify-content-between';
         const name = playerSummary(player, meritCandidates.find(({ id }) => id === player.id));
-        name.classList.add('flex-grow-1');
         const actions = document.createElement('div');
         actions.className = 'd-flex flex-wrap gap-1';
         const opposite = key === 'selected' ? 'reserves' : 'selected';
         actions.dataset.rosterActions = '';
         const describe = (control) => {
+          control.classList.add('px-2', 'py-1');
           control.setAttribute('aria-label', `${control.textContent} — ${player.name}`);
           return control;
         };
@@ -134,7 +136,8 @@
           }, draft[opposite].length >= limits[opposite])),
           describe(button('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0))
         );
-        row.append(name, actions);
+        content.append(name, actions);
+        row.append(content);
         list.append(row);
       });
     }
@@ -149,13 +152,31 @@
 
   function playerSummary(player, evidence) {
     const summary = document.createElement('div');
-    summary.className = 'text-break';
-    summary.textContent = player.name;
+    summary.className = 'd-flex flex-wrap gap-1 align-items-center text-break';
+    const name = document.createElement('span');
+    name.className = 'fw-semibold';
+    name.textContent = player.name;
+    summary.append(name);
     if (!evidence || !playerInfo) return summary;
 
     const source = document.createElement('small');
-    source.className = 'text-muted ms-1';
+    source.className = `badge rounded-pill text-wrap ${evidence.source === 'Inter-Districts' ? 'bg-label-primary' : 'bg-label-warning'}`;
     source.textContent = [evidence.region, evidence.source].filter(Boolean).join(' · ');
+    summary.append(source);
+    if (evidence.source === 'Inter-Districts') {
+      const flags = [
+        [evidence.lost_all, 'danger', 'Lost all'],
+        [evidence.only_beat_winless, 'warning', 'Only beat winless opponents'],
+        [evidence.wins > 0 && evidence.losses === 0, 'success', 'Won all'],
+      ];
+      for (const [applies, colour, label] of flags) {
+        if (!applies) continue;
+        const flag = document.createElement('small');
+        flag.className = `badge rounded-pill text-wrap bg-label-${colour}`;
+        flag.textContent = label;
+        summary.append(flag);
+      }
+    }
     const info = button('Info', () => {
       playerInfo.querySelector('h5').textContent = player.name;
       const details = candidateMatchResults(evidence);
@@ -168,10 +189,11 @@
       element('[data-player-info-content]').replaceChildren(context, details);
       playerInfo.showModal();
     });
-    info.classList.add('ms-2');
+    info.classList.replace('btn-outline-secondary', 'btn-outline-primary');
+    info.classList.add('px-2', 'py-1');
     info.setAttribute('aria-label', `Results for ${player.name}`);
     info.setAttribute('aria-haspopup', 'dialog');
-    summary.append(source, info);
+    summary.append(info);
     return summary;
   }
 
@@ -182,7 +204,7 @@
     element('[data-merit-message]').hidden = next.length > 0;
     meritList.replaceChildren(...next.map((candidate) => {
       const row = document.createElement('li');
-      row.className = 'list-group-item text-break';
+      row.className = 'list-group-item d-flex gap-2 align-items-baseline px-2 py-1';
       row.append(playerSummary(candidate, candidate));
       return row;
     }));

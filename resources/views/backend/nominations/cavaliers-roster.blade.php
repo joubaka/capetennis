@@ -73,14 +73,14 @@
             <ul class="list-group mb-3 d-none" data-search-results aria-label="Player search results"></ul>
             <div class="row g-3 mb-3">
                 @foreach (['selected' => 'Selected', 'reserves' => 'Reserves'] as $key => $label)
-                    <section class="col-12 col-lg-6" aria-label="{{ $label }}">
-                        <h5 class="h6 d-flex flex-wrap gap-2 align-items-center">
-                            {{ $label }} <span class="badge bg-label-primary" data-count="{{ $key }}"></span>
+                    <section class="col-12 {{ $key === 'selected' ? 'col-lg-7' : 'col-lg-5' }}" aria-label="{{ $label }}">
+                        <h5 class="h6 d-flex flex-wrap gap-2 align-items-center rounded px-2 py-2 mb-2 {{ $key === 'selected' ? 'bg-label-primary' : 'bg-label-info' }}">
+                            {{ $label }} <span class="badge bg-white text-dark" data-count="{{ $key }}"></span>
                         </h5>
                         <ol class="list-group list-group-numbered" data-list="{{ $key }}"></ol>
                         <p class="text-muted small mb-0" data-empty="{{ $key }}" hidden>No players added.</p>
                         @if ($key === 'reserves' && (int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
-                            <h6 class="mt-3 mb-1">Next 10 in merit order</h6>
+                            <h6 class="mt-3 mb-2 rounded px-2 py-2 bg-label-warning">Next 10 in merit order</h6>
                             <p class="text-muted small mb-2">Players outside the selected and reserve lists.</p>
                             <p class="text-muted small mb-0" data-merit-message role="status"></p>
                             <ol class="list-group list-group-numbered" data-merit-list aria-label="Next players in merit order"></ol>
