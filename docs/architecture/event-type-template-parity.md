@@ -42,9 +42,10 @@ precedence when a player appears in both sources. The U13 Girls review also
 offers finalized Platteland U12 Girls main players with no recorded
 Inter-Districts participation as opt-in candidates for reviewers with access
 to both sources. Decline status reflects the current managed invitation records.
-Adding reviewed candidates
-stages a private edit. Save draft persists the order separately from public
-nominations.
+Candidate review checks existing draft players when a draft is reopened.
+Applying additions or removals stages a private edit. The Reserves column
+shows up to ten candidates outside the roster in merit order. Save draft
+persists the order separately from public nominations.
 
 ### Verified local inventory
 

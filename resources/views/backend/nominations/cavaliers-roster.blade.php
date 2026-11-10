@@ -50,13 +50,13 @@
                 </form>
                 <section class="border rounded p-3 mb-3" data-candidate-review aria-labelledby="cavaliers-candidate-heading" hidden>
                     <h5 id="cavaliers-candidate-heading" class="h6">Review Inter-Districts and Platteland candidates</h5>
-                    <p class="small text-muted">Step 1 uses Inter-Districts results with the Platteland band rules and includes source reserves if you manage that event. Step 2 adds locked Platteland reserves, then additional candidates in the saved order. U13 Girls missing-main candidates are unchecked for individual review. Open selected places are checked by default. Check more players to add reserves.</p>
+                    <p class="small text-muted">Step 1 uses Inter-Districts results with the Platteland band rules and includes source reserves if you manage that event. Step 2 adds locked Platteland reserves, then additional candidates in the saved order. A new draft starts with suggested players checked. A saved draft starts with its own players checked. Check or uncheck players, then apply the changes and save the draft.</p>
                     <p class="small text-muted" data-candidate-region-summary></p>
                     <p class="small text-warning" data-candidate-notice hidden></p>
                     <p class="small text-warning" data-platteland-notice hidden></p>
                     <ol class="list-group list-group-numbered mb-3" data-candidate-list></ol>
                     <p class="small mb-2" data-candidate-count aria-live="polite"></p>
-                    <button type="button" class="btn btn-sm btn-primary" data-add-candidates>Add to draft</button>
+                    <button type="button" class="btn btn-sm btn-primary" data-add-candidates>Apply to draft</button>
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-close-candidates>Close review</button>
                 </section>
             @endif
@@ -79,6 +79,12 @@
                         </h5>
                         <ol class="list-group list-group-numbered" data-list="{{ $key }}"></ol>
                         <p class="text-muted small mb-0" data-empty="{{ $key }}" hidden>No players added.</p>
+                        @if ($key === 'reserves' && (int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
+                            <h6 class="mt-3 mb-1">Next 10 in merit order</h6>
+                            <p class="text-muted small mb-2">Players outside the selected and reserve lists.</p>
+                            <p class="text-muted small mb-0" data-merit-message role="status"></p>
+                            <ol class="list-group list-group-numbered" data-merit-list aria-label="Next players in merit order"></ol>
+                        @endif
                     </section>
                 @endforeach
             </div>

@@ -15,6 +15,7 @@
   const reviewCandidates = element('[data-review-candidates]');
   const candidateReview = element('[data-candidate-review]');
   const candidateList = element('[data-candidate-list]');
+  const meritList = element('[data-merit-list]');
   const addCandidates = element('[data-add-candidates]');
   const openSetup = element('[data-open-setup]');
   const candidateSetup = element('[data-candidate-setup]');
@@ -29,6 +30,8 @@
   let searchVersion = 0;
   let found = [];
   let candidates = null;
+  let meritCandidates = [];
+  let previewRequest = null;
   const skippedCandidates = new Set();
 
   function setStatus(message, error = false) {
@@ -81,6 +84,7 @@
           const action = key === 'selected' ? 'Add selected' : 'Add reserve';
           actions.append(button(action, () => {
             draft[key].push(player);
+            skippedCandidates.delete(player.id);
             changed();
           }, draft[key].length >= limits[key]));
         }
@@ -120,6 +124,7 @@
           describe(button('Down', () => moveWithin(key, index, 1), index === draft[key].length - 1)),
           describe(button('Remove', () => {
             draft[key].splice(index, 1);
+            skippedCandidates.add(player.id);
             changed();
           })),
           describe(button(`Move to ${labels[opposite].toLowerCase()}`, () => {
@@ -134,18 +139,60 @@
     }
     renderSearch();
     renderCandidates();
+    renderMerit();
   }
 
   function rosterIds() {
     return new Set([...draft.selected, ...draft.reserves].map((player) => player.id));
   }
 
-  function candidatePlaces() {
-    const selected = limits.selected - draft.selected.length;
-    const reserves = limits.reserves - draft.reserves.length;
+  function renderMerit() {
+    if (!meritList) return;
     const existing = rosterIds();
+    const next = meritCandidates.filter(({ id }) => !existing.has(id)).slice(0, 10);
+    element('[data-merit-message]').hidden = next.length > 0;
+    meritList.replaceChildren(...next.map(({ name, source }) => {
+      const row = document.createElement('li');
+      row.className = 'list-group-item text-break';
+      row.textContent = `${name} · ${source}`;
+      return row;
+    }));
+  }
+
+  function loadPreview() {
+    const url = division.selectedOptions[0]?.dataset.candidateUrl;
+    if (!url) return;
+    if (previewRequest) return previewRequest;
+    const pending = request(url);
+    previewRequest = pending;
+    const message = element('[data-merit-message]');
+    message.textContent = 'Loading merit list…';
+    pending.then((preview) => {
+      if (previewRequest !== pending) return;
+      meritCandidates = preview.candidates;
+      renderMerit();
+      message.textContent = 'No more eligible players in the merit list.';
+    }, () => {
+      if (previewRequest !== pending) return;
+      previewRequest = null;
+      message.textContent = 'Merit list unavailable. Open Review candidates to try again.';
+    });
+    return pending;
+  }
+
+  function candidatePlaces() {
+    const existing = rosterIds();
+    const reviewed = new Set(candidates.map(({ id }) => id));
+    const retained = Object.fromEntries(Object.keys(limits).map((key) => [
+      key, draft[key].filter(({ id }) => !reviewed.has(id) || !skippedCandidates.has(id)),
+    ]));
+    const removed = existing.size - retained.selected.length - retained.reserves.length;
+    const selected = limits.selected - retained.selected.length;
+    const reserves = limits.reserves - retained.reserves.length;
     const checked = candidates.filter(({ id }) => !existing.has(id) && !skippedCandidates.has(id));
     return {
+      retained,
+      removed,
       selected: checked.slice(0, selected),
       reserves: checked.slice(selected, selected + reserves),
       leftOut: Math.max(0, checked.length - selected - reserves),
@@ -153,25 +200,28 @@
   }
 
   function updateCandidateCount() {
-    const { selected, reserves, leftOut } = candidatePlaces();
+    const { retained, removed, selected, reserves, leftOut } = candidatePlaces();
     const places = new Map();
     const setPlaces = (players, label, offset = 0, suffix = '') => {
       players.forEach((player, index) => places.set(player.id, `${label} ${offset + index + 1}${suffix}`));
     };
-    setPlaces(draft.selected, 'Selected', 0, ' · On draft');
-    setPlaces(draft.reserves, 'Reserve', 0, ' · On draft');
-    setPlaces(selected, 'Selected', draft.selected.length);
-    setPlaces(reserves, 'Reserve', draft.reserves.length);
+    setPlaces(retained.selected, 'Selected', 0, ' · On draft');
+    setPlaces(retained.reserves, 'Reserve', 0, ' · On draft');
+    setPlaces(selected, 'Selected', retained.selected.length);
+    setPlaces(reserves, 'Reserve', retained.reserves.length);
+    const existing = rosterIds();
     candidates.forEach((candidate, index) => {
       const place = candidateList.children[index].querySelector('[data-candidate-placement]');
       place.textContent = places.get(candidate.id)
-        ?? (skippedCandidates.has(candidate.id) ? 'Not checked' : 'Beyond available places');
+        ?? (skippedCandidates.has(candidate.id)
+          ? (existing.has(candidate.id) ? 'Remove from draft' : 'Not checked')
+          : 'Beyond available places');
     });
     const remaining = leftOut ? ` · ${leftOut} beyond available places` : '';
     element('[data-candidate-count]').textContent = candidates.length
-      ? `${selected.length} selected · ${reserves.length} reserves to add${remaining}`
+      ? `${selected.length} selected · ${reserves.length} reserves to add${removed ? ` · ${removed} to remove` : ''}${remaining}`
       : 'No eligible candidates found for this division.';
-    addCandidates.disabled = busy || stale || selected.length + reserves.length === 0;
+    addCandidates.disabled = busy || stale || selected.length + reserves.length + removed === 0;
   }
 
   function candidateMatchResults(candidate) {
@@ -212,10 +262,8 @@
     candidateReview.hidden = candidates === null;
     if (candidates === null) return;
 
-    const existing = rosterIds();
     candidateList.replaceChildren();
     candidates.forEach((candidate) => {
-      const alreadyAdded = existing.has(candidate.id);
       const wonAll = candidate.source === 'Inter-Districts' && candidate.wins > 0 && candidate.losses === 0;
       const row = document.createElement('li');
       row.className = 'list-group-item';
@@ -227,8 +275,8 @@
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'form-check-input';
-      checkbox.checked = !alreadyAdded && !skippedCandidates.has(candidate.id);
-      checkbox.disabled = alreadyAdded || busy || stale;
+      checkbox.checked = !skippedCandidates.has(candidate.id);
+      checkbox.disabled = busy || stale;
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) skippedCandidates.delete(candidate.id);
         else skippedCandidates.add(candidate.id);
@@ -326,6 +374,9 @@
         }),
       });
       closeSetup();
+      previewRequest = null;
+      meritCandidates = [];
+      loadPreview();
       setStatus('Setup saved for this division. Review candidates to see the updated list.');
     } catch (error) {
       setStatus(error.message, true);
@@ -359,13 +410,14 @@
     render();
     setStatus('Loading candidates…');
     try {
-      const preview = await request(division.selectedOptions[0].dataset.candidateUrl);
+      const preview = await loadPreview();
       candidates = preview.candidates;
       const existing = rosterIds();
-      const openSelectedPlaces = limits.selected - draft.selected.length;
-      candidates.filter(({ id, opt_in }) => !existing.has(id) && !opt_in).slice(openSelectedPlaces)
-        .forEach(({ id }) => skippedCandidates.add(id));
-      candidates.filter(({ opt_in }) => opt_in).forEach(({ id }) => skippedCandidates.add(id));
+      const defaultPlaces = draft.revision || dirty ? 0 : limits.selected - draft.selected.length;
+      let suggested = 0;
+      candidates.forEach(({ id, opt_in }) => {
+        if (!existing.has(id) && (opt_in || suggested++ >= defaultPlaces)) skippedCandidates.add(id);
+      });
       const summary = element('[data-candidate-region-summary]');
       summary.textContent = `Source division: ${preview.source_division}. Candidate regions: ${preview.candidate_regions.join(', ') || 'None'}. Results excluded: ${preview.excluded_result_regions.join(', ') || 'None'}.`;
       const notice = element('[data-candidate-notice]');
@@ -376,7 +428,7 @@
       const plattelandNotice = element('[data-platteland-notice]');
       plattelandNotice.hidden = !preview.platteland_notice;
       plattelandNotice.textContent = preview.platteland_notice ?? '';
-      setStatus('Review the candidates before adding them.');
+      setStatus('Review the checked players and apply any changes to the draft.');
     } catch (error) {
       setStatus(error.message, true);
     } finally {
@@ -391,12 +443,12 @@
   });
 
   addCandidates?.addEventListener('click', () => {
-    const { selected, reserves } = candidatePlaces();
-    draft.selected.push(...selected);
-    draft.reserves.push(...reserves);
+    const { retained, selected, reserves } = candidatePlaces();
+    draft.selected = [...retained.selected, ...selected];
+    draft.reserves = [...retained.reserves, ...reserves];
     closeCandidateReview();
     changed();
-    setStatus(`${selected.length} selected and ${reserves.length} reserves added. Save draft to keep these changes.`);
+    setStatus('Roster updated. Save draft to keep these changes.');
     save.focus();
   });
 
@@ -446,6 +498,8 @@
   async function load() {
     activeDivision = division.value;
     draft = null;
+    previewRequest = null;
+    meritCandidates = [];
     dirty = false;
     stale = false;
     found = [];
@@ -465,6 +519,7 @@
     setStatus('Loading draft…');
     try {
       draft = await request(division.selectedOptions[0].dataset.draftUrl);
+      loadPreview();
       setStatus(draft.revision ? 'Saved draft loaded.' : 'New draft.');
     } catch (error) {
       reload.classList.remove('d-none');
