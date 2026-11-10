@@ -250,7 +250,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ];
         };
         $lockedMain = $imported($main, 1);
-        $lockedReserve = $imported($linkedReserve, 3);
+        $lockedReserve = $imported($linkedReserve, 3) + ['wins' => 0, 'losses' => 1];
         $unselectedStaleLink = $imported($staleLink, 4);
         foreach ([$lockedMain, $unselectedStaleLink] as $changed) {
             NoProfileTeamPlayer::findOrFail($changed['source_participants'][0]['id'])->update(['player_profile' => $interPlayer->id]);
@@ -258,7 +258,10 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $snapshot = [
             $profile($interPlayer, 10), $lockedReserve, $profile($main, 5),
             $profile($firstReserve, 2), $unselectedStaleLink, $lockedMain,
-            ...$additional->map(fn (Player $player, int $index) => $profile($player, 40 - $index))->all(),
+            ...$additional->map(fn (Player $player, int $index) => array_replace($profile($player, 40 - $index), $index === 0 ? [
+                'wins' => 1, 'losses' => 0,
+                'matches' => [['won' => true, 'opponent_id' => $lockedReserve['id'], 'opponent' => $lockedReserve['name']]],
+            ] : []))->all(),
         ];
         $actor = $this->administrator($event);
         $finalized = EventSelectionFinalization::create([
@@ -285,7 +288,9 @@ class CavaliersTrialRosterDraftTest extends TestCase
                 ['opponent' => 'Another opponent', 'outcome' => 'Won', 'score' => null, 'format' => null],
             ])
             ->assertJsonPath('candidates.2.list_status', 'Locked reserve')
+            ->assertJsonPath('candidates.2.lost_all', true)
             ->assertJsonPath('candidates.3.list_status', 'Additional candidate')
+            ->assertJsonPath('candidates.3.only_beat_winless', true)
             ->assertDontSee('PRIVATE_MATCH_EVIDENCE')->assertDontSee('PRIVATE_SELECTION_COMMENT')
             ->assertDontSee('PRIVATE_SCORE_NOTE')->assertDontSee('PRIVATE_MALFORMED_MATCH');
         $this->assertSame([$interPlayer->id, $firstReserve->id, $linkedReserve->id, ...$additional->modelKeys()],

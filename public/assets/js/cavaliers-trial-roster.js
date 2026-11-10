@@ -117,24 +117,31 @@
         actions.className = 'd-flex flex-wrap gap-1';
         const opposite = key === 'selected' ? 'reserves' : 'selected';
         actions.dataset.rosterActions = '';
-        const describe = (control) => {
+        const describe = (control, iconName) => {
           control.classList.add('px-2', 'py-1');
           control.setAttribute('aria-label', `${control.textContent} — ${player.name}`);
+          if (iconName) {
+            control.title = control.textContent;
+            const icon = document.createElement('i');
+            icon.className = `ti ti-${iconName}`;
+            icon.setAttribute('aria-hidden', 'true');
+            control.replaceChildren(icon);
+          }
           return control;
         };
         actions.append(
-          describe(button('Up', () => moveWithin(key, index, -1), index === 0)),
-          describe(button('Down', () => moveWithin(key, index, 1), index === draft[key].length - 1)),
+          describe(button('Up', () => moveWithin(key, index, -1), index === 0), 'arrow-up'),
+          describe(button('Down', () => moveWithin(key, index, 1), index === draft[key].length - 1), 'arrow-down'),
           describe(button('Remove', () => {
             draft[key].splice(index, 1);
             skippedCandidates.add(player.id);
             changed();
-          })),
+          }), 'trash'),
           describe(button(`Move to ${labels[opposite].toLowerCase()}`, () => {
             draft[opposite].push(draft[key].splice(index, 1)[0]);
             changed();
           }, draft[opposite].length >= limits[opposite])),
-          describe(button('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0))
+          describe(button('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0), 'arrows-exchange')
         );
         content.append(name, actions);
         row.append(content);
@@ -163,19 +170,17 @@
     source.className = `badge rounded-pill text-wrap ${evidence.source === 'Inter-Districts' ? 'bg-label-primary' : 'bg-label-warning'}`;
     source.textContent = [evidence.region, evidence.source].filter(Boolean).join(' · ');
     summary.append(source);
-    if (evidence.source === 'Inter-Districts') {
-      const flags = [
-        [evidence.lost_all, 'danger', 'Lost all'],
-        [evidence.only_beat_winless, 'warning', 'Only beat winless opponents'],
-        [evidence.wins > 0 && evidence.losses === 0, 'success', 'Won all'],
-      ];
-      for (const [applies, colour, label] of flags) {
-        if (!applies) continue;
-        const flag = document.createElement('small');
-        flag.className = `badge rounded-pill text-wrap bg-label-${colour}`;
-        flag.textContent = label;
-        summary.append(flag);
-      }
+    const flags = [
+      [evidence.lost_all, 'danger', 'Lost all'],
+      [evidence.only_beat_winless, 'warning', 'Only beat winless opponents'],
+      [evidence.wins > 0 && evidence.losses === 0, 'success', 'Won all'],
+    ];
+    for (const [applies, colour, label] of flags) {
+      if (!applies) continue;
+      const flag = document.createElement('small');
+      flag.className = `badge rounded-pill text-wrap bg-label-${colour}`;
+      flag.textContent = label;
+      summary.append(flag);
     }
     const info = button('Info', () => {
       playerInfo.querySelector('h5').textContent = player.name;
@@ -315,7 +320,7 @@
 
     candidateList.replaceChildren();
     candidates.forEach((candidate) => {
-      const wonAll = candidate.source === 'Inter-Districts' && candidate.wins > 0 && candidate.losses === 0;
+      const wonAll = candidate.wins > 0 && candidate.losses === 0;
       const row = document.createElement('li');
       row.className = 'list-group-item';
       row.classList.toggle('list-group-item-danger', candidate.lost_all);

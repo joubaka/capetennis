@@ -75,8 +75,11 @@ final class PlattelandFinalizedTrialCandidates
         $players = Player::query()->whereIn('id', $additional->pluck('id'))
             ->get(['id', 'name', 'surname'])->keyBy('id');
         $candidates = $additional->filter(fn (array $candidate) => $players->has($candidate['id']))
-            ->map(function (array $candidate) use ($players) {
+            ->map(function (array $candidate) use ($players, $snapshot) {
                 $row = $candidate['row'];
+                $wins = $row['wins'] ?? null;
+                $losses = $row['losses'] ?? null;
+                $wonMatches = collect($row['matches'] ?? [])->whereStrict('won', true);
                 return [
                     'id' => $candidate['id'],
                     'name' => $players[$candidate['id']]->full_name,
@@ -88,10 +91,16 @@ final class PlattelandFinalizedTrialCandidates
                     'rank' => $row['rank'] ?? null,
                     'source_position' => $row['position'] ?? null,
                     'band' => $row['band'] ?? null,
-                    'wins' => $row['wins'] ?? null,
-                    'losses' => $row['losses'] ?? null,
+                    'wins' => $wins,
+                    'losses' => $losses,
                     'starting_credit' => $row['starting_credit'] ?? null,
-                    'lost_all' => false,
+                    'lost_all' => $wins === 0 && $losses > 0,
+                    'only_beat_winless' => $wins > 0 && $wonMatches->count() === $wins
+                        && $wonMatches->every(function (array $match) use ($snapshot) {
+                            $opponent = $snapshot->get($match['opponent_id'] ?? '');
+
+                            return ($opponent['wins'] ?? null) === 0 && ($opponent['losses'] ?? 0) > 0;
+                        }),
                     'review_adjacent_band' => false,
                     'matches' => CavaliersCandidateMatchEvidence::project($row['matches'] ?? []),
                 ];
