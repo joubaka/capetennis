@@ -338,7 +338,8 @@
   <div class="col-12">
     <ul class="nav nav-pills flex-column flex-sm-row mb-4 align-items-center">
 
-@if($signUp === 'open' && $event->isIndividual() && ! $event->isMasters() && ! $event->isInterprovincialTrials())
+@if($signUp === 'open' && $event->isIndividual() && ! $event->isMasters() && ! $event->isInterprovincialTrials()
+    && (int) $event->id !== \App\Services\CavaliersTrialCandidates::TRIALS_EVENT)
   <a class="btn btn-success btn-sm m-2" href="{{ auth()->check() ? route('register.register', $event->id) : route('login', ['redirect' => route('register.register', $event->id, false)]) }}">
     <i class="ti ti-user-check"></i> Sign Up
   </a>
