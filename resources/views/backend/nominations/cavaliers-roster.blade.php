@@ -50,7 +50,7 @@
                 </form>
                 <section class="border rounded p-3 mb-3" data-candidate-review aria-labelledby="cavaliers-candidate-heading" hidden>
                     <h5 id="cavaliers-candidate-heading" class="h6">Review Inter-Districts and Platteland candidates</h5>
-                    <p class="small text-muted">Step 1 uses Inter-Districts results with the Platteland band rules. Step 2 adds locked Platteland reserves, then additional candidates in the saved order. Checked players fill open selected places first, then reserves.</p>
+                    <p class="small text-muted">Step 1 uses Inter-Districts results with the Platteland band rules. Step 2 adds locked Platteland reserves, then additional candidates in the saved order. Open selected places are checked by default. Check more players to add reserves.</p>
                     <p class="small text-muted" data-candidate-region-summary></p>
                     <p class="small text-warning" data-candidate-notice hidden></p>
                     <p class="small text-warning" data-platteland-notice hidden></p>

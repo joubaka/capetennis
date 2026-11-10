@@ -27,7 +27,8 @@ can have a team base family and still requires its dedicated policy.
 | Overberg Trials view | Existing delegation to the default public template; do not assume a persisted workflow identity from the filename | Explicit template resolution/delegation coverage |
 
 Step 1 of the Cavaliers roster draft previews published Inter-Districts
-candidates for the configured trials event. Each division has separate settings
+candidates for the configured trials event. Both source events use the prior
+age group, such as U10 results for the U11 trial. Each division has separate settings
 for candidate regions and regions whose matches are excluded. The preview uses
 the Platteland ranking criteria, excludes hidden source reserves and
 distinguishes published results from roster-only evidence. It flags any roster

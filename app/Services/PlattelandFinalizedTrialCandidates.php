@@ -7,6 +7,7 @@ use App\Models\EventSelectionFinalization;
 use App\Models\NoProfileTeamPlayer;
 use App\Models\Player;
 use App\Models\User;
+use App\Support\CavaliersCandidateMatchEvidence;
 use Illuminate\Support\Collection;
 
 /** Project only the candidate rows from a private finalized selection. */
@@ -78,6 +79,7 @@ final class PlattelandFinalizedTrialCandidates
                     'starting_credit' => $row['starting_credit'] ?? null,
                     'lost_all' => false,
                     'review_adjacent_band' => false,
+                    'matches' => CavaliersCandidateMatchEvidence::project($row['matches'] ?? []),
                 ];
             })->values();
 

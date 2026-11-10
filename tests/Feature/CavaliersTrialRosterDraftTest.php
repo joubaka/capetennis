@@ -118,7 +118,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
 
     public function test_candidate_setup_is_private_per_division_and_separates_regions_from_result_exclusions(): void
     {
-        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]));
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]), 'U11 Girls');
         $event->team_result_settings = ['team_size' => 9];
         $event->save();
         $otherDivision = $this->division($event)[1];
@@ -157,25 +157,33 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->putJson($setup, ['region_ids' => [$cavaliers], 'excluded_result_region_ids' => [99999]])->assertUnprocessable();
 
         $this->getJson($review)->assertOk()
+            ->assertJsonPath('source_division', 'U10 Girls')
             ->assertJsonPath('missing_regions', ['Winelands 2026'])
             ->assertJsonPath('candidates.0.id', $first->id)
             ->assertJsonPath('candidates.0.source', 'Inter-Districts')
             ->assertJsonPath('candidates.0.wins', 1)
             ->assertJsonPath('candidates.0.lost_all', false)
             ->assertJsonPath('candidates.0.starting_credit', 1)
+            ->assertJsonPath('candidates.0.matches', [[
+                'opponent' => $drakenstein->full_name, 'outcome' => 'Won', 'score' => '6–2, 6–2', 'format' => 'Singles',
+            ]])
             ->assertJsonPath('candidates.1.id', $drakenstein->id)
             ->assertJsonPath('candidates.2.id', $second->id)
             ->assertJsonPath('candidates.2.wins', null)
+            ->assertJsonPath('candidates.2.matches', [])
             ->assertJsonPath('candidates.2.lost_all', false)
             ->assertJsonPath('candidates.3.id', $losing->id)
             ->assertJsonPath('candidates.3.rank', 5)
             ->assertJsonPath('candidates.3.lost_all', true)
+            ->assertJsonPath('candidates.3.matches', [[
+                'opponent' => $drakenstein->full_name, 'outcome' => 'Lost', 'score' => '2–6, 2–6', 'format' => 'Singles',
+            ]])
             ->assertJsonCount(4, 'candidates');
         $this->assertSame(['team_size' => 9], $event->fresh()->team_result_settings);
 
         $draw->update(['published' => false]);
         $rows = collect($this->getJson($review)->assertOk()->json('candidates'));
-        $this->assertTrue($rows->every(fn (array $row) => $row['wins'] === null));
+        $this->assertTrue($rows->every(fn (array $row) => $row['wins'] === null && $row['matches'] === []));
         $draw->update(['published' => true]);
 
         $this->putJson($setup, $custom)->assertOk()->assertExactJson($custom);
@@ -195,7 +203,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
 
     public function test_platteland_step_requires_source_access_and_appends_only_frozen_reserves_then_additional_players(): void
     {
-        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]));
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]), 'U11 Girls');
         $teamType = EventType::forceCreate(['id' => 242, 'name' => 'Team trial source', 'type' => EventType::TEAM]);
         $inter = Event::factory()->create(['id' => 242, 'name' => 'Inter-Districts Tournament Primary Schools 2026', 'eventType' => $teamType->id]);
         $source = Event::factory()->create(['id' => 241, 'name' => 'Platteland Tennis Tournament Primary Schools 2026', 'eventType' => $teamType->id]);
@@ -206,7 +214,12 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $profile = fn (Player $player, int $position) => [
             'id' => $player->id, 'draft_position' => $position, 'wins' => 2, 'losses' => 1, 'band' => '1–2', 'rank' => 1,
             'source_participants' => [['team_id' => $sourceTeam->id, 'type' => 'profile', 'id' => $player->id, 'profile_id' => $player->id]],
-            'matches' => ['PRIVATE_MATCH_EVIDENCE'],
+            'matches' => [
+                ['opponent' => 'Synthetic opponent', 'won' => false, 'score' => '6–4, 6–2', 'format' => 'reverse_singles',
+                    'opponent_id' => 'PRIVATE_MATCH_EVIDENCE'],
+                ['opponent' => 'Another opponent', 'won' => true, 'score' => 'PRIVATE_SCORE_NOTE'],
+                'PRIVATE_MALFORMED_MATCH',
+            ],
         ];
         $imported = function (Player $player, int $position) use ($sourceTeam) {
             $slot = NoProfileTeamPlayer::create(['team_id' => $sourceTeam->id, 'name' => $player->name, 'surname' => $player->surname,
@@ -243,15 +256,21 @@ class CavaliersTrialRosterDraftTest extends TestCase
 
         $this->actingAs($actor)->getJson($url)->assertOk()
             ->assertJsonCount(1, 'candidates')->assertJsonPath('candidates.0.id', $interPlayer->id)
+            ->assertDontSee('Synthetic opponent')
             ->assertJsonPath('platteland_notice', 'You need access to the Platteland selection preview to review Step 2.');
 
         EventAdmin::create(['event_id' => $source->id, 'user_id' => $actor->id]);
         $response = $this->getJson($url)->assertOk()
             ->assertJsonPath('platteland_notice', null)
             ->assertJsonPath('candidates.1.list_status', 'Locked reserve')
+            ->assertJsonPath('candidates.1.matches', [
+                ['opponent' => 'Synthetic opponent', 'outcome' => 'Lost', 'score' => '6–4, 6–2', 'format' => 'Reverse singles'],
+                ['opponent' => 'Another opponent', 'outcome' => 'Won', 'score' => null, 'format' => null],
+            ])
             ->assertJsonPath('candidates.2.list_status', 'Locked reserve')
             ->assertJsonPath('candidates.3.list_status', 'Additional candidate')
-            ->assertDontSee('PRIVATE_MATCH_EVIDENCE')->assertDontSee('PRIVATE_SELECTION_COMMENT');
+            ->assertDontSee('PRIVATE_MATCH_EVIDENCE')->assertDontSee('PRIVATE_SELECTION_COMMENT')
+            ->assertDontSee('PRIVATE_SCORE_NOTE')->assertDontSee('PRIVATE_MALFORMED_MATCH');
         $this->assertSame([$interPlayer->id, $firstReserve->id, $linkedReserve->id, ...$additional->modelKeys()],
             array_column($response->json('candidates'), 'id'));
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
@@ -286,12 +305,12 @@ class CavaliersTrialRosterDraftTest extends TestCase
         return $team;
     }
 
-    private function division(?Event $event = null): array
+    private function division(?Event $event = null, string $name = 'U10 Girls'): array
     {
         $event ??= Event::factory()->create(['eventType' => 5]);
         $division = CategoryEvent::factory()->create([
             'event_id' => $event->id,
-            'category_id' => Category::factory()->create(['name' => 'U10 Girls'])->id,
+            'category_id' => Category::factory()->create(['name' => $name])->id,
         ]);
 
         return [$event, $division];

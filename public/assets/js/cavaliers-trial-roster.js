@@ -154,11 +154,52 @@
 
   function updateCandidateCount() {
     const { selected, reserves, leftOut } = candidatePlaces();
+    const places = new Map();
+    const setPlaces = (players, label, offset = 0, suffix = '') => {
+      players.forEach((player, index) => places.set(player.id, `${label} ${offset + index + 1}${suffix}`));
+    };
+    setPlaces(draft.selected, 'Selected', 0, ' · On draft');
+    setPlaces(draft.reserves, 'Reserve', 0, ' · On draft');
+    setPlaces(selected, 'Selected', draft.selected.length);
+    setPlaces(reserves, 'Reserve', draft.reserves.length);
+    candidates.forEach((candidate, index) => {
+      const place = candidateList.children[index].querySelector('[data-candidate-placement]');
+      place.textContent = places.get(candidate.id)
+        ?? (skippedCandidates.has(candidate.id) ? 'Not checked' : 'Beyond available places');
+    });
     const remaining = leftOut ? ` · ${leftOut} beyond available places` : '';
     element('[data-candidate-count]').textContent = candidates.length
       ? `${selected.length} selected · ${reserves.length} reserves to add${remaining}`
       : 'No eligible candidates found for this division.';
     addCandidates.disabled = busy || stale || selected.length + reserves.length === 0;
+  }
+
+  function candidateMatchResults(candidate) {
+    const matches = candidate.matches ?? [];
+    const disclosure = document.createElement('details');
+    disclosure.className = 'mt-2 small';
+    const summary = document.createElement('summary');
+    summary.className = 'text-primary';
+    summary.textContent = `Match results (${matches.length})`;
+    summary.setAttribute('aria-label', `Match results for ${candidate.name} (${matches.length})`);
+    disclosure.append(summary);
+    if (matches.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'text-muted mb-0 mt-1';
+      empty.textContent = 'No counted match details available.';
+      disclosure.append(empty);
+      return disclosure;
+    }
+    const list = document.createElement('ul');
+    list.className = 'mb-0 mt-1 ps-3';
+    matches.forEach((match) => {
+      const item = document.createElement('li');
+      const score = match.score ? `Home–away score ${match.score}` : 'Score unavailable';
+      item.textContent = [match.opponent, match.outcome, match.format, score].filter(Boolean).join(' · ');
+      list.append(item);
+    });
+    disclosure.append(list);
+    return disclosure;
   }
 
   function renderCandidates() {
@@ -173,8 +214,11 @@
     candidateList.replaceChildren();
     candidates.forEach((candidate) => {
       const alreadyAdded = existing.has(candidate.id);
+      const wonAll = candidate.source === 'Inter-Districts' && candidate.wins > 0 && candidate.losses === 0;
       const row = document.createElement('li');
       row.className = 'list-group-item';
+      row.classList.toggle('list-group-item-danger', candidate.lost_all);
+      row.classList.toggle('list-group-item-success', wonAll);
       const label = document.createElement('label');
       label.className = 'd-inline-flex gap-2 align-items-start text-break';
       const checkbox = document.createElement('input');
@@ -190,22 +234,27 @@
       const details = document.createElement('span');
       const name = document.createElement('strong');
       name.textContent = candidate.name;
+      const source = document.createElement('span');
+      source.className = `badge ms-2 ${candidate.source === 'Inter-Districts' ? 'bg-label-primary' : 'bg-label-warning'}`;
+      source.textContent = candidate.source;
+      const place = document.createElement('span');
+      place.className = 'badge bg-label-secondary ms-2';
+      place.dataset.candidatePlacement = '';
       const evidence = document.createElement('small');
       evidence.className = 'd-block text-muted';
       const record = candidate.wins === null
         ? 'No counted published singles results'
         : `${candidate.wins}–${candidate.losses} singles${candidate.starting_credit ? ' · +1 roster credit' : ''}`;
-      const flag = candidate.lost_all ? ' · Lost all counted singles'
-        : (candidate.review_adjacent_band ? ' · Unbeaten, review against the band above' : '');
+      const outcome = candidate.lost_all ? 'Lost all counted singles' : (wonAll ? 'Won all counted singles' : '');
+      const bandReview = candidate.review_adjacent_band ? 'Review against the band above' : '';
       const band = candidate.band && candidate.rank ? `Band ${candidate.band}, No. ${candidate.rank}` : '';
       const position = candidate.source_position ? `Finalized ranking #${candidate.source_position}` : '';
       evidence.textContent = [
-        candidate.source, candidate.list_status, candidate.team, position, band, record + flag,
-        alreadyAdded ? 'Already on draft' : '',
+        candidate.list_status, candidate.team, position, band, record, outcome, bandReview,
       ].filter(Boolean).join(' · ');
-      details.append(name, evidence);
+      details.append(name, source, place, evidence);
       label.append(checkbox, details);
-      row.append(label);
+      row.append(label, candidateMatchResults(candidate));
       candidateList.append(row);
     });
     updateCandidateCount();
@@ -308,8 +357,12 @@
     try {
       const preview = await request(division.selectedOptions[0].dataset.candidateUrl);
       candidates = preview.candidates;
+      const existing = rosterIds();
+      const openSelectedPlaces = limits.selected - draft.selected.length;
+      candidates.filter(({ id }) => !existing.has(id)).slice(openSelectedPlaces)
+        .forEach(({ id }) => skippedCandidates.add(id));
       const summary = element('[data-candidate-region-summary]');
-      summary.textContent = `Candidate regions: ${preview.candidate_regions.join(', ') || 'None'}. Results excluded: ${preview.excluded_result_regions.join(', ') || 'None'}.`;
+      summary.textContent = `Source division: ${preview.source_division}. Candidate regions: ${preview.candidate_regions.join(', ') || 'None'}. Results excluded: ${preview.excluded_result_regions.join(', ') || 'None'}.`;
       const notice = element('[data-candidate-notice]');
       notice.hidden = !preview.missing_regions.length;
       notice.textContent = preview.missing_regions.length

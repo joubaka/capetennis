@@ -8,6 +8,7 @@ use App\Models\Event;
 use App\Models\Team;
 use App\Models\TeamFixture;
 use App\Models\User;
+use App\Support\CavaliersCandidateMatchEvidence;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -58,8 +59,13 @@ final class CavaliersTrialCandidates
 
     public function preview(Event $event, CategoryEvent $division, User $actor): array
     {
-        $group = $this->group($division->category?->name);
-        abort_unless($group, 422, 'The division needs an age group and gender to match source rosters.');
+        $divisionGroup = $this->group($division->category?->name);
+        abort_unless($divisionGroup, 422, 'The division needs an age group and gender to match source rosters.');
+        [$age, $gender] = explode('-', $divisionGroup);
+        // The trials select next year's age groups from this year's results.
+        $sourceAge = (int) $age - 1;
+        abort_if($sourceAge < 1, 422, 'This division has no previous age group.');
+        $group = $sourceAge.'-'.$gender;
 
         $source = $this->source();
         $setup = $this->settings($source, $event, $division);
@@ -79,6 +85,7 @@ final class CavaliersTrialCandidates
         $platteland = $this->platteland->preview($group, $actor);
 
         return [
+            'source_division' => 'U'.$sourceAge.' '.ucfirst($gender),
             'candidate_regions' => collect($setup['regions'])->whereIn('id', $regionIds)->pluck('name')->values()->all(),
             'excluded_result_regions' => collect($setup['regions'])->whereIn('id', $setup['excluded_result_region_ids'])->pluck('name')->values()->all(),
             'missing_regions' => collect($setup['regions'])->whereIn('id', $missingRegions)->pluck('name')->values()->all(),
@@ -160,6 +167,7 @@ final class CavaliersTrialCandidates
                     'starting_credit' => $row['starting_credit'],
                     'lost_all' => $row['wins'] === 0 && $row['losses'] > 0,
                     'review_adjacent_band' => ! empty($row['platteland_manual_review']),
+                    'matches' => CavaliersCandidateMatchEvidence::project($row['matches'] ?? []),
                 ]);
             })->filter()->unique('id');
 
@@ -172,6 +180,7 @@ final class CavaliersTrialCandidates
             'starting_credit' => null,
             'lost_all' => false,
             'review_adjacent_band' => false,
+            'matches' => [],
         ]))->sortBy('band')->map(fn (array $row) => [
             'id' => $row['id'],
             'name' => $row['name'],
@@ -184,6 +193,7 @@ final class CavaliersTrialCandidates
             'starting_credit' => $row['starting_credit'],
             'lost_all' => $row['lost_all'],
             'review_adjacent_band' => $row['review_adjacent_band'],
+            'matches' => $row['matches'],
         ])->values();
     }
 }
