@@ -172,7 +172,7 @@
     summary.append(source);
     const flags = [
       [evidence.lost_all, 'danger', 'Lost all'],
-      [evidence.only_beat_winless, 'warning', 'Only beat winless opponents'],
+      [evidence.only_beat_winless, 'warning', 'Beat winless'],
       [evidence.wins > 0 && evidence.losses === 0, 'success', 'Won all'],
     ];
     for (const [applies, colour, label] of flags) {
