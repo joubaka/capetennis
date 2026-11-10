@@ -13,6 +13,7 @@ use App\Support\EventTypePresentation;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -32,8 +33,9 @@ class CavaliersTrialRosterController extends Controller
         $draft = $this->draft($categoryEvent)->first();
         $selected = $draft ? json_decode($draft->selected, true) : [];
         $reserves = $draft ? json_decode($draft->reserves, true) : [];
+        $declined = json_decode($draft?->declined ?? '[]', true);
         $players = Player::query()->select('id', 'name', 'surname')
-            ->whereIn('id', [...$selected, ...$reserves])->get()->keyBy('id');
+            ->whereIn('id', [...$selected, ...$reserves, ...$declined])->get()->keyBy('id');
         $names = fn (array $ids) => array_map(fn (int $id) => [
             'id' => $id,
             'name' => $players->get($id)?->full_name ?? 'Unavailable player #'.$id,
@@ -43,6 +45,8 @@ class CavaliersTrialRosterController extends Controller
             'revision' => $draft?->revision,
             'selected' => $names($selected),
             'reserves' => $names($reserves),
+            'declined' => $names($declined),
+            'publication' => $this->publication($categoryEvent),
         ])->header('Cache-Control', 'private, no-store');
     }
 
@@ -111,23 +115,27 @@ class CavaliersTrialRosterController extends Controller
             'reserves' => 'present|array|list|max:'.self::RESERVE_LIMIT,
             'selected.*' => 'required|integer|min:1',
             'reserves.*' => 'required|integer|min:1',
+            'declined' => 'sometimes|array|list|max:256',
+            'declined.*' => 'required|integer|min:1',
         ]);
         $selected = array_map('intval', $data['selected']);
         $reserves = array_map('intval', $data['reserves']);
-        $ids = [...$selected, ...$reserves];
+        $draft = $this->draft($categoryEvent)->first();
+        $previousDeclines = json_decode($draft?->declined ?? '[]', true);
+        $declined = array_map('intval', $data['declined'] ?? $previousDeclines);
+        $ids = [...$selected, ...$reserves, ...$declined];
         if (count($ids) !== count(array_unique($ids))) {
             throw ValidationException::withMessages(['selected' => 'A player can only hold one place in this division.']);
         }
 
         $conflict = 'This draft changed in another session. Reload it before editing again.';
-        $draft = $this->draft($categoryEvent)->first();
         abort_unless($data['revision'] === $draft?->revision, 409, $conflict);
         $existing = $draft ? [...json_decode($draft->selected, true), ...json_decode($draft->reserves, true)] : [];
         $players = Player::query()->select('id', 'name', 'surname')->whereIn('id', $ids)->get()->keyBy('id');
         if ($players->count() !== count($ids)) {
             throw ValidationException::withMessages(['selected' => 'Remove the unavailable player before saving.']);
         }
-        foreach (array_diff($ids, $existing) as $playerId) {
+        foreach (array_diff([...$selected, ...$reserves], $existing) as $playerId) {
             try {
                 $eligibility->assertEligible($playerId, $event);
             } catch (RuntimeException $exception) {
@@ -140,6 +148,7 @@ class CavaliersTrialRosterController extends Controller
             'revision' => $revision,
             'selected' => json_encode($selected, JSON_THROW_ON_ERROR),
             'reserves' => json_encode($reserves, JSON_THROW_ON_ERROR),
+            'declined' => json_encode($declined, JSON_THROW_ON_ERROR),
         ];
         // Compare and swap on the private draft table, including simultaneous first saves.
         $written = $draft
@@ -156,24 +165,32 @@ class CavaliersTrialRosterController extends Controller
     public function transferNominations(Request $request, Event $event, CategoryEvent $categoryEvent, PlayerEligibilityService $eligibility): JsonResponse
     {
         $this->authorizeDivision($request, $event, $categoryEvent);
-        $input = $request->validate(['revision' => 'required|uuid', 'publish' => 'required|boolean']);
+        $input = $request->validate([
+            'publish' => 'required|boolean',
+            'revision' => 'required_if:publish,true|nullable|uuid',
+            'fingerprint' => 'required|string|size:64',
+        ]);
         $publish = (bool) $input['publish'];
 
-        $count = DB::transaction(function () use ($event, $categoryEvent, $input, $publish, $eligibility) {
+        $publication = DB::transaction(function () use ($event, $categoryEvent, $input, $publish, $eligibility) {
             $draft = $this->draft($categoryEvent)->lockForUpdate()->first();
-            abort_unless($draft?->revision === $input['revision'], 409, 'The saved draft changed. Reload it before transferring nominations.');
-            $selected = json_decode($draft->selected, true, flags: JSON_THROW_ON_ERROR);
-            abort_if($selected === [], 422, 'Select and save at least one player before transferring nominations.');
-
             $division = CategoryEvent::query()->whereKey($categoryEvent->id)->where('event_id', $event->id)
                 ->lockForUpdate()->firstOrFail();
-            $existing = EventNomination::query()->where('category_event_id', $categoryEvent->id)
-                ->lockForUpdate()->get(['event_id', 'player_id']);
-            abort_if(! $publish && $division->nominations_published && $existing->isNotEmpty(), 422,
-                'This division already has public nominations. Unpublish the list before copying privately.');
-            abort_if($existing->contains(fn (EventNomination $nomination) =>
-                (int) $nomination->event_id !== (int) $event->id || ! in_array((int) $nomination->player_id, $selected, true)),
-                422, 'Existing event nominations contain players outside this draft. Review those nominations before copying or publishing.');
+            $existing = $division->nominations()->orderBy('id')->lockForUpdate()->get();
+            abort_unless($this->fingerprint($division, $existing) === $input['fingerprint'], 409,
+                'The event nominations changed. Reload the division and review the list again.');
+            if (! $publish) {
+                $division->update(['nominations_published' => false]);
+
+                return $this->publication($division);
+            }
+
+            abort_unless($draft && $draft->revision === ($input['revision'] ?? null), 409,
+                'The saved draft changed. Reload it before publishing.');
+            $selected = json_decode($draft->selected, true, flags: JSON_THROW_ON_ERROR);
+            abort_if($selected === [], 422, 'Select and save at least one player before publishing.');
+            abort_if($existing->contains(fn (EventNomination $nomination) => (int) $nomination->event_id !== (int) $event->id),
+                422, 'A nomination belongs to a different event. Review this division before publishing.');
 
             $players = Player::query()->whereIn('id', $selected)->get(['id', 'name', 'surname'])->keyBy('id');
             abort_unless($players->count() === count($selected), 422, 'Remove unavailable players from the draft before publishing.');
@@ -187,24 +204,51 @@ class CavaliersTrialRosterController extends Controller
                 }
             }
 
-            if (! $publish) {
-                $division->update(['nominations_published' => false]);
+            $retained = $existing->whereIn('player_id', $selected)->keyBy('player_id');
+            $remove = $existing->diff($retained);
+            abort_if(\App\Models\InterprovincialTrialInvitation::query()->whereIn('nomination_id', $remove->modelKeys())->exists(),
+                422, 'A nomination to remove is linked to an invitation. Review it before publishing.');
+            foreach ($remove as $nomination) {
+                $nomination->delete();
             }
-            foreach (array_diff($selected, $existing->pluck('player_id')->all()) as $playerId) {
-                EventNomination::create([
+            foreach ($selected as $index => $playerId) {
+                $nomination = $retained->get($playerId) ?? new EventNomination([
                     'event_id' => $event->id,
                     'category_event_id' => $categoryEvent->id,
                     'player_id' => $playerId,
                 ]);
+                $nomination->roster_position = $index + 1;
+                $nomination->save();
             }
-            if ($publish) {
-                $division->update(['nominations_published' => true]);
-            }
+            $division->update(['nominations_published' => true]);
 
-            return count($selected);
+            return $this->publication($division);
         });
 
-        return response()->json(['count' => $count]);
+        return response()->json($publication)->header('Cache-Control', 'private, no-store');
+    }
+
+    private function publication(CategoryEvent $division): array
+    {
+        $nominations = $division->nominations()->orderBy('id')->get();
+        $visible = $nominations->filter(fn (EventNomination $nomination) =>
+            (int) $nomination->event_id === (int) $division->event_id);
+        $visible->load('player:id,name,surname');
+
+        return [
+            'published' => (bool) $division->nominations_published,
+            'fingerprint' => $this->fingerprint($division, $nominations),
+            'players' => $visible->sortBy(fn (EventNomination $nomination) => $nomination->roster_position ?? PHP_INT_MAX)
+                ->map(fn (EventNomination $nomination) => ['id' => $nomination->player_id, 'name' => $nomination->display_name])
+                ->values()->all(),
+        ];
+    }
+
+    private function fingerprint(CategoryEvent $division, Collection $nominations): string
+    {
+        return hash('sha256', json_encode([(bool) $division->nominations_published,
+            $nominations->map->only(['id', 'event_id', 'player_id', 'roster_position'])->values()->all(),
+        ], JSON_THROW_ON_ERROR));
     }
 
     private function authorizeCandidateSetup(Request $request, Event $event, CategoryEvent $categoryEvent): void

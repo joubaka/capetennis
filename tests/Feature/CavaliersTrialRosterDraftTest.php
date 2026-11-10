@@ -44,7 +44,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $division->update(['nominations_published' => true]);
 
         $url = route('backend.cavaliers-roster.show', [$event, $division]);
-        $this->getJson($url)->assertExactJson(['revision' => null, 'selected' => [], 'reserves' => []]);
+        $this->getJson($url)->assertJsonPath('revision', null)->assertJsonPath('selected', [])->assertJsonPath('reserves', [])->assertJsonPath('declined', []);
         $saved = $this->putJson($url, [
             'revision' => null,
             'selected' => [$first->id, $second->id],
@@ -59,7 +59,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
         ])->assertOk();
         $this->getJson($url)->assertJsonPath('selected.0.id', $reserve->id)->assertJsonPath('reserves.0.id', $first->id);
         $this->getJson(route('backend.cavaliers-roster.show', [$event, $otherDivision]))
-            ->assertExactJson(['revision' => null, 'selected' => [], 'reserves' => []]);
+            ->assertJsonPath('revision', null)->assertJsonPath('selected', [])->assertJsonPath('reserves', [])->assertJsonPath('declined', []);
 
         $this->assertDatabaseCount('event_nominations', 1);
         $this->assertDatabaseHas('event_nominations', ['player_id' => $legacy->id, 'category_event_id' => $division->id]);
@@ -70,7 +70,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    public function test_bulk_copy_and_publish_use_only_the_saved_selected_players(): void
+    public function test_saved_roster_publishes_reviewed_changes_and_unpublishes_without_losing_nominees(): void
     {
         Mail::fake();
         Queue::fake();
@@ -78,41 +78,42 @@ class CavaliersTrialRosterDraftTest extends TestCase
         [$otherEvent, $otherDivision] = $this->division();
         [$first, $second, $reserve, $legacy] = Player::factory()->count(4)->create()->all();
         $this->actingAs($this->administrator($event));
-        $division->update(['nominations_published' => true]);
-        $revision = $this->putJson(route('backend.cavaliers-roster.update', [$event, $division]), [
-            'revision' => null, 'selected' => [$first->id, $second->id], 'reserves' => [$reserve->id],
-        ])->assertOk()->json('revision');
+        $draftUrl = route('backend.cavaliers-roster.show', [$event, $division]);
         $url = route('backend.cavaliers-roster.nominations', [$event, $division]);
-        $copy = ['revision' => $revision, 'publish' => false];
-        $publish = ['revision' => $revision, 'publish' => true];
-
-        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $otherDivision]), $copy)->assertNotFound();
-        $this->postJson(route('backend.cavaliers-roster.nominations', [$otherEvent, $otherDivision]), $copy)->assertForbidden();
-        $this->postJson($url, ['revision' => (string) \Illuminate\Support\Str::uuid(), 'publish' => true])->assertConflict();
-        $this->assertDatabaseCount('event_nominations', 0);
-
-        $this->postJson($url, $copy)->assertOk()->assertJsonPath('count', 2);
-        $this->assertFalse((bool) $division->fresh()->nominations_published);
-        $this->assertSame([$first->id, $second->id], EventNomination::query()->orderBy('id')->pluck('player_id')->all());
-        $extra = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $legacy->id]);
-        $this->postJson($url, $publish)->assertUnprocessable();
-        $this->assertFalse((bool) $division->fresh()->nominations_published);
-        $this->assertModelExists($extra);
-        $extra->delete();
-
-        $toggle = route('backend.nomination.publish', $division->id);
         $page = route('events.show', $event);
-        $this->patchJson($toggle, ['published' => 'true'])->assertOk()->assertJsonPath('published', true);
-        $this->get($page)->assertOk()->assertSee($first->full_name)->assertDontSee($reserve->full_name);
-        $this->patchJson($toggle, ['published' => 'false'])->assertOk()->assertJsonPath('published', false);
-        $this->patchJson($toggle, ['published' => 'false'])->assertOk()->assertJsonPath('published', false);
+        $legacyNomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $legacy->id]);
+        $division->update(['nominations_published' => true]);
+
+        $revision = $this->putJson($draftUrl, [
+            'revision' => null, 'selected' => [$second->id, $first->id], 'reserves' => [$reserve->id],
+            'declined' => [$legacy->id],
+        ])->assertOk()->json('revision');
+        $publication = $this->getJson($draftUrl)->assertJsonPath('declined.0.id', $legacy->id)
+            ->assertJsonPath('publication.players.0.id', $legacy->id)->json('publication');
+        $this->get($page)->assertOk()->assertSee($legacy->full_name)->assertDontSee($first->full_name);
+
+        $publish = ['revision' => $revision, 'publish' => true, 'fingerprint' => $publication['fingerprint']];
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $otherDivision]), $publish)->assertNotFound();
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$otherEvent, $otherDivision]), $publish)->assertForbidden();
+        $this->postJson($url, array_replace($publish, ['fingerprint' => str_repeat('a', 64)]))->assertConflict();
+        $this->assertModelExists($legacyNomination);
+
+        $published = $this->postJson($url, $publish)->assertOk()->assertJsonPath('published', true)->json();
+        $this->assertSame([$second->id, $first->id], array_column($published['players'], 'id'));
+        $this->get($page)->assertOk()->assertSeeInOrder([$second->full_name, $first->full_name])
+            ->assertDontSee($reserve->full_name)->assertDontSee($legacy->full_name);
+        $this->postJson($url, $publish)->assertConflict();
+        $unpublished = $this->postJson($url, ['publish' => false, 'fingerprint' => $published['fingerprint']])
+            ->assertOk()->assertJsonPath('published', false)->json();
+        $this->assertSame($published['players'], $unpublished['players']);
         $this->get($page)->assertOk()->assertDontSee($first->full_name);
-        $this->postJson($url, $publish)->assertOk()->assertJsonPath('count', 2);
-        $this->postJson($url, $publish)->assertOk()->assertJsonPath('count', 2);
-        $this->postJson($url, $copy)->assertUnprocessable();
-        $this->assertTrue((bool) $division->fresh()->nominations_published);
+        $this->getJson($draftUrl)->assertJsonPath('revision', $revision)->assertJsonPath('declined.0.id', $legacy->id);
         $this->assertDatabaseCount('event_nominations', 2);
         $this->assertDatabaseCount('category_event_registrations', 0);
+        $foreign = EventNomination::create(['event_id' => $otherEvent->id, 'category_event_id' => $division->id, 'player_id' => $reserve->id]);
+        $review = $this->getJson($draftUrl)->assertOk()->assertJsonCount(2, 'publication.players')->json('publication');
+        $this->postJson($url, array_replace($publish, ['fingerprint' => $review['fingerprint']]))->assertUnprocessable();
+        $this->assertModelExists($foreign);
         Mail::assertNothingSent();
         Queue::assertNothingPushed();
     }

@@ -8,7 +8,8 @@
   const status = element('[data-status]');
   const save = element('[data-save]');
   const publish = element('[data-publish]');
-  const copyNominations = element('[data-copy-nominations]');
+  const unpublish = element('[data-unpublish]');
+  const publicationReview = element('[data-publication-review]');
   const reload = element('[data-reload]');
   const search = element('[data-search]');
   const searchResults = element('[data-search-results]');
@@ -70,7 +71,7 @@
   }
 
   function renderSearch() {
-    const chosen = new Set([...draft.selected, ...draft.reserves].map((player) => player.id));
+    const chosen = rosterIds();
     searchResults.replaceChildren();
     searchResults.classList.toggle('d-none', found.length === 0);
     found.forEach((player) => {
@@ -81,7 +82,7 @@
       const actions = document.createElement('div');
       actions.className = 'd-flex flex-wrap gap-1';
       if (chosen.has(player.id)) {
-        actions.textContent = 'Already on this roster';
+        actions.textContent = draft.declined.some(({ id }) => id === player.id) ? 'Declined' : 'Already on this roster';
       } else {
         for (const key of Object.keys(limits)) {
           const action = key === 'selected' ? 'Add selected' : 'Add reserve';
@@ -104,8 +105,11 @@
     if (!draft) return;
     search.querySelectorAll('input, button').forEach((control) => { control.disabled = busy || stale; });
     save.disabled = !dirty || busy || stale;
-    publish.disabled = !draft.revision || dirty || busy || stale || draft.selected.length === 0;
-    copyNominations.disabled = publish.disabled;
+    publish.disabled = !draft.publication || !draft.revision || dirty || busy || stale || draft.selected.length === 0;
+    unpublish.disabled = !draft.publication?.published || busy || stale;
+    element('[data-publication-status]').textContent = draft.publication?.published
+      ? `Public · ${draft.publication.players.length} nominees`
+      : 'Private · The event page is hidden for this division.';
     for (const key of Object.keys(limits)) {
       const list = element(`[data-list="${key}"]`);
       list.replaceChildren();
@@ -141,6 +145,11 @@
             skippedCandidates.add(player.id);
             changed();
           }), 'trash'),
+          describe(button('Mark declined', () => {
+            draft.declined.push(draft[key].splice(index, 1)[0]);
+            skippedCandidates.add(player.id);
+            changed();
+          })),
           describe(button(`Move to ${labels[opposite].toLowerCase()}`, () => {
             draft[opposite].push(draft[key].splice(index, 1)[0]);
             changed();
@@ -154,11 +163,29 @@
     }
     renderSearch();
     renderCandidates();
+    renderDeclined();
     renderMerit();
   }
 
   function rosterIds() {
-    return new Set([...draft.selected, ...draft.reserves].map((player) => player.id));
+    return new Set([...draft.selected, ...draft.reserves, ...draft.declined].map((player) => player.id));
+  }
+
+  function renderDeclined() {
+    element('[data-declined-count]').textContent = draft.declined.length;
+    element('[data-declined-empty]').hidden = draft.declined.length > 0;
+    element('[data-declined-list]').replaceChildren(...draft.declined.map((player, index) => {
+      const row = document.createElement('li');
+      row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-center justify-content-between px-2 py-1';
+      const undo = button('Undo decline', () => {
+        draft.declined.splice(index, 1);
+        skippedCandidates.add(player.id);
+        changed();
+      });
+      undo.setAttribute('aria-label', `Undo decline for ${player.name}`);
+      row.append(playerSummary(player, meritCandidates.find(({ id }) => id === player.id)), undo);
+      return row;
+    }));
   }
 
   function playerSummary(player, evidence) {
@@ -246,7 +273,7 @@
     const retained = Object.fromEntries(Object.keys(limits).map((key) => [
       key, draft[key].filter(({ id }) => !reviewed.has(id) || !skippedCandidates.has(id)),
     ]));
-    const removed = existing.size - retained.selected.length - retained.reserves.length;
+    const removed = draft.selected.length + draft.reserves.length - retained.selected.length - retained.reserves.length;
     const selected = limits.selected - retained.selected.length;
     const reserves = limits.reserves - retained.reserves.length;
     const checked = candidates.filter(({ id }) => !existing.has(id) && !skippedCandidates.has(id));
@@ -267,6 +294,7 @@
     };
     setPlaces(retained.selected, 'Selected', 0, ' · On draft');
     setPlaces(retained.reserves, 'Reserve', 0, ' · On draft');
+    draft.declined.forEach(({ id }) => places.set(id, 'Declined'));
     setPlaces(selected, 'Selected', retained.selected.length);
     setPlaces(reserves, 'Reserve', retained.reserves.length);
     const existing = rosterIds();
@@ -324,6 +352,7 @@
 
     candidateList.replaceChildren();
     candidates.forEach((candidate) => {
+      const declined = draft.declined.some(({ id }) => id === candidate.id);
       const wonAll = candidate.wins > 0 && candidate.losses === 0;
       const row = document.createElement('li');
       row.className = 'list-group-item';
@@ -335,8 +364,8 @@
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'form-check-input';
-      checkbox.checked = !skippedCandidates.has(candidate.id);
-      checkbox.disabled = busy || stale;
+      checkbox.checked = !declined && !skippedCandidates.has(candidate.id);
+      checkbox.disabled = declined || busy || stale;
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) skippedCandidates.delete(candidate.id);
         else skippedCandidates.add(candidate.id);
@@ -579,6 +608,7 @@
     setStatus('Loading draft…');
     try {
       draft = await request(division.selectedOptions[0].dataset.draftUrl);
+      draft.declined ??= [];
       loadPreview();
       setStatus(draft.revision ? 'Saved draft loaded.' : 'New draft.');
     } catch (error) {
@@ -633,6 +663,7 @@
           revision: draft.revision,
           selected: draft.selected.map((player) => player.id),
           reserves: draft.reserves.map((player) => player.id),
+          declined: draft.declined.map((player) => player.id),
         }),
       });
       draft.revision = revision;
@@ -648,48 +679,57 @@
     }
   });
 
+  function reviewPublication() {
+    const current = draft.publication.players;
+    const selected = new Set(draft.selected.map(({ id }) => id));
+    const nominated = new Set(current.map(({ id }) => id));
+    const changes = element('[data-publication-changes]');
+    const intro = document.createElement('p');
+    const name = division.selectedOptions[0].textContent.trim();
+    intro.textContent = `Publish ${draft.selected.length} selected players for ${name}. Reserves and declined players stay private.`;
+    changes.replaceChildren(intro);
+    for (const [label, players] of [
+      ['Add to public list', draft.selected.filter(({ id }) => !nominated.has(id))],
+      ['Remove from public list', current.filter(({ id }) => !selected.has(id))],
+    ]) {
+      if (!players.length) continue;
+      const heading = document.createElement('h6');
+      heading.textContent = label;
+      const list = document.createElement('ul');
+      for (const player of players) {
+        const row = document.createElement('li');
+        row.textContent = player.name;
+        list.append(row);
+      }
+      changes.append(heading, list);
+    }
+    publicationReview.returnValue = '';
+    publicationReview.showModal();
+  }
+
   async function transferNominations(makePublic) {
     const option = division.selectedOptions[0];
     const name = option.textContent.trim();
-    const action = makePublic ? 'Publish on the public event page' : 'Copy to private nominations';
-    if (!window.confirm(`${action}: ${draft.selected.length} selected players for ${name}?`)) return;
+    if (!makePublic && !window.confirm(`Hide nominations for ${name} from the public event page?`)) return;
 
     busy = true;
     searchVersion++;
     closeSwap();
     closeCandidateReview();
     render();
-    setStatus(makePublic ? 'Publishing nominations…' : 'Copying nominations…');
+    setStatus(makePublic ? 'Publishing nominations…' : 'Unpublishing nominations…');
     try {
-      const { count } = await request(option.dataset.nominationsUrl, {
+      draft.publication = await request(option.dataset.nominationsUrl, {
         method: 'POST',
-        body: JSON.stringify({ revision: draft.revision, publish: makePublic }),
+        body: JSON.stringify({
+          revision: draft.revision,
+          fingerprint: draft.publication.fingerprint,
+          publish: makePublic,
+        }),
       });
-      const success = makePublic ? `${count} selected players published for ${name}.` : `${count} players copied to private nominations for ${name}.`;
-      setStatus(success);
-      const previousList = document.querySelector(`[data-id="${activeDivision}"].nominationPublish`);
-      if (previousList) {
-        previousList.textContent = makePublic ? 'Unpublish list' : 'Publish list';
-        previousList.classList.toggle('btn-success', !makePublic);
-        previousList.classList.toggle('btn-danger', makePublic);
-      }
-      const table = document.getElementById(`nomination-table-${activeDivision}`);
-      if (table?.tBodies[0]) {
-        try {
-          const response = await fetch(option.dataset.nominationsTableUrl);
-          if (!response.ok) throw new Error('List refresh failed.');
-          const parsed = new DOMParser().parseFromString(`<table>${await response.text()}</table>`, 'text/html');
-          const rows = parsed.querySelector('tbody');
-          if (!rows) throw new Error('List refresh failed.');
-          table.tBodies[0].replaceWith(rows);
-          if (!makePublic) {
-            const details = table.closest('details');
-            if (details) details.open = true;
-          }
-        } catch {
-          setStatus(`${success} Reload the page to see the updated nomination table.`);
-        }
-      }
+      setStatus(makePublic
+        ? `${draft.publication.players.length} selected players published for ${name}.`
+        : `Nominations for ${name} are now private.`);
     } catch (error) {
       stale = error.status === 409;
       reload.classList.toggle('d-none', !stale);
@@ -699,8 +739,17 @@
       render();
     }
   }
-  copyNominations.addEventListener('click', () => transferNominations(false));
-  publish.addEventListener('click', () => transferNominations(true));
+  publish.addEventListener('click', reviewPublication);
+  publicationReview.addEventListener('close', () => {
+    if (publicationReview.returnValue === 'publish') transferNominations(true);
+  });
+  unpublish.addEventListener('click', () => transferNominations(false));
+  element('[data-email-nominees]').addEventListener('click', () => {
+    const recipients = document.getElementById('emailRecipientSelect');
+    if (!recipients) return;
+    recipients.value = 'All players in nominations';
+    recipients.dispatchEvent(new Event('change', { bubbles: true }));
+  });
 
   window.addEventListener('beforeunload', (event) => {
     if (!dirty) return;

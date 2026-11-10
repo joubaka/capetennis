@@ -44,10 +44,11 @@ Inter-Districts participation as opt-in candidates for reviewers with access
 to both sources. Decline status reflects the current managed invitation records.
 Candidate review checks existing draft players when a draft is reopened.
 Applying additions or removals stages a private edit. The Reserves column
-shows up to ten candidates outside the roster in merit order. Save draft
-persists the order separately from public nominations. From a saved division,
-staff can copy the selected players to private event nominations or publish
-them directly. Existing nominations outside the draft require manual review.
+shows up to ten available candidates outside the roster in merit order.
+Staff can record or undo a decline in the private draft. Saving a draft
+preserves the last public list. Publishing from the roster requires reviewing
+the differences against the current nominations and applies the saved order.
+Unpublishing hides the list and retains its nominations.
 
 ### Verified local inventory
 

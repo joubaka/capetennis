@@ -1,13 +1,6 @@
 @php
   $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
 @endphp
-<?php
-
-use App\Models\EventNomination;
-use App\Helpers\Fixtures;
-
-$nominations = EventNomination::all();
-?>
 <div class="row">
 
     <div class="col-xl-8 col-lg-7 col-md-7 ">
@@ -24,23 +17,27 @@ $nominations = EventNomination::all();
                     <h5 class="pb-1 mb-4">Nominations</h5>
                     <div class="row">
                         @foreach($event->eventCategories as $eventCategory)
+                        @php
+                            $nominations = $eventCategory->nominations->where('event_id', $event->id)
+                                ->sortBy(fn ($nomination) => $nomination->roster_position ?? PHP_INT_MAX);
+                        @endphp
                         <div class="col-md-6 col-sm-12">
                             <div class="card shadow-none bg-transparent border border-primary m-1 p-2">
                                 <div class="card-header">
                                     <h3>{{$eventCategory->category->name}}
                                         @if($eventCategory->nominations_published == 1)
-                                        ({{$eventCategory->nominations->count()}})
+                                        ({{$nominations->count()}})
                                         @endif
                                     </h3>
                                 </div>
                                 <ul class="list-group list-group-flush">
                                     @if($eventCategory->nominations_published == 1)
-                                    @foreach($eventCategory->nominations as $nomination)
+                                    @foreach($nominations as $nomination)
 
-                                    <li class="list-group-item">{{$nomination->player->getFullNameAttribute()}}
+                                    <li class="list-group-item">{{$nomination->display_name}}
 
 
-                                    @if(isset($nomRegisteredLookup[$nomination->player->id]))
+                                    @if(isset($nomRegisteredLookup[$nomination->player_id]))
 
                                         <span class=""><i class="text-success fa-solid fa-circle-check"></i></span>
                                       @else

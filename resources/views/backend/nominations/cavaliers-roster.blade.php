@@ -15,7 +15,6 @@
                 <option value="{{ $division->id }}"
                     data-draft-url="{{ route('backend.cavaliers-roster.show', [$event, $division]) }}"
                     data-nominations-url="{{ route('backend.cavaliers-roster.nominations', [$event, $division]) }}"
-                    data-nominations-table-url="{{ route('nomination.partial', $division->id) }}"
                     data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}"
                     @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                         data-candidate-url="{{ route('backend.cavaliers-roster.candidates', [$event, $division]) }}"
@@ -29,10 +28,13 @@
         <button type="button" class="btn btn-sm btn-outline-secondary mb-3 d-none" data-reload>Reload saved draft</button>
         <div data-editor hidden>
             <div class="d-flex flex-wrap gap-2 mb-2">
-                <button type="button" class="btn btn-sm btn-outline-primary" data-copy-nominations disabled>Copy to nominations</button>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-save disabled>Save draft</button>
                 <button type="button" class="btn btn-sm btn-primary" data-publish disabled>Publish selected players</button>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-unpublish disabled>Unpublish list</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-email-nominees data-bs-target="#sendMailModal"
+                    data-bs-toggle="modal">Email event nominees</button>
             </div>
-            <p class="small text-muted">Save the division first. Both actions use its selected players. Reserves stay private.</p>
+            <p class="small text-muted" data-publication-status></p>
             @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
                     <span class="fw-semibold">Step 1 · Inter-Districts</span>
@@ -86,6 +88,13 @@
                         </h5>
                         <ol class="list-group list-group-numbered" data-list="{{ $key }}"></ol>
                         <p class="text-muted small mb-0" data-empty="{{ $key }}" hidden>No players added.</p>
+                        @if ($key === 'reserves')
+                            <h6 class="mt-3 mb-2 rounded px-2 py-2 bg-label-danger">
+                                Declined <span class="badge bg-white text-dark" data-declined-count></span>
+                            </h6>
+                            <ul class="list-group" data-declined-list></ul>
+                            <p class="text-muted small mb-0" data-declined-empty>No declines recorded.</p>
+                        @endif
                         @if ($key === 'reserves' && (int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                             <h6 class="mt-3 mb-2 rounded px-2 py-2 bg-label-warning">Next 10 in merit order</h6>
                             <p class="text-muted small mb-2">Players outside the selected and reserve lists.</p>
@@ -103,7 +112,14 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary" data-cancel-swap>Cancel</button>
                 </div>
             </form>
-            <button type="button" class="btn btn-primary" data-save disabled>Save draft</button>
+            <dialog class="border-0 rounded shadow p-3" style="width: min(36rem, 90vw); max-height: 80vh" data-publication-review aria-labelledby="cavaliers-publication-title">
+                <h5 id="cavaliers-publication-title">Review public nominations</h5>
+                <div data-publication-changes></div>
+                <form method="dialog" class="d-flex flex-wrap gap-2 mt-3">
+                    <button type="submit" value="cancel" class="btn btn-sm btn-outline-secondary" autofocus>Cancel</button>
+                    <button type="submit" value="publish" class="btn btn-sm btn-primary">Publish list</button>
+                </form>
+            </dialog>
             @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                 <dialog class="border-0 rounded shadow p-3" style="width: min(32rem, 90vw)" data-player-info aria-labelledby="cavaliers-player-info-title">
                     <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
