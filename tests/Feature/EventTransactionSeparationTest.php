@@ -20,6 +20,8 @@ class EventTransactionSeparationTest extends TestCase
         $user = User::factory()->create()->assignRole('admin');
         $event = Event::factory()->create();
         EventAdmin::create(['user_id' => $user->id, 'event_id' => $event->id]);
+        $otherAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($otherAdmin)->get(route('transactions.pdf', $event))->assertForbidden();
         $row = fn (array $values) => (object) array_merge([
             'event_id' => $event->id, 'type' => 'payment', 'subtype' => null,
             'gross' => 0, 'fee' => 0, 'capeFee' => 0, 'net' => 0,

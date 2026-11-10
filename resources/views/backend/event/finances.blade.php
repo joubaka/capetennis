@@ -318,6 +318,11 @@
 
   @fragment('finance-transactions')
   <section class="finance-tab-panel" id="finance-panel-transactions" role="tabpanel" aria-labelledby="finance-tab-transactions" tabindex="0" @if($activeFinanceTab !== 'transactions') hidden @endif>
+  <div class="d-flex justify-content-end mb-3 no-print">
+    <a href="{{ route('transactions.pdf', $event) }}" class="btn btn-outline-primary btn-sm">
+      <i class="ti ti-download me-1" aria-hidden="true"></i>Export transactions
+    </a>
+  </div>
   <div class="card mb-4" id="finance-receipts">
     <button class="card-header registration-transactions-toggle d-flex justify-content-between align-items-center border-0 bg-transparent text-start w-100"
             type="button" data-bs-toggle="collapse" data-bs-target="#registrationTransactionsCollapse"

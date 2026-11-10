@@ -77,7 +77,7 @@
   @include('backend.event.partials.header', [
     'eventWorkspaceRegionalOnly' => $regionalScoped ?? $rosterOnly ?? false,
     'eventWorkspaceActive' => \App\Support\EventTypePresentation::template($event) === 'cavaliers_trials'
-      && request()->query('tab') === 'nominations' ? 'nominations' : 'entries',
+      ? 'nominations' : 'entries',
     'eventWorkspaceShowHome' => !($regionalScoped ?? $rosterOnly ?? false),
   ])
 

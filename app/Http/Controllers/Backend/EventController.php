@@ -63,6 +63,7 @@ class EventController extends Controller
   public function downloadTransactionsPDF($eventId)
   {
     $event = Event::findOrFail($eventId);
+    $this->authorize('event-finance.view', $event);
 
     /** @var FinancialLedgerService $ledgerService */
     $ledgerService = app(FinancialLedgerService::class);
