@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\{BulkEmailLog, CategoryEvent, CategoryEventRegistration, Event, EventCommunicationBatch, EventNomination, EventRegionManager, EventType, Player, Registration, TeamRegion, User};
-use App\Services\{BulkMailDispatcher, EventCommunicationService};
+use App\Models\{BulkEmailLog, CategoryEvent, CategoryEventRegistration, Event, EventCommunicationBatch, EventNomination, EventRegionManager, EventType, NoProfileTeamPlayer, Player, Registration, Team, TeamPlayer, TeamRegion, User, Venue};
+use App\Services\{BulkMailDispatcher, EventCommunicationService, EventWrapUpMessage};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{Bus, DB, Mail};
 use Tests\TestCase;
@@ -46,6 +46,17 @@ class UniversalEventCommunicationsTest extends TestCase
         return $overrides + ['scope' => 'all', 'filter' => 'all', 'recipients' => 'players'];
     }
 
+    private function wrapUpOptions(Event $event): array
+    {
+        $draft = app(EventWrapUpMessage::class)->draft($event);
+
+        return $this->audienceOptions([
+            'wrap_up' => true,
+            'results_fingerprint' => $draft['results_fingerprint'],
+            'context_fingerprint' => $draft['context_fingerprint'],
+        ]);
+    }
+
     public function test_reviewed_sender_address_survives_dispatch_and_rejects_unverified_or_injected_headers(): void
     {
         config(['mail.from.address' => 'default@example.test', 'mail.allowed_from_addresses' => ['invites@example.test']]);
@@ -80,7 +91,8 @@ class UniversalEventCommunicationsTest extends TestCase
     {
         [$event, $actor] = $this->event();
         [$other] = $this->event();
-        $event->update(['results_published' => true]);
+        $event->update(['published' => true, 'results_published' => true, 'status' => 'completed']);
+        $event->announcements()->create(['title' => 'Rain delay', 'message' => 'Play was delayed due to rain.']);
         $parent = User::factory()->create(['email' => 'parent@example.test']);
         $player = Player::factory()->create(['email' => 'player@example.test', 'userId' => $parent->id]);
         $entry = $this->entry($event, $player, ['payment_status_id' => 1]);
@@ -90,10 +102,14 @@ class UniversalEventCommunicationsTest extends TestCase
             \App\Models\CategoryResult::create(['event_id' => $row->categoryEvent->event_id, 'category_id' => $row->categoryEvent->category_id, 'registration_id' => $row->registration_id, 'position' => 1]);
         }
         $url = route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1]);
-        $this->actingAs($actor)->get($url)->assertOk()->assertSee('Thank you for a wonderful weekend')->assertSee('Published final results')->assertSee($player->full_name)->assertDontSee($foreign->full_name);
-        $draft = app(\App\Services\EventWrapUpMessage::class)->draft($event);
-        $options = $this->audienceOptions(['scope' => 'registrations', 'filter' => 'paid', 'wrap_up' => true, 'results_fingerprint' => $draft['results_fingerprint']]);
-        $this->post(route('backend.event-communications.preview', $event), $options + ['subject' => 'Our thanks', 'body' => 'Custom thank you'])->assertOk()->assertSee('Custom thank you');
+        $compose = $this->actingAs($actor)->get($url)->assertOk()->assertSee('Thank you for being part of')->assertSee('Thank you for your patience')->assertSee('Published final results')->assertSee($player->full_name)->assertDontSee($foreign->full_name);
+        $draft = app(EventWrapUpMessage::class)->draft($event);
+        $options = $this->wrapUpOptions($event);
+        $review = $this->post(route('backend.event-communications.preview', $event), $options + ['subject' => 'Our thanks', 'body' => 'Custom thank you'])->assertOk()->assertSee('Custom thank you');
+        if (getenv('CT_WRAP_UP_QA_HTML')) {
+            file_put_contents(storage_path('framework/testing/event-wrap-up-compose.html'), $compose->getContent());
+            file_put_contents(storage_path('framework/testing/event-wrap-up-review.html'), $review->getContent());
+        }
         $batch = EventCommunicationBatch::sole();
         $this->assertSame(['parent@example.test', 'player@example.test'], array_column($batch->recipients, 'email'));
         $this->assertDatabaseCount('bulk_email_logs', 0);
@@ -103,7 +119,7 @@ class UniversalEventCommunicationsTest extends TestCase
         $this->from($url)->post(route('backend.event-communications.preview', $event), $options + ['subject' => 'Old result', 'body' => 'Old private result'])->assertSessionHasErrors('preview');
         $this->get($url)->assertOk()->assertSee($draft['results_fingerprint'])->assertSee('Old private result');
         $this->get(route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1, 'rebuild_wrap_up' => 1]))->assertOk()->assertDontSee('Old private result');
-        $this->get($url)->assertOk()->assertSee('No published results summary')->assertDontSee('Published final results');
+        $this->get($url)->assertOk()->assertDontSee('Published final results');
         $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
         Mail::assertNothingSent();
         $this->assertDatabaseCount('bulk_email_logs', 0);
@@ -112,10 +128,10 @@ class UniversalEventCommunicationsTest extends TestCase
     public function test_wrap_up_queued_delivery_and_retry_reject_unpublished_results(): void
     {
         [$event, $actor] = $this->event();
-        $event->update(['results_published' => true]);
+        $event->update(['published' => true, 'results_published' => true, 'status' => 'completed']);
         $this->entry($event, Player::factory()->create(['email' => 'player@example.test', 'userId' => null]), ['payment_status_id' => 1]);
         $service = app(EventCommunicationService::class);
-        $options = $this->audienceOptions(['scope' => 'registrations', 'filter' => 'paid', 'wrap_up' => true, 'results_fingerprint' => app(\App\Services\EventWrapUpMessage::class)->fingerprint($event)]);
+        $options = $this->wrapUpOptions($event);
         $batch = $service->preview($event, $actor, $options, 'Thank you', 'Thank you');
         $this->assertSame(1, $service->approve($batch, $actor, false)['queued']);
         $this->assertTrue($service->approve($batch, $actor, false)['duplicate']);
@@ -150,9 +166,102 @@ class UniversalEventCommunicationsTest extends TestCase
         foreach ([$paid, $pending, Player::factory()->create(['email' => 'nominee@example.test', 'userId' => null])] as $player) {
             EventNomination::create(['event_id' => $event->id, 'category_event_id' => $entry->category_event_id, 'player_id' => $player->id]);
         }
-        $options = $this->audienceOptions(['wrap_up' => true, 'results_fingerprint' => app(\App\Services\EventWrapUpMessage::class)->fingerprint($event)]);
+        $options = $this->wrapUpOptions($event);
         $plan = app(EventCommunicationService::class)->plan($event, $actor, $options, 'Thanks', 'Thanks');
         $this->assertSame(['paid@example.test'], array_column($plan['recipients'], 'email'));
+    }
+
+    public function test_wrap_up_queue_rejects_cancellation_and_retry_rechecks_the_player_contact(): void
+    {
+        [$event, $actor] = $this->event();
+        $event->update(['published' => true, 'status' => 'completed']);
+        $player = Player::factory()->create(['email' => 'before@example.test', 'userId' => null]);
+        $this->entry($event, $player, ['payment_status_id' => 1]);
+        $service = app(EventCommunicationService::class);
+        $batch = $service->preview($event, $actor, $this->wrapUpOptions($event), 'Thank you', 'Well done');
+        $service->approve($batch, $actor, false);
+        $log = BulkEmailLog::sole();
+
+        $event->update(['status' => 'cancelled']);
+        (new \App\Jobs\SendBulkEmailJob($log->id, true))->handle();
+        $this->assertSame('failed', $log->fresh()->status);
+        $event->update(['status' => 'completed']);
+        $player->update(['email' => 'after@example.test']);
+
+        $this->actingAs($actor)->post(route('backend.event-communications.retry-preview', [$event, $log]))
+            ->assertSessionHasErrors('preview');
+        $this->get(route('backend.event-mail-log.retry-preview', [$event, $log]))->assertSessionHasErrors('preview');
+        Mail::assertNothingSent();
+    }
+
+    public function test_wrap_up_uses_confirmed_current_event_updates_and_requires_review_after_a_change(): void
+    {
+        [$event, $actor] = $this->event();
+        [$other] = $this->event();
+        $event->update(['published' => true, 'status' => 'completed', 'start_date' => '2026-11-08', 'end_date' => '2026-11-09']);
+        $event->venues()->attach(Venue::forceCreate(['name' => 'Main Courts'])->id, ['num_courts' => 2]);
+        $this->entry($event, Player::factory()->create(['email' => 'family@example.test', 'userId' => null]), ['payment_status_id' => 1]);
+        $event->announcements()->create(['title' => 'Weather forecast', 'message' => 'If rain arrives, play may be delayed.']);
+        $event->announcements()->create(['title' => 'Clothing moved', 'message' => 'Team shirts were moved to reception.']);
+        $event->announcements()->create(['title' => 'Old rain update', 'message' => 'Play was delayed last year, but today stays on schedule.']);
+        $event->announcements()->create(['title' => 'Hidden rain delay', 'message' => 'Play was delayed due to rain.'])->delete();
+        $other->announcements()->create(['title' => 'Other rain delay', 'message' => 'Play was delayed due to rain.']);
+
+        $draft = app(EventWrapUpMessage::class)->draft($event);
+        $this->assertStringContainsString('8 November 2026 to 9 November 2026', $draft['body']);
+        $this->assertStringContainsString('Event venues: Main Courts.', $draft['body']);
+        $this->assertStringNotContainsString('Thank you for your patience', $draft['body']);
+        $this->assertEqualsCanonicalizing(['Weather forecast', 'Clothing moved', 'Old rain update'], $draft['weather_review']);
+        $announcement = $event->announcements()->create(['title' => 'Rain delay', 'message' => '<p>Main Courts: no play before 09:30.</p><p>Other Courts: play as scheduled.</p>']);
+        $draft = app(EventWrapUpMessage::class)->draft($event);
+        $this->assertStringContainsString('Thank you for your patience', $draft['body']);
+        $this->assertContains('Event announcement: Rain delay', $draft['sources']);
+        $batch = app(EventCommunicationService::class)->preview($event, $actor, $this->wrapUpOptions($event), $draft['subject'], $draft['body']);
+        $announcement->delete();
+
+        $this->actingAs($actor)->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1])
+            ->assertRedirect(route('backend.event-communications.review', [$event, $batch]))->assertSessionHasErrors('preview');
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_wrap_up_requires_completion_and_separate_confirmation_for_a_repeat_send(): void
+    {
+        [$event, $actor] = $this->event();
+        $event->update(['status' => 'active', 'start_date' => today(), 'end_date' => today()->addDay()]);
+        $this->entry($event, Player::factory()->create(['email' => 'family@example.test', 'userId' => null]), ['payment_status_id' => 1]);
+        $service = app(EventCommunicationService::class);
+        $future = $service->preview($event, $actor, $this->wrapUpOptions($event), 'Thanks', 'Well done');
+        $sendUrl = route('backend.event-communications.send', $event);
+        $this->actingAs($actor)->post($sendUrl, ['token' => $future->token, 'confirm_send' => 1, 'wrap_up_finished' => 1])
+            ->assertSessionHasErrors('wrap_up_finished');
+
+        $event->update(['end_date' => today()]);
+        $first = $service->preview($event, $actor, $this->wrapUpOptions($event), 'Thanks', 'Well done');
+        $second = $service->preview($event, $actor, $this->wrapUpOptions($event), 'Thanks', 'Well done');
+        $this->post($sendUrl, ['token' => $first->token, 'confirm_send' => 1])->assertSessionHasErrors('wrap_up_finished');
+        $this->post($sendUrl, ['token' => $first->token, 'confirm_send' => 1, 'wrap_up_finished' => 1])->assertSessionHasNoErrors();
+        $this->post($sendUrl, ['token' => $second->token, 'confirm_send' => 1, 'wrap_up_finished' => 1])->assertSessionHasErrors('wrap_up_resend');
+        $this->assertDatabaseCount('bulk_email_logs', 1);
+        $this->post($sendUrl, ['token' => $second->token, 'confirm_send' => 1, 'wrap_up_finished' => 1, 'wrap_up_resend' => 1])->assertSessionHasNoErrors();
+        $this->assertDatabaseCount('bulk_email_logs', 2);
+    }
+
+    public function test_team_wrap_up_uses_confirmed_roster_slots_and_deduplicates_shared_family_addresses(): void
+    {
+        [$event, $actor] = $this->event(EventType::TEAM);
+        [$other] = $this->event(EventType::TEAM);
+        $team = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
+        $foreign = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $other->id])->id]);
+        foreach ([[$team, 'family@example.test', 1], [$team, 'family@example.test', 1], [$team, 'unpaid@example.test', 0], [$foreign, 'foreign@example.test', 1]] as $rank => [$target, $email, $paid]) {
+            $player = Player::factory()->create(['email' => $email, 'userId' => null]);
+            TeamPlayer::create(['team_id' => $target->id, 'player_id' => $player->id, 'rank' => $rank + 1, 'pay_status' => $paid]);
+        }
+        NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Player', 'rank' => 4, 'pay_status' => 1, 'email' => 'imported@example.test']);
+        $batch = app(EventCommunicationService::class)->preview($event, $actor, ['scope' => 'direct', 'direct_email' => 'outsider@example.test', 'recipients' => 'both'] + $this->wrapUpOptions($event), 'Thanks', 'Well done');
+        $this->assertSame(['family@example.test', 'imported@example.test'], array_column($batch->recipients, 'email'));
+        $this->assertCount(2, $batch->recipients[0]['player_keys']);
+        $this->assertSame('players', $batch->options['recipients']);
+        $this->assertArrayNotHasKey('direct_email', $batch->options);
     }
 
     public function test_inline_individual_search_is_authorized_and_event_scoped(): void
@@ -180,17 +289,30 @@ class UniversalEventCommunicationsTest extends TestCase
     {
         foreach ([1, 2, 3, 4, 5, 6, 7, 'masters', 'interprovincial-trials'] as $kind) {
             [$event, $actor] = $this->event(is_int($kind) ? $kind : 1, is_string($kind) ? $kind : null);
+            $event->update(['status' => 'completed']);
             $this->actingAs($actor)->get(route('backend.event-communications.index', $event))
                 ->assertOk()->assertSee('data-mail-compose', false)->assertSee('From name')->assertSee('Reply-to address')->assertSee('Communications');
-            if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
-                $player = Player::factory()->create(['email' => 'player'.$event->id.'@example.test', 'userId' => null]);
+            $player = Player::factory()->create(['email' => 'player'.$event->id.'@example.test', 'userId' => null]);
+            if ($event->isTeam()) {
+                $team = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
+                TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 1]);
+            } else {
                 $this->entry($event, $player, ['payment_status_id' => 1]);
-                $this->post(route('backend.event-communications.preview', $event), $this->audienceOptions(['scope' => 'registrations']) + ['subject' => 'Clothing', 'body' => 'Collect clothing'])
-                    ->assertOk()->assertSee($player->email);
+                if (! $event->isInterprovincialTrials()) {
+                    $this->post(route('backend.event-communications.preview', $event), $this->audienceOptions(['scope' => 'registrations']) + ['subject' => 'Clothing', 'body' => 'Collect clothing'])
+                        ->assertOk()->assertSee($player->email);
+                }
             }
+            $this->get(route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1]))->assertOk();
+            $this->post(route('backend.event-communications.preview', $event), $this->wrapUpOptions($event) + ['subject' => 'Thank you', 'body' => 'Well done'])
+                ->assertOk()->assertSee($player->email);
+            $batch = EventCommunicationBatch::where('event_id', $event->id)->where('options->wrap_up', true)->sole();
+            $this->assertFalse($batch->logs()->exists());
+            $this->post(route('backend.event-communications.send', $event), ['token' => $batch->token, 'confirm_send' => 1])->assertSessionHasNoErrors();
+            $this->assertSame($player->email, $batch->logs()->sole()->recipient_email);
         }
         Mail::assertNothingSent();
-        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 9);
     }
 
     public function test_individual_preview_approval_revalidates_and_queues_once_in_exact_event_log(): void

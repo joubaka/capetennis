@@ -62,6 +62,21 @@
       @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
     </div>
   </div>
+  <section class="mt-3" aria-labelledby="pathway-ball-evidence-heading">
+    <h3 class="h6 mb-1" id="pathway-ball-evidence-heading">Your saved evidence by ball level</h3>
+    <p class="small text-muted mb-0">Counts cover rating-eligible published singles in the {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days ending {{ $pathway['metrics']['date'] ?? 'on the saved rating date' }}.</p>
+    <div class="pathway-stages">
+      @foreach(['red' => '#ed2029', 'orange' => '#ed7100', 'standard' => '#12765a'] as $ball => $ink)
+        @php($progress = $pathway['stageProgress'][$ball] ?? [])
+        <div class="pathway-stage" style="--stage-ink:{{ $ink }}" data-pathway-ball-evidence="{{ $ball }}">
+          <h4 class="h6 mb-2">{{ \App\Services\Performance\BallRatingModel::LABELS[$ball] }}</h4>
+          <p class="small mb-1">Saved CTR <strong>{{ isset($progress['score']) ? number_format($progress['score'], 1) : 'Unavailable' }}</strong>@if($progress['local'] ?? false) · Within-group only @endif</p>
+          <p class="small mb-1">Played singles <strong>{{ $progress['matches'] ?? 'Unavailable' }}</strong></p>
+          <p class="small mb-0">Confidence <strong>{{ isset($progress['score']) ? ($progress['confidence_label'] ?? 'Unavailable') : 'Unavailable' }}</strong></p>
+        </div>
+      @endforeach
+    </div>
+  </section>
   <section class="mt-3" aria-labelledby="pathway-levels-heading">
     <h3 class="h6" id="pathway-levels-heading">All levels and targets</h3>
     <p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>

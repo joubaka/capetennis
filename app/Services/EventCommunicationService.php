@@ -285,6 +285,11 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body, bool $lockLifecycle = false): array
     {
+        if (! empty($options['wrap_up'])) {
+            abort_unless($this->managesWholeEvent($event, $actor), 403);
+            $this->validateWrapUpResults($event, $options);
+            return $this->legacyPlan($event, $options, $this->wrapUpPlayers($event), $subject, $body);
+        }
         if (($options['source'] ?? null) === 'team_selection_lifecycle') {
             $plan = app(\App\Services\TeamSelection\TeamSelectionMailReview::class)->plan($event, $actor, $options, $lockLifecycle);
             $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $plan]);
@@ -319,10 +324,6 @@ class EventCommunicationService
             }
             $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan['recipients'], $plan['issues'], $rows]);
             return $plan;
-        }
-        if (! empty($options['wrap_up'])) {
-            abort_unless($this->managesWholeEvent($event, $actor), 403);
-            $this->validateWrapUpResults($event, $options);
         }
         if (($options['source'] ?? null) === 'roster_target') {
             $region = EventRegion::where('event_id', $event->id)->findOrFail($options['event_region_id']);
@@ -418,11 +419,6 @@ class EventCommunicationService
                 ->map(fn ($invitation) => $invitation->team_id.':player:'.$invitation->player_id);
             $rows = $rows->filter(fn ($row) => $pending->contains(($row['team_id'] ?? '').':'.$row['key']));
         }
-        if (! empty($options['wrap_up']) && ! $event->isTeam()) {
-            $activeRegistrations = $event->registrations()->activeAndPaid()->pluck('registration_id');
-            $playerIds = DB::table('player_registrations')->whereIn('registration_id', $activeRegistrations)->pluck('player_id');
-            $rows = $rows->filter(fn ($row) => ($event->isInterprovincialTrials() || ! empty($row['registered'])) && $playerIds->contains((int) Str::after($row['key'], 'player:')));
-        }
         if ($event->isTeam() && in_array($options['scope'] ?? null, ['all', 'region', 'team'], true)) {
             $rosterKeys = $this->rosterEntries($event, $regions->pluck('region_id')->all())->map(fn ($row) => $row['team_id'].':'.$row['key']);
             $rows = $rows->filter(fn ($row) => $rosterKeys->contains(($row['team_id'] ?? '').':'.$row['key']));
@@ -493,6 +489,29 @@ class EventCommunicationService
         return $plan;
     }
 
+    private function wrapUpPlayers(Event $event): Collection
+    {
+        if ($event->isTeam()) {
+            $inactiveSlots = TeamSelectionInvitation::where('event_id', $event->id)
+                ->whereIn('import_id', TeamSelectionImport::where('event_id', $event->id)->whereIn('status', ['draft', 'sent'])
+                    ->selectRaw('MAX(id)')->groupBy('region_id'))
+                ->whereIn('status', ['declined', 'withdrawn', 'reserve'])
+                ->get(['team_id', 'player_id'])
+                ->mapWithKeys(fn ($invitation) => [$invitation->team_id.':player:'.$invitation->player_id => true]);
+
+            return $this->rosterEntries($event, includeEventLegacyTeams: true)
+                ->where('status', 'paid_confirmed')
+                ->reject(fn ($row) => $inactiveSlots->has($row['team_id'].':'.$row['key']))
+                ->sortBy([['key', 'asc'], ['team_id', 'asc']])->unique('key')->values();
+        }
+
+        return $event->registrations()->activeAndPaid()
+            ->with('registration.players.user', 'registration.players.users')->get()
+            ->flatMap(fn ($entry) => $entry->registration?->players ?? collect())
+            ->unique('id')->sortBy('id')->values()
+            ->map(fn (Player $player) => ['key' => 'player:'.$player->id, 'name' => $player->full_name, 'emails' => $this->contacts->emails($player)->all()]);
+    }
+
     private function legacyPlan(Event $event, array $options, Collection $rows, string $subject, string $body): array
     {
         $recipients = collect();
@@ -505,7 +524,7 @@ class EventCommunicationService
                 $recipients->put($email, ['email' => $email, 'name' => $row['name'], 'kind' => 'players', 'player_keys' => collect($previous['player_keys'] ?? [])->concat($row['player_keys'] ?? [$row['key'] ?? 'email:'.$email])->unique()->values()->all(), 'subject' => $subject, 'html' => $html]);
             }
         }
-        if ($recipients->isEmpty()) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
+        if ($recipients->isEmpty() && empty($options['wrap_up'])) throw ValidationException::withMessages(['audience' => 'No matching recipient has a valid email address.']);
         $plan = ['recipients' => $recipients->sortBy('email')->values()->all(), 'issues' => $issues->sort()->values()->all()];
         $plan['fingerprint'] = $this->planFingerprint([$event->id, $options, $subject, $body, $plan]);
         return $plan;
@@ -568,6 +587,13 @@ class EventCommunicationService
     public function preview(Event $event, User $actor, array $options, string $subject, string $body): EventCommunicationBatch
     {
         $options = array_merge($options, CommunicationSender::resolve($options, $actor));
+        if (! empty($options['wrap_up'])) {
+            $options = array_intersect_key($options, array_flip(['wrap_up', 'results_fingerprint', 'context_fingerprint', 'from_address', 'from_name', 'reply_to'])) + [
+                'scope' => $event->isTeam() || $event->isInterprovincialTrials() ? 'all' : 'registrations',
+                'filter' => 'paid',
+                'recipients' => 'players',
+            ];
+        }
         $plan = $this->plan($event, $actor, $options, $subject, $body);
 
         unset($plan['lifecycle_state']);
@@ -598,13 +624,13 @@ class EventCommunicationService
         }
         $original = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $actor->id)->findOrFail($log->payload['event_communication_batch_id'] ?? 0);
         abort_if(in_array($original->options['source'] ?? null, ['selection_regions', 'regional_registration_open'], true), 422, 'Reopen the regional email and review current teams and contacts before sending again.');
-        $this->validateWrapUpResults($event, $log->payload);
+        $this->validateWrapUpRetry($event, $log, $actor);
         $this->checkRankingRetry($original, $actor);
         $this->validateWrapUpResults($event, $original->options);
         abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at && (int) ($log->payload['event_id'] ?? 0) === (int) $event->id, 422);
         $recipient = ['email' => $log->recipient_email, 'name' => $log->recipient_name, 'kind' => $log->payload['recipient_kind'] ?? 'players', 'player_keys' => $log->payload['player_keys'] ?? [], 'subject' => $log->payload['subject'], 'html' => $log->payload['body']];
 
-        return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id, 'ranking_origin_id' => $this->rankingOriginal($original)?->id], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
+        return EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(), 'subject' => $recipient['subject'], 'body' => '', 'options' => ['source' => 'retry', 'log_id' => $log->id, 'original_batch_id' => $original->id, 'ranking_origin_id' => $this->rankingOriginal($original)?->id, 'wrap_up_retry' => ! empty($log->payload['wrap_up'])], 'recipients' => [$recipient], 'issues' => [], 'fingerprint' => hash('sha256', json_encode($recipient, JSON_THROW_ON_ERROR))]);
     }
 
     public function previewAnnouncementRetry(Event $event, \App\Models\TeamSelectionRegionAnnouncement $announcement, User $actor): EventCommunicationBatch
@@ -662,24 +688,61 @@ class EventCommunicationService
         return $recipient;
     }
 
-    public function approve(EventCommunicationBatch $batch, User $actor, bool $acknowledgeMissing): array
+    public function hasApprovedWrapUp(Event $event, bool $lock = false): bool
+    {
+        $query = EventCommunicationBatch::where('event_id', $event->id)->where('options->wrap_up', true)->whereNotNull('approved_at');
+
+        return $lock ? $query->lockForUpdate()->first(['id']) !== null : $query->exists();
+    }
+
+    public function authorizeWrapUpBatch(EventCommunicationBatch $batch, User $actor): void
+    {
+        if (! empty($batch->options['wrap_up']) || ! empty($batch->options['wrap_up_retry'])
+            || (in_array($batch->options['source'] ?? null, ['retry', 'email_log_retry'], true)
+                && BulkEmailLog::whereKey($batch->options['log_id'])->where('payload->event_id', $batch->event_id)
+                    ->where('payload->wrap_up', true)->exists())) {
+            abort_unless($this->managesWholeEvent($batch->event, $actor), 403);
+        }
+    }
+
+    public function approve(EventCommunicationBatch $batch, User $actor, bool $acknowledgeMissing, bool $confirmFinished = false, bool $confirmResend = false): array
     {
         abort_if(($batch->options['source'] ?? null)==='series_compose',422,'Approve this intent from its series review, which checks every event together.');
         $this->authorizeRankingBatch($batch, $actor);
+        $this->authorizeWrapUpBatch($batch, $actor);
         $this->regions($batch->event, $actor);
         abort_unless((int) $batch->created_by === (int) $actor->id, 403);
 
-        return DB::transaction(function () use ($batch, $actor, $acknowledgeMissing) {
+        return DB::transaction(function () use ($batch, $actor, $acknowledgeMissing, $confirmFinished, $confirmResend) {
+            // Serialize different wrap-up previews for one event before locking either batch.
+            $event = ! empty($batch->options['wrap_up']) ? Event::whereKey($batch->event_id)->lockForUpdate()->firstOrFail() : null;
             $batch = EventCommunicationBatch::whereKey($batch->id)->lockForUpdate()->firstOrFail();
             if ($batch->approved_at) return ['queued' => 0, 'duplicate' => true];
             app(\App\Services\Assistant\AssistantEmailDraft::class)->assertCurrentReview($batch, $actor);
+            if (! empty($batch->options['wrap_up'])) {
+                abort_unless($this->managesWholeEvent($event, $actor), 403);
+                if (empty($batch->options['context_fingerprint'])) {
+                    throw ValidationException::withMessages(['preview' => 'Reopen the wrap-up message and review a fresh preview before sending.']);
+                }
+                if ($batch->recipients === []) {
+                    throw ValidationException::withMessages(['audience' => 'No confirmed player has a valid email address. Add contacts and prepare a fresh review.']);
+                }
+                $state = app(EventWrapUpMessage::class)->sendState($event);
+                if ($state !== 'ready' && ! ($state === 'same_day' && $confirmFinished)) {
+                    throw ValidationException::withMessages(['wrap_up_finished' => 'The event must be finished before sending its summary.']);
+                }
+                if (! $confirmResend && $this->hasApprovedWrapUp($event, lock: true)) {
+                    throw ValidationException::withMessages(['wrap_up_resend' => 'A wrap-up was already approved. Review and confirm that you want to send it again.']);
+                }
+                $batch->setRelation('event', $event);
+            }
             $this->validateWrapUpResults($batch->event, $batch->options);
             if (($batch->options['source'] ?? null) === 'retry') {
                 $original = EventCommunicationBatch::where('event_id', $batch->event_id)->findOrFail($batch->options['original_batch_id']);
                 abort_if(in_array($original->options['source'] ?? null, ['selection_regions', 'regional_registration_open'], true), 422, 'Review a fresh regional email before sending again.');
                 $this->validateWrapUpResults($batch->event, $original->options);
-                $log = BulkEmailLog::whereKey($batch->options['log_id'])->firstOrFail();
-                $this->validateWrapUpResults($batch->event, $log->payload);
+                $log = BulkEmailLog::whereKey($batch->options['log_id'])->lockForUpdate()->firstOrFail();
+                $this->validateWrapUpRetry($batch->event, $log, $actor);
             }
             if ($batch->created_at->lt(now()->subHour())) throw ValidationException::withMessages(['preview' => 'This preview expired. Review a fresh recipient and message preview.']);
             if (($batch->options['source'] ?? null) === 'announcement_retry') {
@@ -766,7 +829,7 @@ class EventCommunicationService
             $selectedRegionIds = $selectedTeamIds
                 ? Team::withoutGlobalScopes()->whereIn('id', $selectedTeamIds)->pluck('region_id')->unique()->values() : collect();
             foreach ($batch->recipients as $recipient) {
-                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => in_array($batch->options['source'] ?? null, ['roster_target', 'roster_region_selection'], true) || ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : ($selectedRegionIds->count() === 1 ? $selectedRegionIds->first() : null), 'team_id' => count($selectedTeamIds) === 1 ? $selectedTeamIds[0] : null, 'team_ids' => $selectedTeamIds, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_address' => $batch->options['from_address'] ?? config('mail.from.address'), 'from_name' => $batch->options['from_name'] ?? $actor->name, 'reply_to' => $batch->options['reply_to'] ?? $actor->email, 'manual_retry_only' => true, 'wrap_up' => (bool) ($batch->options['wrap_up'] ?? false), 'results_fingerprint' => $batch->options['results_fingerprint'] ?? null], true);
+                $result = $this->mailer->dispatch($batch->event->isInterprovincialTrials() ? 'trial_communication' : ($batch->event->isTeam() ? 'team_email' : 'bulk_event_mail'), $related, [$recipient], ['event_id' => $batch->event_id, 'created_by' => $actor->id, 'region_id' => in_array($batch->options['source'] ?? null, ['roster_target', 'roster_region_selection'], true) || ($batch->options['scope'] ?? null) === 'region' ? $batch->options['region_id'] : ($selectedRegionIds->count() === 1 ? $selectedRegionIds->first() : null), 'team_id' => count($selectedTeamIds) === 1 ? $selectedTeamIds[0] : null, 'team_ids' => $selectedTeamIds, 'event_communication_batch_id' => $batch->id, 'subject' => $recipient['subject'], 'body' => $recipient['html'], 'recipient_kind' => $recipient['kind'], 'player_keys' => $recipient['player_keys'] ?? [], 'from_address' => $batch->options['from_address'] ?? config('mail.from.address'), 'from_name' => $batch->options['from_name'] ?? $actor->name, 'reply_to' => $batch->options['reply_to'] ?? $actor->email, 'manual_retry_only' => true, 'wrap_up' => (bool) ($batch->options['wrap_up'] ?? false), 'results_fingerprint' => $batch->options['results_fingerprint'] ?? null, 'context_fingerprint' => $batch->options['context_fingerprint'] ?? null], true);
                 foreach (['queued', 'failed', 'skipped'] as $outcome) {
                     $stats[$outcome] += $result[$outcome] ?? 0;
                 }
@@ -778,8 +841,31 @@ class EventCommunicationService
 
     public function validateWrapUpResults(Event $event, array $options): void
     {
-        if (! empty($options['wrap_up']) && ! hash_equals(app(EventWrapUpMessage::class)->fingerprint($event->fresh()), $options['results_fingerprint'] ?? '')) {
+        if (empty($options['wrap_up'])) {
+            return;
+        }
+        $message = app(EventWrapUpMessage::class);
+        $event = $event->fresh();
+        if (! hash_equals($message->fingerprint($event), $options['results_fingerprint'] ?? '')) {
             throw ValidationException::withMessages(['preview' => 'Published results changed. Reopen the wrap-up message and review a fresh preview before sending.']);
+        }
+        if (isset($options['context_fingerprint']) && ! hash_equals($message->contextFingerprint($event), $options['context_fingerprint'])) {
+            throw ValidationException::withMessages(['preview' => 'Event details or announcements changed. Reopen the wrap-up message and review a fresh preview before sending.']);
+        }
+    }
+
+    public function validateWrapUpRetry(Event $event, BulkEmailLog $log, User $actor): void
+    {
+        if (empty($log->payload['wrap_up'])) {
+            return;
+        }
+        abort_unless((int) ($log->payload['event_id'] ?? 0) === (int) $event->id && $this->managesWholeEvent($event, $actor), 403);
+        $this->validateWrapUpResults($event, $log->payload);
+        $keys = collect($log->payload['player_keys'] ?? [])->sort()->values()->all();
+        $currentKeys = $this->wrapUpPlayers($event)->filter(fn ($player) => in_array($log->recipient_email, $player['emails'], true))
+            ->pluck('key')->unique()->sort()->values()->all();
+        if ($keys !== $currentKeys || $currentKeys === []) {
+            throw ValidationException::withMessages(['preview' => 'The player or contact for this address changed. Prepare a fresh message before sending again.']);
         }
     }
 }

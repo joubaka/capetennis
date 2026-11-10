@@ -80,6 +80,7 @@ class PlayerPathwayService
         foreach (self::STAGES as $ball => $label) {
             $ballTarget = $this->target($ball === 'standard' ? null : $ball);
             $count = $metricAvailable && is_int($metrics['stage_events'][$ball] ?? null) ? $metrics['stage_events'][$ball] : null;
+            $matches = $metrics['stage_matches'][$ball] ?? null;
             $ballRating = $metrics['stage_ratings'][$ball] ?? [];
             $ballScore = $ballRating['score'] ?? null;
             $ballScore = $this->validScore($ballScore);
@@ -88,7 +89,8 @@ class PlayerPathwayService
             $ballAssessed = $ballEligible && $ballTarget !== null && $count !== null;
             $met = $ballAssessed && $count >= $ballTarget['events'] && $ballScore >= $ballTarget['ctr'];
             $stageProgress[$ball] = ['label' => $label, 'ctr_label' => $this->ctrLabel($ball), 'score' => $ballScore, 'local' => ($ballRating['local'] ?? false) === true,
-                'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count, 'target' => $ballTarget,
+                'confidence_label' => $ballRating['confidence_label'] ?? null, 'reason' => $ballRating['reason'] ?? null, 'events' => $count,
+                'matches' => is_int($matches) && $matches >= 0 ? $matches : null, 'target' => $ballTarget,
                 'assessed' => $ballAssessed, 'status' => !$ballAssessed ? 'Not assessed' : ($met ? 'Targets met' : 'Targets not yet met'), 'met' => $met];
         }
         $badgeStage = $current_stage;

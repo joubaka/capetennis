@@ -149,6 +149,25 @@ class PlayerPathwayTest extends TestCase
         $this->assertDatabaseCount('player_pathway_achievements', 0);
     }
 
+    public function test_pathway_displays_saved_rating_and_match_evidence_for_each_ball_level(): void
+    {
+        $this->actingAs($this->actor());
+        $metrics = $this->metrics(52, ['red' => 1, 'orange' => 2, 'standard' => 1]);
+        $metrics['stage_matches'] = ['red' => 2, 'orange' => 7, 'standard' => 3];
+        $metrics['stage_ratings']['orange'] = ['score' => 64, 'confidence_label' => 'Medium'];
+        $metrics['stage_ratings']['standard'] = ['score' => null];
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn([
+            'reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => [],
+        ]);
+
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSeeInOrder([
+            'data-pathway-ball-evidence="orange"', 'Saved CTR <strong>64.0</strong>',
+            'Played singles <strong>7</strong>', 'Confidence <strong>Medium</strong>',
+            'data-pathway-ball-evidence="standard"', 'Saved CTR <strong>Unavailable</strong>',
+            'Played singles <strong>3</strong>', 'Confidence <strong>Unavailable</strong>',
+        ], false);
+    }
+
     public function test_stage_details_require_private_rating_access_and_a_known_stage(): void
     {
         $url = fn ($player, $stage) => route('my.tennis.pathway.info', compact('player', 'stage'));

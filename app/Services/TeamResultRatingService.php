@@ -28,6 +28,7 @@ class TeamResultRatingService
             $row['cape_tennis_rating'] = [
                 'cohort' => $cohort,
                 'score' => $rating['score'] ?? null,
+                'overall' => ($leaderboard['unified'] ?? false) === true,
                 'position' => $rating ? $member['position'] : null,
                 'component' => $rating['component'] ?? null,
                 'snapshot_stale' => (bool) ($leaderboard['snapshot']['snapshot_stale'] ?? false),

@@ -5,6 +5,10 @@
 @php
   $scheduledAnnouncement = ($batch->options['source'] ?? null) === 'announcement' && isset($batch->options['scheduled_for']);
   $coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count();
+  $isWrapUp = !empty($batch->options['wrap_up']);
+  $wrapUpState = $isWrapUp ? app(\App\Services\EventWrapUpMessage::class)->sendState($event) : null;
+  $wrapUpRepeat = $isWrapUp && !$batch->approved_at && app(\App\Services\EventCommunicationService::class)->hasApprovedWrapUp($event);
+  $addressCount = count($batch->recipients);
   $mailRecipients = $batch->recipients;
   if ($mailRecipients && $scheduledAnnouncement) {
       $mailRecipients[0]['html'] = \App\Services\EventAnnouncementService::renderBatch($batch);
@@ -12,12 +16,17 @@
 @endphp
 <div data-mail-review>
 <h4>{{ $event->name }} — Review emails</h4>
+@if($isWrapUp && $errors->any())
+<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>
+@endif
 <h5>1. Recipients</h5>@if(($batch->options['source'] ?? null) === 'selection_regions')<p>Recipients are players and parents in {{ count($batch->options['selection_region_ids']) }} selected regions. Review all selected teams and reserves below.</p>@endif
 <p>{{ count($batch->recipients) }} emails. {{ $scheduledAnnouncement ? 'This audience was confirmed when the announcement was published.' : 'Nothing is sent until you approve below.' }}</p>
 @if(($batch->options['source'] ?? null) === 'selection_regions' && !empty($batch->options['bcc_emails']))
 <div class="card card-body mb-3"><h5>Extra BCC addresses</h5><p class="text-break">{{ implode(', ', $batch->options['bcc_emails']) }}</p><p class="mb-0">Each extra address receives one hidden copy. Addresses already receiving a player or parent email are not copied again. BCC addresses are hidden from recipients.</p></div>
 @endif
-@if($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. @if(($batch->options['source'] ?? null) === 'team_selection_lifecycle' && ($batch->options['lifecycle_action'] ?? '') !== 'reminder')Invitation emails retain each player’s personal links.@else Shared addresses receive one email.@endif</p>@endif
+@if($isWrapUp)
+<p>{{ $coveredPlayers + count($batch->issues ?? []) }} confirmed participants · {{ $addressCount }} unique email {{ Str::plural('address', $addressCount) }} · {{ count($batch->issues ?? []) }} missing contacts. Shared addresses receive one email.</p>
+@elseif($coveredPlayers)<p>{{ $coveredPlayers }} distinct players covered; {{ count($batch->issues ?? []) }} missing contacts. @if(($batch->options['source'] ?? null) === 'team_selection_lifecycle' && ($batch->options['lifecycle_action'] ?? '') !== 'reminder')Invitation emails retain each player’s personal links.@else Shared addresses receive one email.@endif</p>@endif
 @if(($batch->options['scope'] ?? null)==='rankings')
 
 <div class="card card-body mb-3"><h5>Review ranked players</h5>
@@ -33,13 +42,25 @@
 @endif
 @if($batch->issues)<div class="alert alert-warning"><strong>Missing contacts</strong><ul class="mb-0">@foreach($batch->issues as $issue)<li>{{ $issue }}</li>@endforeach</ul></div>@endif
 @include('backend.partials.email-sample', ['mailRecipients' => $mailRecipients, 'mailSender' => $batch->options, 'mailSampleHeading' => '2. Message preview'])
-@if($scheduledAnnouncement)
+@if($scheduledAnnouncement || ($isWrapUp && $batch->approved_at))
 <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id, 'report_scope' => 'batch']) }}">View send report</a>
 @else
 <h5>3. Approve</h5>
 <form method="post" action="{{ route('backend.event-communications.send',$event) }}">@csrf<input type="hidden" name="token" value="{{ $batch->token }}">
 @if($batch->issues)<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label>@endif
-<input type="hidden" name="confirm_send" value="1"><button id="approve-ranking-mail" type="submit" class="btn btn-primary">Send {{ count($batch->recipients) === 1 ? 'email' : count($batch->recipients).' emails' }}</button>
+@if($wrapUpState === 'same_day')
+<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="wrap_up_finished" value="1" required>The event has finished.</label>
+@elseif($wrapUpState === 'too_early')
+<p class="alert alert-info">Sending opens after the event ends.</p>
+@elseif($wrapUpState === 'unavailable')
+<p class="alert alert-info">Sending is unavailable for this event.</p>
+@endif
+@if($wrapUpRepeat)
+<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="wrap_up_resend" value="1" required>A wrap-up was already approved for this event. Send this additional summary.</label>
+@endif
+<input type="hidden" name="confirm_send" value="1">
+<div class="d-flex flex-wrap gap-2">
+<button id="approve-ranking-mail" type="submit" class="btn btn-primary" @disabled($isWrapUp && (!$addressCount || !in_array($wrapUpState, ['ready', 'same_day'], true)))>{{ $isWrapUp ? 'Send to '.$addressCount.' email '.Str::plural('address', $addressCount) : 'Send '.($addressCount === 1 ? 'email' : $addressCount.' emails') }}</button>
 @if(($batch->options['source'] ?? null) === 'regional_registration_open')
 <a class="btn btn-outline-secondary" href="{{ route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id]) }}">Back to composer</a>
 @elseif(($batch->options['source'] ?? null) === 'selection_regions')
@@ -49,6 +70,7 @@
 @else
 <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', !empty($batch->options['wrap_up']) ? ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id] : ['event' => $event]) }}">Back to composer</a>
 @endif
+</div>
 </form>
 @endif
 @if(($batch->options['scope'] ?? null)==='rankings')

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{BulkEmailLog, Event, EventCommunicationBatch, Team};
 use App\Services\EventCommunicationService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class EventCommunicationController extends Controller
 {
@@ -24,12 +25,14 @@ class EventCommunicationController extends Controller
         if ($request->boolean('wrap_up')) {
             abort_unless($service->managesWholeEvent($event, $request->user()), 403);
             $wrapUp = app(\App\Services\EventWrapUpMessage::class)->draft($event);
+            $wrapUp['previously_sent'] = $service->hasApprovedWrapUp($event);
             if ($request->filled('edit_batch')) {
                 $editBatch = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('edit_batch'));
                 abort_unless(! empty($editBatch->options['wrap_up']), 404);
                 $wrapUp['subject'] = $editBatch->subject;
                 $wrapUp['body'] = $editBatch->body;
                 $wrapUp['results_fingerprint'] = $editBatch->options['results_fingerprint'];
+                $wrapUp['context_fingerprint'] = $editBatch->options['context_fingerprint'] ?? '';
                 $wrapUp['options'] = $editBatch->options;
             }
         }
@@ -64,9 +67,17 @@ class EventCommunicationController extends Controller
                 $individuals = collect([['key' => $individual['key'], 'name' => $individual['name']]]);
             }
         }
-        $batches = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->when(! $canRankingMail, fn ($q) => $q->where(fn ($q) => $q->whereNull('options->scope')->orWhere('options->scope', '!=', 'rankings'))->whereNull('options->ranking_origin_id'))->latest()->paginate(15);
+        $wholeEvent = $service->managesWholeEvent($event, $request->user());
+        $batches = EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)
+            ->when(! $wholeEvent, fn ($q) => $q->where(fn ($q) => $q->whereNull('options->wrap_up')->orWhere('options->wrap_up', false))
+                ->where(fn ($q) => $q->whereNull('options->wrap_up_retry')->orWhere('options->wrap_up_retry', false)))
+            ->when(! $canRankingMail, fn ($q) => $q->where(fn ($q) => $q->whereNull('options->scope')->orWhere('options->scope', '!=', 'rankings'))->whereNull('options->ranking_origin_id'))
+            ->latest()->paginate(15);
         $batch = $request->filled('batch') ? EventCommunicationBatch::where('event_id', $event->id)->where('created_by', $request->user()->id)->findOrFail($request->query('batch')) : $batches->first();
-        if ($batch) $service->authorizeRankingBatch($batch, $request->user());
+        if ($batch) {
+            $service->authorizeRankingBatch($batch, $request->user());
+            $service->authorizeWrapUpBatch($batch, $request->user());
+        }
         $batchLogs = $batch && ($batch->options['source'] ?? null) === 'invitation_retry'
             ? $service->invitationLogs($event, $request->user())->whereKey($batch->options['log_id']) : $batch?->logs();
         $summary = $batchLogs ? BulkEmailLog::deliverySummary($batchLogs) : null;
@@ -74,7 +85,7 @@ class EventCommunicationController extends Controller
         $invitationQuery = $service->invitationLogs($event, $request->user());
         $invitationSummary = BulkEmailLog::deliverySummary($invitationQuery);
         $invitationLogs = $invitationQuery->latest()->paginate(25, ['*'], 'invitation_page')->withQueryString();
-        $drafts = $service->managesWholeEvent($event, $request->user())
+        $drafts = $wholeEvent
             ? EventCommunicationBatch::where('event_id', $event->id)->where('status', 'draft')->latest()->paginate(10, ['*'], 'drafts_page') : collect();
 
         $scope = $request->validate(['report_scope' => 'nullable|in:all,invitations,batch'])['report_scope'] ?? ($request->filled('batch') ? 'batch' : 'all');
@@ -149,7 +160,8 @@ class EventCommunicationController extends Controller
             'subject' => 'required|string|max:200',
             'body' => 'required|string|max:30000',
             'wrap_up' => 'nullable|boolean',
-            'results_fingerprint' => 'nullable|required_if:wrap_up,1|string|size:64',
+            'results_fingerprint' => ['nullable', \Illuminate\Validation\Rule::requiredIf($request->boolean('wrap_up')), 'string', 'size:64'],
+            'context_fingerprint' => ['nullable', \Illuminate\Validation\Rule::requiredIf($request->boolean('wrap_up')), 'string', 'size:64'],
         ]);
         $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'team_ids', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
         if (! empty($data['pending_selection_import_id'])) $options['pending_selection_import_id'] = $data['pending_selection_import_id'];
@@ -164,8 +176,9 @@ class EventCommunicationController extends Controller
         if ($request->boolean('wrap_up')) {
             $options['wrap_up'] = true;
             $options['results_fingerprint'] = $data['results_fingerprint'];
+            $options['context_fingerprint'] = $data['context_fingerprint'];
         }
-        $batch = ! empty($data['assistant_conversation_uuid'])
+        $batch = empty($options['wrap_up']) && ! empty($data['assistant_conversation_uuid'])
             ? app(\App\Services\Assistant\AssistantEmailDraft::class)->preview($event, $request->user(), $data['assistant_conversation_uuid'], $options, $data['subject'], $data['body'])
             : $service->preview($event, $request->user(), $options, $data['subject'], $data['body']);
 
@@ -177,6 +190,7 @@ class EventCommunicationController extends Controller
     {
         abort_unless((int) $batch->event_id === (int) $event->id && (int) $batch->created_by === (int) $request->user()->id, 404);
         $service->regions($event, $request->user());
+        $service->authorizeWrapUpBatch($batch, $request->user());
         $service->authorizeRankingBatch($batch, $request->user());
         $rankingReview = ($batch->options['scope'] ?? null) === 'rankings' ? app(\App\Services\RegionalRankingMailAudience::class)->resolve($event, $request->user(), $batch->options) : null;
         return response()->view('backend.event.communications.preview', compact('event', 'batch', 'rankingReview'))->header('Cache-Control', 'private, no-store');
@@ -184,9 +198,17 @@ class EventCommunicationController extends Controller
 
     public function send(Request $request, Event $event, EventCommunicationService $service)
     {
-        $request->validate(['token' => 'required|uuid', 'confirm_send' => 'accepted', 'acknowledge_missing' => 'nullable|boolean']);
+        $request->validate(['token' => 'required|uuid', 'confirm_send' => 'accepted', 'acknowledge_missing' => 'nullable|boolean', 'wrap_up_finished' => 'nullable|boolean', 'wrap_up_resend' => 'nullable|boolean']);
         $batch = EventCommunicationBatch::where('event_id', $event->id)->where('token', $request->token)->firstOrFail();
-        $stats = $service->approve($batch, $request->user(), $request->boolean('acknowledge_missing'));
+        try {
+            $stats = $service->approve($batch, $request->user(), $request->boolean('acknowledge_missing'), $request->boolean('wrap_up_finished'), $request->boolean('wrap_up_resend'));
+        } catch (ValidationException $exception) {
+            if (empty($batch->options['wrap_up']) || $request->expectsJson()) {
+                throw $exception;
+            }
+
+            return redirect()->route('backend.event-communications.review', [$event, $batch])->withErrors($exception->errors());
+        }
 
         $pending = 0;
         $submissionLogs = $batch->logs();

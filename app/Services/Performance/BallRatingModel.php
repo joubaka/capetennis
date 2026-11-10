@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /** Independent singles graphs with weaker published finishing fields; unstated conditions belong to normal tennis. */
 class BallRatingModel
 {
-    public const VERSION = 3;
+    public const VERSION = 4;
     public const LABELS = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
     public const COHORTS = ['red' => 'red ball · singles', 'orange' => 'orange ball · singles', 'standard' => 'green/yellow ball · singles'];
 
@@ -65,6 +65,13 @@ class BallRatingModel
         }
         if (preg_match('/\b(?:overberg|west[\s-]*coast)\b/u', $event) !== 1
             || preg_match('/\btrials?\b/u', $event) !== 1) return false;
+        return self::isU10BDivision($category);
+    }
+
+    private static function isU10BDivision(string $category): bool
+    {
+        if (preg_match('/\ba\b/u', $category) === 1 || preg_match_all('/\bu\s*\/?\s*\d+/u', $category) > 1) return false;
+
         return preg_match('/\bu\s*\/?\s*10\s*[- ]?\s*b\b/u', $category) === 1
             || preg_match('/\bu\s*\/?\s*10\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $category) === 1;
     }
@@ -78,11 +85,28 @@ class BallRatingModel
     public static function forMatch(array $match): ?string
     {
         if (array_key_exists('rating_ball_type', $match)) return in_array($match['rating_ball_type'], ['red', 'orange', 'standard'], true) ? $match['rating_ball_type'] : null;
-        if (in_array($match['ball_type'] ?? null, ['red', 'orange', 'green', 'yellow', 'standard'], true)) return self::bucket($match['ball_type']);
+        $eventName = $match['event_name'] ?? $match['event'] ?? null;
+        if (in_array($match['ball_type'] ?? null, ['red', 'orange', 'green', 'yellow', 'standard'], true)) {
+            return self::forCourt($match['ball_type'], $match['category'] ?? null, $eventName);
+        }
         $category = self::labelled($match['category'] ?? null, true);
         if ($category !== null) return $category['stage'];
-        if (self::isNamedOrange($match['category'] ?? null, $match['event_name'] ?? $match['event'] ?? null)) return 'orange';
-        return self::bucket(null, $match['event_name'] ?? $match['event'] ?? null);
+        if (self::isNamedOrange($match['category'] ?? null, $eventName)) return 'orange';
+        return self::bucket(null, $eventName);
+    }
+
+    public static function forCourt(string $ballType, ?string $category, ?string $eventName): ?string
+    {
+        $event = mb_strtolower(trim((string) $eventName));
+        if ($ballType === 'standard' && preg_match('/^overberg\b[^\r\n]*\btrials?\b/u', $event) === 1
+            && self::isU10BDivision(mb_strtolower((string) $category))) {
+            // Shared courts can carry the generic standard label even when this division played Orange.
+            $explicit = self::labelled($category, true);
+
+            return $explicit === null ? 'orange' : $explicit['stage'];
+        }
+
+        return self::bucket($ballType);
     }
 
     public function fit(array $matches, CarbonImmutable $asOf, array $fields = []): array

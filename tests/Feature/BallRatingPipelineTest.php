@@ -154,9 +154,19 @@ class BallRatingPipelineTest extends TestCase
             ['West Coast Tennis Trials 2026', 'U10 Boys B'],
             ['Cavaliers Junior Ceres Tournament 2026', 'u/9 Girls B - Division']] as $index => [$event, $category]) {
             [$finishEvent, $field] = $this->finishField($event, $category);
-            $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($field));
             $fixture = $this->match($event, $players[0], $players[$index + 1], '2026-10-20');
             $fixture->draw->categoryEvent->category->update(['name' => $category]);
+            if ($index === 0) {
+                $finishDraw = Draw::factory()->create(['event_id' => $finishEvent->id, 'category_event_id' => $field->id]);
+                $venue = OrderOfPlay::where('fixture_id', $fixture->id)->firstOrFail()->venue_id;
+                foreach ([$finishDraw, $fixture->draw] as $draw) {
+                    DB::table('event_venue_courts')->insert([
+                        'event_id' => $draw->event_id, 'venue_id' => $venue, 'label' => '1', 'ball_type' => 'standard', 'active' => true,
+                    ]);
+                    DB::table('draw_venue_court_allocations')->insert(['draw_id' => $draw->id, 'venue_id' => $venue, 'court_label' => '1']);
+                }
+            }
+            $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($field));
             $fixtures[] = $fixture;
         }
         $ability = app(PlayerSharedAbilityService::class);
@@ -238,6 +248,7 @@ class BallRatingPipelineTest extends TestCase
                 $this->assertSame('standard', $result['evidence']['rows'][0]['ball_type']);
                 $this->assertNotEmpty($result['ball_series'][$cohort]);
                 $this->assertNotNull($result['pathway_metrics']['stage_ratings'][$stage]['score']);
+                $this->assertSame(1, $result['pathway_metrics']['stage_matches'][$stage]);
                 $ownEvidence = array_values(array_filter($saved['evidence'], fn ($row) => $row['cohort'] === $cohort));
                 $this->assertCount(1, $ownEvidence);
                 $this->assertSame($stage, $ownEvidence[0]['ball_type']);

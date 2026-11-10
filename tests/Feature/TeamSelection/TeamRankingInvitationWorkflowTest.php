@@ -119,9 +119,9 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($super)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()->assertSee('Preview regional organizer view');
         $response = $this->get(route('backend.team-selection.manager.preview', [$source->event, $source->eventRegion]))
-            ->assertOk()->assertSee('Regional organizer preview')
+            ->assertOk()->assertSee('Regional organizer preview')->assertDontSee('Send summary to all players')
             ->assertSee($team->name)->assertDontSee('Other private region')
-            ->assertDontSee('Assign to this region')->assertDontSee('Wrap-up email')
+            ->assertDontSee('Assign to this region')
             ->assertDontSee('Move payment to another player')->assertDontSee('Payment management')
             ->assertSee('Players')->assertSee('Add player')->assertSee('Move up')->assertSee('Move down')
             ->assertSee('team-workspace.css');

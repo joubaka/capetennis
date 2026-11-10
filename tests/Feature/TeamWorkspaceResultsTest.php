@@ -356,14 +356,15 @@ class TeamWorkspaceResultsTest extends TestCase
                 'rows' => collect([
                     ['identity' => 'p:'.$home->id, 'cohort' => 'u10 boys', 'position' => 7, 'rating' => ['score' => 62.4, 'component' => 'connected']],
                     ['identity' => 'p:'.$away->id, 'cohort' => 'u10 boys', 'position' => 1, 'rating' => ['score' => 88.8, 'component' => 'connected']],
-                ]), 'snapshot' => ['snapshot_as_of' => '2026-10-09', 'snapshot_stale' => true], 'limitReason' => null,
+                ]), 'snapshot' => ['snapshot_as_of' => '2026-10-09', 'snapshot_stale' => true], 'unified' => true, 'limitReason' => null,
             ]);
         $response = $this->groupedRequest($event)->assertOk()->assertHeader('Cache-Control', 'no-store, private')
             ->assertJsonPath('ranking.0.id', $home->id)->assertJsonPath('ranking.0.cape_tennis_rating.score', 62.4)
             ->assertJsonPath('ranking.0.cape_tennis_rating.position', 7)->assertJsonPath('ranking.0.cape_tennis_rating.cohort', 'u10 boys');
         $this->assertStringContainsString('Rating rank 7', $response->json('html'));
         $this->assertStringContainsString('Saved rating is stale', $response->json('html'));
-        $this->assertMatchesRegularExpression('/<div class="result-player-name">\s*<strong>[^<]+<\/strong>\s*<span class="result-tag result-player-ctr"[^>]*>CTR 62\.4 · Stale/', $response->json('html'));
+        $this->assertMatchesRegularExpression('/<div class="result-player-name">\s*<strong>[^<]+<\/strong>\s*<span class="result-tag result-player-ctr"[^>]*>Overall CTR 62\.4 · Stale/', $response->json('html'));
+        $this->assertStringContainsString('Overall CTR · u10 boys', $response->json('html'));
         $this->assertArrayNotHasKey('rating_player_id', $response->json('ranking.0'));
         $this->groupedRequest($event, ['regions' => [TeamPlayer::where('player_id', $home->id)->first()->team->region_id]])
             ->assertOk()->assertJsonPath('ranking.0.cape_tennis_rating.position', 7);
@@ -384,7 +385,7 @@ class TeamWorkspaceResultsTest extends TestCase
         $privateFree = $this->groupedRequest($event)->assertOk();
         $this->assertArrayNotHasKey('cape_tennis_rating', $privateFree->json('ranking.0'));
         $this->assertArrayNotHasKey('rating_player_id', $privateFree->json('ranking.0'));
-        $this->assertStringNotContainsString('Cape Tennis rating', $privateFree->json('html'));
+        $this->assertStringNotContainsString('Overall CTR', $privateFree->json('html'));
         $this->assertStringNotContainsString('result-player-ctr', $privateFree->json('html'));
         $this->getJson(route('backend.team-result-selection.show', $event).'?group_key=10-boys')->assertOk()
             ->assertJsonPath('draft.snapshot.0.id', $home->id)->assertDontSee('cape_tennis_rating');

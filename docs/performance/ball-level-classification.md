@@ -10,10 +10,13 @@ User-confirmed competition formats (2026-11-03), for boys and girls:
 - West Coast / Westcoast Trials U10 B: Orange.
 - Ceres tournament U9 B: Orange.
 
-These are event-and-division fallbacks, not a general U10 B or U9 B rule.
-Explicit ball labels and court metadata retain precedence. Other divisions and
-unrelated events retain their existing classification. Wilson U9 B retains its
-existing Orange fallback.
+These rules apply to the named event families and exact divisions. Overberg
+Trials U10 B uses Orange for match evidence, finishing fields and badge
+contexts even when a shared court is recorded as generic `standard`. Explicit
+ball labels and dedicated Red, Orange, Green or Yellow court metadata still
+resolve the ball level. West Coast and Ceres remain fallbacks for cases without
+explicit conditions. Other divisions and unrelated events keep their existing
+classification, including the Wilson U9 B fallback.
 
 Changing a classification requires incrementing `BallRatingModel::VERSION` so
 saved calculations cannot silently retain the old evidence buckets. A code fix

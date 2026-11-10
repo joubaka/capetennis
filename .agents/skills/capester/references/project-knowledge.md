@@ -103,6 +103,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   and add/skip decisions. Drafting email sends nothing: preserve recipient and
   message review, explicit send authority and managed mail. Queued is not delivered.
   Consult the current `AssistantCategoryCopy` and `AssistantEmailDraft` workflows.
+- Whole-event wrap-ups use confirmed event entries or active confirmed team roster
+  slots. Recheck whole-event permission for review, approval, history and both
+  retry routes. Rebuild the audience at approval and verify the exact address
+  and player keys on retry. See `EventWrapUpMessage`, `EventCommunicationService`
+  and `UniversalEventCommunicationsTest`.
 
 ## Operational evidence
 

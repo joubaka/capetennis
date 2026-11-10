@@ -11,20 +11,45 @@
 <a class="btn btn-primary mb-3" href="{{ route('backend.regional-registration-mail.compose', ['event' => $event]) }}">Registration open email</a>
 <form method="get" class="mb-3"><input type="hidden" name="compose" value="1">@foreach(request()->except(['team_search','compose']) as $key=>$value)@if(is_scalar($value))<input type="hidden" name="{{ $key }}" value="{{ $value }}">@endif @endforeach<label>Find a team <input name="team_search" value="{{ request('team_search') }}" class="form-control" maxlength="100"></label><button class="btn btn-outline-primary">Search teams</button></form>
 @endif
-<h4>{{ $event->name }} — Send an email</h4>
-<p>Choose who you want to email, write your message, then check it before sending.</p>
+<h4>{{ $event->name }} — {{ $wrapUp ? 'Event summary' : 'Send an email' }}</h4>
+<p>{{ $wrapUp ? 'Edit the thank-you message and review the recipients before sending.' : 'Choose who you want to email, write your message, then check it before sending.' }}</p>
 
 @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
-<form method="post" action="{{ route('backend.event-communications.preview', $event) }}" data-mail-compose class="card card-body mb-4">@csrf
+<form method="post" action="{{ route('backend.event-communications.preview', $event) }}" @unless($wrapUp) data-mail-compose @endunless class="card card-body mb-4">@csrf
 @php
 $composeOptions = $composeOptions ?? session('compose_options', []);
 if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ? 'all' : 'registrations', 'filter' => $event->isTeam() ? 'all' : 'paid', 'recipients' => 'players'];
 @endphp
 @if($wrapUp)
 <input type="hidden" name="wrap_up" value="1"><input type="hidden" name="results_fingerprint" value="{{ old('results_fingerprint', $wrapUp['results_fingerprint']) }}">
-<a class="btn btn-outline-secondary align-self-start mb-3" href="{{ route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1, 'rebuild_wrap_up' => 1]) }}">Rebuild default message with current published results</a>
-<div class="alert alert-info">Edit this thank-you message before previewing it. @if($wrapUp['results_available'])The message includes a published podium summary and a link to the full results.@else No published results summary is available yet. You can send the thank-you message or return after publishing the final results.@endif</div>
+<input type="hidden" name="context_fingerprint" value="{{ old('context_fingerprint', $wrapUp['context_fingerprint']) }}">
+@foreach(['scope', 'filter', 'recipients'] as $field)
+<input type="hidden" name="{{ $field }}" value="{{ $composeOptions[$field] }}">
+@endforeach
+<p><strong>Audience</strong> · Confirmed participants and their player contacts</p>
+@if($wrapUp['previously_sent'])
+<div class="alert alert-warning">A wrap-up was already approved for this event. You can review and confirm an additional summary.</div>
 @endif
+<details class="border rounded p-3 mb-3">
+  <summary>Used in this draft</summary>
+  <ul class="mt-2 mb-2">
+    @foreach($wrapUp['sources'] as $source)<li class="text-break">{{ $source }}</li>@endforeach
+  </ul>
+  @unless($wrapUp['results_available'])<p class="mb-2">No published results summary is available.</p>@endunless
+  @if($wrapUp['weather_review'])
+    <p class="mb-1">Check these updates before mentioning a disruption:</p>
+    <ul class="mb-2">@foreach($wrapUp['weather_review'] as $notice)<li class="text-break">{{ $notice }}</li>@endforeach</ul>
+  @endif
+  <p class="form-text">Refreshing replaces the subject and message with a new draft.</p>
+  <a class="btn btn-outline-secondary" href="{{ route('backend.event-communications.index', ['event' => $event, 'wrap_up' => 1, 'rebuild_wrap_up' => 1]) }}" onclick="return confirm('Replace the subject and message with a new draft?')">Refresh from event sources</a>
+</details>
+@if($wrapUp['send_state'] === 'too_early')
+<div class="alert alert-info">You can prepare and review the draft now. Sending opens after the event ends.</div>
+@elseif($wrapUp['send_state'] === 'unavailable')
+<div class="alert alert-info">Sending is unavailable for this event.</div>
+@endif
+@endif
+@unless($wrapUp)
 @foreach(['category_event_id','registration_id','direct_email'] as $field)
 @if(old($field,$composeOptions[$field] ?? null))<input type="hidden" name="{{ $field }}" value="{{ old($field,$composeOptions[$field] ?? '') }}">@endif
 @endforeach
@@ -58,11 +83,12 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 @if($rankingLists->isEmpty())<p class="alert alert-warning mt-3">No linked ranking lists are available. Link the region ranking sources before using this audience.</p>@endif
 </div>
 @endif
+@endunless
 <label class="form-label mt-3" for="communication-subject">Subject</label><input class="form-control" id="communication-subject" name="subject" required maxlength="200" value="{{ old('subject', $wrapUp['subject'] ?? session('compose_subject', $event->name.' — Update')) }}">
 <label class="form-label mt-3" for="communication-body">Message</label><textarea class="form-control" id="communication-body" name="body" rows="12" required maxlength="30000">{{ old('body',$wrapUp['body'] ?? session('compose_body')) }}</textarea>
 <details class="border rounded p-3 mt-3" @if($errors->has('from_name') || $errors->has('from_address') || $errors->has('reply_to')) open @endif><summary>Sender details</summary><div class="mt-3">@include('backend.partials.email-sender-fields', ['mailSenderDefaults' => $composeOptions, 'allowFromAddress' => true])</div></details>
-<p class="form-text">Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Review one example and approve here before sending.</p>
-<button class="btn btn-primary align-self-start">Preview email</button>
+<p class="form-text">{{ $wrapUp ? 'Add a personal highlight or thank the people who helped on the day.' : 'Write an update, share arrangements or send a payment or clothing reminder. Only your message is included. Review one example and approve here before sending.' }}</p>
+<button class="btn btn-primary align-self-start">{{ $wrapUp ? 'Review recipients' : 'Preview email' }}</button>
 </form>
 </div>
 <div class="d-flex flex-wrap gap-2 mb-3" aria-label="Email report scope">
@@ -88,6 +114,7 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 @forelse($batches as $item)<a class="d-block mb-2 text-break" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','batch','report_scope']),['batch'=>$item->id,'report_scope'=>'batch'])) }}#email-history">{{ $item->subject }} - {{ count($item->recipients) }} emails - {{ $item->approved_at ? 'Approved' : 'Awaiting approval' }} - {{ $item->created_at }}</a>@empty<p>No email previews yet.</p>@endforelse
 {{ $batches->withQueryString()->links('pagination::bootstrap-5') }}
 @if($batch && $batch->issues)<details class="mt-3"><summary>Selected batch: missing contacts / excluded recipients</summary><ul>@foreach($batch->issues as $issue)<li>{{ $issue }}</li>@endforeach</ul></details>@endif
+@unless($wrapUp)
 <script>
 const scopeSelect = document.getElementById('communication-scope');
 const statusFilter = document.getElementById('communication-filter');
@@ -227,4 +254,5 @@ scopeSelect.addEventListener('change',updateScope); updateScope();
     }
 })();
 </script>
+@endunless
 @endsection

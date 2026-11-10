@@ -49,6 +49,7 @@ class PlayerPathwayEvidence
             }
         }
         $events = []; $stageEvents = ['red' => [], 'orange' => [], 'standard' => []]; $unknownStage = [];
+        $stageMatches = $stageEvents;
         foreach ($saved['evidence'] ?? [] as $row) {
             $event = (int) ($row['event_id'] ?? 0);
             $source = $row['source_id'] ?? '';
@@ -64,8 +65,12 @@ class PlayerPathwayEvidence
                 || !is_string($row['date'] ?? null) || $row['date'] < $cutoff || $row['date'] > $date) continue;
             $events[$event] = true;
             $stage = BallRatingModel::forMatch($row);
-            if (is_string($stage) && array_key_exists($stage, $stageEvents)) $stageEvents[$stage][$event] = true;
-            else $unknownStage[$event] = true;
+            if (is_string($stage) && array_key_exists($stage, $stageEvents)) {
+                $stageEvents[$stage][$event] = true;
+                $stageMatches[$stage][$source] = true;
+            } else {
+                $unknownStage[$event] = true;
+            }
         }
         $score = $latest['score'] ?? null;
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
@@ -90,6 +95,7 @@ class PlayerPathwayEvidence
 
         return ['player_id' => (int) $player->id, 'available' => true, 'score' => $score, 'events' => count($events),
             'stage_events' => array_map('count', $stageEvents), 'unknown_stage_events' => count($unknownStage),
+            'stage_matches' => array_map('count', $stageMatches),
             'stage_ratings' => $stageRatings,
             'date' => $date, 'comparable' => $comparable, 'stale' => $stale, 'assessment_available' => $assessmentAvailable, 'reason' => $stale
                 ? 'Progress awaits a current saved rating update.'

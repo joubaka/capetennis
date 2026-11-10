@@ -84,6 +84,26 @@ class BallRatingModelTest extends TestCase
         $this->assertArrayNotHasKey(3, $changed['orange']['ratings']);
     }
 
+    public function test_overberg_trials_u10_b_overrides_generic_standard_court_metadata_only(): void
+    {
+        $event = ['event_name' => 'Overberg Tennis Trials - Leg 2 2026'];
+        $boys = ['category' => 'u/10 Boys B', 'ball_type' => 'standard'] + $event;
+        $girls = ['category' => 'u/10 Girls - B division', 'ball_type' => 'standard'] + $event;
+
+        $this->assertSame('orange', BallRatingModel::forMatch($boys));
+        $this->assertSame('orange', BallRatingModel::forMatch($girls));
+        $this->assertSame('red', BallRatingModel::forMatch(['ball_type' => 'red'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['ball_type' => 'green'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'Green Ball U10 Boys B'] + $boys));
+        $this->assertNull(BallRatingModel::forMatch(['category' => 'Red and Orange U10 Boys B'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'U10 Boys A and B'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'U10 Boys A'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'U12 Boys B'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['event_name' => 'Overberg Open'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['event_name' => 'West Coast Tennis Trials'] + $boys));
+        $this->assertSame('standard', BallRatingModel::forMatch(['event_name' => 'West Coast Trials vs Overberg'] + $boys));
+    }
+
     public function test_green_yellow_and_unstated_results_share_normal_but_never_red_or_orange(): void
     {
         $model = new BallRatingModel; $asOf = CarbonImmutable::parse('2026-11-01');
