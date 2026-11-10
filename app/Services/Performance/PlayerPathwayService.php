@@ -2,14 +2,17 @@
 
 namespace App\Services\Performance;
 
-use App\Models\{Player, PlayerPathwayProfile, User};
+use App\Models\{Player, PlayerPathwayMove, PlayerPathwayProfile, User};
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\{DB, Schema, Validator};
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /** Automatic development assessment with optional historical participation metadata. */
 class PlayerPathwayService
 {
     public const STAGES = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Wilson B / Wilson A'];
+    public const NEXT_BALL_LEVEL = ['red' => 'orange', 'orange' => 'standard'];
     public const EVENT_OPTIONS = [
         'red' => ['Academy events', 'TSA Rainbow Kids events', 'School leagues'],
         'orange' => ['U/9 B events', 'Academy events', 'TSA Rainbow Kids events', 'School leagues'],
@@ -124,7 +127,12 @@ class PlayerPathwayService
                 : (!$assessmentAvailable ? 'The saved rating needs an update before a division can be suggested.' : 'This ball-level rating needs comparable evidence before a division can be suggested.');
             $next_steps = [$assessed ? 'Chat with your coach about which '.$suggestedCompetition.' events would suit you. They can help you check the age, entry and nomination requirements.' : 'When your current comparable rating is ready, chat with your coach about the event options.'];
         }
-        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition') + [
+        $movesAvailable = $available && Schema::hasTable('player_pathway_moves');
+        $latestMove = $movesAvailable ? PlayerPathwayMove::where('player_id', $player->id)->latest('id')->first() : null;
+        $move = $latestMove ? $this->moveEvidence($latestMove, $metrics) : null;
+        $moveOptions = $movesAvailable ? $this->moveOptions($latestMove, $move, $metrics) : [];
+
+        return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition', 'move', 'moveOptions') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
@@ -132,6 +140,69 @@ class PlayerPathwayService
             'currentCompetition' => $currentCompetition,
             'benchmarks' => $this->benchmarks(),
         ];
+    }
+
+    private function moveEvidence(PlayerPathwayMove $move, array $metrics): array
+    {
+        $started = $move->started_on->toDateString();
+        $matches = collect($metrics['dated_stage_matches'][$move->to_stage] ?? [])
+            ->filter(fn ($match) => $match['date'] >= $started)
+            ->sortBy('date')->values();
+        $rating = $metrics['stage_ratings'][$move->to_stage] ?? [];
+        $score = $matches->contains('in_rating', true) && ($rating['evidence_basis'] ?? null) !== 'finish_only'
+            ? $this->validScore($rating['score'] ?? null) : null;
+
+        return [
+            'from' => $move->from_stage, 'to' => $move->to_stage, 'started_on' => $started,
+            'score' => $score, 'local' => $score !== null && ($rating['local'] ?? false),
+            'count' => ($metrics['available'] ?? false) ? $matches->count() : null,
+            'matches' => $matches->take(5),
+        ];
+    }
+
+    private function moveOptions(?PlayerPathwayMove $latest, ?array $move, array $metrics): array
+    {
+        if ($latest && $move['score'] === null) return [];
+
+        return array_filter(array_reverse(self::NEXT_BALL_LEVEL, true), fn ($to, $from) =>
+            (!$latest || $from === $latest->to_stage) && $this->validScore($metrics['stage_ratings'][$from]['score'] ?? null) !== null,
+            ARRAY_FILTER_USE_BOTH);
+    }
+
+    public function recordMove(Player $player, User $actor, array $input): void
+    {
+        $this->authorizeWrite($player, $actor);
+        abort_unless(Schema::hasTable('player_pathway_moves'), 503, 'Ball-level moves are not available yet.');
+        $today = CarbonImmutable::today('Africa/Johannesburg')->toDateString();
+        $data = Validator::make($input, [
+            'move_from_stage' => ['required', Rule::in(array_keys(self::NEXT_BALL_LEVEL))],
+            'move_started_on' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.$today],
+        ])->validate();
+        $history = app(PlayerRatingHistoryService::class)->forPlayer($player);
+        $metrics = $history['pathway_metrics'] ?? [];
+        if (($history['reason'] ?? null) !== null || ($metrics['player_id'] ?? null) !== (int) $player->id
+            || ($metrics['available'] ?? false) !== true) $metrics = [];
+
+        DB::transaction(function () use ($player, $actor, $data, $metrics) {
+            Player::whereKey($player->id)->lockForUpdate()->firstOrFail();
+            $from = $data['move_from_stage'];
+            $to = self::NEXT_BALL_LEVEL[$from];
+            $started = $data['move_started_on'];
+            $latest = PlayerPathwayMove::where('player_id', $player->id)->latest('id')->first();
+            if ($latest?->to_stage === $to && $latest->started_on->toDateString() === $started) return;
+
+            $move = $latest ? $this->moveEvidence($latest, $metrics) : null;
+            if (!isset($this->moveOptions($latest, $move, $metrics)[$from])) {
+                throw ValidationException::withMessages(['move_from_stage' => 'Choose a rated starting level with an available move.']);
+            }
+            if ($latest && $started < $latest->started_on->toDateString()) {
+                throw ValidationException::withMessages(['move_started_on' => 'Choose a date on or after the previous move.']);
+            }
+            PlayerPathwayMove::create([
+                'player_id' => $player->id, 'from_stage' => $from, 'to_stage' => $to,
+                'started_on' => $started, 'recorded_by_user_id' => $actor->id,
+            ]);
+        });
     }
 
     private function ctrLabel(?string $stage): string

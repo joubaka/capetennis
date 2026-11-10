@@ -23,6 +23,18 @@ class PlayerPathwayController extends Controller
         $pathways->verifyMilestones($player, $request->user(), $request->only(['stage', 'milestones']));
     }
 
+    public function move(Request $request, Player $player, PlayerPathwayService $pathways)
+    {
+        $this->authorizeActor($request, $player);
+        $pathways->recordMove($player, $request->user(), $request->only(['move_from_stage', 'move_started_on']));
+
+        if ($request->expectsJson()) {
+            return response()->json(['message' => 'Ball-level move recorded.'])->header('Cache-Control', 'private, no-store');
+        }
+
+        return redirect(route('my.tennis.pathway', $player).'#pathway-ball-move')->with('pathway_move_status', 'Ball-level move recorded.');
+    }
+
     private function authorizeActor(Request $request, Player $player): void
     {
         abort_unless($request->user()?->hasRole('super-user') && app(PlayerRatingAccess::class)->allows($request->user(), $player), 403);

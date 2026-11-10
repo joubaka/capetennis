@@ -1,3 +1,4 @@
+@php($pendingMove = isset($pathway['move']) && $pathway['move']['score'] === null ? $pathway['move'] : null)
 <section id="player-development-pathway" class="ctr-pathway mt-3" aria-labelledby="ctr-pathway-heading" data-player-pathway>
   <style>
     .ctr-pathway{border:1px solid #dbe4ef;border-radius:14px;padding:1rem;background:#f7f9fc;overflow-wrap:anywhere;scroll-margin-top:6rem}
@@ -31,6 +32,9 @@
   <div class="pathway-summary">
     <div class="pathway-next-step">
       <h3 class="h6 mb-1">Suggested next step</h3>
+      @if($pendingMove)
+        <p class="small mb-3">Play eligible published singles at {{ \App\Services\Performance\BallRatingModel::LABELS[$pendingMove['to']] }} level to establish the next CTR.</p>
+      @else
       @if($pathway['current_stage'] === 'standard' && !$pathway['suggestedCompetition'])
         <p class="small mb-1" role="status"><strong>Competition recommendation uncertain</strong></p>
         @php($standardRating = $pathway['metrics']['stage_ratings']['standard'] ?? [])
@@ -53,39 +57,48 @@
           <li>{{ $step }}</li>
         @endforeach
       </ul>
+      @endif
       <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse events</a>
     </div>
     <div class="pathway-current-level">
+      @if($pendingMove)
+        <h3 class="h6">Ball level: {{ \App\Services\Performance\BallRatingModel::LABELS[$pendingMove['to']] }}</h3>
+        <p class="small mb-0">CTR pending for the recorded move.</p>
+      @else
       <h3 class="h6">Ball level: {{ $pathway['current_stage'] === 'standard' ? 'Green/yellow ball' : $pathway['current_stage_label'] }}</h3>
       <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Green/yellow ball' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
       <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
       @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
+      @endif
     </div>
   </div>
+  @include('frontend.my-tennis.pathway-move')
   <section class="mt-3" aria-labelledby="pathway-ball-evidence-heading">
     <h3 class="h6 mb-1" id="pathway-ball-evidence-heading">Your saved evidence by ball level</h3>
     <p class="small text-muted mb-0">Counts cover rating-eligible published singles in the {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days ending {{ $pathway['metrics']['date'] ?? 'on the saved rating date' }}.</p>
     <div class="pathway-stages">
       @foreach(['red' => '#ed2029', 'orange' => '#ed7100', 'standard' => '#12765a'] as $ball => $ink)
         @php($progress = $pathway['stageProgress'][$ball] ?? [])
+        @php($stagePending = ($pendingMove['to'] ?? null) === $ball)
         <div class="pathway-stage" style="--stage-ink:{{ $ink }}" data-pathway-ball-evidence="{{ $ball }}">
           <h4 class="h6 mb-2">{{ \App\Services\Performance\BallRatingModel::LABELS[$ball] }}</h4>
-          <p class="small mb-1">Saved CTR <strong>{{ isset($progress['score']) ? number_format($progress['score'], 1) : 'Unavailable' }}</strong>@if($progress['local'] ?? false) · Within-group only @endif</p>
+          <p class="small mb-1">Saved CTR <strong>{{ $stagePending ? 'Pending' : (isset($progress['score']) ? number_format($progress['score'], 1) : 'Unavailable') }}</strong>@if(!$stagePending && ($progress['local'] ?? false)) · Within-group only @endif</p>
           <p class="small mb-1">Played singles <strong>{{ $progress['matches'] ?? 'Unavailable' }}</strong></p>
-          <p class="small mb-0">Confidence <strong>{{ isset($progress['score']) ? ($progress['confidence_label'] ?? 'Unavailable') : 'Unavailable' }}</strong></p>
+          <p class="small mb-0">Confidence <strong>{{ !$stagePending && isset($progress['score']) ? ($progress['confidence_label'] ?? 'Unavailable') : 'Unavailable' }}</strong></p>
         </div>
       @endforeach
     </div>
   </section>
   <section class="mt-3" aria-labelledby="pathway-levels-heading">
     <h3 class="h6" id="pathway-levels-heading">All levels and targets</h3>
-    <p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>
+    @unless($pendingMove)<p class="small text-muted mb-0">{{ $pathway['reason'] }}</p>@endunless
     <ol class="pathway-map" aria-label="Development pathway snapshot" data-pathway-snapshot>
     @foreach(['red' => ['Red ball', '#ed2029', 0], 'orange' => ['Orange ball', '#ed7100', 1]] as $ball => [$label, $ink, $benchmarkIndex])
-      <li style="--stage-ink:{{ $ink }}" @if($pathway['current_stage'] === $ball) aria-current="step" @endif>
+      <li style="--stage-ink:{{ $ink }}" @if(($pendingMove['to'] ?? $pathway['current_stage']) === $ball) aria-current="step" @endif>
         <span class="pathway-step-number" aria-hidden="true">{{ $loop->iteration }}</span>
         <strong>{{ $label }}</strong>
-        @if($pathway['current_stage'] === $ball)<small class="fw-semibold">You are here · latest badge</small>@endif
+        @if(($pendingMove['to'] ?? null) === $ball)<small class="fw-semibold">Move recorded · CTR pending</small>
+        @elseif(!$pendingMove && $pathway['current_stage'] === $ball)<small class="fw-semibold">You are here · latest badge</small>@endif
         <ul class="pathway-events small ps-3 mt-2 mb-2">
         @foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS[$ball] ?? [] as $eventOption)<li>@if(str_contains($eventOption, 'TSA'))<a href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">{{ $eventOption }} <span class="visually-hidden">(opens in a new tab)</span></a>@else{{ $eventOption }}@endif</li>@endforeach
         </ul>
@@ -94,10 +107,10 @@
       </li>
     @endforeach
     @foreach(['Wilson B' => ['#12765a', 3], 'Wilson A' => ['#145c8d', 4], 'TSA tournaments' => ['#6654a3', 5]] as $competition => [$ink, $step])
-      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}" @if(($pathway['currentCompetition'] ?? null) === $competition) aria-current="step" @endif>
+      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}" @if(!$pendingMove && ($pathway['currentCompetition'] ?? null) === $competition) aria-current="step" @endif>
         <span class="pathway-step-number" aria-hidden="true">{{ $step }}</span>
         <strong>{{ $competition === 'TSA tournaments' ? 'TSA' : $competition }}</strong>
-        @if(($pathway['currentCompetition'] ?? null) === $competition)<small class="fw-semibold">You are here · latest saved badge</small>@endif
+        @if(!$pendingMove && ($pathway['currentCompetition'] ?? null) === $competition)<small class="fw-semibold">You are here · latest saved badge</small>@endif
         @if($competition === 'Wilson B')
           <small>After Orange</small><small>@if($pathway['wilsonCutoff'] !== null) CTR {{ number_format($pathway['wilsonCutoff'], 0) }} or below @else Recommendation awaiting configuration @endif</small>
         @elseif($competition === 'Wilson A')

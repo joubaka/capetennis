@@ -30,6 +30,7 @@ class PlayerPathwayTest extends TestCase
             $table->id(); $table->string('key'); $table->string('value'); $table->string('group')->nullable(); $table->string('label')->nullable(); $table->timestamps();
         });
         (require database_path('migrations/2026_11_01_160000_create_player_pathway_tables.php'))->up();
+        (require database_path('migrations/2026_11_10_000002_create_player_pathway_moves.php'))->up();
         DB::table('players')->insert([
             ['id' => 1, 'userId' => 10, 'name' => 'Fictional', 'surname' => 'Player'],
             ['id' => 2, 'userId' => 20, 'name' => 'Other', 'surname' => 'Player'],
@@ -166,6 +167,70 @@ class PlayerPathwayTest extends TestCase
             'data-pathway-ball-evidence="standard"', 'Saved CTR <strong>Unavailable</strong>',
             'Played singles <strong>3</strong>', 'Confidence <strong>Unavailable</strong>',
         ], false);
+    }
+
+    public function test_ball_move_keeps_destination_pending_until_a_post_move_match_is_in_its_saved_rating(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-10 12:00:00');
+        $actor = $this->actor();
+        $this->actingAs($actor);
+        $metrics = $this->metrics(67, ['red' => 0, 'orange' => 4, 'standard' => 0]);
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldReceive('forPlayer')->andReturnUsing(function () use (&$metrics) {
+            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        });
+        $url = route('my.tennis.pathway.move', 1);
+        $input = ['move_from_stage' => 'orange', 'move_started_on' => '2026-11-05'];
+        $page = route('my.tennis.pathway', 1);
+
+        $this->get($page)->assertOk()->assertSee('Orange ball → Green/Yellow ball');
+        $this->postJson($url, array_replace($input, ['move_started_on' => '2026-11-11']))->assertUnprocessable();
+        $this->postJson($url, array_replace($input, ['move_from_stage' => 'red']))->assertUnprocessable();
+        $this->postJson($url, $input + ['to_stage' => 'red', 'player_id' => 2])->assertOk();
+        $this->postJson($url, $input)->assertOk();
+        $this->assertDatabaseCount('player_pathway_moves', 1);
+        $this->assertDatabaseHas('player_pathway_moves', ['player_id' => 1, 'from_stage' => 'orange', 'to_stage' => 'standard', 'recorded_by_user_id' => $actor->id]);
+        $this->assertDatabaseCount('player_pathway_profiles', 0);
+        $this->get($page)->assertOk()->assertSee('10–20')->assertSee('CTR pending for the recorded move')
+            ->assertSee('Saved CTR <strong>67.0</strong>', false)
+            ->assertSee('<strong>0</strong> eligible published singles', false);
+
+        $metrics['stage_ratings']['standard'] = ['score' => 43.2, 'evidence_basis' => 'finish_only'];
+        $metrics['dated_stage_matches']['standard'] = [
+            ['date' => '2026-11-04', 'event' => 'Earlier fictional match', 'won' => true, 'in_rating' => true],
+            ['date' => '2026-11-06', 'event' => 'Second fictional match', 'won' => false, 'in_rating' => false],
+            ['date' => '2026-11-05', 'event' => 'First fictional match', 'won' => true, 'in_rating' => false],
+        ];
+        $this->get($page)->assertOk()->assertSee('CTR pending for the recorded move')
+            ->assertSeeInOrder(['First fictional match · Win', 'Second fictional match · Loss'])
+            ->assertDontSee('Earlier fictional match')->assertDontSee('43.2');
+
+        $metrics['dated_stage_matches']['standard'][2]['in_rating'] = true;
+        $this->get($page)->assertOk()->assertSee('CTR pending for the recorded move')->assertDontSee('43.2');
+        $metrics['stage_ratings']['standard']['evidence_basis'] = 'matches';
+        $this->get($page)->assertOk()->assertSee('43.2')->assertDontSee('CTR pending for the recorded move');
+        $this->actingAs($this->actor(10, false))->postJson($url, $input)->assertForbidden();
+    }
+
+    public function test_red_to_orange_move_must_gain_eligible_saved_evidence_before_another_move(): void
+    {
+        CarbonImmutable::setTestNow('2026-11-10 12:00:00');
+        $this->actingAs($this->actor());
+        $metrics = $this->metrics(53, ['red' => 3, 'orange' => 1, 'standard' => 0]);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturnUsing(function () use (&$metrics) {
+            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        });
+        $url = route('my.tennis.pathway.move', 1);
+        $input = ['move_from_stage' => 'red', 'move_started_on' => '2026-11-05'];
+        $this->postJson($url, $input)->assertOk();
+        $this->assertDatabaseHas('player_pathway_moves', ['player_id' => 1, 'from_stage' => 'red', 'to_stage' => 'orange']);
+        $this->postJson($url, array_replace($input, ['move_from_stage' => 'orange']))->assertUnprocessable();
+
+        $metrics['dated_stage_matches']['orange'] = [['date' => '2026-11-05', 'event' => 'Fictional Orange event', 'won' => true, 'in_rating' => true]];
+        $this->postJson($url, ['move_from_stage' => 'orange', 'move_started_on' => '2026-11-04'])->assertUnprocessable();
+        $this->postJson($url, ['move_from_stage' => 'orange', 'move_started_on' => '2026-11-06'])->assertOk();
+        $this->assertDatabaseHas('player_pathway_moves', ['player_id' => 1, 'from_stage' => 'orange', 'to_stage' => 'standard']);
+        $this->assertDatabaseCount('player_pathway_moves', 2);
     }
 
     public function test_stage_details_require_private_rating_access_and_a_known_stage(): void

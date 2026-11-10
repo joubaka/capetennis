@@ -50,11 +50,16 @@ class PlayerPathwayEvidence
         }
         $events = []; $stageEvents = ['red' => [], 'orange' => [], 'standard' => []]; $unknownStage = [];
         $stageMatches = $stageEvents;
+        $datedStageMatches = $stageEvents;
+        $ratedStageMatches = $stageEvents;
         foreach ($saved['evidence'] ?? [] as $row) {
             $event = (int) ($row['event_id'] ?? 0);
             $source = $row['source_id'] ?? '';
             $players = $row['players'] ?? [];
-            if (($row['kind'] ?? null) !== 'match' || ($row['cohort'] ?? null) !== AllAgeRatingModel::COHORT
+            $cohort = $row['cohort'] ?? '';
+            $overall = $cohort === AllAgeRatingModel::COHORT;
+            $ratingStage = is_string($cohort) ? BallRatingModel::stage($cohort) : null;
+            if (($row['kind'] ?? null) !== 'match' || (!$overall && $ratingStage === null)
                 || !is_int($row['months'] ?? null) || !($row['months'] & $bit)
                 || !is_array($players) || count($players) !== 2 || count(array_unique($players)) !== 2
                 || count(array_filter($players, fn ($id) => is_int($id) && $id > 0)) !== 2
@@ -63,15 +68,31 @@ class PlayerPathwayEvidence
                 || !is_string($row['score'] ?? null) || !preg_match('/\d+\s*-\s*\d+/', $row['score'])
                 || preg_match('/walkover|\bbye\b|\bw\s*\/?\s*o\b/i', $row['score'])
                 || !is_string($row['date'] ?? null) || $row['date'] < $cutoff || $row['date'] > $date) continue;
-            $events[$event] = true;
             $stage = BallRatingModel::forMatch($row);
+            if (!$overall) {
+                if ($stage === $ratingStage) $ratedStageMatches[$ratingStage][$source] = true;
+                continue;
+            }
+            $events[$event] = true;
             if (is_string($stage) && array_key_exists($stage, $stageEvents)) {
                 $stageEvents[$stage][$event] = true;
                 $stageMatches[$stage][$source] = true;
+                if (in_array($row['date_basis'] ?? null, ['scheduled match date', 'actual match date', 'reviewed actual date'], true)) {
+                    $datedStageMatches[$stage][$source] = [
+                        'date' => $row['date'], 'event' => $row['event'] ?? 'Published event',
+                        'won' => $players[$row['winner_side'] - 1] === (int) $player->id,
+                    ];
+                }
             } else {
                 $unknownStage[$event] = true;
             }
         }
+        foreach ($datedStageMatches as $stage => &$matches) {
+            foreach ($matches as $source => &$match) $match['in_rating'] = isset($ratedStageMatches[$stage][$source]);
+            unset($match);
+            $matches = array_values($matches);
+        }
+        unset($matches);
         $score = $latest['score'] ?? null;
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
         $stale = $pending || ($saved['as_of'] ?? '') !== $today->toDateString() || $date !== ($saved['as_of'] ?? null);
@@ -89,6 +110,7 @@ class PlayerPathwayEvidence
             $stageRatings[$stage] = ['score' => $valid ? (float) $stageScore : null,
                 'comparable' => $valid && ($rating['connection_status'] ?? null) === 'recent' && empty($rating['historical_connection']),
                 'local' => $valid && ($rating['connection_status'] ?? null) === 'disconnected',
+                'evidence_basis' => $rating['evidence_basis'] ?? null,
                 'confidence_label' => $rating['confidence_label'] ?? null, 'date' => $date, 'stale' => $stale,
                 'reason' => $latestMonth['ball_status'][$stage]['reason'] ?? null];
         }
@@ -96,6 +118,7 @@ class PlayerPathwayEvidence
         return ['player_id' => (int) $player->id, 'available' => true, 'score' => $score, 'events' => count($events),
             'stage_events' => array_map('count', $stageEvents), 'unknown_stage_events' => count($unknownStage),
             'stage_matches' => array_map('count', $stageMatches),
+            'dated_stage_matches' => $datedStageMatches,
             'stage_ratings' => $stageRatings,
             'date' => $date, 'comparable' => $comparable, 'stale' => $stale, 'assessment_available' => $assessmentAvailable, 'reason' => $stale
                 ? 'Progress awaits a current saved rating update.'

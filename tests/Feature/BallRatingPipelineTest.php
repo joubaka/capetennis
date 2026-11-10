@@ -249,6 +249,8 @@ class BallRatingPipelineTest extends TestCase
                 $this->assertNotEmpty($result['ball_series'][$cohort]);
                 $this->assertNotNull($result['pathway_metrics']['stage_ratings'][$stage]['score']);
                 $this->assertSame(1, $result['pathway_metrics']['stage_matches'][$stage]);
+                $this->assertCount(1, $result['pathway_metrics']['dated_stage_matches'][$stage]);
+                $this->assertTrue($result['pathway_metrics']['dated_stage_matches'][$stage][0]['in_rating']);
                 $ownEvidence = array_values(array_filter($saved['evidence'], fn ($row) => $row['cohort'] === $cohort));
                 $this->assertCount(1, $ownEvidence);
                 $this->assertSame($stage, $ownEvidence[0]['ball_type']);

@@ -33,6 +33,13 @@ each ball level, while checking that the displayed evidence stays in the current
 level and private sources remain redacted. Progression uses each level's own
 score; an Overall score cannot fill a missing ball-level score.
 
+An authorized recorded move advances Red to Orange or Orange to Green/Yellow.
+Group 10–20 is suggested placement for early matches. Within the saved rating
+window, the move tracks published played singles with a recorded match date
+on or after the move date. The destination score stays pending until its own
+saved fit includes at least one of those matches. Earlier ratings and finishing
+fields do not substitute for post-move match evidence.
+
 ## Directory-to-detail navigation
 
 The Super Admin rating directory must carry its resolved `ball_type` when

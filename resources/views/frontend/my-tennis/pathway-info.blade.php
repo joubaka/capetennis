@@ -2,6 +2,7 @@
   $ball = in_array($infoStage, ['red', 'orange'], true) ? $infoStage : 'standard';
   $label = ['red' => 'Red ball', 'orange' => 'Orange ball', 'wilson-b' => 'Wilson B', 'wilson-a' => 'Wilson A', 'tsa' => 'TSA tournaments'][$infoStage];
   $progress = $pathway['stageProgress'][$ball] ?? [];
+  $movePending = ($pathway['move']['to'] ?? null) === $ball && $pathway['move']['score'] === null;
 @endphp
 <div data-pathway-stage-details="{{ $infoStage }}">
   <h5 class="h6">{{ $label }} · {{ $ratingPlayer->full_name }}</h5>
@@ -11,7 +12,7 @@
     <ul class="ps-3">@foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS[$ball] as $option)<li>@if(str_contains($option, 'TSA'))<a href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">{{ $option }} <span class="visually-hidden">(opens in a new tab)</span></a>@else{{ $option }}@endif</li>@endforeach</ul>
     @php($target = $progress['target'] ?? ($pathway['benchmarks'][$ball === 'red' ? 0 : 1]['target'] ?? null))
     <p><strong>Ready to explore the next level?</strong> @if($target) {{ number_format($target['ctr'], 0) }} CTR and {{ $target['events'] }} published {{ $label }} events. @else Benchmark awaiting configuration. @endif Chat with your coach when both targets are met using your current rating and event history at this level. Several matches at the same event count as one event.</p>
-    <p><strong>Your progress so far:</strong> {{ isset($progress['score']) ? number_format($progress['score'], 1).' CTR' : 'Rating unavailable' }} · {{ $progress['events'] ?? 'Unknown' }} published events. {{ $progress['status'] ?? 'Not assessed' }}</p>
+    <p><strong>Your progress so far:</strong> {{ $movePending ? 'CTR pending for the recorded move' : (isset($progress['score']) ? number_format($progress['score'], 1).' CTR' : 'Rating unavailable') }} · {{ $progress['events'] ?? 'Unknown' }} published events. {{ $movePending ? 'Not assessed' : ($progress['status'] ?? 'Not assessed') }}</p>
     @if($progress['reason'] ?? null)<p>{{ $progress['reason'] }}</p>@endif
     <p>These targets look at your latest {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days of results. Progress can change as that window moves, and playing at a higher level does not complete earlier stages.</p>
   @elseif($infoStage === 'tsa')
@@ -46,8 +47,8 @@
     <h6 class="small fw-bold">Events to explore</h6>
     <ul class="ps-3">@foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS['standard'] as $option)<li>{{ $option }}</li>@endforeach</ul>
   @endif
-  @if($ball === 'standard')<p><strong>Your Green/Yellow progress:</strong> {{ isset($progress['score']) ? number_format($progress['score'], 1).' CTR' : 'Rating unavailable' }} · {{ $progress['events'] ?? 'Unknown' }} published events. {{ $progress['reason'] ?? '' }}</p>@endif
-  @if($pathway['current_stage'] === $ball)
+  @if($ball === 'standard')<p><strong>Your Green/Yellow progress:</strong> {{ $movePending ? 'CTR pending for the recorded move' : (isset($progress['score']) ? number_format($progress['score'], 1).' CTR' : 'Rating unavailable') }} · {{ $progress['events'] ?? 'Unknown' }} published events. {{ $movePending ? '' : ($progress['reason'] ?? '') }}</p>@endif
+  @if(!$movePending && $pathway['current_stage'] === $ball)
     <p><strong>{{ $pathway['assessment_status'] }}</strong> · {{ $pathway['reason'] }}</p>
     <h6 class="small fw-bold">What’s next?</h6><ul class="ps-3">@foreach($pathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach</ul>
   @endif
