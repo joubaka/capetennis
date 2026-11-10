@@ -30,12 +30,19 @@ Step 1 of the Cavaliers roster draft previews published Inter-Districts
 candidates for the configured trials event. Both source events use the prior
 age group, such as U10 results for the U11 trial. Each division has separate settings
 for candidate regions and regions whose matches are excluded. The preview uses
-the Platteland ranking criteria, excludes hidden source reserves and
-distinguishes published results from roster-only evidence. It flags any roster
-position with zero wins and at least one loss in counted singles. Step 2 uses
+the Platteland ranking criteria and distinguishes published results from
+roster-only evidence. Inter-Districts reserves follow its main players and
+require management access to the Inter-Districts event. It flags any roster
+position with zero wins and at least one loss in counted singles. The orange
+flag applies when every counted win was against an opponent with zero counted
+wins, including opponents outside the candidate pool. Step 2 uses
 the authorized, active Platteland finalization, listing its ordered reserves
 before unselected candidates in saved snapshot order. Inter-Districts takes
-precedence when a player appears in both sources. Adding reviewed candidates
+precedence when a player appears in both sources. The U13 Girls review also
+offers finalized Platteland U12 Girls main players with no recorded
+Inter-Districts participation as opt-in candidates for reviewers with access
+to both sources. Decline status reflects the current managed invitation records.
+Adding reviewed candidates
 stages a private edit. Save draft persists the order separately from public
 nominations.
 

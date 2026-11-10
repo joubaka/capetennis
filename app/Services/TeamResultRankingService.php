@@ -78,6 +78,7 @@ class TeamResultRankingService
             ->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
         $hiddenRoster = $publishedOnly ? app(SelectedTeamRosterStatus::class)->classify($event, $teams) : [];
         $rows = [];
+        $countedWinners = [];
         $performance = [];
         $rosters = [];
         $regionSummary = $event->regions()->whereIn('team_regions.id', $regions)
@@ -145,6 +146,9 @@ class TeamResultRankingService
             }
             if (count($sides) !== 2) continue;
             if (collect($sides)->contains(fn ($entry) => in_array((int) $entry['team']->region_id, $excludedResultRegionIds, true))) continue;
+            if ($publishedOnly) {
+                $countedWinners[$sides[$outcome['winner']]['identity']] = true;
+            }
             foreach ($sides as $side => $entry) {
                 if (! in_array((int) $entry['team']->region_id, $regions, true)) continue;
                 $id = $entry['identity'];
@@ -199,7 +203,12 @@ class TeamResultRankingService
                 foreach ($run as $player) $rows[$player['id']]['cross_band_review'][] = $context;
             }
         }
-        $ranking = collect($rows)->map(function ($row) use ($criteria, $platteland, $interDistricts) {
+        $ranking = collect($rows)->map(function ($row) use ($criteria, $platteland, $interDistricts, $publishedOnly, $countedWinners) {
+            if ($publishedOnly) {
+                $row['only_beat_winless'] = $row['wins'] > 0 && collect($row['matches'])
+                    ->where('won', true)
+                    ->every(fn (array $match) => ! isset($countedWinners[$match['opponent_id']]));
+            }
             $row['selection_criteria'] = $criteria;
             $row['ranks'] = array_values(array_unique($row['ranks']));
             $row['teams'] = array_values(array_unique($row['teams']));

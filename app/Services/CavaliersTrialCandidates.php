@@ -7,6 +7,7 @@ use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Team;
 use App\Models\TeamFixture;
+use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use App\Support\CavaliersCandidateMatchEvidence;
 use Illuminate\Database\QueryException;
@@ -26,6 +27,7 @@ final class CavaliersTrialCandidates
         private PlayerEligibilityService $eligibility,
         private SelectedTeamRosterStatus $rosterStatus,
         private PlattelandFinalizedTrialCandidates $platteland,
+        private InterDistrictsCandidateEvidence $interDistrictsEvidence,
     ) {}
 
     private function source(): Event
@@ -71,10 +73,11 @@ final class CavaliersTrialCandidates
         $setup = $this->settings($source, $event, $division);
         $regionIds = collect($setup['region_ids']);
         $teams = $this->publishedTeams($source);
+        $canViewPrivateSource = $actor->can('event.manage', $source);
         $divisionTeams = $teams->whereIn('region_id', $regionIds)
             ->filter(fn (Team $team) => $this->group($team->category?->category?->name ?? $team->name) === $group);
         $missingRegions = $regionIds->diff($divisionTeams->pluck('region_id'));
-        $roster = $this->divisionRoster($divisionTeams);
+        $roster = $this->divisionRoster($source, $divisionTeams, $canViewPrivateSource);
 
         // Apply the Platteland band rules to this Inter-Districts preview only.
         $source = clone $source;
@@ -82,7 +85,7 @@ final class CavaliersTrialCandidates
             'criteria_preset' => TeamSelectionCriteria::PLATTELAND,
             'excluded_result_region_ids' => $setup['excluded_result_region_ids'],
         ]);
-        $platteland = $this->platteland->preview($group, $actor);
+        $platteland = $this->platteland->preview($group, $actor, $canViewPrivateSource ? $source : null);
 
         return [
             'source_division' => 'U'.$sourceAge.' '.ucfirst($gender),
@@ -107,13 +110,8 @@ final class CavaliersTrialCandidates
 
     private function publishedTeams(Event $event): Collection
     {
-        $teams = $this->scope->query($event)->where('published', true)
+        return $this->scope->query($event)->where('published', true)
             ->with(['category.category', 'team_players.player', 'team_players_no_profile.profile'])->get();
-        $status = $this->rosterStatus->classify($event, $teams);
-        return $teams->each(function (Team $team) use ($status) {
-            $team->setRelation('team_players', $team->team_players->reject(fn ($slot) => isset($status['profile'][$team->id][$slot->player_id])));
-            $team->setRelation('team_players_no_profile', $team->team_players_no_profile->reject(fn ($slot) => isset($status['imported'][$team->id][$slot->id])));
-        });
     }
 
     private function group(?string $name): ?string
@@ -121,19 +119,29 @@ final class CavaliersTrialCandidates
         return $this->ranking->group(new TeamFixture(['age' => $name]))['key'] ?? null;
     }
 
-    private function divisionRoster(Collection $teams): Collection
+    private function divisionRoster(Event $source, Collection $teams, bool $canViewPrivateSource): Collection
     {
-        return $teams->flatMap(fn (Team $team) => $this->members($team))
+        $status = $this->rosterStatus->classify($source, $teams);
+        $members = $teams->flatMap(fn (Team $team) => $this->members($team, $status))
+            ->filter(fn (array $member) => $canViewPrivateSource || ! $member['reserve']);
+        if ($canViewPrivateSource) {
+            $unavailable = $this->interDistrictsEvidence->invitations($source, $members->where('reserve', true)->pluck('id'))
+                ->whereIn('status', [TeamSelectionInvitation::DECLINED, TeamSelectionInvitation::WITHDRAWN])
+                ->mapWithKeys(fn ($invitation) => [$invitation->team_id.':'.$invitation->player_id => true]);
+            $members = $members->reject(fn (array $member) => $member['reserve'] && $unavailable->has($member['team_id'].':'.$member['id']));
+        }
+
+        return $members
             ->filter(fn (array $member) => $member['rank'] > 0)
-            ->sortBy([['rank', 'asc'], ['name', 'asc'], ['id', 'asc']])
+            ->sortBy([['reserve', 'asc'], ['rank', 'asc'], ['name', 'asc'], ['id', 'asc']])
             ->unique('id')->keyBy('id');
     }
 
-    private function members(Team $team): Collection
+    private function members(Team $team, array $status): Collection
     {
         $members = $team->noProfile
-            ? $team->team_players_no_profile->map(fn ($member) => [$member->profile, $member->rank])
-            : $team->team_players->map(fn ($member) => [$member->player, $member->rank]);
+            ? $team->team_players_no_profile->map(fn ($member) => [$member->profile, $member->rank, isset($status['imported'][$team->id][$member->id])])
+            : $team->team_players->map(fn ($member) => [$member->player, $member->rank, isset($status['profile'][$team->id][$member->player_id])]);
 
         return $members
             ->filter(fn (array $member) => $member[0])
@@ -143,6 +151,7 @@ final class CavaliersTrialCandidates
                 'rank' => (int) $member[1],
                 'team_id' => (int) $team->id,
                 'team' => $team->name,
+                'reserve' => $member[2],
             ]);
     }
 
@@ -166,6 +175,7 @@ final class CavaliersTrialCandidates
                     'losses' => $row['losses'],
                     'starting_credit' => $row['starting_credit'],
                     'lost_all' => $row['wins'] === 0 && $row['losses'] > 0,
+                    'only_beat_winless' => $row['only_beat_winless'],
                     'review_adjacent_band' => ! empty($row['platteland_manual_review']),
                     'matches' => CavaliersCandidateMatchEvidence::project($row['matches'] ?? []),
                 ]);
@@ -179,12 +189,14 @@ final class CavaliersTrialCandidates
             'losses' => null,
             'starting_credit' => null,
             'lost_all' => false,
+            'only_beat_winless' => false,
             'review_adjacent_band' => false,
             'matches' => [],
-        ]))->sortBy('band')->map(fn (array $row) => [
+        ]))->sortBy([['reserve', 'asc'], ['band', 'asc']])->map(fn (array $row) => [
             'id' => $row['id'],
             'name' => $row['name'],
             'source' => 'Inter-Districts',
+            'list_status' => $row['reserve'] ? 'Inter-Districts reserve' : null,
             'team' => $row['team'],
             'rank' => $row['rank'],
             'band' => (2 * $row['band'] - 1).'–'.(2 * $row['band']),
@@ -192,6 +204,7 @@ final class CavaliersTrialCandidates
             'losses' => $row['losses'],
             'starting_credit' => $row['starting_credit'],
             'lost_all' => $row['lost_all'],
+            'only_beat_winless' => $row['only_beat_winless'],
             'review_adjacent_band' => $row['review_adjacent_band'],
             'matches' => $row['matches'],
         ])->values();

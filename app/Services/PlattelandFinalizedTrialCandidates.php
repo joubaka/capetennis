@@ -18,9 +18,10 @@ final class PlattelandFinalizedTrialCandidates
     public function __construct(
         private EventTeamScope $scope,
         private SelectionPreviewShareService $access,
+        private InterDistrictsCandidateEvidence $interDistrictsEvidence,
     ) {}
 
-    public function preview(string $group, User $actor): array
+    public function preview(string $group, User $actor, ?Event $interDistricts = null): array
     {
         $source = Event::query()->find(self::SOURCE_EVENT);
         if (! $source?->isTeam() || $source->name !== 'Platteland Tennis Tournament Primary Schools 2026') {
@@ -60,6 +61,17 @@ final class PlattelandFinalizedTrialCandidates
             ->filter(fn (array $candidate) => $candidate['id'] && ! in_array($candidate['id'], $mainIds, true))
             ->unique('id');
 
+        if ($group === '12-girls' && $interDistricts && $actor->can('event.manage', $interDistricts)) {
+            $main = $selected->take($teamSize)->map(fn (array $row) => ['row' => $row, 'id' => $identify($row)])
+                ->filter(fn (array $candidate) => $candidate['id'])->unique('id');
+            $statuses = $this->interDistrictsEvidence->missingMainStatuses($interDistricts, $main->pluck('id'));
+            $additional = $additional->concat($main->filter(fn (array $candidate) => $statuses->has($candidate['id']))
+                ->map(fn (array $candidate) => $candidate + [
+                    'list_status' => 'Locked main team · '.$statuses[$candidate['id']],
+                    'opt_in' => true,
+                ]));
+        }
+
         $players = Player::query()->whereIn('id', $additional->pluck('id'))
             ->get(['id', 'name', 'surname'])->keyBy('id');
         $candidates = $additional->filter(fn (array $candidate) => $players->has($candidate['id']))
@@ -70,6 +82,7 @@ final class PlattelandFinalizedTrialCandidates
                     'name' => $players[$candidate['id']]->full_name,
                     'source' => 'Platteland',
                     'list_status' => $candidate['list_status'],
+                    'opt_in' => $candidate['opt_in'] ?? false,
                     'team' => implode(', ', $row['teams'] ?? []),
                     'rank' => $row['rank'] ?? null,
                     'source_position' => $row['position'] ?? null,
@@ -83,7 +96,11 @@ final class PlattelandFinalizedTrialCandidates
                 ];
             })->values();
 
-        return ['notice' => null, 'candidates' => $candidates];
+        $notice = $group === '12-girls' && ! $interDistricts
+            ? 'Inter-Districts event access is required to review the U13 Girls missing-main candidates.'
+            : null;
+
+        return ['notice' => $notice, 'candidates' => $candidates];
     }
 
     private function profileId(array $row, Collection $teamIds, ?Collection $slots = null): ?int

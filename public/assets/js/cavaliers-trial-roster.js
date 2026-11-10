@@ -194,6 +194,8 @@
     list.className = 'mb-0 mt-1 ps-3';
     matches.forEach((match) => {
       const item = document.createElement('li');
+      item.classList.toggle('text-success', match.outcome === 'Won');
+      item.classList.toggle('text-danger', match.outcome === 'Lost');
       const score = match.score ? `Home–away score ${match.score}` : 'Score unavailable';
       item.textContent = [match.opponent, match.outcome, match.format, score].filter(Boolean).join(' · ');
       list.append(item);
@@ -218,7 +220,8 @@
       const row = document.createElement('li');
       row.className = 'list-group-item';
       row.classList.toggle('list-group-item-danger', candidate.lost_all);
-      row.classList.toggle('list-group-item-success', wonAll);
+      row.classList.toggle('list-group-item-warning', candidate.only_beat_winless === true);
+      row.classList.toggle('list-group-item-success', wonAll && !candidate.only_beat_winless);
       const label = document.createElement('label');
       label.className = 'd-inline-flex gap-2 align-items-start text-break';
       const checkbox = document.createElement('input');
@@ -250,7 +253,8 @@
       const band = candidate.band && candidate.rank ? `Band ${candidate.band}, No. ${candidate.rank}` : '';
       const position = candidate.source_position ? `Finalized ranking #${candidate.source_position}` : '';
       evidence.textContent = [
-        candidate.list_status, candidate.team, position, band, record, outcome, bandReview,
+        candidate.list_status, candidate.team, position, band, record, outcome,
+        candidate.only_beat_winless ? 'Only beat opponents who lost all counted singles' : '', bandReview,
       ].filter(Boolean).join(' · ');
       details.append(name, source, place, evidence);
       label.append(checkbox, details);
@@ -359,8 +363,9 @@
       candidates = preview.candidates;
       const existing = rosterIds();
       const openSelectedPlaces = limits.selected - draft.selected.length;
-      candidates.filter(({ id }) => !existing.has(id)).slice(openSelectedPlaces)
+      candidates.filter(({ id, opt_in }) => !existing.has(id) && !opt_in).slice(openSelectedPlaces)
         .forEach(({ id }) => skippedCandidates.add(id));
+      candidates.filter(({ opt_in }) => opt_in).forEach(({ id }) => skippedCandidates.add(id));
       const summary = element('[data-candidate-region-summary]');
       summary.textContent = `Source division: ${preview.source_division}. Candidate regions: ${preview.candidate_regions.join(', ') || 'None'}. Results excluded: ${preview.excluded_result_regions.join(', ') || 'None'}.`;
       const notice = element('[data-candidate-notice]');

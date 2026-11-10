@@ -15,6 +15,8 @@ use App\Models\Player;
 use App\Models\Team;
 use App\Models\TeamFixture;
 use App\Models\TeamRegion;
+use App\Models\TeamSelectionImport;
+use App\Models\TeamSelectionInvitation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -148,8 +150,8 @@ class CavaliersTrialRosterDraftTest extends TestCase
 
         $this->actingAs($this->administrator($source))->getJson($review)->assertForbidden();
         $this->putJson($setup, $custom)->assertForbidden();
-        $this->actingAs($this->administrator($event));
-        $this->getJson(route('backend.cavaliers-roster.candidates', [$event, $sourceDivision]))->assertNotFound();
+        $actor = $this->administrator($event);
+        $this->actingAs($actor)->getJson(route('backend.cavaliers-roster.candidates', [$event, $sourceDivision]))->assertNotFound();
         $this->getJson($setup)->assertOk()
             ->assertJsonPath('region_ids', $defaults['region_ids'])
             ->assertJsonPath('excluded_result_region_ids', $defaults['excluded_result_region_ids']);
@@ -163,15 +165,18 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ->assertJsonPath('candidates.0.source', 'Inter-Districts')
             ->assertJsonPath('candidates.0.wins', 1)
             ->assertJsonPath('candidates.0.lost_all', false)
+            ->assertJsonPath('candidates.0.only_beat_winless', false)
             ->assertJsonPath('candidates.0.starting_credit', 1)
             ->assertJsonPath('candidates.0.matches', [[
                 'opponent' => $drakenstein->full_name, 'outcome' => 'Won', 'score' => '6–2, 6–2', 'format' => 'Singles',
             ]])
             ->assertJsonPath('candidates.1.id', $drakenstein->id)
+            ->assertJsonPath('candidates.1.only_beat_winless', true)
             ->assertJsonPath('candidates.2.id', $second->id)
             ->assertJsonPath('candidates.2.wins', null)
             ->assertJsonPath('candidates.2.matches', [])
             ->assertJsonPath('candidates.2.lost_all', false)
+            ->assertJsonPath('candidates.2.only_beat_winless', false)
             ->assertJsonPath('candidates.3.id', $losing->id)
             ->assertJsonPath('candidates.3.rank', 5)
             ->assertJsonPath('candidates.3.lost_all', true)
@@ -186,6 +191,12 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->assertTrue($rows->every(fn (array $row) => $row['wins'] === null && $row['matches'] === []));
         $draw->update(['published' => true]);
 
+        $this->putJson($setup, ['region_ids' => [$cavaliers], 'excluded_result_region_ids' => [$edenId]])->assertOk();
+        $this->getJson($review)->assertOk()
+            ->assertJsonPath('candidates.0.id', $first->id)
+            ->assertJsonPath('candidates.0.only_beat_winless', false)
+            ->assertJsonCount(3, 'candidates');
+
         $this->putJson($setup, $custom)->assertOk()->assertExactJson($custom);
         $this->getJson($setup)->assertOk()->assertJsonPath('region_ids', $custom['region_ids'])
             ->assertJsonPath('excluded_result_region_ids', $custom['excluded_result_region_ids']);
@@ -195,6 +206,12 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $rows = collect($this->getJson($review)->assertOk()->assertJsonCount(4, 'candidates')->json('candidates'));
         $this->assertEqualsCanonicalizing([$first->id, $second->id, $losing->id, $eden->id], $rows->pluck('id')->all());
         $this->assertTrue($rows->every(fn (array $row) => $row['wins'] === null));
+        EventAdmin::create(['event_id' => $source->id, 'user_id' => $actor->id]);
+        $this->getJson($review)->assertOk()->assertJsonCount(5, 'candidates')
+            ->assertJsonPath('candidates.4.id', $reserve->id)
+            ->assertJsonPath('candidates.4.list_status', 'Inter-Districts reserve')
+            ->assertJsonPath('candidates.4.wins', null)
+            ->assertJsonPath('candidates.4.matches', []);
         $this->assertNull($source->fresh()->team_result_settings);
         $this->assertSame(9, $event->fresh()->team_result_settings['team_size']);
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
@@ -276,6 +293,52 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
         $this->assertDatabaseCount('event_nominations', 0);
         $this->assertSame($snapshot, $finalized->fresh()->groups['10-girls']['snapshot']);
+    }
+
+    public function test_u13_girls_missing_finalized_main_candidates_require_both_sources_and_are_opt_in(): void
+    {
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]), 'U13 Girls');
+        $type = EventType::forceCreate(['id' => 242, 'name' => 'Team trial source', 'type' => EventType::TEAM]);
+        $inter = Event::factory()->create(['id' => 242, 'name' => 'Inter-Districts Tournament Primary Schools 2026', 'eventType' => $type->id]);
+        $platteland = Event::factory()->create(['id' => 241, 'name' => 'Platteland Tennis Tournament Primary Schools 2026', 'eventType' => $type->id]);
+        [$main, $declined, $missing, $assigned, $reserve] = Player::factory()->count(5)->create()->all();
+        $interDivision = $this->division($inter, 'U12 Girls')[1];
+        $interTeam = $this->candidateTeam($interDivision, 'Cavaliers Platteland 2026', [1 => $main]);
+        $sourceTeam = $this->candidateTeam($this->division($platteland, 'U12 Girls')[1], 'Overberg 2026', [1 => $main]);
+        $actor = $this->administrator($event);
+        EventAdmin::create(['event_id' => $platteland->id, 'user_id' => $actor->id]);
+        $players = collect([$main, $declined, $missing, $assigned, $reserve]);
+        $snapshot = $players->map(fn (Player $player, int $index) => [
+            'id' => $player->id, 'position' => $index + 1,
+            'source_participants' => [['team_id' => $sourceTeam->id, 'type' => 'profile', 'id' => $player->id, 'profile_id' => $player->id]],
+        ]);
+        EventSelectionFinalization::create([
+            'event_id' => $platteland->id, 'finalized_by' => $actor->id, 'draft_versions' => ['12-girls' => 1],
+            'groups' => ['12-girls' => ['draft_version' => 1, 'selected_keys' => $players->pluck('id')->all(), 'snapshot' => $snapshot->all()]],
+            'team_size' => 4, 'reserve_count' => 1, 'fingerprint' => str_repeat('a', 64), 'finalized_at' => now(),
+        ]);
+        $draw = Draw::factory()->create(['event_id' => $inter->id, 'category_event_id' => $interDivision->id, 'published' => true]);
+        $this->candidateMatch($draw, $interTeam, $interTeam, $assigned, $main, 6, 1);
+        $import = TeamSelectionImport::create([
+            'source_id' => 1, 'event_id' => $inter->id, 'region_id' => $interTeam->region_id,
+            'series_id' => 1, 'ranking_run_id' => 'cavaliers-source', 'status' => 'sent',
+        ]);
+        TeamSelectionInvitation::create([
+            'import_id' => $import->id, 'event_id' => $inter->id, 'region_id' => $interTeam->region_id,
+            'team_id' => $interTeam->id, 'player_id' => $declined->id, 'ranking_list_id' => 1, 'ranking_position' => 1, 'queue_position' => 1,
+            'status' => TeamSelectionInvitation::DECLINED, 'declined_at' => now(), 'decline_method' => 'authenticated_invitation',
+            'decline_reason' => 'PRIVATE_DECLINE_REASON',
+        ]);
+        $url = route('backend.cavaliers-roster.candidates', [$event, $division]);
+        $this->actingAs($actor)->getJson($url)->assertOk()->assertJsonCount(2, 'candidates');
+        EventAdmin::create(['event_id' => $inter->id, 'user_id' => $actor->id]);
+        $response = $this->getJson($url)->assertOk()->assertJsonCount(4, 'candidates')->assertDontSee('PRIVATE_DECLINE_REASON')
+            ->assertJsonPath('candidates.2.opt_in', true)
+            ->assertJsonPath('candidates.2.list_status', 'Locked main team · No Inter-Districts participation recorded · Confirmed Inter-Districts decline')
+            ->assertJsonPath('candidates.3.opt_in', true)
+            ->assertJsonPath('candidates.3.list_status', 'Locked main team · No Inter-Districts participation recorded · No current decline recorded');
+        $this->assertSame([$main->id, $reserve->id, $declined->id, $missing->id], array_column($response->json('candidates'), 'id'));
+        $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
     }
 
     private function candidateMatch(Draw $draw, Team $home, Team $away, Player $first, Player $second, int $homeScore, int $awayScore): void
