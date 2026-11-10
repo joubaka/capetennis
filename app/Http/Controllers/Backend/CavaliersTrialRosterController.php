@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Player;
+use App\Services\CavaliersTrialCandidates;
 use App\Services\PlayerEligibilityService;
 use App\Support\EventTypePresentation;
 use Illuminate\Http\JsonResponse;
@@ -56,6 +57,15 @@ class CavaliersTrialRosterController extends Controller
 
         return response()->json($players->orderBy('surname')->orderBy('name')->orderBy('id')->limit(20)
             ->get()->map(fn (Player $player) => ['id' => $player->id, 'name' => $player->full_name]))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function candidates(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): JsonResponse
+    {
+        $this->authorizeDivision($request, $event, $categoryEvent);
+        abort_unless((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT, 404);
+
+        return response()->json($candidates->preview($event, $categoryEvent))
             ->header('Cache-Control', 'private, no-store');
     }
 

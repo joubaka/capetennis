@@ -12,6 +12,10 @@
   const searchResults = element('[data-search-results]');
   const swapForm = element('[data-swap]');
   const swapTarget = element('[data-swap-target]');
+  const reviewCandidates = element('[data-review-candidates]');
+  const candidateReview = element('[data-candidate-review]');
+  const candidateList = element('[data-candidate-list]');
+  const addCandidates = element('[data-add-candidates]');
   const limits = { selected: Number(root.dataset.selectedLimit), reserves: Number(root.dataset.reserveLimit) };
   const labels = { selected: 'Selected', reserves: 'Reserves' };
   let activeDivision = '';
@@ -22,6 +26,8 @@
   let swap = null;
   let searchVersion = 0;
   let found = [];
+  let candidates = null;
+  const skippedCandidates = new Set();
 
   function setStatus(message, error = false) {
     status.textContent = message;
@@ -125,7 +131,117 @@
       });
     }
     renderSearch();
+    renderCandidates();
   }
+
+  function rosterIds() {
+    return new Set([...draft.selected, ...draft.reserves].map((player) => player.id));
+  }
+
+  function candidatePlaces() {
+    const selected = limits.selected - draft.selected.length;
+    const reserves = limits.reserves - draft.reserves.length;
+    const existing = rosterIds();
+    const checked = candidates.filter(({ id }) => !existing.has(id) && !skippedCandidates.has(id));
+    return {
+      selected: checked.slice(0, selected),
+      reserves: checked.slice(selected, selected + reserves),
+      leftOut: Math.max(0, checked.length - selected - reserves),
+    };
+  }
+
+  function updateCandidateCount() {
+    const { selected, reserves, leftOut } = candidatePlaces();
+    const remaining = leftOut ? ` · ${leftOut} beyond available places` : '';
+    element('[data-candidate-count]').textContent = candidates.length
+      ? `${selected.length} selected · ${reserves.length} reserves to add${remaining}`
+      : 'No eligible candidates found for this division.';
+    addCandidates.disabled = busy || stale || selected.length + reserves.length === 0;
+  }
+
+  function renderCandidates() {
+    if (!reviewCandidates) return;
+    reviewCandidates.disabled = busy || stale;
+    candidateReview.hidden = candidates === null;
+    if (candidates === null) return;
+
+    const existing = rosterIds();
+    candidateList.replaceChildren();
+    candidates.forEach((candidate) => {
+      const alreadyAdded = existing.has(candidate.id);
+      const row = document.createElement('li');
+      row.className = 'list-group-item';
+      const label = document.createElement('label');
+      label.className = 'd-inline-flex gap-2 align-items-start text-break';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'form-check-input';
+      checkbox.checked = !alreadyAdded && !skippedCandidates.has(candidate.id);
+      checkbox.disabled = alreadyAdded || busy || stale;
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) skippedCandidates.delete(candidate.id);
+        else skippedCandidates.add(candidate.id);
+        updateCandidateCount();
+      });
+      const details = document.createElement('span');
+      const name = document.createElement('strong');
+      name.textContent = candidate.name;
+      const evidence = document.createElement('small');
+      evidence.className = 'd-block text-muted';
+      const record = candidate.wins === null
+        ? 'No counted published singles results'
+        : `${candidate.wins}–${candidate.losses} singles${candidate.starting_credit ? ' · +1 roster credit' : ''}`;
+      const flag = candidate.lost_all ? ' · Lost all counted singles' : '';
+      evidence.textContent = `${candidate.source} · ${candidate.team} · Band ${candidate.band}, No. ${candidate.rank} · ${record}${flag}${alreadyAdded ? ' · Already on draft' : ''}`;
+      details.append(name, evidence);
+      label.append(checkbox, details);
+      row.append(label);
+      candidateList.append(row);
+    });
+    updateCandidateCount();
+  }
+
+  function closeCandidateReview() {
+    candidates = null;
+    skippedCandidates.clear();
+    if (candidateReview) {
+      candidateReview.hidden = true;
+      candidateList.replaceChildren();
+    }
+  }
+
+  reviewCandidates?.addEventListener('click', async () => {
+    busy = true;
+    searchVersion++;
+    closeCandidateReview();
+    closeSwap();
+    render();
+    setStatus('Loading candidates…');
+    try {
+      ({ candidates } = await request(division.selectedOptions[0].dataset.candidateUrl));
+      setStatus('Review the candidates before adding them.');
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      busy = false;
+      render();
+    }
+  });
+
+  element('[data-close-candidates]')?.addEventListener('click', () => {
+    closeCandidateReview();
+    reviewCandidates.focus();
+  });
+
+  addCandidates?.addEventListener('click', () => {
+    const { selected, reserves } = candidatePlaces();
+    draft.selected.push(...selected);
+    draft.reserves.push(...reserves);
+    closeCandidateReview();
+    changed();
+    setStatus(`${selected.length} selected and ${reserves.length} reserves added. Save draft to keep these changes.`);
+    save.focus();
+  });
 
   function changed() {
     dirty = true;
@@ -179,6 +295,7 @@
     search.reset();
     searchVersion++;
     closeSwap();
+    closeCandidateReview();
     reload.classList.add('d-none');
     setStatus('');
     if (!activeDivision) {

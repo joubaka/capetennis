@@ -4,10 +4,15 @@ namespace Tests\Feature;
 
 use App\Models\Category;
 use App\Models\CategoryEvent;
+use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventAdmin;
 use App\Models\EventNomination;
+use App\Models\EventType;
 use App\Models\Player;
+use App\Models\Team;
+use App\Models\TeamFixture;
+use App\Models\TeamRegion;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -107,6 +112,74 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->getJson(route('backend.cavaliers-roster.show', [$otherType, $otherDivision]))->assertNotFound();
         $this->getJson($search)->assertOk()->assertExactJson([['id' => $player->id, 'name' => $player->full_name]]);
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
+    }
+
+    public function test_candidate_review_uses_public_rosters_and_counted_results_without_saving_a_draft(): void
+    {
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]));
+        $teamType = EventType::forceCreate(['id' => 242, 'name' => 'Team trial source', 'type' => EventType::TEAM]);
+        $interDistricts = Event::factory()->create(['id' => 242, 'name' => 'Inter-Districts Tournament Primary Schools 2026', 'eventType' => $teamType->id]);
+        $platteland = Event::factory()->create(['id' => 241, 'name' => 'Platteland Tennis Tournament Primary Schools 2026', 'eventType' => $teamType->id]);
+        $interDivision = $this->division($interDistricts)[1];
+        $plattelandDivision = $this->division($platteland)[1];
+        [$first, $reserve, $otherDistrict, $higher, $lower, $opponent, $hidden] = Player::factory()->count(7)->create()->all();
+        $this->candidateTeam($interDivision, 'Cavaliers Platteland 2026', [1 => $first, 2 => $reserve], capacity: 1);
+        $this->candidateTeam($interDivision, 'Another district', [1 => $otherDistrict]);
+        $overberg = $this->candidateTeam($plattelandDivision, 'Overberg Primary Schools 2026', [
+            1 => $higher, 2 => $reserve, 3 => $lower, 4 => $first, 5 => $otherDistrict,
+        ]);
+        $westCoast = $this->candidateTeam($plattelandDivision, 'West Coast Primary Schools 2026', [1 => $opponent]);
+        $this->candidateTeam($plattelandDivision, 'Witzenberg/Breede Vallei/Langeberg Primary Schools 2026', [1 => $hidden], published: false);
+        $draw = Draw::factory()->create([
+            'event_id' => $platteland->id, 'category_event_id' => $plattelandDivision->id, 'published' => true,
+        ]);
+        $fixture = TeamFixture::create([
+            'draw_id' => $draw->id, 'fixture_type' => 1, 'age' => 'U10 Girls', 'numSets' => 3,
+            'match_nr' => 1, 'round_nr' => 1,
+            'region1' => $overberg->region_id, 'region2' => $westCoast->region_id,
+        ]);
+        $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => $higher->id, 'team2_id' => $opponent->id]);
+        foreach ([1, 2] as $set) {
+            $fixture->teamResults()->create(['set_nr' => $set, 'team1_score' => 6, 'team2_score' => 2]);
+        }
+
+        $url = route('backend.cavaliers-roster.candidates', [$event, $division]);
+        $this->actingAs($this->administrator($interDistricts))->getJson($url)->assertForbidden();
+        $this->actingAs($this->administrator($event));
+        $this->getJson(route('backend.cavaliers-roster.candidates', [$event, $interDivision]))->assertNotFound();
+        $this->getJson($url)->assertOk()
+            ->assertJsonPath('candidates.0.id', $first->id)
+            ->assertJsonPath('candidates.0.source', 'Inter-Districts')
+            ->assertJsonPath('candidates.0.wins', null)
+            ->assertJsonPath('candidates.1.id', $higher->id)
+            ->assertJsonPath('candidates.1.source', 'Platteland')
+            ->assertJsonPath('candidates.1.wins', 1)
+            ->assertJsonPath('candidates.1.starting_credit', 1)
+            ->assertJsonPath('candidates.3.id', $reserve->id)
+            ->assertJsonPath('candidates.4.id', $lower->id)
+            ->assertJsonCount(5, 'candidates');
+
+        $draw->update(['published' => false]);
+        $response = $this->getJson($url)->assertOk();
+        $this->assertNull(collect($response->json('candidates'))->firstWhere('id', $higher->id)['wins']);
+        $this->assertNull($platteland->fresh()->team_result_settings);
+        $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
+        $this->assertDatabaseCount('event_nominations', 0);
+    }
+
+    private function candidateTeam(CategoryEvent $division, string $name, array $players, int $capacity = 10, bool $published = true): Team
+    {
+        $region = TeamRegion::create(['region_name' => $name]);
+        $division->event->regions()->attach($region);
+        $team = Team::factory()->create([
+            'category_event_id' => $division->id, 'region_id' => $region->id, 'name' => $name,
+            'num_team_members' => $capacity, 'published' => $published, 'noProfile' => false,
+        ]);
+        foreach ($players as $rank => $player) {
+            $team->team_players()->create(['player_id' => $player->id, 'rank' => $rank]);
+        }
+
+        return $team;
     }
 
     private function division(?Event $event = null): array

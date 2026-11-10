@@ -26,6 +26,12 @@ can have a team base family and still requires its dedicated policy.
 | Camp / unknown type | Existing generic information, documents and published results; do not invent registration capabilities | `PublicEventPresentationTest`; explicit resolver matrix |
 | Overberg Trials view | Existing delegation to the default public template; do not assume a persisted workflow identity from the filename | Explicit template resolution/delegation coverage |
 
+The Cavaliers roster draft can preview published Inter-Districts and Platteland
+candidates for the configured trials event. The preview excludes hidden source
+reserves and distinguishes published results from roster-only evidence.
+Adding reviewed candidates stages a private edit. Save draft persists the
+order separately from public nominations.
+
 ### Verified local inventory
 
 A read-only check of the loopback MySQL `ct` database on 2026-10-25 found:

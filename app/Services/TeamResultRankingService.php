@@ -11,10 +11,11 @@ use Illuminate\Support\Collection;
 /** Private, event-scoped selection evidence. Does not publish or select players. */
 class TeamResultRankingService
 {
-    public function fixtures(Event $event): Collection
+    public function fixtures(Event $event, bool $publishedOnly = false): Collection
     {
         return TeamFixture::without(['teamResults', 'fixturePlayers', 'draw'])
             ->whereHas('draw', fn ($query) => $query->where('event_id', $event->id))
+            ->when($publishedOnly, fn ($query) => $query->publicDrawFixtures()->publishedTeamTies())
             ->with(['draw.categoryEvent.category'])->get()->filter(fn ($fixture) => in_array($this->format($fixture), [RubberType::SINGLES, RubberType::REVERSE_SINGLES], true));
     }
 
@@ -57,12 +58,12 @@ class TeamResultRankingService
         ];
     }
 
-    public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): Collection
+    public function ranking(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false, bool $publishedOnly = false): Collection
     {
-        return $this->selectionEvidence($event, $group, $regions, $formats, $excludedResultRegionIds, $includeRatings)['ranking'];
+        return $this->selectionEvidence($event, $group, $regions, $formats, $excludedResultRegionIds, $includeRatings, $publishedOnly)['ranking'];
     }
 
-    public function selectionEvidence(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false): array
+    public function selectionEvidence(Event $event, string $group, array $regions, array $formats, array $excludedResultRegionIds = [], bool $includeRatings = false, bool $publishedOnly = false): array
     {
         $criteria = app(TeamSelectionCriteria::class)->context($event, $excludedResultRegionIds);
         $platteland = $criteria['preset'] === TeamSelectionCriteria::PLATTELAND;
@@ -70,9 +71,12 @@ class TeamResultRankingService
         if ($platteland) $formats = [RubberType::SINGLES, RubberType::REVERSE_SINGLES];
         $excludedResultRegionIds = $criteria['excluded_result_region_ids'];
         $excludedResultRegionIds = array_map('intval', $excludedResultRegionIds);
-        $fixtures = $this->fixtures($event)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
+        $fixtures = $this->fixtures($event, $publishedOnly)->filter(fn ($fixture) => ($this->group($fixture)['key'] ?? null) === $group && in_array($this->format($fixture), $formats, true));
         $fixtures->load(['fixturePlayers.player1', 'fixturePlayers.player2', 'fixturePlayers.noProfile1', 'fixturePlayers.noProfile2', 'teamResults', 'teamTie']);
-        $teams = app(EventTeamScope::class)->query($event)->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
+        $teams = app(EventTeamScope::class)->query($event)
+            ->when($publishedOnly, fn ($query) => $query->where('published', true))
+            ->with(['players', 'team_players', 'team_players_no_profile', 'competitionSubstitutions', 'regions', 'category.category'])->get();
+        $hiddenRoster = $publishedOnly ? app(SelectedTeamRosterStatus::class)->classify($event, $teams) : [];
         $rows = [];
         $performance = [];
         $rosters = [];
@@ -133,7 +137,7 @@ class TeamResultRankingService
                 if ($rank < 1) continue;
                 $identity = $imported ? 'imported:'.$team->id.':'.($snapshot['anchor_id'] ?? $member->competition_anchor_id ?? $imported->id) : $player->id;
                 $fullRoster = $rosters[$fixture->id][$team->id] ??= app(TeamDrawSideResolver::class)->activeRoster($team, (int) $fixture->round_nr, (int) $fixture->id, (int) $fixture->draw_id);
-                $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported, $platteland);
+                $rosterCredit = $this->hasRosterWin($fullRoster, $rank, $player, (bool) $imported, $platteland, $hiddenRoster);
                 $participant = ['team_id' => (int) $team->id, 'type' => $imported ? 'imported' : 'profile',
                     'id' => (int) ($imported ? $imported->id : $player->id),
                     'profile_id' => $imported ? ($imported->player_profile ? (int) $imported->player_profile : null) : (int) $player->id];
@@ -405,13 +409,15 @@ class TeamResultRankingService
         });
     }
 
-    private function hasRosterWin(Team $team, int $rank, mixed $player, bool $imported, bool $platteland = false): bool
+    private function hasRosterWin(Team $team, int $rank, mixed $player, bool $imported, bool $platteland = false, array $hiddenRoster = []): bool
     {
         if ($platteland ? $rank < 1 || $rank % 2 !== 1 : ! in_array($rank, [1, 3, 5, 7], true)) return false;
         // Read the whole roster, independently of candidate/result filters. A
         // participant-only historic snapshot cannot attest a missing pair.
-        $members = $team->team_players->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'profile:'.$member->player_id, 'person' => 'profile:'.$member->player_id])
-            ->concat($team->team_players_no_profile->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'imported:'.$member->id, 'person' => $member->player_profile ? 'profile:'.$member->player_profile : 'imported:'.$member->id]))
+        $members = $team->team_players->reject(fn ($member) => isset($hiddenRoster['profile'][$team->id][$member->player_id]))
+            ->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'profile:'.$member->player_id, 'person' => 'profile:'.$member->player_id])
+            ->concat($team->team_players_no_profile->reject(fn ($member) => isset($hiddenRoster['imported'][$team->id][$member->id]))
+                ->map(fn ($member) => ['rank' => (int) $member->rank, 'identity' => 'imported:'.$member->id, 'person' => $member->player_profile ? 'profile:'.$member->player_profile : 'imported:'.$member->id]))
             ->groupBy(fn ($member) => $member['rank'].':'.$member['person'])
             ->map(fn ($mirrors) => ['rank' => $mirrors->first()['rank'], 'person' => $mirrors->first()['person'], 'identities' => $mirrors->pluck('identity')->all()]);
         $higher = $members->where('rank', $rank);

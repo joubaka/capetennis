@@ -1,5 +1,6 @@
 @php
     use App\Http\Controllers\Backend\CavaliersTrialRosterController;
+    use App\Services\CavaliersTrialCandidates;
 @endphp
 <section class="card mb-4" data-cavaliers-roster
     data-selected-limit="{{ CavaliersTrialRosterController::SELECTED_LIMIT }}"
@@ -13,7 +14,10 @@
             @foreach ($event->eventCategories as $division)
                 <option value="{{ $division->id }}"
                     data-draft-url="{{ route('backend.cavaliers-roster.show', [$event, $division]) }}"
-                    data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}">
+                    data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}"
+                    @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
+                        data-candidate-url="{{ route('backend.cavaliers-roster.candidates', [$event, $division]) }}"
+                    @endif>
                     {{ $division->category->name }}
                 </option>
             @endforeach
@@ -21,6 +25,17 @@
         <p class="small mb-2" data-status role="status" aria-live="polite"></p>
         <button type="button" class="btn btn-sm btn-outline-secondary mb-3 d-none" data-reload>Reload saved draft</button>
         <div data-editor hidden>
+            @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
+                <button type="button" class="btn btn-outline-primary mb-3" data-review-candidates>Review candidates</button>
+                <section class="border rounded p-3 mb-3" data-candidate-review aria-labelledby="cavaliers-candidate-heading" hidden>
+                    <h5 id="cavaliers-candidate-heading" class="h6">Inter-Districts and Platteland candidates</h5>
+                    <p class="small text-muted">Inter-Districts comes first, followed by Platteland in band order. Checked players fill open selected places first, then reserves.</p>
+                    <ol class="list-group list-group-numbered mb-3" data-candidate-list></ol>
+                    <p class="small mb-2" data-candidate-count aria-live="polite"></p>
+                    <button type="button" class="btn btn-sm btn-primary" data-add-candidates>Add to draft</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-close-candidates>Close review</button>
+                </section>
+            @endif
             <form data-search class="row g-2 align-items-end mb-2">
                 <div class="col-12 col-sm">
                     <label class="form-label" for="cavaliers-roster-search">Find a player</label>
