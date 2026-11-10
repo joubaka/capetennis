@@ -6,6 +6,7 @@ use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\EventNomination;
 use App\Models\Player;
+use App\Support\EventTypePresentation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -25,7 +26,27 @@ class NominateController extends Controller
     }
     public function destroy(Request $request) { $n=EventNomination::with('categoryEvent.event')->findOrFail($request->integer('id')); $this->authorizeNomination($n); $n->delete(); return 1; }
     public function nominationInCategory($id) { $c=$this->authorizedCategory((int)$id); return EventNomination::where('category_event_id',$c->id)->with('player')->get(); }
-    public function togglePublish($id) { $c=$this->authorizedCategory((int)$id); $c->update(['nominations_published'=>!$c->nominations_published]); return response()->json(['success'=>true,'published'=>(bool)$c->nominations_published]); }
+    public function togglePublish(Request $request, $id)
+    {
+        $category = $this->authorizedCategory((int) $id);
+        $requested = $request->has('published')
+            ? filter_var($request->input('published'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)
+            : null;
+        abort_if($request->has('published') && $requested === null, 422, 'Choose a valid publication state.');
+        $published = DB::transaction(function () use ($category, $requested) {
+            // The draft table is transactional even for legacy categories.
+            if (EventTypePresentation::template($category->event) === 'cavaliers_trials') {
+                DB::table('cavaliers_trial_roster_drafts')->where('event_id', $category->event_id)
+                    ->where('category_event_id', $category->id)->lockForUpdate()->first();
+            }
+            $locked = CategoryEvent::query()->whereKey($category->id)->lockForUpdate()->firstOrFail();
+            $locked->update(['nominations_published' => $requested ?? ! $locked->nominations_published]);
+
+            return (bool) $locked->nominations_published;
+        });
+
+        return response()->json(['success' => true, 'published' => $published]);
+    }
     public function playersForCategory($id) { $c=$this->authorizedCategory((int)$id); $selected=EventNomination::where('category_event_id',$c->id)->pluck('player_id')->all(); return response()->json(Player::select('id','name','surname','email','cellNr')->orderBy('surname')->get()->map(fn($p)=>['id'=>$p->id,'text'=>trim("{$p->name} {$p->surname}")?:'Unknown Player','email'=>$p->email??'','cellNr'=>$p->cellNr??'','nominated'=>in_array($p->id,$selected)])); }
     public function getSelected($id) { $c=$this->authorizedCategory((int)$id); return response()->json(EventNomination::where('category_event_id',$c->id)->pluck('player_id')->all()); }
     public function save(Request $request) { $data=$request->validate(['category_event_id'=>'required|integer|exists:category_events,id','player_ids'=>'array','player_ids.*'=>'integer|distinct|exists:players,id']); $c=$this->authorizedCategory((int)$data['category_event_id']); $this->sync($c,$data['player_ids']??[]); return response()->json(['success'=>true,'count'=>count($data['player_ids']??[])]); }

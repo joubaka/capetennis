@@ -919,6 +919,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
         Route::get('/', 'show')->name('show');
         Route::get('/players', 'players')->middleware('throttle:60,1')->name('players');
         Route::put('/', 'update')->name('update');
+        Route::post('/nominations', 'transferNominations')->name('nominations');
       });
 
     Route::get('{event}/selection-import', [\App\Http\Controllers\Backend\EventSelectionRosterImportController::class, 'index'])->name('backend.selection-import.index');
@@ -1742,7 +1743,7 @@ Route::delete(
   Route::get('nomination/selected/{categoryId}', [NominateController::class, 'getSelected'])
     ->name('nomination.selected');
   Route::post('nomination/save', [NominateController::class, 'save']);
-  Route::get('nominations/partial/{id}', [NominateController::class, 'partialTable']);
+  Route::get('nominations/partial/{id}', [NominateController::class, 'partialTable'])->name('nomination.partial');
   Route::patch('nomination/publish/{id}', [NominateController::class, 'togglePublish'])
     ->name('backend.nomination.publish');
   Route::post('/nomination/remove', [NominateController::class, 'remove'])

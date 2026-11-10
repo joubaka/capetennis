@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Backend;
 use App\Http\Controllers\Controller;
 use App\Models\CategoryEvent;
 use App\Models\Event;
+use App\Models\EventNomination;
 use App\Models\Player;
 use App\Services\CavaliersTrialCandidates;
 use App\Services\PlayerEligibilityService;
 use App\Support\EventTypePresentation;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -149,6 +151,60 @@ class CavaliersTrialRosterController extends Controller
         abort_unless($written === 1, 409, $conflict);
 
         return response()->json(['revision' => $revision]);
+    }
+
+    public function transferNominations(Request $request, Event $event, CategoryEvent $categoryEvent, PlayerEligibilityService $eligibility): JsonResponse
+    {
+        $this->authorizeDivision($request, $event, $categoryEvent);
+        $input = $request->validate(['revision' => 'required|uuid', 'publish' => 'required|boolean']);
+        $publish = (bool) $input['publish'];
+
+        $count = DB::transaction(function () use ($event, $categoryEvent, $input, $publish, $eligibility) {
+            $draft = $this->draft($categoryEvent)->lockForUpdate()->first();
+            abort_unless($draft?->revision === $input['revision'], 409, 'The saved draft changed. Reload it before transferring nominations.');
+            $selected = json_decode($draft->selected, true, flags: JSON_THROW_ON_ERROR);
+            abort_if($selected === [], 422, 'Select and save at least one player before transferring nominations.');
+
+            $division = CategoryEvent::query()->whereKey($categoryEvent->id)->where('event_id', $event->id)
+                ->lockForUpdate()->firstOrFail();
+            $existing = EventNomination::query()->where('category_event_id', $categoryEvent->id)
+                ->lockForUpdate()->get(['event_id', 'player_id']);
+            abort_if(! $publish && $division->nominations_published && $existing->isNotEmpty(), 422,
+                'This division already has public nominations. Unpublish the list before copying privately.');
+            abort_if($existing->contains(fn (EventNomination $nomination) =>
+                (int) $nomination->event_id !== (int) $event->id || ! in_array((int) $nomination->player_id, $selected, true)),
+                422, 'Existing event nominations contain players outside this draft. Review those nominations before copying or publishing.');
+
+            $players = Player::query()->whereIn('id', $selected)->get(['id', 'name', 'surname'])->keyBy('id');
+            abort_unless($players->count() === count($selected), 422, 'Remove unavailable players from the draft before publishing.');
+            foreach ($selected as $playerId) {
+                try {
+                    $eligibility->assertEligible($players[$playerId], $event);
+                } catch (QueryException $exception) {
+                    throw $exception;
+                } catch (RuntimeException) {
+                    throw ValidationException::withMessages(['selected' => $players[$playerId]->full_name.' is currently ineligible for this event.']);
+                }
+            }
+
+            if (! $publish) {
+                $division->update(['nominations_published' => false]);
+            }
+            foreach (array_diff($selected, $existing->pluck('player_id')->all()) as $playerId) {
+                EventNomination::create([
+                    'event_id' => $event->id,
+                    'category_event_id' => $categoryEvent->id,
+                    'player_id' => $playerId,
+                ]);
+            }
+            if ($publish) {
+                $division->update(['nominations_published' => true]);
+            }
+
+            return count($selected);
+        });
+
+        return response()->json(['count' => $count]);
     }
 
     private function authorizeCandidateSetup(Request $request, Event $event, CategoryEvent $categoryEvent): void

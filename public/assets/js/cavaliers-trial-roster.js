@@ -7,6 +7,8 @@
   const editor = element('[data-editor]');
   const status = element('[data-status]');
   const save = element('[data-save]');
+  const publish = element('[data-publish]');
+  const copyNominations = element('[data-copy-nominations]');
   const reload = element('[data-reload]');
   const search = element('[data-search]');
   const searchResults = element('[data-search-results]');
@@ -102,6 +104,8 @@
     if (!draft) return;
     search.querySelectorAll('input, button').forEach((control) => { control.disabled = busy || stale; });
     save.disabled = !dirty || busy || stale;
+    publish.disabled = !draft.revision || dirty || busy || stale || draft.selected.length === 0;
+    copyNominations.disabled = publish.disabled;
     for (const key of Object.keys(limits)) {
       const list = element(`[data-list="${key}"]`);
       list.replaceChildren();
@@ -643,6 +647,60 @@
       render();
     }
   });
+
+  async function transferNominations(makePublic) {
+    const option = division.selectedOptions[0];
+    const name = option.textContent.trim();
+    const action = makePublic ? 'Publish on the public event page' : 'Copy to private nominations';
+    if (!window.confirm(`${action}: ${draft.selected.length} selected players for ${name}?`)) return;
+
+    busy = true;
+    searchVersion++;
+    closeSwap();
+    closeCandidateReview();
+    render();
+    setStatus(makePublic ? 'Publishing nominations…' : 'Copying nominations…');
+    try {
+      const { count } = await request(option.dataset.nominationsUrl, {
+        method: 'POST',
+        body: JSON.stringify({ revision: draft.revision, publish: makePublic }),
+      });
+      const success = makePublic ? `${count} selected players published for ${name}.` : `${count} players copied to private nominations for ${name}.`;
+      setStatus(success);
+      const previousList = document.querySelector(`[data-id="${activeDivision}"].nominationPublish`);
+      if (previousList) {
+        previousList.textContent = makePublic ? 'Unpublish list' : 'Publish list';
+        previousList.classList.toggle('btn-success', !makePublic);
+        previousList.classList.toggle('btn-danger', makePublic);
+      }
+      const table = document.getElementById(`nomination-table-${activeDivision}`);
+      if (table?.tBodies[0]) {
+        try {
+          const response = await fetch(option.dataset.nominationsTableUrl);
+          if (!response.ok) throw new Error('List refresh failed.');
+          const parsed = new DOMParser().parseFromString(`<table>${await response.text()}</table>`, 'text/html');
+          const rows = parsed.querySelector('tbody');
+          if (!rows) throw new Error('List refresh failed.');
+          table.tBodies[0].replaceWith(rows);
+          if (!makePublic) {
+            const details = table.closest('details');
+            if (details) details.open = true;
+          }
+        } catch {
+          setStatus(`${success} Reload the page to see the updated nomination table.`);
+        }
+      }
+    } catch (error) {
+      stale = error.status === 409;
+      reload.classList.toggle('d-none', !stale);
+      setStatus(error.message, true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+  copyNominations.addEventListener('click', () => transferNominations(false));
+  publish.addEventListener('click', () => transferNominations(true));
 
   window.addEventListener('beforeunload', (event) => {
     if (!dirty) return;

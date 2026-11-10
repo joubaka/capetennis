@@ -1256,10 +1256,7 @@ $('#nominatePlayerModal').on('shown.bs.modal', function () {
     const categoryId = $btn.data('id');
     const isCurrentlyPublished = $btn.hasClass('btn-danger'); // red = published
 
-    console.group('🟣 Publish Toggle');
-    console.log('Category ID:', categoryId);
-    console.log('Currently published:', isCurrentlyPublished);
-
+    const previousLabel = $btn.text();
     $btn.prop('disabled', true).text('Processing...');
 
     $.ajax({
@@ -1271,7 +1268,6 @@ $('#nominatePlayerModal').on('shown.bs.modal', function () {
       }
     })
       .done(res => {
-        console.log('✅ Publish response:', res);
         toastr.success(res.message || 'Publish status updated.');
 
         // 🔄 Toggle button style + text
@@ -1282,12 +1278,11 @@ $('#nominatePlayerModal').on('shown.bs.modal', function () {
         }
       })
       .fail(xhr => {
-        console.error('❌ Publish toggle failed:', xhr.responseText);
+        $btn.text(previousLabel);
         toastr.error(xhr.responseJSON?.message || 'Failed to update publish status.');
       })
       .always(() => {
         $btn.prop('disabled', false);
-        console.groupEnd();
       });
   });
 

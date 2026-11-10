@@ -70,6 +70,53 @@ class CavaliersTrialRosterDraftTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_bulk_copy_and_publish_use_only_the_saved_selected_players(): void
+    {
+        Mail::fake();
+        Queue::fake();
+        [$event, $division] = $this->division();
+        [$otherEvent, $otherDivision] = $this->division();
+        [$first, $second, $reserve, $legacy] = Player::factory()->count(4)->create()->all();
+        $this->actingAs($this->administrator($event));
+        $division->update(['nominations_published' => true]);
+        $revision = $this->putJson(route('backend.cavaliers-roster.update', [$event, $division]), [
+            'revision' => null, 'selected' => [$first->id, $second->id], 'reserves' => [$reserve->id],
+        ])->assertOk()->json('revision');
+        $url = route('backend.cavaliers-roster.nominations', [$event, $division]);
+        $copy = ['revision' => $revision, 'publish' => false];
+        $publish = ['revision' => $revision, 'publish' => true];
+
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $otherDivision]), $copy)->assertNotFound();
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$otherEvent, $otherDivision]), $copy)->assertForbidden();
+        $this->postJson($url, ['revision' => (string) \Illuminate\Support\Str::uuid(), 'publish' => true])->assertConflict();
+        $this->assertDatabaseCount('event_nominations', 0);
+
+        $this->postJson($url, $copy)->assertOk()->assertJsonPath('count', 2);
+        $this->assertFalse((bool) $division->fresh()->nominations_published);
+        $this->assertSame([$first->id, $second->id], EventNomination::query()->orderBy('id')->pluck('player_id')->all());
+        $extra = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $legacy->id]);
+        $this->postJson($url, $publish)->assertUnprocessable();
+        $this->assertFalse((bool) $division->fresh()->nominations_published);
+        $this->assertModelExists($extra);
+        $extra->delete();
+
+        $toggle = route('backend.nomination.publish', $division->id);
+        $page = route('events.show', $event);
+        $this->patchJson($toggle, ['published' => 'true'])->assertOk()->assertJsonPath('published', true);
+        $this->get($page)->assertOk()->assertSee($first->full_name)->assertDontSee($reserve->full_name);
+        $this->patchJson($toggle, ['published' => 'false'])->assertOk()->assertJsonPath('published', false);
+        $this->patchJson($toggle, ['published' => 'false'])->assertOk()->assertJsonPath('published', false);
+        $this->get($page)->assertOk()->assertDontSee($first->full_name);
+        $this->postJson($url, $publish)->assertOk()->assertJsonPath('count', 2);
+        $this->postJson($url, $publish)->assertOk()->assertJsonPath('count', 2);
+        $this->postJson($url, $copy)->assertUnprocessable();
+        $this->assertTrue((bool) $division->fresh()->nominations_published);
+        $this->assertDatabaseCount('event_nominations', 2);
+        $this->assertDatabaseCount('category_event_registrations', 0);
+        Mail::assertNothingSent();
+        Queue::assertNothingPushed();
+    }
+
     public function test_rejects_duplicates_over_capacity_missing_players_and_stale_revisions(): void
     {
         [$event, $division] = $this->division();

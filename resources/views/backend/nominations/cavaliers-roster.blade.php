@@ -14,6 +14,8 @@
             @foreach ($event->eventCategories as $division)
                 <option value="{{ $division->id }}"
                     data-draft-url="{{ route('backend.cavaliers-roster.show', [$event, $division]) }}"
+                    data-nominations-url="{{ route('backend.cavaliers-roster.nominations', [$event, $division]) }}"
+                    data-nominations-table-url="{{ route('nomination.partial', $division->id) }}"
                     data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}"
                     @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                         data-candidate-url="{{ route('backend.cavaliers-roster.candidates', [$event, $division]) }}"
@@ -26,6 +28,11 @@
         <p class="small mb-2" data-status role="status" aria-live="polite"></p>
         <button type="button" class="btn btn-sm btn-outline-secondary mb-3 d-none" data-reload>Reload saved draft</button>
         <div data-editor hidden>
+            <div class="d-flex flex-wrap gap-2 mb-2">
+                <button type="button" class="btn btn-sm btn-outline-primary" data-copy-nominations disabled>Copy to nominations</button>
+                <button type="button" class="btn btn-sm btn-primary" data-publish disabled>Publish selected players</button>
+            </div>
+            <p class="small text-muted">Save the division first. Both actions use its selected players. Reserves stay private.</p>
             @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
                     <span class="fw-semibold">Step 1 · Inter-Districts</span>
