@@ -108,6 +108,9 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   retry routes. Rebuild the audience at approval and verify the exact address
   and player keys on retry. See `EventWrapUpMessage`, `EventCommunicationService`
   and `UniversalEventCommunicationsTest`.
+- Team wrap-ups use the public combined positions within each age group. Use
+  `EventStandingsService` with published data and omit groups without displayed
+  positions, including groups whose draw rules differ.
 
 ## Operational evidence
 

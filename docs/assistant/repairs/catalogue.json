@@ -553,6 +553,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/EventStandingsService.php", "app/Http/Controllers/Frontend/PublicEventStandingsController.php"],
       "tests": ["tests/Feature/TeamDraw/PublicEventStandingsTest.php"]
+    },
+    {
+      "id": "RK-039",
+      "title": "Team wrap-up shows individual draw podiums instead of combined finishing positions",
+      "scope": "Wrap-up emails for team events with published age-group standings.",
+      "symptoms": "The draft lists a singles, doubles or reverse-draw podium where the public event standings show combined age-group positions.",
+      "cause": "The wrap-up read per-draw sections instead of the public combined age-group rows.",
+      "fix": "Use the published ageStandings rows from EventStandingsService in the wrap-up. Match the public completed-rubber display gate, keep all published ranks including ties, and omit ages with no displayed rank. Regenerate the draft for a fresh review when its results fingerprint changes.",
+      "verification": "On 2026-11-10 the isolated SQLite public age standings regression passed with 46 assertions, covering combined ranks, mixed-rule omission, ties, unplayed groups, publication and draft freshness.",
+      "limits": "Guide only. Private points order, individual draw podiums and unranked totals do not establish a published combined position.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/EventWrapUpMessage.php", "app/Services/EventStandingsService.php", "app/Http/Controllers/Frontend/PublicEventStandingsController.php"],
+      "tests": ["tests/Feature/TeamDraw/PublicEventStandingsTest.php"]
     }
   ]
 }

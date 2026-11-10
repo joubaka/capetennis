@@ -4,7 +4,7 @@ namespace Tests\Feature\TeamDraw;
 
 use App\Domain\Draws\Enums\FixtureState;
 use App\Models\{CategoryEvent, Draw, Event, EventConvenor, EventType, Team, TeamFixture, TeamRegion, TeamTie, User, Venue};
-use App\Services\{EventStandingsService, TeamEventRulesService, TeamFixtureScoreService};
+use App\Services\{EventStandingsService, EventWrapUpMessage, TeamEventRulesService, TeamFixtureScoreService};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -395,6 +395,13 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($ranked, 'name'));
         $this->assertSame([1, 2], array_column($ranked, 'rank'));
         $this->assertSame([24, 10], array_column($ranked, 'games_for'));
+        $wrapUp = app(EventWrapUpMessage::class);
+        $message = $wrapUp->results($event);
+        $this->assertStringContainsString("U9 standings\n1. Audit Oak — 6 points\n2. Audit Pine — 0 points", $message);
+        $this->assertStringContainsString("U10 standings\n1. Audit Pine — 3 points\n2. Audit Oak — 0 points", $message);
+        $this->assertStringNotContainsString('U9 Boys', $message);
+        $this->assertStringNotContainsString('U9 Girls', $message);
+        $fingerprint = $wrapUp->fingerprint($event);
         $this->assertSame(['Audit Pine', 'Audit Oak'], array_column($groups['U10'], 'name'));
         $this->assertSame([3, 0], array_column($groups['U10'], 'points'));
         $this->assertSame(['U9'], array_keys($this->get($url.'?age=U9')->assertOk()->viewData('ageGroups')));
@@ -413,6 +420,9 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame(['Audit Oak', 'Audit Pine'], array_column($mixedRanked, 'name'));
         $this->assertSame([3, 5], array_column($mixedRanked, 'points'));
         $this->assertSame([null, null], array_column($mixedRanked, 'rank'));
+        $this->assertStringNotContainsString('U9 standings', $wrapUp->results($event));
+        $this->assertStringContainsString('U10 standings', $wrapUp->results($event));
+        $this->assertNotSame($fingerprint, $wrapUp->fingerprint($event));
         $girls['draw']->update(['team_scoring_rules' => app(TeamEventRulesService::class)->defaults()]);
         $this->score($girls['rubber'], away: true);
         $tied = $this->get($url)->assertOk();
@@ -422,6 +432,13 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame([3, 3], array_column($tiedRows, 'points'));
         $this->assertSame([1, 1], array_column($tiedRows, 'rank'));
         $this->assertSame([17, 17], array_column($tiedRows, 'games_for'));
+        $this->assertStringContainsString("U9 standings\n1. Audit Oak — 3 points\n1. Audit Pine — 3 points", $wrapUp->results($event));
+
+        $unscored = $this->draw($event, 'U11 Boys');
+        $unscored['draw']->categoryEvent->category->update(['name' => 'U11']);
+        $this->assertStringNotContainsString('U11 standings', $wrapUp->results($event));
+        $event->forceFill(['standings_published' => false])->save();
+        $this->assertSame('', $wrapUp->results($event));
     }
 
     public function test_gender_points_use_rubber_gender_and_include_draw_bonuses_without_losing_points(): void

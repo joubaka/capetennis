@@ -12,14 +12,21 @@ class EventWrapUpMessage
         if ($event->isTeam()) {
             if (! $event->standings_published) return '';
             $lines = [];
-            foreach (app(EventStandingsService::class)->forEvent($event, [], true)['sections'] as $section) {
-                $podium = collect($section['rows'])->filter(fn ($row) => $row['rank'] !== null && $row['rank'] <= 3 && ($row['played'] > 0 || $row['rubber_wins'] + $row['rubber_losses'] > 0));
-                if ($podium->isEmpty()) continue;
-                $lines[] = $section['draw']->drawName;
-                foreach ($podium as $row) $lines[] = $row['rank'].'. '.$row['name'].' — '.$row['points'].' points';
+            $standings = app(EventStandingsService::class)->forEvent($event, publishedOnly: true);
+            foreach ($standings['ageStandings'] as $age => $rows) {
+                $hasResults = collect($rows)->contains(fn ($row) => $row['rubber_wins'] + $row['rubber_losses'] > 0);
+                $ranked = array_filter($rows, fn ($row) => $row['rank'] !== null);
+                if (! $hasResults || ! $ranked) {
+                    continue;
+                }
+
+                $lines[] = $age === 'Unspecified' ? 'Age group unspecified' : $age.' standings';
+                foreach ($ranked as $row) {
+                    $lines[] = $row['rank'].'. '.$row['name'].' — '.$row['points'].' points';
+                }
                 $lines[] = '';
             }
-            return $lines ? "Published standings — podium summary\n".implode("\n", $lines)."\nFull published standings: ".route('frontend.events.standings', $event) : '';
+            return $lines ? "Published combined age-group standings\n".implode("\n", $lines)."\nFull published standings: ".route('frontend.events.standings', $event) : '';
         }
         if (! $event->results_published) return '';
 
