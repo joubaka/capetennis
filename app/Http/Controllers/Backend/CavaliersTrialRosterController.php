@@ -13,6 +13,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
@@ -62,11 +63,41 @@ class CavaliersTrialRosterController extends Controller
 
     public function candidates(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): JsonResponse
     {
-        $this->authorizeDivision($request, $event, $categoryEvent);
-        abort_unless((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT, 404);
+        $this->authorizeCandidateSetup($request, $event, $categoryEvent);
 
-        return response()->json($candidates->preview($event, $categoryEvent))
+        return response()->json($candidates->preview($event, $categoryEvent, $request->user()))
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function setup(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): JsonResponse
+    {
+        $this->authorizeCandidateSetup($request, $event, $categoryEvent);
+
+        return response()->json($candidates->setup($event, $categoryEvent))
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    public function updateSetup(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): JsonResponse
+    {
+        $this->authorizeCandidateSetup($request, $event, $categoryEvent);
+        $regions = array_column($candidates->setup($event, $categoryEvent)['regions'], 'id');
+        $input = $request->validate([
+            'region_ids' => ['present', 'array', 'list', 'max:100'],
+            'region_ids.*' => ['required', 'integer', 'distinct', Rule::in($regions)],
+            'excluded_result_region_ids' => ['present', 'array', 'list', 'max:100'],
+            'excluded_result_region_ids.*' => ['required', 'integer', 'distinct', Rule::in($regions)],
+        ]);
+        $setup = array_map(fn (array $ids) => array_map('intval', $ids), $input);
+
+        DB::transaction(function () use ($event, $categoryEvent, $setup) {
+            $locked = Event::query()->whereKey($event->id)->lockForUpdate()->firstOrFail();
+            $settings = $locked->team_result_settings ?? [];
+            $settings[CavaliersTrialCandidates::SETUP_KEY][$categoryEvent->id] = $setup;
+            $locked->team_result_settings = $settings;
+            $locked->save();
+        });
+
+        return response()->json($setup)->header('Cache-Control', 'private, no-store');
     }
 
     public function update(Request $request, Event $event, CategoryEvent $categoryEvent, PlayerEligibilityService $eligibility): JsonResponse
@@ -118,6 +149,12 @@ class CavaliersTrialRosterController extends Controller
         abort_unless($written === 1, 409, $conflict);
 
         return response()->json(['revision' => $revision]);
+    }
+
+    private function authorizeCandidateSetup(Request $request, Event $event, CategoryEvent $categoryEvent): void
+    {
+        $this->authorizeDivision($request, $event, $categoryEvent);
+        abort_unless((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT, 404);
     }
 
     private function authorizeDivision(Request $request, Event $event, CategoryEvent $categoryEvent): void

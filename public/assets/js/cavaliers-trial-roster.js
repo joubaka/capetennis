@@ -16,6 +16,8 @@
   const candidateReview = element('[data-candidate-review]');
   const candidateList = element('[data-candidate-list]');
   const addCandidates = element('[data-add-candidates]');
+  const openSetup = element('[data-open-setup]');
+  const candidateSetup = element('[data-candidate-setup]');
   const limits = { selected: Number(root.dataset.selectedLimit), reserves: Number(root.dataset.reserveLimit) };
   const labels = { selected: 'Selected', reserves: 'Reserves' };
   let activeDivision = '';
@@ -161,7 +163,9 @@
 
   function renderCandidates() {
     if (!reviewCandidates) return;
-    reviewCandidates.disabled = busy || stale;
+    reviewCandidates.disabled = busy || stale || !candidateSetup.hidden;
+    openSetup.disabled = busy || stale || !candidateSetup.hidden;
+    candidateSetup.querySelectorAll('[data-setup-fieldset], button').forEach((control) => { control.disabled = busy || stale; });
     candidateReview.hidden = candidates === null;
     if (candidates === null) return;
 
@@ -191,8 +195,14 @@
       const record = candidate.wins === null
         ? 'No counted published singles results'
         : `${candidate.wins}–${candidate.losses} singles${candidate.starting_credit ? ' · +1 roster credit' : ''}`;
-      const flag = candidate.lost_all ? ' · Lost all counted singles' : '';
-      evidence.textContent = `${candidate.source} · ${candidate.team} · Band ${candidate.band}, No. ${candidate.rank} · ${record}${flag}${alreadyAdded ? ' · Already on draft' : ''}`;
+      const flag = candidate.lost_all ? ' · Lost all counted singles'
+        : (candidate.review_adjacent_band ? ' · Unbeaten, review against the band above' : '');
+      const band = candidate.band && candidate.rank ? `Band ${candidate.band}, No. ${candidate.rank}` : '';
+      const position = candidate.source_position ? `Finalized ranking #${candidate.source_position}` : '';
+      evidence.textContent = [
+        candidate.source, candidate.list_status, candidate.team, position, band, record + flag,
+        alreadyAdded ? 'Already on draft' : '',
+      ].filter(Boolean).join(' · ');
       details.append(name, evidence);
       label.append(checkbox, details);
       row.append(label);
@@ -200,6 +210,84 @@
     });
     updateCandidateCount();
   }
+
+  function renderRegions(selector, regions, selected) {
+    const fields = element(selector);
+    fields.replaceChildren();
+    regions.forEach((region) => {
+      const label = document.createElement('label');
+      label.className = 'd-flex gap-2 mb-2 align-items-start';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'form-check-input';
+      checkbox.value = region.id;
+      checkbox.checked = selected.includes(region.id);
+      const name = document.createElement('span');
+      name.textContent = region.name;
+      label.append(checkbox, name);
+      fields.append(label);
+    });
+  }
+
+  function closeSetup() {
+    if (!candidateSetup) return;
+    candidateSetup.hidden = true;
+    openSetup.setAttribute('aria-expanded', 'false');
+  }
+
+  openSetup?.addEventListener('click', async () => {
+    busy = true;
+    searchVersion++;
+    closeCandidateReview();
+    closeSwap();
+    render();
+    setStatus('Loading Inter-Districts setup…');
+    try {
+      const settings = await request(division.selectedOptions[0].dataset.setupUrl);
+      renderRegions('[data-candidate-regions]', settings.regions, settings.region_ids);
+      renderRegions('[data-excluded-regions]', settings.regions, settings.excluded_result_region_ids);
+      candidateSetup.hidden = false;
+      openSetup.setAttribute('aria-expanded', 'true');
+      setStatus('');
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      busy = false;
+      render();
+    }
+    if (!candidateSetup.hidden) candidateSetup.querySelector('input')?.focus();
+  });
+
+  candidateSetup?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const checked = (selector) => [...element(selector).querySelectorAll('input:checked')].map(({ value }) => Number(value));
+    busy = true;
+    render();
+    setStatus('Saving setup…');
+    try {
+      await request(division.selectedOptions[0].dataset.setupUrl, {
+        method: 'PUT',
+        body: JSON.stringify({
+          region_ids: checked('[data-candidate-regions]'),
+          excluded_result_region_ids: checked('[data-excluded-regions]'),
+        }),
+      });
+      closeSetup();
+      setStatus('Setup saved for this division. Review candidates to see the updated list.');
+    } catch (error) {
+      setStatus(error.message, true);
+    } finally {
+      busy = false;
+      render();
+    }
+    if (candidateSetup.hidden) reviewCandidates.focus();
+  });
+
+  element('[data-close-setup]')?.addEventListener('click', () => {
+    closeSetup();
+    render();
+    openSetup.focus();
+  });
 
   function closeCandidateReview() {
     candidates = null;
@@ -218,7 +306,18 @@
     render();
     setStatus('Loading candidates…');
     try {
-      ({ candidates } = await request(division.selectedOptions[0].dataset.candidateUrl));
+      const preview = await request(division.selectedOptions[0].dataset.candidateUrl);
+      candidates = preview.candidates;
+      const summary = element('[data-candidate-region-summary]');
+      summary.textContent = `Candidate regions: ${preview.candidate_regions.join(', ') || 'None'}. Results excluded: ${preview.excluded_result_regions.join(', ') || 'None'}.`;
+      const notice = element('[data-candidate-notice]');
+      notice.hidden = !preview.missing_regions.length;
+      notice.textContent = preview.missing_regions.length
+        ? `No published team for this division: ${preview.missing_regions.join(', ')}.`
+        : '';
+      const plattelandNotice = element('[data-platteland-notice]');
+      plattelandNotice.hidden = !preview.platteland_notice;
+      plattelandNotice.textContent = preview.platteland_notice ?? '';
       setStatus('Review the candidates before adding them.');
     } catch (error) {
       setStatus(error.message, true);
@@ -296,6 +395,7 @@
     searchVersion++;
     closeSwap();
     closeCandidateReview();
+    closeSetup();
     reload.classList.add('d-none');
     setStatus('');
     if (!activeDivision) {

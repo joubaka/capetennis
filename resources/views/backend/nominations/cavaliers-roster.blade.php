@@ -17,6 +17,7 @@
                     data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}"
                     @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                         data-candidate-url="{{ route('backend.cavaliers-roster.candidates', [$event, $division]) }}"
+                        data-setup-url="{{ route('backend.cavaliers-roster.setup', [$event, $division]) }}"
                     @endif>
                     {{ $division->category->name }}
                 </option>
@@ -26,10 +27,33 @@
         <button type="button" class="btn btn-sm btn-outline-secondary mb-3 d-none" data-reload>Reload saved draft</button>
         <div data-editor hidden>
             @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
-                <button type="button" class="btn btn-outline-primary mb-3" data-review-candidates>Review candidates</button>
+                <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                    <span class="fw-semibold">Step 1 · Inter-Districts</span>
+                    <button type="button" class="btn btn-outline-secondary" data-open-setup aria-expanded="false" aria-controls="cavaliers-roster-setup">Setup</button>
+                    <button type="button" class="btn btn-outline-primary" data-review-candidates>Review candidates</button>
+                </div>
+                <form class="border rounded p-3 mb-3" id="cavaliers-roster-setup" data-candidate-setup hidden>
+                    <div class="row g-3 mb-3">
+                        <fieldset class="col-12 col-md-6" data-setup-fieldset>
+                            <legend class="h6">Include players from</legend>
+                            <p class="small text-muted">Only published rosters for this division are used.</p>
+                            <div data-candidate-regions></div>
+                        </fieldset>
+                        <fieldset class="col-12 col-md-6" data-setup-fieldset>
+                            <legend class="h6">Exclude results against</legend>
+                            <p class="small text-muted">Matches involving these regions are left out of the band calculation. A region can still supply candidates.</p>
+                            <div data-excluded-regions></div>
+                        </fieldset>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Save setup</button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" data-close-setup>Cancel</button>
+                </form>
                 <section class="border rounded p-3 mb-3" data-candidate-review aria-labelledby="cavaliers-candidate-heading" hidden>
-                    <h5 id="cavaliers-candidate-heading" class="h6">Inter-Districts and Platteland candidates</h5>
-                    <p class="small text-muted">Inter-Districts comes first, followed by Platteland in band order. Checked players fill open selected places first, then reserves.</p>
+                    <h5 id="cavaliers-candidate-heading" class="h6">Review Inter-Districts and Platteland candidates</h5>
+                    <p class="small text-muted">Step 1 uses Inter-Districts results with the Platteland band rules. Step 2 adds locked Platteland reserves, then additional candidates in the saved order. Checked players fill open selected places first, then reserves.</p>
+                    <p class="small text-muted" data-candidate-region-summary></p>
+                    <p class="small text-warning" data-candidate-notice hidden></p>
+                    <p class="small text-warning" data-platteland-notice hidden></p>
                     <ol class="list-group list-group-numbered mb-3" data-candidate-list></ol>
                     <p class="small mb-2" data-candidate-count aria-live="polite"></p>
                     <button type="button" class="btn btn-sm btn-primary" data-add-candidates>Add to draft</button>

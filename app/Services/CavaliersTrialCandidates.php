@@ -7,6 +7,7 @@ use App\Models\CategoryEvent;
 use App\Models\Event;
 use App\Models\Team;
 use App\Models\TeamFixture;
+use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use RuntimeException;
@@ -16,58 +17,75 @@ final class CavaliersTrialCandidates
     public const TRIALS_EVENT = 252;
 
     private const INTER_DISTRICTS_EVENT = 242;
-    private const PLATTELAND_EVENT = 241;
-    private const CAVALIERS_REGION = 'Cavaliers Platteland 2026';
-    private const PLATTELAND_REGIONS = [
-        'Overberg Primary Schools 2026',
-        'Witzenberg/Breede Vallei/Langeberg Primary Schools 2026',
-        'West Coast Primary Schools 2026',
-    ];
+    public const SETUP_KEY = 'cavaliers_inter_districts_setup';
 
     public function __construct(
         private EventTeamScope $scope,
         private TeamResultRankingService $ranking,
         private PlayerEligibilityService $eligibility,
         private SelectedTeamRosterStatus $rosterStatus,
+        private PlattelandFinalizedTrialCandidates $platteland,
     ) {}
 
-    public function preview(Event $event, CategoryEvent $division): array
+    private function source(): Event
+    {
+        $source = Event::query()->find(self::INTER_DISTRICTS_EVENT);
+        abort_unless($source?->published && app(TeamSelectionCriteria::class)->isInterDistricts($source), 422,
+            'The Inter-Districts source tournament must be published before candidates can be reviewed.');
+
+        return $source;
+    }
+
+    public function setup(Event $event, CategoryEvent $division): array
+    {
+        return $this->settings($this->source(), $event, $division);
+    }
+
+    private function settings(Event $source, Event $event, CategoryEvent $division): array
+    {
+        $regions = $source->regions()->orderBy('region_name')->get(['team_regions.id', 'region_name'])
+            ->map(fn ($region) => ['id' => (int) $region->id, 'name' => $region->region_name]);
+        $eden = $regions->filter(fn (array $region) => preg_match('/\beden\b/i', $region['name']))->pluck('id');
+        $available = $regions->pluck('id');
+        $saved = $event->team_result_settings[self::SETUP_KEY][$division->id] ?? [];
+
+        return [
+            'regions' => $regions->all(),
+            'region_ids' => $available->intersect($saved['region_ids'] ?? $available->diff($eden))->values()->all(),
+            'excluded_result_region_ids' => $available->intersect($saved['excluded_result_region_ids'] ?? $eden)->values()->all(),
+        ];
+    }
+
+    public function preview(Event $event, CategoryEvent $division, User $actor): array
     {
         $group = $this->group($division->category?->name);
         abort_unless($group, 422, 'The division needs an age group and gender to match source rosters.');
 
-        $interDistricts = Event::query()->find(self::INTER_DISTRICTS_EVENT);
-        $platteland = Event::query()->find(self::PLATTELAND_EVENT);
-        abort_unless($interDistricts?->published && $interDistricts->isTeam()
-            && $interDistricts->name === 'Inter-Districts Tournament Primary Schools 2026'
-            && $platteland?->published && $platteland->isTeam()
-            && $platteland->name === 'Platteland Tennis Tournament Primary Schools 2026', 422,
-            'Both source tournaments must be published before candidates can be reviewed.');
+        $source = $this->source();
+        $setup = $this->settings($source, $event, $division);
+        $regionIds = collect($setup['region_ids']);
+        $teams = $this->publishedTeams($source);
+        $divisionTeams = $teams->whereIn('region_id', $regionIds)
+            ->filter(fn (Team $team) => $this->group($team->category?->category?->name ?? $team->name) === $group);
+        $missingRegions = $regionIds->diff($divisionTeams->pluck('region_id'));
+        $roster = $this->divisionRoster($divisionTeams);
 
-        $interTeams = $this->publishedTeams($interDistricts);
-        $interRegionIds = $interDistricts->regions()->where('region_name', self::CAVALIERS_REGION)->pluck('team_regions.id')->map(fn ($id) => (int) $id);
-        $interRoster = $this->divisionRoster($interTeams->whereIn('region_id', $interRegionIds), $group);
-        abort_if($interRoster->isEmpty(), 422, 'The Cavaliers Inter-Districts roster for this division is unavailable.');
-
-        $plattelandRegionIds = $platteland->regions()->whereIn('region_name', self::PLATTELAND_REGIONS)->pluck('team_regions.id')->map(fn ($id) => (int) $id);
-        $plattelandTeams = $this->publishedTeams($platteland);
-        $plattelandRoster = $this->divisionRoster($plattelandTeams->whereIn('region_id', $plattelandRegionIds), $group);
-        $interPlayerIds = $interTeams->flatMap(fn (Team $team) => $this->members($team))->pluck('id')->unique();
-        $plattelandRoster = $plattelandRoster->whereNotIn('id', $interPlayerIds);
-
-        // Use the Platteland rules for this preview even on historical copies
-        // without a saved preset. Never change the source event settings.
-        $platteland = clone $platteland;
-        $platteland->team_result_settings = array_replace($platteland->team_result_settings ?? [], [
+        // Apply the Platteland band rules to this Inter-Districts preview only.
+        $source = clone $source;
+        $source->team_result_settings = array_replace($source->team_result_settings ?? [], [
             'criteria_preset' => TeamSelectionCriteria::PLATTELAND,
-            'excluded_result_region_ids' => $plattelandTeams->pluck('region_id')
-                ->diff($plattelandRegionIds)->values()->all(),
+            'excluded_result_region_ids' => $setup['excluded_result_region_ids'],
         ]);
+        $platteland = $this->platteland->preview($group, $actor);
 
         return [
-            'candidates' => $this->ordered($interDistricts, $group, $interRegionIds, $interRoster, 'Inter-Districts')
-                ->concat($this->ordered($platteland, $group, $plattelandRegionIds, $plattelandRoster, 'Platteland'))
-                ->unique('id')->filter(function (array $candidate) use ($event) {
+            'candidate_regions' => collect($setup['regions'])->whereIn('id', $regionIds)->pluck('name')->values()->all(),
+            'excluded_result_regions' => collect($setup['regions'])->whereIn('id', $setup['excluded_result_region_ids'])->pluck('name')->values()->all(),
+            'missing_regions' => collect($setup['regions'])->whereIn('id', $missingRegions)->pluck('name')->values()->all(),
+            'platteland_notice' => $platteland['notice'],
+            'candidates' => $this->ordered($source, $group, $regionIds, $roster)
+                ->concat($platteland['candidates'])->unique('id')
+                ->filter(function (array $candidate) use ($event) {
                     try {
                         $this->eligibility->assertEligible($candidate['id'], $event);
                         return true;
@@ -96,10 +114,9 @@ final class CavaliersTrialCandidates
         return $this->ranking->group(new TeamFixture(['age' => $name]))['key'] ?? null;
     }
 
-    private function divisionRoster(Collection $teams, string $group): Collection
+    private function divisionRoster(Collection $teams): Collection
     {
-        return $teams->filter(fn (Team $team) => $this->group($team->category?->category?->name ?? $team->name) === $group)
-            ->flatMap(fn (Team $team) => $this->members($team))
+        return $teams->flatMap(fn (Team $team) => $this->members($team))
             ->filter(fn (array $member) => $member['rank'] > 0)
             ->sortBy([['rank', 'asc'], ['name', 'asc'], ['id', 'asc']])
             ->unique('id')->keyBy('id');
@@ -122,7 +139,7 @@ final class CavaliersTrialCandidates
             ]);
     }
 
-    private function ordered(Event $source, string $group, Collection $regionIds, Collection $roster, string $label): Collection
+    private function ordered(Event $source, string $group, Collection $regionIds, Collection $roster): Collection
     {
         if ($roster->isEmpty()) {
             return collect();
@@ -141,7 +158,8 @@ final class CavaliersTrialCandidates
                     'wins' => $row['wins'],
                     'losses' => $row['losses'],
                     'starting_credit' => $row['starting_credit'],
-                    'lost_all' => $row['rank'] >= 7 && $row['rank'] <= 10 && $row['wins'] === 0 && $row['losses'] > 0,
+                    'lost_all' => $row['wins'] === 0 && $row['losses'] > 0,
+                    'review_adjacent_band' => ! empty($row['platteland_manual_review']),
                 ]);
             })->filter()->unique('id');
 
@@ -153,17 +171,19 @@ final class CavaliersTrialCandidates
             'losses' => null,
             'starting_credit' => null,
             'lost_all' => false,
+            'review_adjacent_band' => false,
         ]))->sortBy('band')->map(fn (array $row) => [
             'id' => $row['id'],
             'name' => $row['name'],
-            'source' => $label,
+            'source' => 'Inter-Districts',
             'team' => $row['team'],
             'rank' => $row['rank'],
             'band' => (2 * $row['band'] - 1).'–'.(2 * $row['band']),
             'wins' => $row['wins'],
             'losses' => $row['losses'],
             'starting_credit' => $row['starting_credit'],
-            'lost_all' => $label === 'Inter-Districts' && $row['lost_all'],
+            'lost_all' => $row['lost_all'],
+            'review_adjacent_band' => $row['review_adjacent_band'],
         ])->values();
     }
 }

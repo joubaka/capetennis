@@ -914,6 +914,8 @@ Route::prefix('backend')->middleware('auth')->group(function () {
       ->prefix('{event}/categories/{categoryEvent}/cavaliers-roster')
       ->name('backend.cavaliers-roster.')->group(function () {
         Route::get('/candidates', 'candidates')->middleware('throttle:20,1')->name('candidates');
+        Route::get('/setup', 'setup')->name('setup');
+        Route::put('/setup', 'updateSetup')->name('setup.update');
         Route::get('/', 'show')->name('show');
         Route::get('/players', 'players')->middleware('throttle:60,1')->name('players');
         Route::put('/', 'update')->name('update');
