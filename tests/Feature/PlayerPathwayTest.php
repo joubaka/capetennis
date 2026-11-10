@@ -177,7 +177,10 @@ class PlayerPathwayTest extends TestCase
         $metrics = $this->metrics(67, ['red' => 0, 'orange' => 4, 'standard' => 0]);
         $history = $this->mock(PlayerRatingHistoryService::class);
         $history->shouldReceive('forPlayer')->andReturnUsing(function () use (&$metrics) {
-            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+            $stage = isset($metrics['stage_ratings']['standard']['score']) ? 'standard' : 'orange';
+            $point = ['index' => 11, 'date' => $metrics['date'], 'score' => $metrics['stage_ratings'][$stage]['score']];
+
+            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => [$point], 'ball_stage' => $stage];
         });
         $url = route('my.tennis.pathway.move', 1);
         $input = ['move_from_stage' => 'orange', 'move_started_on' => '2026-11-05'];
@@ -201,14 +204,16 @@ class PlayerPathwayTest extends TestCase
             ['date' => '2026-11-06', 'event' => 'Second fictional match', 'won' => false, 'in_rating' => false],
             ['date' => '2026-11-05', 'event' => 'First fictional match', 'won' => true, 'in_rating' => false],
         ];
-        $this->get($page)->assertOk()->assertSee('CTR pending for the recorded move')
+        $pending = $this->get($page)->assertOk()->assertSee('CTR pending for the recorded move')
             ->assertSeeInOrder(['First fictional match · Win', 'Second fictional match · Loss'])
             ->assertDontSee('Earlier fictional match')->assertDontSee('43.2');
+        $this->assertSame(2, substr_count($pending->getContent(), 'data-ctr-stage="orange"'));
 
         $metrics['dated_stage_matches']['standard'][2]['in_rating'] = true;
         $this->get($page)->assertOk()->assertSee('CTR pending for the recorded move')->assertDontSee('43.2');
         $metrics['stage_ratings']['standard']['evidence_basis'] = 'matches';
-        $this->get($page)->assertOk()->assertSee('43.2')->assertDontSee('CTR pending for the recorded move');
+        $ready = $this->get($page)->assertOk()->assertSee('43.2')->assertDontSee('CTR pending for the recorded move');
+        $this->assertSame(2, substr_count($ready->getContent(), 'data-ctr-stage="standard"'));
         $this->actingAs($this->actor(10, false))->postJson($url, $input)->assertForbidden();
     }
 

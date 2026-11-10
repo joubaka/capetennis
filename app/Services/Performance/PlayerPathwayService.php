@@ -96,9 +96,6 @@ class PlayerPathwayService
                 'matches' => is_int($matches) && $matches >= 0 ? $matches : null, 'target' => $ballTarget,
                 'assessed' => $ballAssessed, 'status' => !$ballAssessed ? 'Not assessed' : ($met ? 'Targets met' : 'Targets not yet met'), 'met' => $met];
         }
-        $badgeStage = $current_stage;
-        $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
-            'local' => $stageProgress[$badgeStage]['local'] ?? false];
         $ctr_label = $this->ctrLabel($current_stage);
         if ($assessed) $reason = 'Latest saved '.$ctr_label.': '.number_format($score, 1).'. '.$reason;
         $next_steps = match (true) {
@@ -131,6 +128,13 @@ class PlayerPathwayService
         $latestMove = $movesAvailable ? PlayerPathwayMove::where('player_id', $player->id)->latest('id')->first() : null;
         $move = $latestMove ? $this->moveEvidence($latestMove, $metrics) : null;
         $moveOptions = $movesAvailable ? $this->moveOptions($latestMove, $move, $metrics) : [];
+        $badgeStage = match (true) {
+            $move === null || $move['score'] !== null => $current_stage,
+            $move['to'] === 'orange' => BallRatingModel::currentStage(array_intersect_key($stageProgress, ['red' => true])),
+            default => BallRatingModel::currentStage(array_intersect_key($stageProgress, self::NEXT_BALL_LEVEL)),
+        };
+        $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
+            'local' => $stageProgress[$badgeStage]['local'] ?? false];
 
         return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition', 'move', 'moveOptions') + [
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',

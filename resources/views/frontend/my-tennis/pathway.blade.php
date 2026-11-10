@@ -62,8 +62,13 @@
     </div>
     <div class="pathway-current-level">
       @if($pendingMove)
-        <h3 class="h6">Ball level: {{ \App\Services\Performance\BallRatingModel::LABELS[$pendingMove['to']] }}</h3>
-        <p class="small mb-0">CTR pending for the recorded move.</p>
+        <h3 class="h6">Latest rated ball level</h3>
+        @if($pathway['badge']['stage'])
+          <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
+        @else
+          <p class="small mb-2">No saved rating from an earlier ball level.</p>
+        @endif
+        <p class="small mb-0">{{ \App\Services\Performance\BallRatingModel::LABELS[$pendingMove['to']] }} · CTR pending for the recorded move.</p>
       @else
       <h3 class="h6">Ball level: {{ $pathway['current_stage'] === 'standard' ? 'Green/yellow ball' : $pathway['current_stage_label'] }}</h3>
       <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Green/yellow ball' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
