@@ -74,7 +74,12 @@
 
 @endif
 
-  @include('backend.event.partials.header', ['eventWorkspaceRegionalOnly' => $regionalScoped ?? $rosterOnly ?? false, 'eventWorkspaceActive' => 'entries', 'eventWorkspaceShowHome' => !($regionalScoped ?? $rosterOnly ?? false)])
+  @include('backend.event.partials.header', [
+    'eventWorkspaceRegionalOnly' => $regionalScoped ?? $rosterOnly ?? false,
+    'eventWorkspaceActive' => \App\Support\EventTypePresentation::template($event) === 'cavaliers_trials'
+      && request()->query('tab') === 'nominations' ? 'nominations' : 'entries',
+    'eventWorkspaceShowHome' => !($regionalScoped ?? $rosterOnly ?? false),
+  ])
 
 
 

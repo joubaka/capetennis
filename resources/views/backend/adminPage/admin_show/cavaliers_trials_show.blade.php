@@ -1,3 +1,4 @@
+@php($showNominations = request()->query('tab') === 'nominations')
 <style>
     .select2-container {
         z-index: 100000;
@@ -16,13 +17,13 @@
 
                         <ul class="nav nav-pills mb-3">
                             <li class="nav-item">
-                                <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#payment">
+                                <button @class(['nav-link', 'active' => !$showNominations]) data-bs-toggle="tab" data-bs-target="#payment">
                                     <i class="ti ti-credit-card me-1 ti-sm"></i>
                                     <span class="align-middle fw-semibold">Entries</span>
                                 </button>
                             </li>
                             <li class="nav-item">
-                                <button class="nav-link " data-bs-toggle="tab" data-bs-target="#results">
+                                <button @class(['nav-link', 'active' => $showNominations]) data-bs-toggle="tab" data-bs-target="#results">
                                     <i class="ti ti-credit-card me-1 ti-sm"></i>
                                     <span class="align-middle fw-semibold">Nominations</span>
                                 </button>
@@ -55,7 +56,7 @@
         <!-- FAQ's -->
         <div class="col-lg-112 col-md-12 col-12">
             <div class="tab-content py-0">
-                <div class="tab-pane fade show active" id="payment" role="tabpanel">
+                <div @class(['tab-pane fade', 'show active' => !$showNominations]) id="payment" role="tabpanel">
                     <div class="d-flex mb-3 gap-3">
 
                         <div>
@@ -191,7 +192,7 @@
 
 
                 </div>
-                <div class="tab-pane fade show " id="results" role="tabpanel">
+                <div @class(['tab-pane fade', 'show active' => $showNominations]) id="results" role="tabpanel">
                     @if (auth()->user()?->hasRole('super-user') || (auth()->user()?->hasRole('admin') && auth()->user()->is_event_admin($event->id)))
                         @include('backend.nominations.cavaliers-roster')
                     @endif

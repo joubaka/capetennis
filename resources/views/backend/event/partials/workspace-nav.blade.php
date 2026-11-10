@@ -47,10 +47,19 @@
     @endif
   @endcan
   @php
+    $canManageCavaliersNominations = \App\Support\EventTypePresentation::template($event) === 'cavaliers_trials'
+      && (auth()->user()?->hasRole('super-user')
+        || (auth()->user()?->hasRole('admin') && auth()->user()?->is_event_admin($event->id)));
     $canManageInterprovincialInvitations = $event->isInterprovincialTrials()
       && (auth()->user()?->hasRole('super-user')
         || (auth()->user()?->hasRole('admin') && auth()->user()?->is_event_admin($event->id)));
   @endphp
+  @if($canManageCavaliersNominations)
+    <a href="{{ route('eventAdmin.show', ['eventAdmin' => $event->id, 'tab' => 'nominations']) }}"
+       @if($eventWorkspaceActive === 'nominations') aria-current="page" @endif>
+      <i class="ti ti-list-check" aria-hidden="true"></i>Nominations
+    </a>
+  @endif
   @if(!$event->isInterprovincialTrials() && auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
     <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
   @endif
