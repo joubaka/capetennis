@@ -97,6 +97,17 @@
                 </div>
             </form>
             <button type="button" class="btn btn-primary" data-save disabled>Save draft</button>
+            @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
+                <dialog class="border-0 rounded shadow p-3" style="width: min(32rem, 90vw)" data-player-info aria-labelledby="cavaliers-player-info-title">
+                    <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+                        <h5 id="cavaliers-player-info-title" class="h6 mb-0 text-break"></h5>
+                        <form method="dialog">
+                            <button type="submit" class="btn btn-sm btn-outline-secondary" autofocus>Close</button>
+                        </form>
+                    </div>
+                    <div class="text-break" data-player-info-content></div>
+                </dialog>
+            @endif
         </div>
     </div>
 </section>

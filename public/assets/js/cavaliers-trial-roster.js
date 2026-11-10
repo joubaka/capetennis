@@ -16,6 +16,7 @@
   const candidateReview = element('[data-candidate-review]');
   const candidateList = element('[data-candidate-list]');
   const meritList = element('[data-merit-list]');
+  const playerInfo = element('[data-player-info]');
   const addCandidates = element('[data-add-candidates]');
   const openSetup = element('[data-open-setup]');
   const candidateSetup = element('[data-candidate-setup]');
@@ -109,12 +110,12 @@
       draft[key].forEach((player, index) => {
         const row = document.createElement('li');
         row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-center';
-        const name = document.createElement('span');
-        name.className = 'flex-grow-1 text-break';
-        name.textContent = player.name;
+        const name = playerSummary(player, meritCandidates.find(({ id }) => id === player.id));
+        name.classList.add('flex-grow-1');
         const actions = document.createElement('div');
         actions.className = 'd-flex flex-wrap gap-1';
         const opposite = key === 'selected' ? 'reserves' : 'selected';
+        actions.dataset.rosterActions = '';
         const describe = (control) => {
           control.setAttribute('aria-label', `${control.textContent} — ${player.name}`);
           return control;
@@ -146,15 +147,43 @@
     return new Set([...draft.selected, ...draft.reserves].map((player) => player.id));
   }
 
+  function playerSummary(player, evidence) {
+    const summary = document.createElement('div');
+    summary.className = 'text-break';
+    summary.textContent = player.name;
+    if (!evidence || !playerInfo) return summary;
+
+    const source = document.createElement('small');
+    source.className = 'text-muted ms-1';
+    source.textContent = [evidence.region, evidence.source].filter(Boolean).join(' · ');
+    const info = button('Info', () => {
+      playerInfo.querySelector('h5').textContent = player.name;
+      const details = candidateMatchResults(evidence);
+      details.open = true;
+      const context = document.createElement('p');
+      context.className = 'text-muted small mb-2';
+      const band = evidence.band && evidence.rank ? `Band ${evidence.band}, No. ${evidence.rank}` : '';
+      const record = Number.isInteger(evidence.wins) ? `${evidence.wins}–${evidence.losses} singles` : '';
+      context.textContent = [source.textContent, evidence.team, evidence.list_status, band, record].filter(Boolean).join(' · ');
+      element('[data-player-info-content]').replaceChildren(context, details);
+      playerInfo.showModal();
+    });
+    info.classList.add('ms-2');
+    info.setAttribute('aria-label', `Results for ${player.name}`);
+    info.setAttribute('aria-haspopup', 'dialog');
+    summary.append(source, info);
+    return summary;
+  }
+
   function renderMerit() {
     if (!meritList) return;
     const existing = rosterIds();
     const next = meritCandidates.filter(({ id }) => !existing.has(id)).slice(0, 10);
     element('[data-merit-message]').hidden = next.length > 0;
-    meritList.replaceChildren(...next.map(({ name, source }) => {
+    meritList.replaceChildren(...next.map((candidate) => {
       const row = document.createElement('li');
       row.className = 'list-group-item text-break';
-      row.textContent = `${name} · ${source}`;
+      row.append(playerSummary(candidate, candidate));
       return row;
     }));
   }
@@ -170,8 +199,8 @@
     pending.then((preview) => {
       if (previewRequest !== pending) return;
       meritCandidates = preview.candidates;
-      renderMerit();
       message.textContent = 'No more eligible players in the merit list.';
+      render();
     }, () => {
       if (previewRequest !== pending) return;
       previewRequest = null;
@@ -464,7 +493,7 @@
     [list[index], list[index + offset]] = [list[index + offset], list[index]];
     changed();
     const row = element(`[data-list="${key}"]`).children[index + offset];
-    const controls = [...row.querySelectorAll('button')];
+    const controls = [...row.querySelectorAll('[data-roster-actions] button')];
     const direction = controls[offset < 0 ? 0 : 1];
     (direction.disabled ? controls.find((control) => !control.disabled) : direction)?.focus();
   }

@@ -111,7 +111,7 @@ final class CavaliersTrialCandidates
     private function publishedTeams(Event $event): Collection
     {
         return $this->scope->query($event)->where('published', true)
-            ->with(['category.category', 'team_players.player', 'team_players_no_profile.profile'])->get();
+            ->with(['category.category', 'regions', 'team_players.player', 'team_players_no_profile.profile'])->get();
     }
 
     private function group(?string $name): ?string
@@ -151,6 +151,7 @@ final class CavaliersTrialCandidates
                 'rank' => (int) $member[1],
                 'team_id' => (int) $team->id,
                 'team' => $team->name,
+                'region' => $team->regions?->short_name ?: $team->regions?->region_name,
                 'reserve' => $member[2],
             ]);
     }
@@ -198,6 +199,7 @@ final class CavaliersTrialCandidates
             'source' => 'Inter-Districts',
             'list_status' => $row['reserve'] ? 'Inter-Districts reserve' : null,
             'team' => $row['team'],
+            'region' => $row['region'],
             'rank' => $row['rank'],
             'band' => (2 * $row['band'] - 1).'–'.(2 * $row['band']),
             'wins' => $row['wins'],

@@ -81,6 +81,7 @@ final class PlattelandFinalizedTrialCandidates
                     'id' => $candidate['id'],
                     'name' => $players[$candidate['id']]->full_name,
                     'source' => 'Platteland',
+                    'region' => $row['region'] ?? null,
                     'list_status' => $candidate['list_status'],
                     'opt_in' => $candidate['opt_in'] ?? false,
                     'team' => implode(', ', $row['teams'] ?? []),
