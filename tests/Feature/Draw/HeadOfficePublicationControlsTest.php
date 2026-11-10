@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Draw;
 
-use App\Models\{Draw, Event, Fixture, OrderOfPlay, TeamFixture, User, Venue};
+use App\Models\{Draw, Event, EventType, Fixture, OrderOfPlay, TeamFixture, User, Venue};
 use App\Services\Scheduling\SchedulePublicationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -364,6 +364,26 @@ class HeadOfficePublicationControlsTest extends TestCase
         $this->assertTrue($response->viewData('wholeDaySchedule')->isEmpty());
         $this->assertSame(4, $revisionReads);
         $this->assertDatabaseCount('published_schedule_assignments', 0);
+    }
+
+    public function test_team_draw_header_opens_the_draw_filtered_fixture_score_editor(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        DB::table('eventtypes')->insertOrIgnore(['id' => $event->eventType, 'name' => 'Team', 'type' => EventType::TEAM]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $fixture = $this->saved($draw, $venue, '2026-10-09');
+        $otherDraw = Draw::factory()->create(['event_id' => $event->id]);
+        $otherFixture = $this->saved($otherDraw, $venue, '2026-10-09');
+        $url = route('frontend.fixtures.enter-scores', ['draw' => $draw, 'view' => 'matches']);
+
+        $response = $this->get(route('headOffice.show', $event))->assertOk();
+        preg_match('/<details id="publication-draw-'.$draw->id.'"[^>]*>\s*<summary[^>]*>(.*?)<\/summary>/s', $response->getContent(), $header);
+        $this->assertNotEmpty($header);
+        $this->assertStringContainsString('href="'.e($url).'">Open fixtures to edit scores</a>', $header[1]);
+
+        $this->get($url)->assertOk()
+            ->assertSee(route('frontend.fixtures.score.store', $fixture))
+            ->assertDontSee(route('frontend.fixtures.score.store', $otherFixture));
     }
 
     public function test_header_publication_actions_use_canonical_readiness_and_return_current_event_flags(): void

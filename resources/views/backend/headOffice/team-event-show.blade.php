@@ -275,6 +275,11 @@
                   <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-quick-draw-status-retry hidden>Retry publication status check</button>
                 </div>
                 <div class="event-draw-card-summary-actions">
+                  @if($draw->isTeamDraw() && auth()->user()->hasAnyRole(['convenor', 'admin', 'super-user', 'score-keeper']))
+                    @can('team-fixture.saveScore', $draw)
+                      <a class="btn btn-sm btn-outline-primary" href="{{ route('frontend.fixtures.enter-scores', ['draw' => $draw, 'view' => 'matches']) }}">Open fixtures to edit scores</a>
+                    @endcan
+                  @endif
                   @can('event.manage', $event)
                   @can('view', $draw)
                     <a data-draw-guide-open class="btn btn-sm btn-primary" href="{{ route('draw.guide.show', [$event, $draw]) }}">Continue setup</a>
