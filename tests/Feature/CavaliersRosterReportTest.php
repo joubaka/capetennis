@@ -14,10 +14,23 @@ class CavaliersRosterReportTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function composition(): array
+    {
+        return ['subject' => 'Fictional team review — U11 Girls / U12 Boys',
+            'message' => "Dear reviewers,\n\nPlease review the attached teams.\n<script>alert('example')</script>\nKind regards,\nCape Tennis",
+            'from_name' => 'Fictional Selection Panel', 'from_address' => 'verified-sender@example.test', 'reply_to' => 'selection-replies@example.test'];
+    }
+
+    private function previewInput(array $ids): array
+    {
+        return ['recipient_ids' => $ids, ...$this->composition()];
+    }
+
     private function setupReport(): array
     {
         Mail::fake();
         Bus::fake();
+        config(['mail.from.address' => 'default-sender@example.test', 'mail.from.name' => 'Cape Tennis', 'mail.allowed_from_addresses' => ['verified-sender@example.test']]);
         $event = Event::factory()->create(['id' => 252, 'eventType' => 5, 'name' => 'Fictional Trials']);
         $type = EventType::forceCreate(['id' => 242, 'name' => 'Team source', 'type' => EventType::TEAM]);
         Event::factory()->create(['id' => 242, 'published' => true, 'eventType' => $type->id, 'name' => 'Inter-Districts Tournament Primary Schools 2026']);
@@ -38,23 +51,29 @@ class CavaliersRosterReportTest extends TestCase
     public function test_previews_all_saved_divisions_and_queues_exact_reviewed_attachment_once(): void
     {
         [$event, $actor, $recipient] = $this->setupReport();
-        $preview = $this->postJson(route('backend.cavaliers-report.preview', $event), ['recipient_ids' => [$recipient->id]])->assertOk();
-        $preview->assertSee('U11 Girls')->assertSee('U12 Boys');
+        $preview = $this->postJson(route('backend.cavaliers-report.preview', $event), $this->previewInput([$recipient->id]))->assertOk();
+        $preview->assertJsonPath('subject', $this->composition()['subject'])->assertJsonPath('message', $this->composition()['message']);
+        $this->assertStringContainsString('&lt;script&gt;', $preview->json('html'));
+        $this->assertStringNotContainsString('<script>', $preview->json('html'));
+        $this->assertStringContainsString("Dear reviewers,<br />\n<br />", $preview->json('html'));
         $pdf = $this->get($preview->json('pdf_url'))->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->assertStringStartsWith('%PDF-', $pdf->getContent());
         Mail::assertNothingSent();
         Bus::assertNothingDispatched();
-        $this->postJson($preview->json('send_url'))->assertOk()->assertJsonPath('queued', 1);
-        $this->postJson($preview->json('send_url'))->assertOk()->assertJsonPath('queued', 0);
+        $this->postJson($preview->json('send_url'), $this->composition())->assertOk()->assertJsonPath('queued', 1);
+        $this->postJson($preview->json('send_url'), $this->composition())->assertOk()->assertJsonPath('queued', 0);
         $log = BulkEmailLog::where('status', 'queued')->sole();
         $this->assertSame($pdf->getContent(), base64_decode($log->payload['pdf'], true));
+        $this->assertSame($this->composition()['subject'], $log->payload['subject']);
+        $this->assertSame($this->composition()['message'], $log->payload['message']);
+        foreach (['from_name', 'from_address', 'reply_to'] as $field) $this->assertSame($this->composition()[$field], $log->payload[$field]);
         $message = app(CavaliersRosterReport::class)->authorizedMailable($log);
         $this->assertNotNull($message, 'Signature must survive MySQL JSON key reordering.');
         $this->assertSame($preview->json('html'), $message->render());
         $message->assertHasAttachedData($pdf->getContent(), 'nomination-review.pdf', ['mime' => 'application/pdf']);
         $log->update(['status' => 'sending']);
-        $mime = (new \Symfony\Component\Mime\Email)->from(new \Symfony\Component\Mime\Address(config('mail.from.address'), 'Cape Tennis'))
-            ->replyTo(config('mail.from.address'))->to($log->recipient_email)->subject($log->payload['subject'])->html($log->payload['body'])
+        $mime = (new \Symfony\Component\Mime\Email)->from(new \Symfony\Component\Mime\Address($message->fromAddress, $message->fromName))
+            ->replyTo($message->replyToAddress)->to($log->recipient_email)->subject($log->payload['subject'])->html($log->payload['body'])
             ->attach(base64_decode($log->payload['pdf'], true), 'nomination-review.pdf', 'application/pdf');
         $eventData = ['cavaliers_report_log_id' => $log->id];
         foreach (app('events')->getRawListeners()[\Illuminate\Mail\Events\MessageSending::class] ?? [] as $registered) {
@@ -68,8 +87,14 @@ class CavaliersRosterReportTest extends TestCase
             $listener->handle(new \Illuminate\Mail\Events\MessageSending((clone $mime)->cc('unexpected@example.test'), $eventData));
             $this->fail('Unexpected copies must be rejected.');
         } catch (\App\Exceptions\SelectionPreviewMailAuthorizationException) { $this->assertTrue(true); }
-        $changed = (new \Symfony\Component\Mime\Email)->from(new \Symfony\Component\Mime\Address(config('mail.from.address'), 'Cape Tennis'))
-            ->replyTo(config('mail.from.address'))->to($log->recipient_email)->subject($log->payload['subject'])->html($mime->getHtmlBody())
+        foreach ([(clone $mime)->from('changed@example.test'), (clone $mime)->from(new \Symfony\Component\Mime\Address($message->fromAddress, 'Changed sender')), (clone $mime)->replyTo('changed@example.test')] as $changedHeaders) {
+            try {
+                $listener->handle(new \Illuminate\Mail\Events\MessageSending($changedHeaders, $eventData));
+                $this->fail('Unreviewed sender or reply-to must be rejected.');
+            } catch (\App\Exceptions\SelectionPreviewMailAuthorizationException) { $this->assertTrue(true); }
+        }
+        $changed = (new \Symfony\Component\Mime\Email)->from(new \Symfony\Component\Mime\Address($message->fromAddress, $message->fromName))
+            ->replyTo($message->replyToAddress)->to($log->recipient_email)->subject($log->payload['subject'])->html($mime->getHtmlBody())
             ->attach('%PDF-tampered', 'nomination-review.pdf', 'application/pdf');
         try {
             $listener->handle(new \Illuminate\Mail\Events\MessageSending($changed, $eventData));
@@ -103,24 +128,27 @@ class CavaliersRosterReportTest extends TestCase
         }
         $payload = $log->payload; $payload['body'] .= 'tampered'; $log->payload = $payload;
         $this->assertNull(app(CavaliersRosterReport::class)->authorizedMailable($log));
+        $this->assertSame('default-sender@example.test', config('mail.from.address'));
+        config(['mail.allowed_from_addresses' => []]);
+        $this->assertNull(app(CavaliersRosterReport::class)->authorizedMailable($log->fresh()), 'A removed sender identity must not be released to transport.');
     }
 
     public function test_rejects_stale_roster_recipient_expiry_and_other_actors(): void
     {
         [$event, $actor, $recipient] = $this->setupReport();
         $url = route('backend.cavaliers-report.preview', $event);
-        $preview = $this->postJson($url, ['recipient_ids' => [$recipient->id]])->assertOk();
+        $preview = $this->postJson($url, $this->previewInput([$recipient->id]))->assertOk();
         $recipient->update(['email' => 'changed@example.test']);
-        $this->postJson($preview->json('send_url'))->assertConflict();
-        $preview = $this->postJson($url, ['recipient_ids' => [$recipient->id]])->assertOk();
+        $this->postJson($preview->json('send_url'), $this->composition())->assertConflict();
+        $preview = $this->postJson($url, $this->previewInput([$recipient->id]))->assertOk();
         DB::table('cavaliers_trial_roster_drafts')->where('event_id', $event->id)->update(['revision' => (string) Str::uuid()]);
-        $this->postJson($preview->json('send_url'))->assertConflict();
-        $preview = $this->postJson($url, ['recipient_ids' => [$recipient->id]])->assertOk();
+        $this->postJson($preview->json('send_url'), $this->composition())->assertConflict();
+        $preview = $this->postJson($url, $this->previewInput([$recipient->id]))->assertOk();
         $this->travel(31)->minutes();
-        $this->postJson($preview->json('send_url'))->assertConflict();
+        $this->postJson($preview->json('send_url'), $this->composition())->assertConflict();
         $this->travelBack();
         $this->actingAs(User::factory()->create())->getJson(route('backend.cavaliers-report.index', $event))->assertForbidden();
-        $this->postJson($url, ['recipient_ids' => [$recipient->id]])->assertForbidden();
+        $this->postJson($url, $this->previewInput([$recipient->id]))->assertForbidden();
         Mail::assertNothingSent();
         Bus::assertNothingDispatched();
         $this->assertDatabaseCount('bulk_email_logs', 0);
@@ -130,13 +158,40 @@ class CavaliersRosterReportTest extends TestCase
     {
         [$event, $actor, $recipient] = $this->setupReport();
         $url = route('backend.cavaliers-report.preview', $event);
-        $this->postJson($url, ['recipient_ids' => []])->assertUnprocessable();
-        $this->postJson($url, ['recipient_ids' => [$recipient->id, $recipient->id]])->assertUnprocessable();
-        $this->postJson($url, ['recipient_ids' => [999999]])->assertUnprocessable();
+        $this->postJson($url, $this->previewInput([]))->assertUnprocessable();
+        $this->postJson($url, $this->previewInput([$recipient->id, $recipient->id]))->assertUnprocessable();
+        $this->postJson($url, $this->previewInput([999999]))->assertUnprocessable();
         $other = User::factory()->create(['email' => 'invalid-address']);
-        $this->postJson($url, ['recipient_ids' => [$recipient->id, $other->id]])->assertUnprocessable();
+        $this->postJson($url, $this->previewInput([$recipient->id, $other->id]))->assertUnprocessable();
         $foreign = Event::factory()->create(['eventType' => 5]);
         $this->getJson(route('backend.cavaliers-report.index', $foreign))->assertNotFound();
         $this->getJson(route('backend.cavaliers-report.index', $event).'?q=Fictional')->assertOk()->assertJsonStructure(['users']);
+    }
+
+    public function test_composition_is_prefilled_validated_and_must_match_the_reviewed_snapshot(): void
+    {
+        // Exercise each composition rule independently without the route's separate request-rate limit.
+        $this->withoutMiddleware(\Illuminate\Routing\Middleware\ThrottleRequests::class);
+        [$event, $actor, $recipient] = $this->setupReport();
+        $this->get(route('backend.cavaliers-report.index', $event))->assertOk()->assertSee('Email subject')->assertSee('Email message')
+            ->assertSee('Private nomination review: Fictional Trials')->assertSee('Please review the attached nomination report')
+            ->assertSee('Sender name')->assertSee('Reply-to email address')->assertSee('default-sender@example.test');
+        $url = route('backend.cavaliers-report.preview', $event);
+        foreach ([['subject' => ''], ['subject' => str_repeat('s', 201)], ['subject' => "Subject\r\nBcc: someone@example.test"],
+            ['subject' => "Subject\tControl"], ['message' => ''], ['message' => str_repeat('m', 10001)], ['message' => "Message\0null"],
+            ['from_name' => "Panel\r\nHeader"], ['from_name' => str_repeat('n', 121)], ['from_address' => 'unapproved@example.test'],
+            ['from_address' => 'not-an-email'], ['from_address' => "verified-sender@example.test\r\nBcc: bad@example.test"],
+            ['reply_to' => 'not-an-email'], ['reply_to' => "reply@example.test\r\nCc: bad@example.test"]] as $invalid) {
+            $this->postJson($url, array_replace($this->previewInput([$recipient->id]), $invalid))->assertUnprocessable()->assertJsonValidationErrors(array_keys($invalid));
+        }
+        $preview = $this->postJson($url, $this->previewInput([$recipient->id]))->assertOk();
+        $this->postJson($preview->json('send_url'), array_replace($this->composition(), ['subject' => 'Changed subject']))->assertConflict();
+        $this->postJson($preview->json('send_url'), array_replace($this->composition(), ['message' => 'Changed message']))->assertConflict();
+        foreach (['from_name' => 'Different panel', 'from_address' => 'default-sender@example.test', 'reply_to' => 'different-replies@example.test'] as $field => $value) {
+            $this->postJson($preview->json('send_url'), array_replace($this->composition(), [$field => $value]))->assertConflict();
+        }
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+        Bus::assertNothingDispatched();
     }
 }

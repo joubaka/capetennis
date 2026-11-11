@@ -73,7 +73,13 @@ starting credit must not be presented as a played win.
 
 `CavaliersRosterReport` preserves the preparing actor's source-access checks.
 The email and PDF preview is bound to that actor's session and expires after
-30 minutes. Sending rechecks the saved report and recipient accounts, then uses
+30 minutes. The subject, plain-text message, sender display name, configured
+verified From identity and Reply-to address are editable before preview. Preserve
+the existing `InvitationMailSecurity::allowedFromAddresses()` boundary; changing
+a per-message sender does not change global mail configuration. Escape message
+markup and preserve its line breaks. Edits invalidate the review, including edits
+while a preview is being prepared. Sending compares every composition/sender
+field with the exact reviewed snapshot, rechecks the saved report and recipient accounts, then uses
 managed mail with an immutable signed attachment and duplicate protection.
 Dispatch rechecks authorization and the report before transport. See
 `CavaliersRosterReportTest` for preview, attachment, stale-state and audience

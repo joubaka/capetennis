@@ -78,7 +78,7 @@ final class CavaliersRosterReport
 
     public function mail(array $snapshot): \App\Mail\BulkEventMail
     {
-        return (new \App\Mail\BulkEventMail($snapshot['subject'], $snapshot['body'], 'Cape Tennis', config('mail.from.address')))
+        return (new \App\Mail\BulkEventMail($snapshot['subject'], $snapshot['body'], $snapshot['from_name'] ?? 'Cape Tennis', $snapshot['reply_to'] ?? config('mail.from.address'), $snapshot['from_address'] ?? config('mail.from.address')))
             ->attachData(base64_decode($snapshot['pdf'], true), 'nomination-review.pdf', ['mime' => 'application/pdf']);
     }
 
@@ -88,6 +88,7 @@ final class CavaliersRosterReport
         $signature = $payload['report_signature'] ?? '';
         unset($payload['report_signature'], $payload['queue_state']);
         if (! hash_equals($this->signature($payload), $signature)) return null;
+        if (! in_array(mb_strtolower(trim($payload['from_address'] ?? config('mail.from.address'))), app(InvitationMailSecurity::class)->allowedFromAddresses(), true)) return null;
         $event = Event::find($payload['event_id'] ?? 0);
         $actor = User::find($payload['created_by'] ?? 0);
         $recipient = User::find($payload['recipient_user_id'] ?? 0);

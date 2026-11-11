@@ -5,8 +5,14 @@
   const chosen = new Map();
   let snapshot = null;
   let busy = false;
+  let compositionVersion = 0;
   const status = (text) => { el('[data-status]').textContent = text; };
-  const invalidate = () => { snapshot = null; el('[data-review]').hidden = true; };
+  const invalidate = () => { compositionVersion += 1; snapshot = null; el('[data-review]').hidden = true; };
+  const compositionFields = {subject: el('[data-subject]'), message: el('[data-message]'), from_name: el('[data-from-name]'), from_address: el('[data-from-address]'), reply_to: el('[data-reply-to]')};
+  const composition = () => Object.fromEntries(Object.entries(compositionFields).map(([key, field]) => [key, field.value]));
+  Object.values(compositionFields).forEach((field) => ['input', 'change'].forEach((event) => field.addEventListener(event, () => {
+    invalidate(); status('Email changed. Preview it again before sending.');
+  })));
   async function request(url, data) {
     const response = await fetch(url, {method: data ? 'POST' : 'GET', headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content}, ...(data ? {body: JSON.stringify(data)} : {})});
     const result = await response.json().catch(() => ({}));
@@ -44,13 +50,20 @@
     });
   });
   el('[data-preview]').addEventListener('click', () => run(async () => {
-    invalidate(); snapshot = await request(root.dataset.previewUrl, {recipient_ids: Array.from(chosen.keys())});
+    invalidate();
+    if (!Object.values(compositionFields).every((field) => field.reportValidity())) throw new Error('Complete the sender, subject and message before previewing.');
+    const version = compositionVersion;
+    const reviewed = await request(root.dataset.previewUrl, {recipient_ids: Array.from(chosen.keys()), ...composition()});
+    if (version !== compositionVersion) { status('The email changed while preparing the preview. Preview it again before sending.'); return; }
+    snapshot = reviewed;
     el('[data-reviewed-recipients]').textContent = `To: ${snapshot.recipients.map((u) => `${u.name} <${u.email}>`).join(', ')}`;
-    el('[data-email]').srcdoc = snapshot.html; el('[data-pdf]').src = snapshot.pdf_url; el('[data-pdf-link]').href = snapshot.pdf_url;
+    el('[data-reviewed-subject]').textContent = snapshot.subject;
+    el('[data-reviewed-sender]').textContent = `From: ${snapshot.from_name} <${snapshot.from_address}> · Reply-to: ${snapshot.reply_to}`;
+    el('[data-email]').textContent = snapshot.message; el('[data-pdf]').src = snapshot.pdf_url; el('[data-pdf-link]').href = snapshot.pdf_url;
     el('[data-review]').hidden = false; status('Review both previews. Sending shares a private copy with these recipients.');
   }));
   el('[data-send]').addEventListener('click', () => run(async () => {
     if (!snapshot) throw new Error('Prepare the preview first.');
-    const data = await request(snapshot.send_url, {}); invalidate(); status(`${data.queued} email(s) queued. Queueing does not confirm delivery.`);
+    const data = await request(snapshot.send_url, composition()); invalidate(); status(`${data.queued} email(s) queued. Queueing does not confirm delivery.`);
   }));
 })();

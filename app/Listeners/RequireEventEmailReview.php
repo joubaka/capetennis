@@ -31,7 +31,7 @@ class RequireEventEmailReview
                 && count($attachments) === 1 && $attachments[0]->getFilename() === 'nomination-review.pdf'
                 && $attachments[0]->getMediaType().'/'.$attachments[0]->getMediaSubtype() === 'application/pdf'
                 && $attachments[0]->getBody() === base64_decode($log->payload['pdf'], true)
-                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === $message->fromAddress
                 && $mail->message->getFrom()[0]->getName() === $message->fromName
                 && count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === $message->replyToAddress;
             if (! $allowed) throw new \App\Exceptions\SelectionPreviewMailAuthorizationException;
