@@ -264,6 +264,19 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->assertSame(9, $event->fresh()->team_result_settings['team_size']);
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
         $this->assertDatabaseCount('event_nominations', 0);
+
+        $pdf = route('backend.cavaliers-roster.pdf', [$event, $division]);
+        $this->get($pdf)->assertNotFound();
+        $this->putJson($setup, $defaults)->assertOk();
+        $this->putJson(route('backend.cavaliers-roster.update', [$event, $division]), [
+            'revision' => null, 'selected' => [$first->id], 'reserves' => [],
+        ])->assertOk();
+        $download = $this->get($pdf)->assertOk()->assertHeader('Content-Type', 'application/pdf')
+            ->assertDownload('cavaliers-trials-u11-girls.pdf');
+        $this->assertStringContainsString('no-store', $download->headers->get('Cache-Control'));
+        $this->assertStringStartsWith('%PDF-', $download->getContent());
+        $this->actingAs($this->administrator($source))->get($pdf)->assertForbidden();
+        $this->actingAs($actor)->get(route('backend.cavaliers-roster.pdf', [$event, $sourceDivision]))->assertNotFound();
     }
 
     public function test_platteland_step_requires_source_access_and_appends_only_frozen_reserves_then_additional_players(): void
@@ -345,7 +358,8 @@ class CavaliersTrialRosterDraftTest extends TestCase
             array_column($response->json('candidates'), 'id'));
         $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 0);
         $this->assertDatabaseCount('event_nominations', 0);
-        $this->assertSame($snapshot, $finalized->fresh()->groups['10-girls']['snapshot']);
+        // MySQL JSON normalizes object key order; compare the snapshot's values and indexed positions.
+        $this->assertEquals($snapshot, $finalized->fresh()->groups['10-girls']['snapshot']);
     }
 
     public function test_u13_girls_missing_finalized_main_candidates_require_both_sources_and_are_opt_in(): void

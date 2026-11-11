@@ -10,6 +10,7 @@ use App\Models\Player;
 use App\Services\CavaliersTrialCandidates;
 use App\Services\PlayerEligibilityService;
 use App\Support\EventTypePresentation;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -31,6 +32,31 @@ class CavaliersTrialRosterController extends Controller
         $this->authorizeDivision($request, $event, $categoryEvent);
 
         $draft = $this->draft($categoryEvent)->first();
+        return response()->json([
+            'revision' => $draft?->revision,
+            ...$this->rosterPlayers($draft),
+            'publication' => $this->publication($categoryEvent),
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
+    public function exportPdf(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): \Illuminate\Http\Response
+    {
+        $this->authorizeCandidateSetup($request, $event, $categoryEvent);
+        $draft = $this->draft($categoryEvent)->first();
+        abort_unless($draft, 404, 'Save the division draft before exporting.');
+        $roster = $this->rosterPlayers($draft);
+        $preview = $candidates->preview($event, $categoryEvent, $request->user());
+        $evidence = collect($preview['candidates'])->keyBy('id');
+        $rostered = collect($roster)->collapse()->pluck('id')->flip();
+        $leftOut = $evidence->where('source', 'Inter-Districts')->except($rostered->keys()->all());
+
+        return Pdf::loadView('backend.nominations.cavaliers-roster-pdf', compact('event', 'categoryEvent', 'roster', 'preview', 'evidence', 'leftOut'))
+            ->setPaper('a4')->download('cavaliers-trials-'.Str::slug($categoryEvent->category->name).'.pdf')
+            ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function rosterPlayers(?\stdClass $draft): array
+    {
         $selected = $draft ? json_decode($draft->selected, true) : [];
         $reserves = $draft ? json_decode($draft->reserves, true) : [];
         $declined = json_decode($draft?->declined ?? '[]', true);
@@ -41,13 +67,11 @@ class CavaliersTrialRosterController extends Controller
             'name' => $players->get($id)?->full_name ?? 'Unavailable player #'.$id,
         ], $ids);
 
-        return response()->json([
-            'revision' => $draft?->revision,
+        return [
             'selected' => $names($selected),
             'reserves' => $names($reserves),
             'declined' => $names($declined),
-            'publication' => $this->publication($categoryEvent),
-        ])->header('Cache-Control', 'private, no-store');
+        ];
     }
 
     public function players(Request $request, Event $event, CategoryEvent $categoryEvent): JsonResponse

@@ -105,4 +105,51 @@ class MyTennisLiveResultsTest extends TestCase
         $fixture->teamResults()->delete();
         $this->get($url)->assertOk()->assertDontSee('TeamOpponent');
     }
+
+    public function test_rating_directory_accepts_public_team_participation_without_a_series_and_rechecks_its_context(): void
+    {
+        $players = Player::factory()->count(2)->create();
+        $event = Event::factory()->create(['published' => true]);
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'published' => true]);
+        $teams = Team::factory()->count(2)->create(['category_event_id' => $category->id]);
+        foreach ($players as $side => $player) {
+            $teams[$side]->team_players()->create(['player_id' => $player->id, 'rank' => 1]);
+        }
+        $tie = TeamTie::create([
+            'draw_id' => $draw->id, 'round_nr' => 1, 'tie_nr' => 1,
+            'home_team_id' => $teams[0]->id, 'away_team_id' => $teams[1]->id,
+            'status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now(),
+        ]);
+        $fixture = TeamFixture::create([
+            'draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'fixture_type' => 1,
+            'numSets' => 1, 'match_nr' => 1, 'round_nr' => 1,
+        ]);
+        $fixture->fixturePlayers()->create(['slot_no' => 1, 'team1_id' => $players[0]->id, 'team2_id' => $players[1]->id]);
+        $ratings = [];
+        foreach ($players as $index => $player) {
+            $ratings[$player->id] = ['component' => 'shared', 'comparable' => true, 'score' => 80 - $index, 'confidence_label' => 'Moderate'];
+        }
+        $snapshot = ['reason' => null, 'all_age' => [
+            'reference_component' => 'shared',
+            'components' => ['shared' => ['converged' => true, 'members' => $players->modelKeys()]],
+            'ratings' => $ratings,
+        ]];
+        $this->mock(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
+        $this->mock(\App\Services\Performance\PlayerRatingAccess::class)->shouldReceive('allowsDiscovery')->times(4)->andReturnTrue();
+        $viewer = \Mockery::mock(User::class)->makePartial();
+        $viewer->shouldReceive('hasRole')->with('super-user')->andReturnTrue();
+        $service = app(\App\Services\Performance\PlayerRatingTopTen::class);
+        $this->assertDatabaseCount('series_rankings', 0);
+        $this->assertSame($players->modelKeys(), array_column($service->build($viewer)['lists']['overall']['players'], 'id'));
+        $tie->update(['published_at' => null]);
+        $this->assertSame([], $service->build($viewer)['lists']['overall']['players']);
+        $tie->update(['published_at' => now()]);
+        $foreignCategory = CategoryEvent::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $teams[1]->update(['category_event_id' => $foreignCategory->id]);
+        $this->assertSame([], $service->build($viewer)['lists']['overall']['players']);
+        $teams[1]->update(['category_event_id' => $category->id]);
+        $event->update(['published' => false]);
+        $this->assertSame([], $service->build($viewer)['lists']['overall']['players']);
+    }
 }

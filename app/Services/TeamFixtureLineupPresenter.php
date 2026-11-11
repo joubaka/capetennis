@@ -2,8 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\Team;
-use App\Models\TeamFixture;
+use App\Models\{NoProfileTeamPlayer, Team, TeamFixture, TeamPlayer, TeamTie};
 use App\Support\RegionAbbreviation;
 use App\Support\RegionLogo;
 use App\Support\RegionBadge;
@@ -12,6 +11,72 @@ use Illuminate\Support\Collection;
 /** Read-only display of original roster ranks, including composite mixed sides. */
 class TeamFixtureLineupPresenter
 {
+    public function eligiblePublicLineups(Collection $fixtures): Collection
+    {
+        if ($fixtures->isEmpty()) return $fixtures;
+
+        $legacy = $fixtures->filter(fn (TeamFixture $fixture) => !$fixture->team_tie_id);
+        $slots = $legacy->flatMap(fn (TeamFixture $fixture) => $fixture->fixturePlayers);
+        $eventIds = $legacy->pluck('draw.event_id')->unique();
+        $profiles = $slots->pluck('team1_id')->merge($slots->pluck('team2_id'))->filter()->unique();
+        $imports = $slots->pluck('team1_no_profile_id')->merge($slots->pluck('team2_no_profile_id'))->filter()->unique();
+        $profileMemberships = collect();
+        foreach ([TeamPlayer::class => 'player_id', NoProfileTeamPlayer::class => 'player_profile'] as $model => $profileKey) {
+            if ($profiles->isEmpty()) break;
+            $memberships = $model::query()->with('team.category')->whereIn($profileKey, $profiles)
+                ->whereHas('team.category', fn ($query) => $query->whereIn('event_id', $eventIds))->get();
+            foreach ($memberships as $membership) {
+                if ($category = $membership->team?->category) {
+                    $profileMemberships->put($category->event_id.':'.$membership->{$profileKey}, true);
+                }
+            }
+        }
+        $importEvents = $imports->isEmpty() ? collect() : NoProfileTeamPlayer::query()->with('team.category')->whereKey($imports->all())->get()
+            ->mapWithKeys(fn (NoProfileTeamPlayer $import) => [$import->id => (int) $import->team?->category?->event_id]);
+
+        $sourceIds = $fixtures->mapWithKeys(fn (TeamFixture $fixture) => [$fixture->id => $this->teamSourceIds($fixture)]);
+        $teamIds = $sourceIds->flatten()->filter()->unique();
+        $teamEvents = $teamIds->isEmpty() ? collect() : Team::query()->with('category')->whereKey($teamIds->all())->get()
+            ->mapWithKeys(fn (Team $team) => [$team->id => (int) $team->category?->event_id]);
+
+        return $fixtures->filter(function (TeamFixture $fixture) use ($profileMemberships, $importEvents, $sourceIds, $teamEvents) {
+            $event = (int) $fixture->draw?->event_id;
+            if (!$event || $fixture->fixturePlayers->contains(fn ($slot) =>
+                ($slot->team1_id && $slot->team1_no_profile_id) || ($slot->team2_id && $slot->team2_no_profile_id))) return false;
+            if ($fixture->team_tie_id) {
+                $tie = $fixture->teamTie;
+                return $tie?->published_at && (int) $tie->draw_id === (int) $fixture->draw_id
+                    && in_array($tie->status, [TeamTie::STATUS_PUBLISHED, TeamTie::STATUS_COMPLETED], true)
+                    && $sourceIds[$fixture->id]->every(fn ($id) => $teamEvents->get($id) === $event);
+            }
+            if ($fixture->draw->team_scoring_rules !== null || $fixture->draw->team_format_snapshot !== null) return false;
+
+            // Legacy fixtures have no canonical team sides for the lineup presenter to validate.
+            return $fixture->fixturePlayers->every(function ($slot) use ($event, $profileMemberships, $importEvents) {
+                foreach ([1, 2] as $side) {
+                    $profile = $slot->{'team'.$side.'_id'};
+                    $import = $slot->{'team'.$side.'_no_profile_id'};
+                    if ($profile && !$profileMemberships->has($event.':'.$profile)) return false;
+                    if ($import && $importEvents->get($import) !== $event) return false;
+                }
+
+                return true;
+            });
+        })->values();
+    }
+
+    private function teamSourceIds(TeamFixture $fixture): Collection
+    {
+        $tie = $fixture->teamTie;
+        if (!$tie) return collect();
+
+        $mixed = $fixture->draw?->team_draw_selection['mixed_sides'] ?? [];
+
+        return collect([$tie->home_team_id, $tie->away_team_id])->flatMap(fn ($id) => isset($mixed[$id])
+            ? [$mixed[$id]['boys'], $mixed[$id]['girls']]
+            : [$id]);
+    }
+
     public function prepare(Collection $fixtures, bool $publicDraw = false, ?int $selectedPlayerId = null, bool $includeProfileIds = false): void
     {
         (new \Illuminate\Database\Eloquent\Collection($fixtures->all()))->loadMissing([

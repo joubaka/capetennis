@@ -4,6 +4,8 @@
 
   const element = (selector) => root.querySelector(selector);
   const division = element('[data-division]');
+  const divisionChoices = root.querySelectorAll('[data-division-choice]');
+  const exportPdf = element('[data-export-pdf]');
   const editor = element('[data-editor]');
   const status = element('[data-status]');
   const save = element('[data-save]');
@@ -100,9 +102,20 @@
 
   function render() {
     division.disabled = busy;
+    divisionChoices.forEach((choice) => {
+      const current = choice.dataset.divisionChoice === activeDivision;
+      choice.setAttribute('aria-pressed', String(current));
+      choice.classList.toggle('btn-primary', current);
+      choice.classList.toggle('btn-outline-primary', !current);
+      choice.disabled = busy;
+    });
     reload.disabled = busy;
     editor.hidden = !draft;
     if (!draft) return;
+    if (exportPdf) {
+      exportPdf.hidden = !draft.revision || dirty || busy || stale;
+      exportPdf.href = division.selectedOptions[0].dataset.pdfUrl;
+    }
     search.querySelectorAll('input, button').forEach((control) => { control.disabled = busy || stale; });
     save.disabled = !dirty || busy || stale;
     publish.disabled = !draft.publication || !draft.revision || dirty || busy || stale || draft.selected.length === 0;
@@ -139,23 +152,46 @@
         };
         actions.append(
           describe(button('Up', () => moveWithin(key, index, -1), index === 0), 'arrow-up'),
-          describe(button('Down', () => moveWithin(key, index, 1), index === draft[key].length - 1), 'arrow-down'),
-          describe(button('Remove', () => {
-            draft[key].splice(index, 1);
-            skippedCandidates.add(player.id);
+          describe(button('Down', () => moveWithin(key, index, 1), index === draft[key].length - 1), 'arrow-down')
+        );
+        const dropdown = document.createElement('div');
+        dropdown.className = 'dropdown';
+        const toggle = describe(button('Actions'));
+        toggle.classList.add('dropdown-toggle');
+        toggle.dataset.bsToggle = 'dropdown';
+        toggle.setAttribute('aria-expanded', 'false');
+        const menu = document.createElement('div');
+        menu.className = 'dropdown-menu dropdown-menu-end';
+        const item = (label, action, disabled = false) => {
+          const control = button(label, () => {
+            window.bootstrap?.Dropdown.getInstance(toggle)?.hide();
+            toggle.focus();
+            action();
+          }, disabled);
+          control.className = 'dropdown-item';
+          control.setAttribute('aria-label', `${label} — ${player.name}`);
+          return control;
+        };
+        menu.append(
+          item(`Move to ${labels[opposite].toLowerCase()}`, () => {
+            draft[opposite].push(draft[key].splice(index, 1)[0]);
             changed();
-          }), 'trash'),
-          describe(button('Mark declined', () => {
+          }, draft[opposite].length >= limits[opposite]),
+          item('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0),
+          item('Mark declined', () => {
             draft.declined.push(draft[key].splice(index, 1)[0]);
             skippedCandidates.add(player.id);
             changed();
-          })),
-          describe(button(`Move to ${labels[opposite].toLowerCase()}`, () => {
-            draft[opposite].push(draft[key].splice(index, 1)[0]);
+          }),
+          item('Remove', () => {
+            draft[key].splice(index, 1);
+            skippedCandidates.add(player.id);
             changed();
-          }, draft[opposite].length >= limits[opposite])),
-          describe(button('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0), 'arrows-exchange')
+          })
         );
+        menu.lastElementChild.classList.add('text-danger');
+        dropdown.append(toggle, menu);
+        actions.append(dropdown);
         content.append(name, actions);
         row.append(content);
         list.append(row);
@@ -620,13 +656,14 @@
     }
   }
 
-  division.addEventListener('change', () => {
+  divisionChoices.forEach((choice) => choice.addEventListener('click', () => {
+    if (choice.dataset.divisionChoice === activeDivision) return;
     if (dirty && !window.confirm('Discard unsaved changes in this division?')) {
-      division.value = activeDivision;
       return;
     }
+    division.value = choice.dataset.divisionChoice;
     load();
-  });
+  }));
   reload.addEventListener('click', () => {
     if (!dirty || window.confirm('Discard unsaved changes and load the saved draft?')) load();
   });
@@ -756,4 +793,5 @@
     event.preventDefault();
     event.returnValue = true;
   });
+  if (division.value) load();
 })();

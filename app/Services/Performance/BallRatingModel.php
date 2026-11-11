@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /** Independent singles graphs with weaker published finishing fields; unstated conditions belong to normal tennis. */
 class BallRatingModel
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
     public const LABELS = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
     public const COHORTS = ['red' => 'red ball · singles', 'orange' => 'orange ball · singles', 'standard' => 'green/yellow ball · singles'];
 
@@ -27,7 +27,7 @@ class BallRatingModel
         if (in_array($ball, ['red', 'orange'], true)) return $ball;
         if (in_array($ball, ['green', 'yellow', 'standard'], true)) return 'standard';
         $label = self::labelled($eventName);
-        return $label === null ? (self::isWilsonOrange($eventName) ? 'orange' : 'standard') : $label['stage'];
+        return $label === null ? (self::isOrangeDivision($eventName) ? 'orange' : 'standard') : $label['stage'];
     }
 
     /** Labels containing Red/Orange identify that level; both together need more specific context. */
@@ -43,37 +43,20 @@ class BallRatingModel
         return null;
     }
 
-    public static function isWilsonOrange(?string $specific, ?string $eventName = null): bool
+    /** Exact U9 B and U10 B divisions use Orange across all events. */
+    public static function isOrangeDivision(?string $category): bool
     {
-        if (!str_contains(mb_strtolower((string) $specific.' '.(string) $eventName), 'wilson')) return false;
-        $specific = str_replace('wilson', ' ', mb_strtolower((string) $specific));
-        return preg_match('/\bu\s*\/?\s*9\s*[- ]?\s*b\b/u', $specific) === 1
-            || preg_match('/\bu\s*\/?\s*9\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $specific) === 1;
-    }
-
-    /** Reviewed event/category defaults apply only when explicit conditions are absent. */
-    public static function isNamedOrange(?string $category, ?string $eventName = null): bool
-    {
-        if (self::isWilsonOrange($category, $eventName)) return true;
-        $event = mb_strtolower((string) $eventName);
         $category = mb_strtolower((string) $category);
-        // Combined A/B or multi-age fields do not establish this specific division.
-        if (preg_match('/\ba\b/u', $category) === 1 || preg_match_all('/\bu\s*\/?\s*\d+/u', $category) > 1) return false;
-        if (preg_match('/\bceres\b/u', $event) === 1 && preg_match('/\btournament\b/u', $event) === 1) {
-            return preg_match('/\bu\s*\/?\s*9\s*[- ]?\s*b\b/u', $category) === 1
-                || preg_match('/\bu\s*\/?\s*9\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $category) === 1;
-        }
-        if (preg_match('/\b(?:overberg|west[\s-]*coast)\b/u', $event) !== 1
-            || preg_match('/\btrials?\b/u', $event) !== 1) return false;
-        return self::isU10BDivision($category);
-    }
+        // Preserve compact historical labels such as WilsonU9B.
+        $category = str_replace('wilson', ' ', $category);
+        // Combined divisions and age ranges do not establish one exact playing format.
+        if (preg_match('/\b[ac]\b/u', $category) === 1
+            || preg_match_all('/\b(?:u\s*\/?\s*|under[\s-]*)\d+/u', $category, $ages, PREG_OFFSET_CAPTURE) !== 1) return false;
+        $afterAge = substr($category, $ages[0][0][1] + strlen($ages[0][0][0]));
+        if (preg_match('/(?:\/|&|\+|\band\b|[-–])\s*(?:[1-9]|1[0-8])(?!\d)/u', $afterAge) === 1) return false;
 
-    private static function isU10BDivision(string $category): bool
-    {
-        if (preg_match('/\ba\b/u', $category) === 1 || preg_match_all('/\bu\s*\/?\s*\d+/u', $category) > 1) return false;
-
-        return preg_match('/\bu\s*\/?\s*10\s*[- ]?\s*b\b/u', $category) === 1
-            || preg_match('/\bu\s*\/?\s*10\b[^\r\n]*\bb(?:\s*[-–]?\s*division)?\b/u', $category) === 1;
+        return preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)(?:9|10)\s*[-–]?\s*b\b/u', $category) === 1
+            || preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)(?:9|10)\b[^\r\n]*\bb\b/u', $category) === 1;
     }
 
     public static function stage(string $cohort): ?string
@@ -91,19 +74,21 @@ class BallRatingModel
         }
         $category = self::labelled($match['category'] ?? null, true);
         if ($category !== null) return $category['stage'];
-        if (self::isNamedOrange($match['category'] ?? null, $eventName)) return 'orange';
+        if (self::isOrangeDivision($match['category'] ?? null)) return 'orange';
+        $specific = mb_strtolower((string) ($match['category'] ?? ''));
+        if (preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)\d+|\b[ac]\b/u', $specific) === 1) {
+            // An event-title division cannot replace a different or ambiguous category division.
+            $event = self::labelled($eventName);
+            return $event === null ? 'standard' : $event['stage'];
+        }
         return self::bucket(null, $eventName);
     }
 
     public static function forCourt(string $ballType, ?string $category, ?string $eventName): ?string
     {
-        $event = mb_strtolower(trim((string) $eventName));
-        if ($ballType === 'standard' && preg_match('/^overberg\b[^\r\n]*\btrials?\b/u', $event) === 1
-            && self::isU10BDivision(mb_strtolower((string) $category))) {
-            // Shared courts can carry the generic standard label even when this division played Orange.
-            $explicit = self::labelled($category, true);
-
-            return $explicit === null ? 'orange' : $explicit['stage'];
+        if ($ballType === 'standard') {
+            // A generic shared-court label does not replace the division's playing format.
+            return self::forMatch(['category' => $category, 'event_name' => $eventName]);
         }
 
         return self::bucket($ballType);

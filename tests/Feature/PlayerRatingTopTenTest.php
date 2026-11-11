@@ -16,21 +16,35 @@ class PlayerRatingTopTenTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'cache.default' => 'array']);
         DB::purge('sqlite');
         Schema::create('players', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('surname'); $table->string('dateOfBirth')->nullable(); $table->string('gender')->nullable(); });
-        Schema::create('series', function (Blueprint $table) { $table->id(); $table->boolean('leaderboard_published'); $table->integer('minimum_events_for_team_selection')->default(1); });
-        Schema::create('series_rankings', function (Blueprint $table) {
-            $table->id(); $table->integer('series_id'); $table->integer('player_id'); $table->string('status'); $table->string('run_id')->nullable();
-            $table->text('meta_json')->nullable(); $table->timestamp('published_at')->nullable(); $table->timestamps();
+        Schema::create('events', function (Blueprint $table) { $table->id(); $table->boolean('published'); $table->boolean('results_published')->default(false); $table->integer('eventType')->default(1); });
+        Schema::create('eventtypes', function (Blueprint $table) { $table->id(); $table->string('name'); $table->string('code')->nullable(); $table->string('type')->nullable(); });
+        Schema::create('registrations', function (Blueprint $table) { $table->id(); });
+        Schema::create('player_registrations', function (Blueprint $table) { $table->integer('registration_id'); $table->integer('player_id'); $table->timestamps(); });
+        Schema::create('category_events', function (Blueprint $table) { $table->id(); $table->integer('event_id'); $table->integer('category_id'); });
+        Schema::create('category_event_registrations', function (Blueprint $table) {
+            $table->id(); $table->integer('category_event_id'); $table->integer('registration_id');
+            $table->integer('payment_status_id')->default(1); $table->string('status')->default('active'); $table->timestamp('withdrawn_at')->nullable(); $table->softDeletes();
         });
-        DB::table('series')->insert(['id' => 1, 'leaderboard_published' => true, 'minimum_events_for_team_selection' => 1]);
+        Schema::create('category_results', function (Blueprint $table) { $table->id(); $table->integer('event_id'); $table->integer('category_id'); $table->integer('registration_id'); });
+        Schema::create('draws', function (Blueprint $table) { $table->id(); $table->integer('event_id'); $table->integer('category_event_id')->nullable(); $table->boolean('published'); });
+        Schema::create('fixtures', function (Blueprint $table) { $table->id(); $table->integer('draw_id'); $table->integer('registration1_id')->nullable(); $table->integer('registration2_id')->nullable(); });
+        Schema::create('team_fixtures', function (Blueprint $table) { $table->id(); $table->integer('draw_id'); $table->integer('team_tie_id')->nullable(); });
+        Schema::create('team_ties', function (Blueprint $table) { $table->id(); $table->integer('draw_id'); $table->timestamp('published_at')->nullable(); $table->string('status')->nullable(); });
+        Schema::create('team_fixture_players', function (Blueprint $table) { $table->id(); $table->integer('team_fixture_id'); $table->integer('team1_id')->nullable(); $table->integer('team2_id')->nullable(); });
+        DB::table('events')->insert(['id' => 1, 'published' => true]);
+        DB::table('eventtypes')->insert(['id' => 1, 'name' => 'Individual']);
     }
 
-    private function player(int $id, string $name = 'Player', int $series = 1, string $run = 'current', string $status = 'published', int $events = 1): void
+    private function player(int $id, string $name = 'Player', int $event = 1, bool $published = true): void
     {
         DB::table('players')->insertOrIgnore(['id' => $id, 'name' => $name, 'surname' => 'Example']);
-        DB::table('series_rankings')->insert(['series_id' => $series, 'player_id' => $id, 'run_id' => $run, 'status' => $status,
-            'meta_json' => json_encode(['events_played' => $events]), 'published_at' => $run === 'old' ? '2026-10-01' : '2026-11-01', 'updated_at' => '2026-11-01']);
+        DB::table('registrations')->insert(['id' => $id]);
+        DB::table('player_registrations')->insert(['registration_id' => $id, 'player_id' => $id]);
+        DB::table('category_events')->insertOrIgnore(['id' => $event, 'event_id' => $event, 'category_id' => 1]);
+        DB::table('category_event_registrations')->insert(['category_event_id' => $event, 'registration_id' => $id, 'payment_status_id' => 0]);
+        DB::table('draws')->insert(['id' => $id, 'event_id' => $event, 'category_event_id' => $event, 'published' => $published]);
+        DB::table('fixtures')->insert(['draw_id' => $id, 'registration1_id' => $id]);
     }
-
     private function snapshot(array $scores): array
     {
         $ratings = [];
@@ -52,7 +66,7 @@ class PlayerRatingTopTenTest extends TestCase
 
     public function test_match_comparisons_only_return_requested_public_comparable_ratings(): void
     {
-        foreach (range(1, 5) as $id) $this->player($id, 'Opponent '.$id, status: $id === 4 ? 'draft' : 'published');
+        foreach (range(1, 5) as $id) $this->player($id, 'Opponent '.$id, published: $id !== 4);
         $selected = \App\Models\Player::find(1);
         $user = \Mockery::mock(User::class)->makePartial();
         $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
@@ -142,7 +156,7 @@ class PlayerRatingTopTenTest extends TestCase
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
         foreach (range(1, 18) as $id) {
-            $this->player($id, sprintf('Peer %02d', $id), status: $id === 18 ? 'draft' : 'published');
+            $this->player($id, sprintf('Peer %02d', $id), published: $id !== 18);
             DB::table('players')->where('id', $id)->update(['dateOfBirth' => $id === 16 ? '2014-01-01' : ($id === 17 ? '2016-01-01' : '2015-01-01'), 'gender' => $id === 15 ? '2' : '1']);
         }
         $selected = \App\Models\Player::find(14);
@@ -171,10 +185,10 @@ class PlayerRatingTopTenTest extends TestCase
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $tampered, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertStringContainsString('Rating position #14 of 14', strip_tags($html));
         $this->assertStringNotContainsString('Peer 15', $html);
-        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        DB::table('events')->where('id', 1)->update(['published' => false]);
         $revoked = app(PlayerRatingTopTen::class)->build($user, $selected);
         $this->assertSame([], $revoked['lists']['overall']['players']);
-        DB::table('series')->where('id', 1)->update(['leaderboard_published' => true]);
+        DB::table('events')->where('id', 1)->update(['published' => true]);
         DB::table('players')->where('id', $selected->id)->update(['dateOfBirth' => null]);
         $selected->dateOfBirth = null;
         $unknown = app(PlayerRatingTopTen::class)->build($user, $selected);
@@ -209,27 +223,88 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertStringNotContainsString('value="standard"', $html);
     }
 
-    public function test_three_independent_top_tens_use_current_public_participants_and_live_revocation(): void
+    public function test_public_event_participation_qualifies_without_any_series_and_is_rechecked(): void
     {
-        $this->player(1); $this->player(2, 'Hidden', run: 'old'); $this->player(3, 'Draft', status: 'draft');
-        DB::table('series')->insert(['id' => 2, 'leaderboard_published' => false, 'minimum_events_for_team_selection' => 1]);
-        $this->player(4, 'Private', series: 2);
-        DB::table('series')->insert(['id' => 3, 'leaderboard_published' => true, 'minimum_events_for_team_selection' => 3]);
-        $this->player(5, 'Ineligible', series: 3, events: 2);
-        $snapshot = $this->snapshot([1 => 65, 2 => 99, 3 => 98, 4 => 97, 5 => 96, 6 => 95]);
+        $this->player(1);
+        $this->player(2, 'Unpublished draw', published: false);
+        $this->player(3, 'Unpublished event', event: 2);
+        DB::table('events')->insert(['id' => 2, 'published' => false]);
+        DB::table('players')->insert(['id' => 4, 'name' => 'External only', 'surname' => 'Example']);
+        DB::table('category_event_registrations')->update(['payment_status_id' => 0]);
+        $snapshot = $this->snapshot([1 => 65, 2 => 99, 3 => 98, 4 => 97]);
         $result = $this->build($snapshot);
-        $this->assertSame(['red', 'orange', 'overall'], array_keys($result['lists']));
         foreach ($result['lists'] as $list) $this->assertSame([1], array_column($list['players'], 'id'));
-        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        DB::table('events')->where('id', 1)->update(['published' => false]);
         foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
     }
-
     public function test_discovery_denial_and_invalidated_snapshot_fail_closed(): void
     {
         $this->assertFalse($this->build([], false)['visible']);
         foreach ([[], ['reason' => 'Source publication changed']] as $snapshot) {
             foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
         }
+    }
+
+    public function test_public_active_entries_qualify_before_draws_and_only_expose_the_public_member(): void
+    {
+        foreach (range(1, 8) as $id) $this->player($id, 'Participant '.$id, published: false);
+        DB::table('fixtures')->delete();
+        DB::table('category_event_registrations')->update(['payment_status_id' => 1]);
+        DB::table('category_event_registrations')->where('registration_id', 2)->update(['payment_status_id' => 0]);
+        DB::table('category_event_registrations')->where('registration_id', 3)->update(['status' => 'withdrawn_pending_refund']);
+        DB::table('category_event_registrations')->where('registration_id', 4)->update(['withdrawn_at' => '2026-11-01']);
+        DB::table('category_event_registrations')->where('registration_id', 5)->update(['deleted_at' => '2026-11-01']);
+        DB::table('category_event_registrations')->where('registration_id', 6)->update(['status' => 'pending_checkout']);
+        DB::table('category_event_registrations')->where('registration_id', 8)->delete();
+        DB::table('player_registrations')->insert(['registration_id' => 1, 'player_id' => 8]);
+        DB::table('eventtypes')->insert(['id' => 6, 'name' => 'Interprovincial Trials', 'code' => 'interprovincial-trials']);
+        DB::table('events')->insert(['id' => 2, 'published' => true, 'eventType' => 6]);
+        DB::table('category_events')->insert(['id' => 2, 'event_id' => 2, 'category_id' => 1]);
+        DB::table('category_event_registrations')->where('registration_id', 7)->update(['category_event_id' => 2]);
+        $snapshot = $this->snapshot(array_fill_keys(range(1, 8), 50));
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([1], array_column($list['players'], 'id'));
+        DB::table('events')->where('id', 1)->update(['published' => false]);
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
+    }
+
+    public function test_public_doubles_and_results_qualify_without_series_and_enforce_event_membership(): void
+    {
+        foreach (range(1, 5) as $id) $this->player($id, 'Participant '.$id);
+        DB::table('fixtures')->delete();
+        DB::table('category_event_registrations')->where('registration_id', 2)->delete();
+        DB::table('player_registrations')->insert(['registration_id' => 1, 'player_id' => 2]);
+        DB::table('fixtures')->insert(['draw_id' => 1, 'registration2_id' => 1]);
+        DB::table('events')->where('id', 1)->update(['results_published' => true]);
+        DB::table('category_results')->insert([
+            ['event_id' => 1, 'category_id' => 1, 'registration_id' => 3],
+            ['event_id' => 1, 'category_id' => 1, 'registration_id' => 4],
+            ['event_id' => 1, 'category_id' => 2, 'registration_id' => 5],
+        ]);
+        DB::table('events')->insert(['id' => 2, 'published' => true]);
+        DB::table('category_events')->insert(['id' => 2, 'event_id' => 2, 'category_id' => 2]);
+        DB::table('category_event_registrations')->whereIn('registration_id', [4, 5])->update(['category_event_id' => 2]);
+        DB::table('fixtures')->insert([
+            ['draw_id' => 1, 'registration1_id' => 4],
+            ['draw_id' => 1, 'registration1_id' => 5],
+        ]);
+        $snapshot = $this->snapshot([1 => 90, 2 => 80, 3 => 70, 4 => 60, 5 => 50]);
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([1, 2, 3], array_column($list['players'], 'id'));
+        DB::table('events')->where('id', 1)->update(['results_published' => false]);
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([1, 2], array_column($list['players'], 'id'));
+        DB::table('draws')->where('id', 1)->update(['published' => false]);
+        foreach ($this->build($snapshot)['lists'] as $list) $this->assertSame([], $list['players']);
+    }
+
+    public function test_public_entry_scan_overflow_withholds_the_whole_comparison(): void
+    {
+        $this->player(1, published: false);
+        DB::table('category_event_registrations')->delete();
+        foreach (array_chunk(array_fill(0, 5001, ['registration_id' => 1, 'category_event_id' => 1, 'payment_status_id' => 1]), 500) as $chunk) {
+            DB::table('category_event_registrations')->insert($chunk);
+        }
+        $result = $this->build($this->snapshot([1 => 70]));
+        $this->assertNotNull($result['reason']);
+        foreach ($result['lists'] as $list) $this->assertSame([], $list['players']);
     }
 
     public function test_scores_stay_independent_and_disconnected_nonconverged_invalid_scores_are_excluded(): void
@@ -363,7 +438,7 @@ class PlayerRatingTopTenTest extends TestCase
             $this->assertSame(['month' => '3', 'scope' => 'all', 'scale' => 'full', 'rating_age' => 'u9', 'rating_gender' => 'boys', 'rating_level' => 'overall', 'rating_per_page' => '25', 'rating_page' => $index === 0 ? '1' : '3'], $query);
         }
 
-        DB::table('series')->where('id', 1)->update(['leaderboard_published' => false]);
+        DB::table('events')->where('id', 1)->update(['published' => false]);
         $revoked = $this->build($snapshot, selected: $selected, filters: ['rating_per_page' => 25, 'rating_page' => 2]);
         $this->assertSame([], $revoked['lists']['overall']['players']);
         $this->assertSame(0, $revoked['lists']['overall']['pagination']['total']);

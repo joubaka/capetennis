@@ -12,8 +12,7 @@ class BallRatingContext
     {
         if ($context === null) return 'standard';
         if ($context instanceof Category) {
-            $label = BallRatingModel::labelled($context->name, true);
-            return $label === null ? BallRatingModel::bucket(null, $context->name) : $label['stage'];
+            return BallRatingModel::forMatch(['category' => $context->name]);
         }
         $field = $context instanceof Draw ? $context->categoryEvent : $context;
         if ($context instanceof Draw && $field && (int) $field->event_id !== (int) $context->event_id) return null;
@@ -29,9 +28,6 @@ class BallRatingContext
             if (count($stages) > 1) return null;
             if (count($stages) === 1) return $stages[0];
         }
-        $specific = BallRatingModel::labelled($label, true);
-        if ($specific !== null) return $specific['stage'];
-        if (BallRatingModel::isNamedOrange($label, $event?->name)) return 'orange';
-        return BallRatingModel::bucket(null, $event?->name);
+        return BallRatingModel::forMatch(['category' => $label, 'event_name' => $event?->name]);
     }
 }

@@ -4,19 +4,20 @@ Ball-level ratings classify evidence independently from age or score. The owning
 fallback rules are in `BallRatingModel`; `BallRatingContext` applies the same rules
 to finishing fields and display contexts.
 
-User-confirmed competition formats (2026-11-03), for boys and girls:
+User-confirmed competition formats (2026-11-11), for boys and girls:
 
-- Overberg Trials U10 B: Orange.
-- West Coast / Westcoast Trials U10 B: Orange.
-- Ceres tournament U9 B: Orange.
+- Exact U9 B and U10 B divisions use Orange across all tournaments.
+- The rule applies to match evidence, published finishing fields and badge
+  contexts, including shared courts recorded as generic `standard`.
+- Generic `standard` courts also use explicit Red or Orange category/event
+  labels instead of masking that format.
+- Explicit Red, Orange, Green or Yellow playing conditions resolve the actual
+  ball level before this division fallback. A combined A/B or multiple-age
+  category does not establish an exact U9 B or U10 B division.
 
-These rules apply to the named event families and exact divisions. Overberg
-Trials U10 B uses Orange for match evidence, finishing fields and badge
-contexts even when a shared court is recorded as generic `standard`. Explicit
-ball labels and dedicated Red, Orange, Green or Yellow court metadata still
-resolve the ball level. West Coast and Ceres remain fallbacks for cases without
-explicit conditions. Other divisions and unrelated events keep their existing
-classification, including the Wilson U9 B fallback.
+This decision broadens the earlier named-event defaults for Wilson U9 B,
+Ceres U9 B and Overberg / West Coast Trials U10 B. Event names are no longer
+required to establish the exact division's Orange fallback.
 
 Changing a classification requires incrementing `BallRatingModel::VERSION` so
 saved calculations cannot silently retain the old evidence buckets. A code fix

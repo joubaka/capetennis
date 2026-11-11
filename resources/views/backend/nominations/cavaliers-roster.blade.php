@@ -8,9 +8,15 @@
     <div class="card-body">
         <h4 class="card-title mb-1">Trials roster draft</h4>
         <p class="text-muted">Private working list. Review 32 selected players and five ordered reserves in each division.</p>
-        <label class="form-label" for="cavaliers-roster-division">Division</label>
-        <select class="form-select mb-3" id="cavaliers-roster-division" data-division>
-            <option value="">Choose an age group and gender</option>
+        <div class="small fw-semibold mb-2" id="cavaliers-division-label">Division</div>
+        <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-labelledby="cavaliers-division-label">
+            @foreach ($event->eventCategories as $division)
+                <button type="button" class="btn btn-sm btn-outline-primary" data-division-choice="{{ $division->id }}" aria-pressed="false">
+                    {{ $division->category->name }}
+                </button>
+            @endforeach
+        </div>
+        <select data-division hidden>
             @foreach ($event->eventCategories as $division)
                 <option value="{{ $division->id }}"
                     data-draft-url="{{ route('backend.cavaliers-roster.show', [$event, $division]) }}"
@@ -19,6 +25,7 @@
                     @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                         data-candidate-url="{{ route('backend.cavaliers-roster.candidates', [$event, $division]) }}"
                         data-setup-url="{{ route('backend.cavaliers-roster.setup', [$event, $division]) }}"
+                        data-pdf-url="{{ route('backend.cavaliers-roster.pdf', [$event, $division]) }}"
                     @endif>
                     {{ $division->category->name }}
                 </option>
@@ -31,6 +38,10 @@
                 <button type="button" class="btn btn-sm btn-outline-primary" data-save disabled>Save draft</button>
                 <button type="button" class="btn btn-sm btn-primary" data-publish disabled>Publish selected players</button>
                 <button type="button" class="btn btn-sm btn-outline-danger" data-unpublish disabled>Unpublish list</button>
+                @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
+                    <a class="btn btn-sm btn-primary" href="{{ route('backend.cavaliers-report.index', $event) }}">Share nomination report</a>
+                    <a class="btn btn-sm btn-outline-primary" data-export-pdf hidden>Export saved PDF</a>
+                @endif
                 <button type="button" class="btn btn-sm btn-outline-secondary" data-email-nominees data-bs-target="#sendMailModal"
                     data-bs-toggle="modal">Email event nominees</button>
             </div>

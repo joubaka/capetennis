@@ -7,10 +7,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Ratings, evidence and pathway
 
-- For user-confirmed regional Trials U10 B and Ceres U9 B Orange formats, consult
-  `docs/performance/ball-level-classification.md` and verify `BallRatingModel`
-  and `BallRatingContext`. Keep named-event fallbacks separate from general
-  age rules; classification changes invalidate saved calculations.
+- Exact U9 B and U10 B divisions default to Orange across all tournaments,
+  including generic standard courts. Explicit ball conditions take precedence,
+  and combined A/B or multiple-age labels do not establish this division.
+  Consult `docs/performance/ball-level-classification.md` and verify
+  `BallRatingModel` and `BallRatingContext`; classification changes invalidate
+  saved calculations.
 - The user-facing rating choices are Red, Orange and Overall CTR. Age and gender
   filter comparison populations; they must not create a different strength score
   for the same selected rating. Red and Orange directories are age independent,
@@ -111,6 +113,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Team wrap-ups use the public combined positions within each age group. Use
   `EventStandingsService` with published data and omit groups without displayed
   positions, including groups whose draw rules differ.
+- Cavaliers nomination reports share saved private rosters rather than publish
+  them. Result flags describe counted singles evidence and cannot establish an
+  unrecorded selector decision; missing evidence stays unavailable. Preserve
+  source-access checks and the reviewed email/PDF snapshot through managed mail.
+  See `docs/architecture/event-type-template-parity.md`, `CavaliersRosterReport`
+  and `CavaliersRosterReportTest`.
 
 ## Operational evidence
 

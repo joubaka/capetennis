@@ -118,7 +118,7 @@
   @endif
   <details class="small mt-3">
     <summary>Who’s included?</summary>
-    <p class="mt-2 mb-1">Positions use comparable ratings from published series standings. They are separate from official rankings. Junior age groups include younger players, based on the age they reach this calendar year.</p>
+    <p class="mt-2 mb-1">Positions compare players who have a comparable CTR and are publicly listed as an event participant. They are separate from official rankings. Junior age groups include younger players, based on the age they reach this calendar year.</p>
     @if($ratingTopTen['can_browse'] ?? false)
       <p class="mb-0">Red and Orange have separate ratings and include all ages. Green/Yellow uses Overall CTR. Filters change positions without changing rating scores. Players with equal displayed scores share a position.</p>
     @endif

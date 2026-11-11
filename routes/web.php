@@ -910,10 +910,19 @@ Route::prefix('backend')->middleware('auth')->group(function () {
  */
   Route::prefix('event')->group(function () {
 
+    Route::controller(\App\Http\Controllers\Backend\CavaliersRosterReportController::class)
+      ->prefix('{event}/cavaliers-report')->name('backend.cavaliers-report.')->middleware('throttle:20,1')->group(function () {
+        Route::get('/', 'index')->name('index');
+        Route::post('/preview', 'preview')->name('preview');
+        Route::get('/{token}/pdf', 'pdf')->whereUuid('token')->name('pdf');
+        Route::post('/{token}/send', 'send')->whereUuid('token')->name('send');
+      });
+
     Route::controller(\App\Http\Controllers\Backend\CavaliersTrialRosterController::class)
       ->prefix('{event}/categories/{categoryEvent}/cavaliers-roster')
       ->name('backend.cavaliers-roster.')->group(function () {
         Route::get('/candidates', 'candidates')->middleware('throttle:20,1')->name('candidates');
+        Route::get('/pdf', 'exportPdf')->middleware('throttle:10,1')->name('pdf');
         Route::get('/setup', 'setup')->name('setup');
         Route::put('/setup', 'updateSetup')->name('setup.update');
         Route::get('/', 'show')->name('show');

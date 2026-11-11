@@ -113,6 +113,12 @@ Legacy null-run rows are retained only without a modern published run, with
 published status or a null status plus a publication timestamp. Public ranking
 eligibility is also applied.
 
+My Tennis CTR positions use a separate comparison pool. A player can appear
+with a comparable saved rating and participation visible in a published Cape
+Tennis event. Series membership and series leaderboard eligibility are not
+required for this pool. Private TeamSheet evidence may contribute to a rating
+but does not establish public Cape Tennis participation.
+
 Entries use database pagination of 25. Other dashboard history cards are labelled
 as the latest 20. The selector reads the first 100 linked profiles and retains an
 explicitly selected authorised player outside that set; Manage players pages can

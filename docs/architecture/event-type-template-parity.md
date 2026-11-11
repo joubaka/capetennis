@@ -50,6 +50,22 @@ preserves the last public list. Publishing from the roster requires reviewing
 the differences against the current nominations and applies the saved order.
 Unpublishing hides the list and retains its nominations.
 
+The Cavaliers nomination report shares a private copy of saved divisions with
+chosen existing accounts; it does not publish nominations or grant event access.
+Its combined PDF lists selected players, up to five ordered reserves and an
+explanation row for every saved player and available candidate from either source.
+An omitted player's result flags describe counted singles evidence, not proof of
+the selector's individual decision. Missing evidence remains unavailable, and
+starting credit must not be presented as a played win.
+
+`CavaliersRosterReport` preserves the preparing actor's source-access checks.
+The email and PDF preview is bound to that actor's session and expires after
+30 minutes. Sending rechecks the saved report and recipient accounts, then uses
+managed mail with an immutable signed attachment and duplicate protection.
+Dispatch rechecks authorization and the report before transport. See
+`CavaliersRosterReportTest` for preview, attachment, stale-state and audience
+regressions. These are local implementation guarantees, not delivery evidence.
+
 ### Verified local inventory
 
 A read-only check of the loopback MySQL `ct` database on 2026-10-25 found:

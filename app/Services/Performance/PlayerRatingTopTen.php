@@ -2,17 +2,18 @@
 
 namespace App\Services\Performance;
 
-use App\Domain\Ranking\Services\RankingTeamEligibilityService;
-use App\Models\{Player, SeriesRanking, User};
+use App\Models\{CategoryEventRegistration, CategoryResult, Player, TeamFixture, User};
+use App\Services\TeamFixtureLineupPresenter;
+use App\Support\EventTypePresentation;
 use Carbon\CarbonImmutable;
 
-/** Discovery projection: public series identities and comparable saved ratings only. */
+/** Discovery projection: public event participants with comparable saved ratings. */
 class PlayerRatingTopTen
 {
     public const PER_PAGE = 500;
     public const PAGE_SIZES = [25, 50, 100, 500];
 
-    public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots, private RankingTeamEligibilityService $eligibility) {}
+    public function __construct(private PlayerRatingAccess $access, private PlayerAbilitySnapshotStore $snapshots) {}
 
     public function build(?User $user, ?Player $selected = null, array $filters = []): array
     {
@@ -88,22 +89,12 @@ class PlayerRatingTopTen
         $ids = array_values(array_unique(array_merge(...array_values(array_map('array_keys', $ratings ?: [[]])))));
         if (count($ids) > 5000) return $this->limited($result);
         $public = [];
-        foreach (array_chunk($ids, 200) as $chunk) {
-            $rows = SeriesRanking::query()->with(['series:id,minimum_events_for_team_selection', 'player:id,name,surname,dateOfBirth,gender'])
-                ->whereIn('player_id', $chunk)->where('status', 'published')->whereNotNull('run_id')
-                ->whereHas('series', fn ($query) => $query->where('leaderboard_published', true))
-                ->where('run_id', function ($query) {
-                    $query->from('series_rankings as latest')->select('latest.run_id')
-                        ->whereColumn('latest.series_id', 'series_rankings.series_id')->where('latest.status', 'published')->whereNotNull('latest.run_id')
-                        ->orderByDesc('latest.published_at')->orderByDesc('latest.updated_at')->limit(1);
-                })->limit(1001)->get();
-            if ($rows->count() > 1000) return $this->limited($result);
-            foreach ($rows as $row) {
-                if (!$row->player || !$row->series || $this->eligibility->publiclyRanked(collect([$row]), $row->series)->isEmpty()) continue;
-                $public[(int) $row->player_id] = ['name' => trim($row->player->name.' '.$row->player->surname),
-                    'age' => $this->ageKey($row->player->dateOfBirth, $today),
-                    'gender' => $this->genderKey($row->player->gender)];
-            }
+        try { $participants = $this->publicParticipants($ids); }
+        catch (\OverflowException) { return $this->limited($result); }
+        foreach ($participants as $player) {
+            $public[(int) $player->id] = ['name' => trim($player->full_name),
+                'age' => $this->ageKey($player->dateOfBirth, $today),
+                'gender' => $this->genderKey($player->gender)];
         }
         foreach ($ratings as $key => $members) {
             $players = [];
@@ -144,6 +135,76 @@ class PlayerRatingTopTen
         }
         if ($selected) $result['lists'] = array_intersect_key($result['lists'], [$level => true]);
         return $result;
+    }
+
+    private function publicParticipants(array $ids): iterable
+    {
+        if (!$ids) return [];
+
+        $visibleEvent = fn ($event) => $event->visibleTo(null);
+        $publishedDraw = fn ($draw) => $draw->where('published', true)->whereHas('event', $visibleEvent)
+            ->whereHas('event.eventCategories', fn ($field) => $field
+                ->where(fn ($category) => $category->whereNull('draws.category_event_id')->orWhereColumn('category_events.id', 'draws.category_event_id'))
+                ->whereHas('categoryEventRegistrations', fn ($membership) => $membership->whereColumn('registration_id', 'registrations.id')));
+        $publicResults = CategoryResult::query()->select('registration_id')
+            ->whereHas('event', fn ($event) => $event->visibleTo(null)->where('results_published', true)
+                ->whereHas('eventCategories', fn ($field) => $field->whereColumn('category_events.category_id', 'category_results.category_id')
+                    ->whereHas('categoryEventRegistrations', fn ($membership) => $membership->whereColumn('registration_id', 'category_results.registration_id'))));
+        $columns = ['id', 'name', 'surname', 'dateOfBirth', 'gender'];
+
+        $individuals = Player::query()->whereIntegerInRaw('id', $ids)
+            ->whereHas('registrations', fn ($registrations) => $registrations->where(fn ($participation) => $participation
+                ->whereIn('registrations.id', $publicResults)
+                ->orWhereHas('fixturesAsOne.draw', $publishedDraw)
+                ->orWhereHas('fixturesAsTwo.draw', $publishedDraw)))
+            ->get($columns)->keyBy('id');
+
+        $remaining = array_fill_keys(array_diff($ids, $individuals->keys()->all()), true);
+        if (!$remaining) return $individuals;
+
+        // The individual event's public Players list shows only the first member of each active paid registration.
+        $entries = CategoryEventRegistration::query()->activeAndPaid()->whereNull('withdrawn_at')
+            ->whereHas('categoryEvent.event', $visibleEvent)
+            ->whereHas('players', fn ($players) => $players->whereIntegerInRaw('players.id', array_keys($remaining)))
+            ->with(['categoryEvent.event.eventTypeModel', 'registration.players'])->limit(5001)->get();
+        if ($entries->count() > 5000) throw new \OverflowException('Public entry comparison scope exceeded.');
+        foreach ($entries as $entry) {
+            if (EventTypePresentation::template($entry->categoryEvent->event) !== 'individual') continue;
+            $player = $entry->registration?->players->first();
+            if (!$player || !isset($remaining[$player->id])) continue;
+            $individuals->put($player->id, $player);
+            unset($remaining[$player->id]);
+        }
+        if (!$remaining) return $individuals;
+
+        // The public presenter verifies roster-side identity and does not expose imported profile links.
+        $teams = TeamFixture::query()->publicDrawFixtures()->publishedTeamTies()->whereHas('draw.event', $visibleEvent)
+            ->with(['draw', 'teamTie', 'fixturePlayers'])
+            ->whereHas('fixturePlayers', fn ($slots) => $slots->whereIntegerInRaw('team1_id', array_keys($remaining))
+                ->orWhereIntegerInRaw('team2_id', array_keys($remaining)));
+        $confirmed = [];
+        $scanned = 0;
+        $teams->limit(5001)->chunkById(100, function ($fixtures) use (&$remaining, &$confirmed, &$scanned) {
+            $scanned += $fixtures->count();
+            if ($scanned > 5000) throw new \OverflowException('Public team comparison scope exceeded.');
+            $presenter = app(TeamFixtureLineupPresenter::class);
+            $fixtures = $presenter->eligiblePublicLineups($fixtures);
+            if ($fixtures->isEmpty()) return true;
+            $presenter->prepare($fixtures, publicDraw: true, includeProfileIds: true);
+            foreach ($fixtures as $fixture) {
+                foreach (['home', 'away'] as $side) {
+                    foreach ($fixture->lineup_display[$side]['players'] as $participant) {
+                        $id = $participant['player_id'];
+                        if (!isset($remaining[$id])) continue;
+                        $confirmed[] = $id;
+                        unset($remaining[$id]);
+                    }
+                }
+            }
+            return $remaining !== [];
+        });
+
+        return $individuals->union(Player::query()->whereIntegerInRaw('id', $confirmed)->get($columns)->keyBy('id'));
     }
 
     private function matchesAgeScope(string $playerAge, string $selectedAge): bool

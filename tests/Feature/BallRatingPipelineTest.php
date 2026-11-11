@@ -114,7 +114,8 @@ class BallRatingPipelineTest extends TestCase
         [$event, $field] = $this->finishField('Wilson Series', 'Red Ball U9B Boys A');
         $context = app(\App\Services\Performance\BallRatingContext::class);
         $this->assertSame('red', $context->stage($field));
-        $field->category->update(['name' => 'U9B Boys A']); $this->assertSame('orange', $context->stage($field));
+        $field->category->update(['name' => 'U9B Boys']); $this->assertSame('orange', $context->stage($field));
+        $field->category->update(['name' => 'U9B Boys A']); $this->assertSame('standard', $context->stage($field));
         $field->category->update(['name' => 'Green Ball U9B Boys A']); $this->assertSame('standard', $context->stage($field));
         $field->category->update(['name' => 'Red and Orange U9B Boys A']); $this->assertNull($context->stage($field));
     }
@@ -146,17 +147,17 @@ class BallRatingPipelineTest extends TestCase
         $this->assertCount(3, $snapshot['ball_ratings']['standard']['ratings'], 'A ranked historical membership remains valid after withdrawal.');
     }
 
-    public function test_reviewed_orange_event_categories_align_finishes_matches_and_display_context(): void
+    public function test_orange_divisions_in_unrelated_events_align_finishes_matches_and_display_context(): void
     {
         $players = Player::factory()->count(4)->create();
         $fixtures = [];
-        foreach ([['Overberg Tennis Trials - Leg 2 2026', 'u/10 Girls - B division'],
-            ['West Coast Tennis Trials 2026', 'U10 Boys B'],
-            ['Cavaliers Junior Ceres Tournament 2026', 'u/9 Girls B - Division']] as $index => [$event, $category]) {
+        foreach ([['School Holiday Open', 'u/10 Girls - B division'],
+            ['City Club Championships', 'Under 10 Boys B'],
+            ['District Junior Festival', 'u/9 Girls B - Division']] as $index => [$event, $category]) {
             [$finishEvent, $field] = $this->finishField($event, $category);
             $fixture = $this->match($event, $players[0], $players[$index + 1], '2026-10-20');
             $fixture->draw->categoryEvent->category->update(['name' => $category]);
-            if ($index === 0) {
+            if ($index !== 1) {
                 $finishDraw = Draw::factory()->create(['event_id' => $finishEvent->id, 'category_event_id' => $field->id]);
                 $venue = OrderOfPlay::where('fixture_id', $fixture->id)->firstOrFail()->venue_id;
                 foreach ([$finishDraw, $fixture->draw] as $draw) {
@@ -167,6 +168,7 @@ class BallRatingPipelineTest extends TestCase
                 }
             }
             $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($field));
+            $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($field->category));
             $fixtures[] = $fixture;
         }
         $ability = app(PlayerSharedAbilityService::class);
@@ -175,6 +177,53 @@ class BallRatingPipelineTest extends TestCase
         $this->assertCount(13, $snapshot['ball_ratings']['orange']['ratings']);
         $this->assertSame(3, $snapshot['ball_ratings']['orange']['ratings'][$players[0]->id]['played']);
         foreach ($fixtures as $fixture) $this->assertSame('orange', app(\App\Services\Performance\BallRatingContext::class)->stage($fixture->draw));
+    }
+
+    public function test_explicit_courts_keep_their_format_for_orange_division_finishes_and_display(): void
+    {
+        [$event, $field] = $this->finishField('School Junior Open', 'U10 Girls B');
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $field->id]);
+        $court = DB::table('event_venue_courts')->insertGetId([
+            'event_id' => $event->id, 'venue_id' => 1, 'label' => '1', 'ball_type' => 'standard', 'active' => true,
+        ]);
+        DB::table('draw_venue_court_allocations')->insert(['draw_id' => $draw->id, 'venue_id' => 1, 'court_label' => '1']);
+        $context = app(\App\Services\Performance\BallRatingContext::class);
+        foreach (['standard' => 'orange', 'red' => 'red', 'orange' => 'orange', 'green' => 'standard', 'yellow' => 'standard'] as $ball => $expected) {
+            DB::table('event_venue_courts')->where('id', $court)->update(['ball_type' => $ball]);
+            $this->assertSame($expected, $context->stage($field));
+            $this->assertSame($expected, $context->stage($draw));
+            $snapshot = app(PlayerSharedAbilityService::class)->calculateSnapshot(CarbonImmutable::today());
+            foreach (array_keys(BallRatingModel::LABELS) as $stage) {
+                $this->assertCount($stage === $expected ? 3 : 0, $snapshot['ball_ratings'][$stage]['ratings']);
+            }
+        }
+    }
+
+    public function test_generic_standard_courts_preserve_red_and_orange_match_finish_and_display_formats(): void
+    {
+        $players = Player::factory()->count(3)->create();
+        foreach (['red', 'orange'] as $index => $stage) {
+            $category = ucfirst($stage).' ball Boys';
+            [$event, $field] = $this->finishField('School Festival', $category);
+            $finishDraw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $field->id]);
+            $fixture = $this->match('School Festival', $players[0], $players[$index + 1], '2026-10-20');
+            $fixture->draw->categoryEvent->category->update(['name' => $category]);
+            $venue = OrderOfPlay::where('fixture_id', $fixture->id)->firstOrFail()->venue_id;
+            foreach ([$finishDraw, $fixture->draw] as $draw) {
+                DB::table('event_venue_courts')->insert([
+                    'event_id' => $draw->event_id, 'venue_id' => $venue, 'label' => '1', 'ball_type' => 'standard', 'active' => true,
+                ]);
+                DB::table('draw_venue_court_allocations')->insert(['draw_id' => $draw->id, 'venue_id' => $venue, 'court_label' => '1']);
+                $this->assertSame($stage, app(\App\Services\Performance\BallRatingContext::class)->stage($draw));
+            }
+            $this->assertSame($stage, app(\App\Services\Performance\BallRatingContext::class)->stage($field));
+        }
+        $snapshot = app(PlayerSharedAbilityService::class)->calculateSnapshot(CarbonImmutable::today());
+        foreach (['red', 'orange'] as $stage) {
+            $this->assertCount(5, $snapshot['ball_ratings'][$stage]['ratings']);
+            $this->assertSame(1, $snapshot['ball_ratings'][$stage]['ratings'][$players[0]->id]['played']);
+        }
+        $this->assertSame([], $snapshot['ball_ratings']['standard']['ratings']);
     }
 
     protected function setUp(): void
