@@ -9,6 +9,31 @@ use Illuminate\Support\Facades\DB;
 
 final class CavaliersRosterReport
 {
+    public function explanationGroups(array $candidates, array $roster): array
+    {
+        $selected = $roster['selected'] ?? [];
+        $reserves = $roster['reserves'] ?? [];
+        $declined = $roster['declined'] ?? [];
+        $selectedIndexes = collect($candidates)->keys()->filter(fn ($index) => in_array($candidates[$index]['id'], $selected, true));
+        $rows = collect($candidates)->map(function (array $candidate, int $index) use ($selectedIndexes, $reserves, $declined) {
+            $numbers = collect($candidate['matches'] ?? [])->pluck('playing_number')->filter(fn ($number) => is_int($number) && $number > 0)->unique()->sort()->values()->all();
+            $badge = ($candidate['lost_all'] ?? false) ? 'Lost all matches'
+                : (($candidate['only_beat_winless'] ?? false) ? 'Only beat winless players' : 'Selector reason required');
+            if (in_array($candidate['id'], $declined, true)) $badge = 'Declined';
+            $reserve = array_search($candidate['id'], $reserves, true);
+            $status = in_array($candidate['id'], $declined, true) ? 'Recorded as declined.' : ($reserve !== false ? 'Saved reserve #'.($reserve + 1).'.' : 'Outside the saved top 32.');
+            $laterSelected = $selectedIndexes->filter(fn ($selectedIndex) => $selectedIndex > $index)->count();
+            $note = $laterSelected ? 'Selection review needed: ahead of '.$laterSelected.' saved selected player(s) in review order. Selector reason required.' : '';
+            return ['id' => $candidate['id'], 'name' => $candidate['name'], 'evidence' => $candidate,
+                'playing_numbers' => $numbers, 'badge' => $badge, 'source_order' => $index + 1, 'selection_status' => $status,
+                'review_note' => in_array($candidate['id'], $declined, true) ? 'The saved decline explains absence from the top 32.' : $note];
+        });
+        $next = $rows->whereNotIn('id', [...$selected, ...$reserves, ...$declined])->take(5)->values();
+        $interDistricts = $rows->filter(fn ($row) => ($row['evidence']['source'] ?? null) === 'Inter-Districts')
+            ->whereNotIn('id', [...$selected, ...$next->pluck('id')->all()])->values();
+        return ['next_candidates' => $next->all(), 'inter_districts' => $interDistricts->all()];
+    }
+
     public function signature(array $payload): string
     {
         return hash_hmac('sha256', json_encode(\Illuminate\Support\Arr::sortRecursive($payload), JSON_THROW_ON_ERROR), config('app.key'));
@@ -38,8 +63,8 @@ final class CavaliersRosterReport
                 abort_unless($names->has($id), 422, 'Remove unavailable players from the saved roster before sharing.');
                 $rows[] = ['id' => $id, 'name' => $names[$id]->full_name, 'status' => $status, 'position' => $index + 1, 'evidence' => $candidates->get($id)];
             }
-            foreach ($candidates->except(array_merge(...array_values($roster))) as $candidate) $rows[] = ['id' => $candidate['id'], 'name' => $candidate['name'], 'status' => 'omitted', 'position' => null, 'evidence' => $candidate];
-            $sections[] = ['division' => $division->category->name, 'revision' => $draft->revision, 'preview' => $preview, 'rows' => $rows];
+            $sections[] = ['division' => $division->category->name, 'revision' => $draft->revision, 'preview' => $preview, 'rows' => $rows,
+                'explanations' => $this->explanationGroups($preview['candidates'], $roster)];
         }
         abort_unless($sections, 422, 'Save at least one division roster before preparing a report.');
         return ['event_id' => $event->id, 'event_name' => $event->name, 'sections' => $sections,

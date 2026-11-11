@@ -114,7 +114,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   `EventStandingsService` with published data and omit groups without displayed
   positions, including groups whose draw rules differ.
 - Cavaliers nomination reports share saved private rosters rather than publish
-  them. Result flags describe counted singles evidence and cannot establish an
+  them. Explain the next five available candidates outside selected/reserves
+  (excluding declines), plus all eligible Inter-Districts candidates outside the
+  saved top 32 including reserves/declines, with no duplicate explanations. Match
+  playing numbers must come from per-match roster evidence, never merit rank.
+  Result flags describe counted singles evidence and cannot establish an
   unrecorded selector decision; missing evidence stays unavailable. Preserve
   source-access checks and the reviewed email/PDF snapshot through managed mail.
   See `docs/architecture/event-type-template-parity.md`, `CavaliersRosterReport`

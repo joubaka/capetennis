@@ -52,8 +52,21 @@ Unpublishing hides the list and retains its nominations.
 
 The Cavaliers nomination report shares a private copy of saved divisions with
 chosen existing accounts; it does not publish nominations or grant event access.
-Its combined PDF lists selected players, up to five ordered reserves and an
-explanation row for every saved player and available candidate from either source.
+Its combined PDF lists selected players and up to five ordered reserves, followed
+by brief explanations for the next five available candidates outside those
+lists, in the existing candidate merit order, excluding declines. It also explains
+all eligible Inter-Districts candidates outside the saved top 32, including
+reserves and declines, without repeating players already in the next five.
+This is the configured published regional-roster candidate pool, not proof of
+every player's match participation; missing/excluded singles remain unavailable.
+Each explanation separates counted wins and losses, recorded playing numbers,
+and concise match outcomes. Saved reserve/decline status and source review order
+are factual context, not an invented automatic top-32 cutoff. A candidate ahead
+of saved selected players is flagged for selection review; unrecorded selector
+reasons remain unrecorded. Playing numbers come only from each counted match's
+`roster_rank` projected as `playing_number` (participant snapshot when available,
+otherwise the ranking service's unambiguous source-roster resolution); aggregate candidate rank
+or merit position must not fill missing match evidence.
 An omitted player's result flags describe counted singles evidence, not proof of
 the selector's individual decision. Missing evidence remains unavailable, and
 starting credit must not be presented as a played win.

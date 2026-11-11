@@ -76,15 +76,18 @@ class CavaliersRosterReportTest extends TestCase
             $this->fail('Changed attachment must be rejected.');
         } catch (\App\Exceptions\SelectionPreviewMailAuthorizationException) { $this->assertTrue(true); }
         $report = app(CavaliersRosterReport::class)->report($event, $actor);
+        $candidates = [];
         foreach ([['Lost All Candidate', true, false, 0, 3], ['Winless Opponent Candidate', false, true, 1, 2], ['Manual Omission Candidate', false, false, null, null]] as [$name, $lost, $only, $wins, $losses]) {
-            $report['sections'][0]['rows'][] = ['id' => 900 + count($report['sections'][0]['rows']), 'name' => $name, 'status' => 'omitted', 'position' => null,
-                'evidence' => ['source' => 'Inter-Districts', 'wins' => $wins, 'losses' => $losses, 'lost_all' => $lost, 'only_beat_winless' => $only, 'starting_credit' => 1]];
+            $candidate = ['id' => 900 + count($report['sections'][0]['rows']), 'name' => $name, 'source' => 'Inter-Districts', 'wins' => $wins, 'losses' => $losses, 'lost_all' => $lost, 'only_beat_winless' => $only, 'starting_credit' => 1];
+            $candidate['id'] = 900 + count($candidates);
+            $candidates[] = $candidate;
         }
+        $report['sections'][0]['explanations'] = app(CavaliersRosterReport::class)->explanationGroups($candidates, []);
         $reportHtml = view('backend.nominations.cavaliers-report-pdf', compact('report'))->render();
-        $this->assertStringContainsString('Lost all counted singles.', $reportHtml);
-        $this->assertStringContainsString('Only beat opponents who lost all counted singles.', $reportHtml);
-        $this->assertStringContainsString('No individual decision reason recorded.', $reportHtml);
-        $this->assertStringContainsString('No counted singles evidence available', $reportHtml);
+        $this->assertStringContainsString('Lost all matches', $reportHtml);
+        $this->assertStringContainsString('Only beat winless players', $reportHtml);
+        $this->assertStringContainsString('Selector reason required', $reportHtml);
+        $this->assertStringContainsString('No counted singles evidence.', $reportHtml);
         if ($output = getenv('CT_ROSTER_SHARE_QA_OUTPUT')) {
             if (! is_dir($output)) mkdir($output, 0777, true);
             foreach ($report['sections'] as &$section) {

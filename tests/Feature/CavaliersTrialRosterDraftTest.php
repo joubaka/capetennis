@@ -216,7 +216,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ->assertJsonPath('candidates.0.only_beat_winless', false)
             ->assertJsonPath('candidates.0.starting_credit', 1)
             ->assertJsonPath('candidates.0.matches', [[
-                'opponent' => $drakenstein->full_name, 'outcome' => 'Won', 'score' => '6–2, 6–2', 'format' => 'Singles',
+                'opponent' => $drakenstein->full_name, 'outcome' => 'Won', 'playing_number' => 1, 'score' => '6–2, 6–2', 'format' => 'Singles',
             ]])
             ->assertJsonPath('candidates.1.id', $drakenstein->id)
             ->assertJsonPath('candidates.1.only_beat_winless', true)
@@ -229,7 +229,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ->assertJsonPath('candidates.3.rank', 5)
             ->assertJsonPath('candidates.3.lost_all', true)
             ->assertJsonPath('candidates.3.matches', [[
-                'opponent' => $drakenstein->full_name, 'outcome' => 'Lost', 'score' => '2–6, 2–6', 'format' => 'Singles',
+                'opponent' => $drakenstein->full_name, 'outcome' => 'Lost', 'playing_number' => 5, 'score' => '2–6, 2–6', 'format' => 'Singles',
             ]])
             ->assertJsonCount(4, 'candidates');
         $this->assertSame(['team_size' => 9], $event->fresh()->team_result_settings);
@@ -345,8 +345,8 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ->assertJsonPath('platteland_notice', null)
             ->assertJsonPath('candidates.1.list_status', 'Locked reserve')
             ->assertJsonPath('candidates.1.matches', [
-                ['opponent' => 'Synthetic opponent', 'outcome' => 'Lost', 'score' => '6–4, 6–2', 'format' => 'Reverse singles'],
-                ['opponent' => 'Another opponent', 'outcome' => 'Won', 'score' => null, 'format' => null],
+                ['opponent' => 'Synthetic opponent', 'outcome' => 'Lost', 'playing_number' => null, 'score' => '6–4, 6–2', 'format' => 'Reverse singles'],
+                ['opponent' => 'Another opponent', 'outcome' => 'Won', 'playing_number' => null, 'score' => null, 'format' => null],
             ])
             ->assertJsonPath('candidates.2.list_status', 'Locked reserve')
             ->assertJsonPath('candidates.2.lost_all', true)
