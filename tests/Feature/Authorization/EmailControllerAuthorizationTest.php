@@ -261,7 +261,8 @@ class EmailControllerAuthorizationTest extends TestCase
 
     $registered = \App\Models\Registration::factory()->create();
     $registered->players()->attach(Player::factory()->create(['email'=>'registered@example.test']));
-    \App\Models\CategoryEventRegistration::factory()->create(['registration_id'=>$registered->id,'category_event_id'=>$this->teamA->category_event_id]);
+    \App\Models\CategoryEventRegistration::factory()->paid()->create(['registration_id'=>$registered->id,'category_event_id'=>$this->teamA->category_event_id]);
+    $this->teamA->players()->attach($registered->players()->first()->id, ['rank'=>99,'pay_status'=>1]);
 
     $response = $this->postJson(route('series.email.players', $this->seriesA->id), [
       'emailSubject' => 'Test',
@@ -278,7 +279,8 @@ class EmailControllerAuthorizationTest extends TestCase
 
     $registered = \App\Models\Registration::factory()->create();
     $registered->players()->attach(Player::factory()->create(['email'=>'registered@example.test']));
-    \App\Models\CategoryEventRegistration::factory()->create(['registration_id'=>$registered->id,'category_event_id'=>$this->teamA->category_event_id]);
+    \App\Models\CategoryEventRegistration::factory()->paid()->create(['registration_id'=>$registered->id,'category_event_id'=>$this->teamA->category_event_id]);
+    $this->teamA->players()->attach($registered->players()->first()->id, ['rank'=>99,'pay_status'=>1]);
 
     $response = $this->postJson(route('series.email.players', $this->seriesA->id), [
       'emailSubject' => 'Test',
@@ -512,7 +514,11 @@ class EmailControllerAuthorizationTest extends TestCase
       $registration->players()->attach($shared->id);
       if ($event->id === $this->eventB->id) $registration->players()->attach($extra->id);
       $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
-      \App\Models\CategoryEventRegistration::factory()->create(['registration_id' => $registration->id, 'category_event_id' => $category->id]);
+      \App\Models\CategoryEventRegistration::factory()->paid()->create(['registration_id' => $registration->id, 'category_event_id' => $category->id]);
+      if ($event->isTeam()) {
+        $team = Team::factory()->create(['category_event_id'=>$category->id]);
+        $team->players()->attach($registration->players()->pluck('players.id')->all(), ['rank'=>99,'pay_status'=>1]);
+      }
     }
     $this->actingAs($this->superUser)->postJson(route('series.email.players', $this->seriesA), [
       'emailSubject' => 'Series update', 'message' => 'Update', 'campaign_key' => (string) \Illuminate\Support\Str::uuid(),

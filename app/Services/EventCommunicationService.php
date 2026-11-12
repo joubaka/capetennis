@@ -489,6 +489,12 @@ class EventCommunicationService
         return $plan;
     }
 
+    /** Confirmed active players shared by series announcements and event wrap-ups. */
+    public function confirmedPlayers(Event $event): Collection
+    {
+        return $this->wrapUpPlayers($event);
+    }
+
     private function wrapUpPlayers(Event $event): Collection
     {
         if ($event->isTeam()) {

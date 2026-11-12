@@ -105,6 +105,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   and add/skip decisions. Drafting email sends nothing: preserve recipient and
   message review, explicit send authority and managed mail. Queued is not delivered.
   Consult the current `AssistantCategoryCopy` and `AssistantEmailDraft` workflows.
+- Series custom announcements use canonical confirmed active contacts and one
+  email per normalized address across the selected series. Fingerprint all source
+  players, including overlaps suppressed from later event batches; keep every
+  event permission check. Event attribution supports reporting and must not append
+  other-event private player details. See `SeriesCommunicationService`,
+  `ReviewedSeriesCommunicationTest` and repair RK-040.
 - Whole-event wrap-ups use confirmed event entries or active confirmed team roster
   slots. Recheck whole-event permission for review, approval, history and both
   retry routes. Rebuild the audience at approval and verify the exact address

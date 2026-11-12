@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{DB, Gate};
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
-/** One reviewed intent, with independent event messages and durable reservations. */
+/** One reviewed series intent, with one message per address and durable reservations. */
 class SeriesCommunicationService
 {
     public function __construct(private EventCommunicationService $communications, private TeamSelectionContactService $contacts, private BulkMailDispatcher $dispatcher) {}
@@ -44,30 +44,27 @@ class SeriesCommunicationService
         return hash('sha256', json_encode($normalize($value), JSON_THROW_ON_ERROR));
     }
 
-    private function eventPlan(Event $event, string $subject, string $body): array
+    private function plans(Collection $events, string $subject, string $body): Collection
     {
-        $byEmail = collect();
-        $issues = collect();
-        foreach ($event->registrations()->with(['players.user', 'players.users', 'categoryEvent.category'])->get() as $entry) {
-            foreach ($entry->players as $player) {
-                $emails = $this->contacts->emails($player);
-                if ($emails->isEmpty()) {
-                    $issues->push($player->full_name.' - no valid contact');
-                }
-                $detail = $player->full_name.' - '.($entry->categoryEvent?->category?->name ?? '');
-                foreach ($emails as $email) {
-                    $byEmail->put($email, [...($byEmail->get($email, ['name'=>$player->full_name, 'details'=>[]])), 'details'=>[...($byEmail->get($email)['details'] ?? []), $detail]]);
+        $seen = [];
+        return $events->mapWithKeys(function (Event $event) use ($subject, $body, &$seen) {
+            $rows = $this->communications->confirmedPlayers($event);
+            $recipients = collect();
+            $issues = collect();
+            foreach ($rows as $player) {
+                if (empty($player['emails'])) $issues->push($player['name'].' - no valid contact');
+                foreach ($player['emails'] as $email) {
+                    if (isset($seen[$email])) continue;
+                    $recipients->put($email, ['email'=>$email, 'name'=>$player['name'], 'kind'=>'players',
+                        'subject'=>$subject, 'html'=>nl2br(e($body))]);
                 }
             }
-        }
-        $recipients = $byEmail->map(fn ($person,$email) => [
-            'email'=>$email, 'name'=>$person['name'], 'kind'=>'players', 'subject'=>$subject,
-            'html'=>nl2br(e($body."\n\nEvent: ".$event->name."\nPlayer details:\n".collect($person['details'])->unique()->sort()->implode("\n"))),
-        ])->sortBy('email')->values()->all();
-        $plan = ['recipients'=>$recipients, 'issues'=>$issues->unique()->sort()->values()->all()];
-        $plan['fingerprint'] = $this->fingerprint([$event->id,$subject,$body,$plan]);
-
-        return $plan;
+            foreach ($recipients->keys() as $email) $seen[$email] = true;
+            $plan = ['recipients'=>$recipients->sortBy('email')->values()->all(), 'issues'=>$issues->unique()->sort()->values()->all()];
+            // Include source players even when assigned to an earlier event for delivery.
+            $plan['fingerprint'] = $this->fingerprint(['series_unique_active_v1', $event->id, $subject, $body, $plan, $rows->all()]);
+            return [$event->id=>$plan];
+        });
     }
 
     public function batches(Series $series, User $actor, string $intent): Collection
@@ -76,6 +73,7 @@ class SeriesCommunicationService
         $batches = EventCommunicationBatch::with('event')->where('created_by',$actor->id)
             ->where('options->source','series_compose')->where('options->series_id',$series->id)->where('options->intent',$intent)->orderBy('event_id')->get();
         abort_if($batches->isEmpty(),404);
+        abort_if($batches->contains(fn ($batch) => ($batch->options['audience'] ?? null) !== 'series_unique_active_v1'), 422, 'This review uses an older audience. Prepare a fresh series review.');
         abort_unless($batches->pluck('event_id')->map(fn ($id) => (int) $id)->all() === $events->pluck('id')->map(fn ($id) => (int) $id)->all(), 422, 'Series events changed. Prepare a fresh review.');
 
         return $batches;
@@ -86,10 +84,10 @@ class SeriesCommunicationService
         \App\Services\CommunicationSender::resolve(['from_name' => $fromName, 'reply_to' => $replyTo], $actor);
         $events = $this->events($series,$actor);
         $body = trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$body)));
-        $options = ['source'=>'series_compose','series_id'=>$series->id,'intent'=>$intent,'event_ids'=>$events->pluck('id')->all(),'from_name'=>$fromName,'reply_to'=>$replyTo];
-        $plans = $events->mapWithKeys(fn ($event)=>[$event->id=>$this->eventPlan($event,$subject,$body)]);
+        $options = ['audience'=>'series_unique_active_v1','source'=>'series_compose','series_id'=>$series->id,'intent'=>$intent,'event_ids'=>$events->pluck('id')->all(),'from_name'=>$fromName,'reply_to'=>$replyTo];
+        $plans = $this->plans($events,$subject,$body);
         if ($plans->sum(fn ($plan)=>count($plan['recipients']))===0) {
-            throw ValidationException::withMessages(['audience'=>'No registered player in this series has a valid contact.']);
+            throw ValidationException::withMessages(['audience'=>'No active confirmed player in this series has a valid contact.']);
         }
 
         return DB::transaction(function () use ($series,$actor,$intent,$events,$plans,$options,$subject,$body) {
@@ -122,10 +120,12 @@ class SeriesCommunicationService
                 return true;
             }
             abort_if($batches->contains(fn ($batch)=>$batch->approved_at),422,'This review has inconsistent approval records. Prepare a fresh review.');
+            $plans = $this->plans($events, $batches->first()->subject, $batches->first()->body);
             // Check every event before creating any queue reservation.
             foreach ($batches as $batch) {
+                abort_unless(($batch->options['audience'] ?? null) === 'series_unique_active_v1', 422, 'This review uses an older audience. Prepare a fresh series review.');
                 abort_if($batch->created_at->lt(now()->subHour()),422,'This review expired. Prepare a new intent.');
-                $plan = $this->eventPlan($events->firstWhere('id',$batch->event_id),$batch->subject,$batch->body);
+                $plan = $plans[$batch->event_id];
                 if (!hash_equals($batch->fingerprint,$plan['fingerprint'])) {
                     throw ValidationException::withMessages(['preview'=>'Recipients or event details changed. Review a fresh send intent.']);
                 }

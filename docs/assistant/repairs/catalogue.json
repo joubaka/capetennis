@@ -566,6 +566,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/EventWrapUpMessage.php", "app/Services/EventStandingsService.php", "app/Http/Controllers/Frontend/PublicEventStandingsController.php"],
       "tests": ["tests/Feature/TeamDraw/PublicEventStandingsTest.php"]
+    },
+    {
+      "id": "RK-040",
+      "title": "Series announcement sends duplicate emails across tournament legs",
+      "scope": "Custom announcements to active confirmed players in a selected series.",
+      "symptoms": "A shared contact receives the same announcement separately for several events in the series.",
+      "cause": "Recipient deduplication was limited to each event, while dispatch reservations are event and batch specific.",
+      "fix": "Plan normalized confirmed player contacts across the entire series before dispatch. Assign each address to its first matching event for reporting, fingerprint every event's source players including suppressed overlaps, and recheck every event permission and snapshot before approval. Keep the custom body generic without appending other-event player details. Reject legacy audience snapshots in the new series review and preserve durable repeat-approval protection.",
+      "verification": "On 2026-11-12 the configured MySQL focused series suite passed 13 tests and 107 assertions, covering overlap, shared and secondary contacts, active eligibility, isolation, stale reviews, legacy reviews, missing contacts and queue outcomes. PHP syntax, route registration, Blade compilation and independent source reviews also passed.",
+      "limits": "Guide only. One email per address per reviewed announcement; a fresh announcement can send again. Series membership defines the selected year cohort. No production deployment or delivery verification is implied, and sending requires authorization.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/SeriesCommunicationService.php", "app/Services/EventCommunicationService.php"],
+      "tests": ["tests/Feature/ReviewedSeriesCommunicationTest.php", "tests/Feature/Authorization/EmailControllerAuthorizationTest.php"]
     }
   ]
 }

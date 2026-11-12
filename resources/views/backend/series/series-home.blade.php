@@ -267,7 +267,7 @@
   </a>
 
   <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#seriesEmailModal">
-    <i class="ti ti-mail me-1"></i> Email All Players
+    <i class="ti ti-mail me-1"></i> Email Active Players
   </button>
 
 </div>
@@ -365,11 +365,12 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Email All Players in {{ $series->name }}</h5>
+        <h5 class="modal-title">Email Active Players in {{ $series->name }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
+          <p class="text-muted">Active confirmed entries in {{ $series->name }} ({{ $series->year }}) only. Each valid email address receives one copy across all series events, including shared family contacts.</p>
           <label class="form-label">From Name</label>
           <input type="text" id="seriesEmailFromName" class="form-control" value="Cape Tennis Admin">
         </div>
