@@ -71,6 +71,14 @@ An omitted player's result flags describe counted singles evidence, not proof of
 the selector's individual decision. Missing evidence remains unavailable, and
 starting credit must not be presented as a played win.
 
+The PDF overview and division summaries count saved selected/reserve/declined
+rows separately from unique explained candidates. The review-required count
+covers explained candidates with an unrecorded selector reason or an explicit
+review-order flag, excluding saved declines; it is not a count of incorrect
+selections. Missing counted singles evidence remains distinct from zero wins.
+Candidate match histories flow outside roster table rows so long evidence can
+continue across pages without dropping matches.
+
 `CavaliersRosterReport` preserves the preparing actor's source-access checks.
 The email and PDF preview is bound to that actor's session and expires after
 30 minutes. The subject, plain-text message, sender display name, configured

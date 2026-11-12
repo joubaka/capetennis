@@ -9,6 +9,24 @@ use Illuminate\Support\Facades\DB;
 
 final class CavaliersRosterReport
 {
+    /** Counts describe the saved list and the unique candidates explained, not selector decisions. */
+    public function sectionSummary(array $section): array
+    {
+        $rows = collect($section['rows']);
+        $explanations = collect($section['explanations']['next_candidates'])
+            ->concat($section['explanations']['inter_districts'])->unique('id');
+
+        return [
+            'selected' => $rows->where('status', 'selected')->count(),
+            'reserves' => $rows->where('status', 'reserves')->count(),
+            'declined' => $rows->where('status', 'declined')->count(),
+            'explained' => $explanations->count(),
+            'review_required' => $explanations->filter(fn (array $row) => $row['badge'] !== 'Declined'
+                && ($row['badge'] === 'Selector reason required' || str_contains($row['review_note'] ?? '', 'Selection review needed:')))->count(),
+            'missing_evidence' => $explanations->filter(fn (array $row) => ! isset($row['evidence']['wins'], $row['evidence']['losses']))->count(),
+        ];
+    }
+
     public function explanationGroups(array $candidates, array $roster): array
     {
         $selected = $roster['selected'] ?? [];
@@ -73,7 +91,12 @@ final class CavaliersRosterReport
 
     public function pdf(array $report): string
     {
-        return Pdf::loadView('backend.nominations.cavaliers-report-pdf', compact('report'))->setPaper('a4')->output();
+        $pdf = Pdf::loadView('backend.nominations.cavaliers-report-pdf', compact('report'))->setPaper('a4');
+        $pdf->render();
+        $font = $pdf->getDomPDF()->getFontMetrics()->getFont('DejaVu Sans', 'normal');
+        $pdf->getDomPDF()->getCanvas()->page_text(42, 812, 'Cape Tennis | Private nomination review                                      Page {PAGE_NUM} of {PAGE_COUNT}', $font, 8, [0.32, 0.39, 0.47]);
+
+        return $pdf->output();
     }
 
     public function mail(array $snapshot): \App\Mail\BulkEventMail

@@ -8,6 +8,32 @@ use Tests\TestCase;
 
 class CavaliersRosterReportEvidenceTest extends TestCase
 {
+    public function test_summary_counts_unique_explanations_and_does_not_treat_zero_results_as_missing(): void
+    {
+        $service = app(CavaliersRosterReport::class);
+        $candidates = [
+            ['id' => 1, 'name' => 'Zero Results', 'source' => 'Inter-Districts', 'wins' => 0, 'losses' => 0],
+            ['id' => 2, 'name' => 'Missing Results', 'source' => 'Inter-Districts', 'wins' => null, 'losses' => null],
+            ['id' => 3, 'name' => 'Declined Player', 'source' => 'Inter-Districts', 'wins' => 0, 'losses' => 2, 'lost_all' => true],
+        ];
+        $section = ['division' => 'Fictional Division', 'rows' => [
+            ['status' => 'selected', 'position' => 1, 'name' => 'Selected Player'],
+            ['status' => 'reserves', 'position' => 1, 'name' => 'Reserve Player'],
+            ['status' => 'declined', 'position' => 1, 'name' => 'Declined Player'],
+        ], 'explanations' => $service->explanationGroups($candidates, ['declined' => [3]]),
+            'preview' => ['source_division' => 'Source Division', 'candidate_regions' => [], 'excluded_result_regions' => [], 'missing_regions' => [], 'platteland_notice' => null]];
+        $this->assertSame(['selected' => 1, 'reserves' => 1, 'declined' => 1, 'explained' => 3, 'review_required' => 2, 'missing_evidence' => 1], $service->sectionSummary($section));
+        $report = ['event_name' => 'Fictional Review', 'unsaved_divisions' => ['Unprepared Division'], 'sections' => [$section]];
+        $html = view('backend.nominations.cavaliers-report-pdf', compact('report'))->render();
+        $this->assertStringContainsString('<td>0 / 0</td>', $html);
+        $this->assertSame(1, substr_count($html, 'No counted singles evidence.'));
+        $this->assertStringContainsString('3 candidates explained below; 2 require selection review.', $html);
+        $this->assertStringContainsString('Unprepared Division', $html);
+        $duplicate = $section['explanations']['next_candidates'][0];
+        $section['explanations']['inter_districts'][] = $duplicate;
+        $this->assertSame(3, $service->sectionSummary($section)['explained']);
+    }
+
     public function test_next_five_and_inter_districts_explanations_preserve_order_membership_deduplication_and_actual_numbers(): void
     {
         $candidates = [];
