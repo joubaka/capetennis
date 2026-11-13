@@ -41,6 +41,12 @@ use Illuminate\Validation\ValidationException;
  */
 class EntryService
 {
+    /** Preview or archive one explicitly identified, unused zero-money admin test. */
+    public function archiveFreeTestHistory(User $actor, array $ids, string $reason, string $evidence, ?string $fingerprint = null): array
+    {
+        return app(FreeTestEntryArchiveService::class)->run($actor, $ids, $reason, $evidence, $fingerprint);
+    }
+
     public function __construct(
         private EntryEligibilityService $eligibility,
         private EntryStateMachine $stateMachine,

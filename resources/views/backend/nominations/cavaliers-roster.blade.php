@@ -108,7 +108,7 @@
                         @endif
                         @if ($key === 'reserves' && (int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                             <h6 class="mt-3 mb-2 rounded px-2 py-2 bg-label-warning">Next 10 in merit order</h6>
-                            <p class="text-muted small mb-2">Players outside the selected and reserve lists.</p>
+                            <p class="text-muted small mb-2">Players outside the selected and reserve lists. Add, move and return actions save immediately, including any current draft edits. New players are added at the bottom of the chosen list. Publishing remains a separate step.</p>
                             <p class="text-muted small mb-0" data-merit-message role="status"></p>
                             <ol class="list-group list-group-numbered" data-merit-list aria-label="Next players in merit order"></ol>
                         @endif

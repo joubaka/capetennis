@@ -43,8 +43,22 @@ offers finalized Platteland U12 Girls main players with no recorded
 Inter-Districts participation as opt-in candidates for reviewers with access
 to both sources. Decline status reflects the current managed invitation records.
 Candidate review checks existing draft players when a draft is reopened.
-Applying additions or removals stages a private edit. The Reserves column
-shows up to ten available candidates outside the roster in merit order.
+Applying the bulk candidate review stages a private edit. The Reserves column
+shows up to ten available candidates outside selected, reserves and declines in
+the existing merit order. Its explicit Add to nominations/Add reserve buttons,
+the equivalent player-search additions, and roster move/remove actions save the
+full current private draft immediately through its revision-checked PUT. This
+includes pending manual draft edits; new or moved players append to the chosen
+list. Up/down, swap and decline edits retain their explicit Save draft workflow.
+Numbering and the next-ten pool update after a confirmed save, without a page
+refresh. A rejected validation leaves the prior local draft and pending edits
+intact. A stale revision or ambiguous network/server outcome requires reloading
+the saved draft before another mutation; an error must not imply server rollback.
+Removing a canonical candidate returns them to the merit pool, while removing a
+manually searched player does not invent candidate eligibility or source rank.
+See `CavaliersTrialRosterDraftTest` and the fictional actual-JS browser regression
+`tests/Frontend/cavaliers-roster-transfer.browser.cjs` for persistence, ordering,
+failure, capacity and publication-boundary coverage.
 Staff can record or undo a decline in the private draft. Saving a draft
 preserves the last public list. Publishing from the roster requires reviewing
 the differences against the current nominations and applies the saved order.

@@ -178,7 +178,10 @@ $(function () {
       .html('<i class="ti ti-check me-1"></i>Confirmed');
     // Disable form fields
     $card.find('.player-detail-form input, .player-detail-form select').prop('disabled', true);
-    $card.find('.btn-confirm-player, .btn-save-player').hide();
+    $card.find('.btn-confirm-player').hide();
+    $card.find('.btn-save-player')
+      .prop('disabled', true).removeAttr('aria-busy')
+      .html('<i class="ti ti-check me-1"></i> Saved &amp; Confirmed');
     updateGoToCartButton();
   }
 
@@ -203,6 +206,7 @@ $(function () {
   $(document).on('click', '.btn-save-player', function () {
     var $btn = $(this);
     var $card = $btn.closest('.confirm-player-card');
+    if ($btn.prop('disabled') || $card.attr('data-confirmed') === '1') return;
     var $form = $card.find('.player-detail-form');
     var playerId = $btn.attr('data-player-id');
     var cardId = $card.attr('id');
@@ -230,15 +234,32 @@ $(function () {
     });
     if (!valid) { toastr.error('Please fill in all required fields.'); return; }
 
-    $btn.prop('disabled', true).html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
+    function finishSaving() {
+      var confirmed = $card.attr('data-confirmed') === '1';
+      $form.find('input, select').prop('disabled', confirmed);
+      $btn.prop('disabled', confirmed).removeAttr('aria-busy').html(confirmed
+        ? '<i class="ti ti-check me-1"></i> Saved &amp; Confirmed'
+        : '<i class="ti ti-device-floppy me-1"></i> Save &amp; Confirm');
+    }
+
+    $form.find('input, select').prop('disabled', true);
+    $btn.prop('disabled', true).attr('aria-busy', 'true')
+      .html('<span class="spinner-border spinner-border-sm me-1"></span> Saving...');
 
     $.ajax({
       url: APP_URL + '/register/update-player-details',
       type: 'POST',
+      timeout: 30000,
       data: formData,
       success: function (res) {
         // Re-query the card from the DOM to avoid stale references
         var $freshCard = $('#' + cardId);
+        if (!$freshCard.length || $freshCard[0] !== $card[0]) return;
+        if (!res || res.success !== true || !res.player || String(res.player.id) !== String(playerId)) {
+          finishSaving();
+          toastr.error('Save could not be confirmed. Reload this step to check the saved details before trying again.');
+          return;
+        }
         if (res.player) {
           var fullName = res.player.name + ' ' + res.player.surname;
           $freshCard.find('h6').html('<i class="ti ti-user me-1"></i> ' + fullName);
@@ -246,15 +267,20 @@ $(function () {
         markPlayerConfirmed($freshCard);
         toastr.success(res.message || 'Player details saved and confirmed.');
       },
-      error: function (xhr) {
-        $btn.prop('disabled', false).html('<i class="ti ti-device-floppy me-1"></i> Save & Confirm');
-        if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
+      error: function (xhr, status) {
+        finishSaving();
+        if (xhr.status === 401 || xhr.status === 419) {
+          toastr.error('Your session has expired. Refresh the page and sign in before saving again.');
+        } else if (status === 'timeout' || xhr.status === 0) {
+          toastr.error('Save could not be confirmed. Reload this step to check the saved details before trying again.');
+        } else if (xhr.status === 422 && xhr.responseJSON && xhr.responseJSON.errors) {
           var msg = Object.values(xhr.responseJSON.errors).flat().join(', ');
           toastr.error(msg);
         } else {
           toastr.error('Failed to save. Please try again.');
         }
-      }
+      },
+      complete: finishSaving
     });
   });
 

@@ -33,6 +33,52 @@ use Illuminate\Support\Collection;
  */
 class FinancialLedgerService
 {
+    /** Internal half of the reviewed free-test archive; never changes money amounts. */
+    public function archiveFreeTestReceipt(Event $event, Transaction $receipt, string $archivedAt): void
+    {
+        abort_unless(\App\Support\FinanceMutationScope::allows('free_test_archive')
+            && \Illuminate\Support\Facades\DB::transactionLevel() > 0, 403);
+        if ((int) $receipt->event_id !== (int) $event->id || $receipt->item_name !== 'Admin Entry'
+            || $receipt->archived_at !== null || filled($receipt->pf_payment_id)
+            || filled($receipt->custom_int5) || filled($receipt->custom_str5)
+            || (float) $receipt->amount_gross !== 0.0 || (float) $receipt->amount_net !== 0.0
+            || (float) $receipt->amount_fee !== 0.0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['archive' => 'Only the exact unarchived zero-money Admin Entry receipt can be archived.']);
+        }
+        $affected = \Illuminate\Support\Facades\DB::table('transactions_pf')->where('id', $receipt->id)
+            ->whereNull('archived_at')->update(['archived_at' => $archivedAt]);
+        if ($affected !== 1) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['archive' => 'The receipt archive changed concurrently.']);
+        }
+    }
+
+    /** Remove only empty-event generated fee projections, retained in the maintenance audit. */
+    public function clearArchivedTestSystemExpenses(Event $event): void
+    {
+        abort_unless(\App\Support\FinanceMutationScope::allows('free_test_archive')
+            && \Illuminate\Support\Facades\DB::transactionLevel() > 0, 403);
+        $ledger = $this->buildForEvent($event);
+        if ($ledger['paymentRows']->isNotEmpty() || $ledger['refundRows']->isNotEmpty()
+            || $ledger['payoutRows']->isNotEmpty()) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['archive' => 'The event still has financial history; generated expenses cannot be cleared.']);
+        }
+        foreach (\App\Models\EventExpense::where('event_id', $event->id)->lockForUpdate()->get() as $expense) {
+            $description = match ($expense->expense_type) {
+                'cape_tennis_fee' => 'Cape Tennis fee (auto-synced)',
+                'payfast' => 'PayFast fees (auto-synced)',
+                default => null,
+            };
+            if ($description === null || $expense->description !== $description
+                || $expense->paid_by_convenor_id || $expense->reimbursed_at || $expense->reimbursed_by
+                || $expense->approved_at || $expense->approved_by || filled($expense->receipt_path)
+                || filled($expense->recipient_name) || filled($expense->convenor_name)
+                || $expense->budget_amount !== null) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['archive' => 'Only untouched generated system fee projections may be cleared.']);
+            }
+            $expense->delete();
+        }
+    }
+
     public function recordRegistrationPayout(Event $event, \App\Models\User $actor, array $data): EventPayout
     {
         return app(EventPayoutRecordingService::class)->record($event, $actor, $data);

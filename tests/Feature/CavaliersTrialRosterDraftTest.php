@@ -118,6 +118,53 @@ class CavaliersTrialRosterDraftTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_direct_transfer_payloads_preserve_order_declines_and_publication_and_reject_stale_or_ineligible_additions(): void
+    {
+        Mail::fake();
+        Queue::fake();
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5, 'name' => 'Fictional Trials']), 'U11 Girls');
+        $this->division($event, 'U12 Boys');
+        $this->actingAs($this->administrator($event));
+        [$first, $second, $reserve, $declined, $addition, $final, $ineligible] = Player::factory()->count(7)->create()->all();
+        EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $first->id]);
+        $division->update(['nominations_published' => true]);
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $payload = ['revision' => null, 'selected' => [$first->id, $second->id], 'reserves' => [$reserve->id], 'declined' => [$declined->id]];
+        $payload['revision'] = $this->putJson($url, $payload)->assertOk()->json('revision');
+        foreach ([
+            [[$first->id], [$reserve->id, $second->id]],
+            [[$first->id, $addition->id], [$reserve->id, $second->id]],
+            [[$addition->id], [$reserve->id, $second->id]],
+            [[$addition->id, $reserve->id], [$second->id]],
+            // A direct add saves the current manually reordered draft in the same write.
+            [[$reserve->id, $addition->id, $final->id], [$second->id]],
+        ] as [$selected, $reserves]) {
+            $payload = [...$payload, 'selected' => $selected, 'reserves' => $reserves];
+            $previousRevision = $payload['revision'];
+            $payload['revision'] = $this->putJson($url, $payload)->assertOk()->json('revision');
+            $this->getJson($url)->assertJsonPath('selected', array_map(fn ($id) => ['id' => $id, 'name' => Player::find($id)->full_name], $selected))
+                ->assertJsonPath('reserves', array_map(fn ($id) => ['id' => $id, 'name' => Player::find($id)->full_name], $reserves))
+                ->assertJsonPath('declined.0.id', $declined->id);
+            $this->putJson($url, [...$payload, 'revision' => $previousRevision])->assertConflict();
+        }
+        $this->mock(\App\Services\PlayerEligibilityService::class)->shouldReceive('assertEligible')->once()
+            ->with($ineligible->id, \Mockery::type(Event::class))->andThrow(new \RuntimeException('Ineligible player'));
+        $this->putJson($url, [...$payload, 'selected' => [...$payload['selected'], $ineligible->id]])->assertUnprocessable();
+        $this->getJson($url)->assertJsonPath('revision', $payload['revision'])->assertJsonCount(3, 'selected')->assertJsonCount(1, 'reserves');
+        $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 1);
+        $this->assertDatabaseCount('event_nominations', 1);
+        $this->assertDatabaseHas('event_nominations', ['event_id' => $event->id, 'player_id' => $first->id]);
+        $this->assertTrue((bool) $division->fresh()->nominations_published);
+        $this->assertDatabaseCount('registration_orders', 0);
+        Mail::assertNothingSent();
+        Queue::assertNothingPushed();
+        if ($output = getenv('CT_ROSTER_TRANSFER_QA_OUTPUT')) {
+            if (! is_dir($output)) mkdir($output, 0777, true);
+            $event->load('eventCategories.category');
+            file_put_contents($output.'/roster.html', view('backend.nominations.cavaliers-roster', compact('event'))->render());
+        }
+    }
+
     public function test_rejects_duplicates_over_capacity_missing_players_and_stale_revisions(): void
     {
         [$event, $division] = $this->division();

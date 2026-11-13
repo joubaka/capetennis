@@ -30,3 +30,28 @@ entries from its active-paid duplicate check, including rows with a withdrawal
 timestamp. An active paid entry still blocks a duplicate. Re-entry creates a
 distinct registration rather than reactivating or overwriting the old record;
 the normal event, category, invitation and eligibility gates still apply.
+
+## Reviewed test-history archive
+
+`entries:archive-free-test` previews one exact withdrawn administrative test
+through `EntryService::archiveFreeTestHistory`. It requires an existing
+super-user, exact event/category/player/entry/receipt IDs, a reason and evidence
+that no money was collected. Apply additionally requires the unchanged preview
+fingerprint. This is not an event-wide reset or an order purge.
+
+The service rejects other entries in the event, shared registrations, payment,
+wallet, refund, selection and competition dependencies, and private collection
+evidence. It supports legacy receipts without a registration ID only with exact
+event/category/player linkage and the original canonical unpaid-entry audit.
+
+Apply soft-deletes the withdrawn entry and archives its zero-money receipt.
+Only untouched generated system-fee projections may be removed; their snapshots
+and the exact source records remain in a maintenance audit. The global player,
+registration and identity links remain intact. Event entry and finance views
+become clear; account statements deliberately retain historical entries. This
+is reversible archival, not permanent erasure of every trace.
+
+A newly created entry invalidates the empty-event precondition. Obtain a fresh
+preview and resolve that changed scope rather than reusing an earlier cleanup
+plan or removing the new entry implicitly. Execution on production requires
+explicit authorization and the reviewed code to be available there.

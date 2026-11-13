@@ -87,12 +87,8 @@
         actions.textContent = draft.declined.some(({ id }) => id === player.id) ? 'Declined' : 'Already on this roster';
       } else {
         for (const key of Object.keys(limits)) {
-          const action = key === 'selected' ? 'Add selected' : 'Add reserve';
-          actions.append(button(action, () => {
-            draft[key].push(player);
-            skippedCandidates.delete(player.id);
-            changed();
-          }, draft[key].length >= limits[key]));
+          const action = key === 'selected' ? 'Add to nominations' : 'Add reserve';
+          actions.append(button(action, () => transferPlayer(player, key), draft[key].length >= limits[key]));
         }
       }
       row.append(name, actions);
@@ -173,21 +169,14 @@
           return control;
         };
         menu.append(
-          item(`Move to ${labels[opposite].toLowerCase()}`, () => {
-            draft[opposite].push(draft[key].splice(index, 1)[0]);
-            changed();
-          }, draft[opposite].length >= limits[opposite]),
+          item(`Move to ${opposite === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, opposite, key), draft[opposite].length >= limits[opposite]),
           item('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0),
           item('Mark declined', () => {
             draft.declined.push(draft[key].splice(index, 1)[0]);
             skippedCandidates.add(player.id);
             changed();
           }),
-          item('Remove', () => {
-            draft[key].splice(index, 1);
-            skippedCandidates.add(player.id);
-            changed();
-          })
+          item(meritCandidates.some(({ id }) => id === player.id) ? 'Return to merit list' : `Remove from ${key === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, null, key))
         );
         menu.lastElementChild.classList.add('text-danger');
         dropdown.append(toggle, menu);
@@ -276,8 +265,18 @@
     element('[data-merit-message]').hidden = next.length > 0;
     meritList.replaceChildren(...next.map((candidate) => {
       const row = document.createElement('li');
-      row.className = 'list-group-item d-flex gap-2 align-items-baseline px-2 py-1';
-      row.append(playerSummary(candidate, candidate));
+      row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-baseline justify-content-between px-2 py-1';
+      const actions = document.createElement('div');
+      actions.className = 'd-flex flex-wrap gap-1';
+      for (const key of Object.keys(limits)) {
+        const action = key === 'selected' ? 'Add to nominations' : 'Add reserve';
+        const control = button(action, () => transferPlayer(candidate, key), draft[key].length >= limits[key]);
+        control.dataset.transferTarget = key;
+        control.dataset.playerId = String(candidate.id);
+        control.setAttribute('aria-label', `${action} — ${candidate.name}`);
+        actions.append(control);
+      }
+      row.append(playerSummary(candidate, candidate), actions);
       return row;
     }));
   }
@@ -584,6 +583,50 @@
     setStatus('Unsaved changes.');
   }
 
+  async function transferPlayer(player, target, source = null) {
+    if (!draft || busy || stale || (target && !Object.hasOwn(limits, target))) return;
+    if (target && draft[target].length >= limits[target]) return;
+    if (!source && rosterIds().has(player.id)) return;
+    const proposed = { ...draft, ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, draft[key].slice()])) };
+    if (source) {
+      const index = proposed[source].findIndex(({ id }) => id === player.id);
+      if (index < 0 || source === target) return;
+      proposed[source].splice(index, 1);
+    }
+    if (target) proposed[target].push({ id: player.id, name: player.name });
+    busy = true;
+    searchVersion++;
+    closeSwap();
+    render();
+    setStatus(dirty ? 'Saving transfer and current draft edits…' : 'Saving transfer…');
+    try {
+      const { revision } = await request(division.selectedOptions[0].dataset.draftUrl, {
+        method: 'PUT',
+        body: JSON.stringify({ revision: proposed.revision,
+          ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, proposed[key].map(({ id }) => id)])),
+        }),
+      });
+      if (typeof revision !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(revision)) throw new Error('The save could not be confirmed.');
+      draft = { ...proposed, revision };
+      dirty = false;
+      if (target) skippedCandidates.delete(player.id);
+      else skippedCandidates.add(player.id);
+      setStatus(target ? `${player.name} added to the end of ${target === 'selected' ? 'nominations' : 'reserves'}. Draft saved.`
+        : `${player.name} removed from the draft. Draft saved.`);
+    } catch (error) {
+      // A network/server error may follow a committed write. Keep the pre-action view
+      // and pending edits, but require an authoritative reload before another mutation.
+      stale = error.status !== 422;
+      reload.classList.toggle('d-none', !stale);
+      const outcome = error.status === 409 ? 'The saved draft changed. Reload it before continuing.'
+        : stale ? 'The save outcome is unconfirmed. Reload the saved draft before continuing.' : 'Transfer rejected. Your draft is unchanged.';
+      setStatus(`${error.message} ${outcome}`, true);
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
   function moveWithin(key, index, offset) {
     const list = draft[key];
     [list[index], list[index + offset]] = [list[index + offset], list[index]];
@@ -657,6 +700,7 @@
   }
 
   divisionChoices.forEach((choice) => choice.addEventListener('click', () => {
+    if (busy) return;
     if (choice.dataset.divisionChoice === activeDivision) return;
     if (dirty && !window.confirm('Discard unsaved changes in this division?')) {
       return;
@@ -665,6 +709,7 @@
     load();
   }));
   reload.addEventListener('click', () => {
+    if (busy) return;
     if (!dirty || window.confirm('Discard unsaved changes and load the saved draft?')) load();
   });
 
@@ -688,6 +733,7 @@
   });
 
   save.addEventListener('click', async () => {
+    if (!draft || !dirty || busy || stale) return;
     busy = true;
     searchVersion++;
     closeSwap();
