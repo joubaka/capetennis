@@ -29,10 +29,11 @@ class FreeTestEntryArchiveService
             'event_id' => 'required|integer|min:1', 'category_event_id' => 'required|integer|min:1',
             'player_id' => 'required|integer|min:1', 'entry_id' => 'required|integer|min:1',
             'receipt_id' => 'required|integer|min:1', 'reason' => 'required|string|min:15|max:500',
+            'retained_entry_id' => 'sometimes|integer|min:1|different:entry_id',
             'evidence' => 'required|string|min:15|max:500',
         ])->validate();
         $ids = array_map('intval', array_intersect_key($data, array_flip([
-            'event_id', 'category_event_id', 'player_id', 'entry_id', 'receipt_id',
+            'event_id', 'category_event_id', 'player_id', 'entry_id', 'receipt_id', 'retained_entry_id',
         ])));
         if ($fingerprint !== null && ! preg_match('/^[a-f0-9]{64}$/D', $fingerprint)) {
             $this->reject('Apply requires the exact fingerprint from a fresh preview.');
@@ -61,6 +62,8 @@ class FreeTestEntryArchiveService
                 || (int) $receipt->player_id !== $ids['player_id']) {
                 $this->reject('The exact event, category, player, entry and receipt do not match.');
             }
+            $retained = isset($ids['retained_entry_id'])
+                ? $this->retainedFreeEntry($ids['retained_entry_id'], $entry, $category, $ids['player_id']) : null;
             $prior = Activity::where('log_name', 'maintenance')->where('description', self::ACTION)
                 ->where('subject_type', $entry->getMorphClass())->where('subject_id', $entry->id)
                 ->lockForUpdate()->first();
@@ -74,6 +77,7 @@ class FreeTestEntryArchiveService
                     || $properties->get('reason') !== $data['reason'] || $properties->get('evidence') !== $data['evidence']
                     || ($before['registration'] ?? null) !== $registration->getAttributes()
                     || ($before['player_links'] ?? null) !== $currentLinks
+                    || ($before['retained'] ?? null) !== $retained
                     || $properties->get('after_entry') !== $entry->getAttributes()
                     || $properties->get('after_receipt') !== $receipt->getAttributes()) {
                     $this->reject('This entry has a prior archive; its exact archived state and original request must match.');
@@ -86,7 +90,7 @@ class FreeTestEntryArchiveService
             if (! Player::whereKey($ids['player_id'])->exists() || $links->count() !== 1
                 || (int) $links->first()->player_id !== $ids['player_id']
                 || CategoryEventRegistration::withTrashed()->where('registration_id', $registration->id)->count() !== 1
-                || CategoryEventRegistration::withTrashed()->whereIn('category_event_id', $categories->pluck('id'))->count() !== 1
+                || CategoryEventRegistration::withTrashed()->whereIn('category_event_id', $categories->pluck('id'))->count() !== ($retained ? 2 : 1)
                 || $registration->competition_replacement !== null) {
                 $this->reject('The registration must be a single-player, unshared test in an otherwise empty event.');
             }
@@ -141,11 +145,12 @@ class FreeTestEntryArchiveService
                     $this->reject('A privately paid collection note exists in the audit history.');
                 }
             }
-            $this->assertNoDependencies($event, $category, $entry);
+            $this->assertNoDependencies($event, $category, $entry, $retained);
             $expenses = EventExpense::where('event_id', $event->id)->orderBy('id')->lockForUpdate()->get();
             $this->assertSyntheticExpenses($expenses, $receipt);
             $before = ['ids' => $ids, 'actor_id' => (int) $actor->id, 'reason' => $data['reason'], 'evidence' => $data['evidence'],
                 'receipt_registration_link' => $hasReceiptRegistration ? 'registration_id' : 'unique_event_category_player',
+                'retained' => $retained,
                 'event' => $event->only(['id', 'eventType', 'entryFee', 'cape_tennis_fee', 'published', 'signUp', 'updated_at']),
                 'category' => $category->getAttributes(), 'entry' => $entry->getAttributes(), 'receipt' => $receipt->getAttributes(),
                 'registration' => $registration->getAttributes(), 'player_links' => $links->map(fn ($row) => (array) $row)->all(),
@@ -156,16 +161,21 @@ class FreeTestEntryArchiveService
                 return ['preview' => true, 'ids' => $ids, 'fingerprint' => $current,
                     'cape_fee_liability_to_archive' => (float) $receipt->cape_tennis_fee,
                     'system_expense_ids' => $expenses->pluck('id')->all(),
+                    'retained_entry_id' => $retained['entry']['id'] ?? null,
                     'effect' => 'Soft-delete this withdrawn test entry; archive its zero-money admin receipt; clear only its generated fee projections. Keep player, registration, identity links and maintenance audit.'];
             }
             if (! hash_equals($current, $fingerprint)) $this->reject('The reviewed test state changed. Obtain a new preview.');
 
-            return FinanceMutationScope::run(['free_test_archive', 'registration_payment_state_write', 'payment_transaction_write'], function () use ($event, $entry, $receipt, $actor, $before, $current, $ids): array {
+            return FinanceMutationScope::run(['free_test_archive', 'registration_payment_state_write', 'payment_transaction_write'], function () use ($event, $entry, $receipt, $actor, $before, $current, $ids, $category): array {
                 $archivedAt = now()->format('Y-m-d H:i:s');
                 $entry->delete();
                 $ledger = app(FinancialLedgerService::class);
                 $ledger->archiveFreeTestReceipt($event, $receipt, $archivedAt);
                 $ledger->clearArchivedTestSystemExpenses($event);
+                if (isset($ids['retained_entry_id'])
+                    && $before['retained'] !== $this->retainedFreeEntry($ids['retained_entry_id'], $entry, $category, $ids['player_id'])) {
+                    $this->reject('The retained free entry changed during cleanup.');
+                }
                 $audit = activity('maintenance')->performedOn($entry)->causedBy($actor)
                     ->withProperties(['ids' => $ids, 'fingerprint' => $current, 'reason' => $before['reason'], 'evidence' => $before['evidence'],
                         'before' => $before, 'after_entry' => $entry->fresh()->getAttributes(),
@@ -176,9 +186,77 @@ class FreeTestEntryArchiveService
         });
     }
 
-    private function assertNoDependencies(Event $event, CategoryEvent $category, CategoryEventRegistration $entry): void
+    /** The sole exception to an empty event is one explicitly reviewed frontend free entry. */
+    private function retainedFreeEntry(int $id, CategoryEventRegistration $target, CategoryEvent $category, int $playerId): array
+    {
+        $entry = CategoryEventRegistration::withTrashed()->whereKey($id)->lockForUpdate()->first();
+        if (! $entry || $entry->id === $target->id || (int) $entry->category_event_id !== (int) $category->id
+            || (int) $entry->registration_id === (int) $target->registration_id
+            || (int) $entry->user_id !== (int) $target->user_id || $entry->trashed()
+            || $entry->status !== 'active' || (int) $entry->payment_status_id !== 1
+            || ! in_array($entry->payment_method, [null, '', 'free'], true)
+            || $entry->admin_payment_status !== null) {
+            $this->reject('The retained entry must be a separate active frontend free entry for the exact player, category and payer.');
+        }
+        foreach (['withdrawn_at', 'withdrawn_by', 'pf_transaction_id', 'wallet_transaction_id', 'refunded_at', 'refund_method',
+            'refund_waived_at', 'refund_waived_by', 'refund_waiver_reason', 'refund_account_name', 'refund_bank_name',
+            'refund_account_number', 'refund_branch_code', 'refund_account_type'] as $field) {
+            if (filled($entry->getRawOriginal($field))) $this->reject('The retained entry has withdrawal, payment or refund evidence.');
+        }
+        if (! in_array($entry->refund_status, CategoryEventRegistration::NO_REFUND_STATUSES, true)
+            || (float) $entry->refund_gross !== 0.0 || (float) $entry->refund_fee !== 0.0 || (float) $entry->refund_net !== 0.0) {
+            $this->reject('The retained entry has refund state.');
+        }
+        $registration = Registration::whereKey($entry->registration_id)->lockForUpdate()->first();
+        $links = DB::table('player_registrations')->where('registration_id', $entry->registration_id)->lockForUpdate()->get();
+        $items = DB::table('registration_order_items')->where('registration_id', $entry->registration_id)->orderBy('id')->lockForUpdate()->get();
+        if (! $registration || $registration->competition_replacement !== null || $links->count() !== 1
+            || (int) $links->first()->player_id !== $playerId || $items->count() !== 1
+            || CategoryEventRegistration::withTrashed()->where('registration_id', $registration->id)->count() !== 1) {
+            $this->reject('The retained registration must be unshared with one exact player and one free order item.');
+        }
+        $item = $items->first();
+        $order = \App\Models\RegistrationOrder::whereKey($item->order_id)->lockForUpdate()->first();
+        if (! $order || (int) $order->user_id !== (int) $entry->user_id || $order->status !== 'completed'
+            || ! $order->pay_status || $order->payment_method !== 'free' || $order->payfast_paid || $order->wallet_debited
+            || (float) $order->total_fee !== 0.0 || (float) $order->wallet_reserved !== 0.0
+            || (float) $order->payfast_amount_due !== 0.0 || filled($order->payfast_pf_payment_id)
+            || $order->payfast_handed_off_at !== null || $order->wallet_transaction_id !== null
+            || (int) $item->player_id !== $playerId || (int) $item->category_event_id !== (int) $category->id
+            || (int) $item->user_id !== (int) $entry->user_id || (float) $item->item_price !== 0.0
+            || $order->items()->count() !== 1) {
+            $this->reject('The retained order must be a completed, wholly free frontend order with no payment or reservation evidence.');
+        }
+        foreach (['registration_manual_receipts', 'trial_payment_proofs', 'trial_participation_receipts',
+            'trial_participation_proofs'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->where('order_id', $order->id)->lockForUpdate()->first()) {
+                $this->reject('The retained order has manual payment or proof evidence.');
+            }
+        }
+        if (Schema::hasTable('registration_payment_recoveries')
+            && DB::table('registration_payment_recoveries')->where('registration_order_id', $order->id)->lockForUpdate()->first()) {
+            $this->reject('The retained order has payment recovery evidence.');
+        }
+        $provider = Transaction::where(function ($query) use ($order, $registration) {
+            $query->where(fn ($match) => $match->where('custom_int5', $order->id)
+                ->where(fn ($kind) => $kind->whereNull('custom_str5')->orWhere('custom_str5', '')));
+            if (Schema::hasColumn('transactions_pf', 'registration_id')) $query->orWhere('registration_id', $registration->id);
+        })->lockForUpdate()->first();
+        $wallet = DB::table('wallet_transactions')->where(function ($query) use ($order, $entry) {
+            $query->where(fn ($payment) => $payment->where('source_type', 'event_registration_wallet_payment')->where('source_id', $order->id))
+                ->orWhere(fn ($refund) => $refund->whereIn('source_type', ['admin_full_refund', 'admin_refund', 'event_registration_refund'])
+                    ->where('source_id', $entry->id));
+        })->lockForUpdate()->first();
+        if ($provider || $wallet) $this->reject('The retained order has provider or wallet history.');
+        return ['entry' => $entry->getAttributes(), 'registration' => $registration->getAttributes(),
+            'player_links' => $links->map(fn ($row) => (array) $row)->all(), 'order' => $order->getAttributes(),
+            'items' => $items->map(fn ($row) => (array) $row)->all()];
+    }
+
+    private function assertNoDependencies(Event $event, CategoryEvent $category, CategoryEventRegistration $entry, ?array $retained = null): void
     {
         $registrationId = (int) $entry->registration_id;
+        $registrationIds = $retained ? [$registrationId, (int) $retained['entry']['registration_id']] : [$registrationId];
         $references = [
             'registration_order_items' => ['registration_id' => $registrationId, 'category_event_id' => $category->id],
             'draw_registrations' => ['registration_id' => $registrationId],
@@ -206,9 +284,22 @@ class FreeTestEntryArchiveService
             $available = array_flip(Schema::getColumnListing($table));
             $columns = array_intersect_key($columns, $available);
             if (! $columns) continue;
-            if (DB::table($table)->where(function ($query) use ($columns) {
-                foreach ($columns as $column => $value) $query->orWhere($column, $value);
-            })->lockForUpdate()->first()) {
+            foreach ($columns as $column => $value) {
+                if (in_array($column, ['registration_id', 'registration1_id', 'registration2_id', 'winner_registration', 'loser_registration'], true)) {
+                    $columns[$column] = $registrationIds;
+                } elseif ($column === 'entry_id' && $retained) {
+                    $columns[$column] = [$entry->id, $retained['entry']['id']];
+                }
+            }
+            $query = DB::table($table)->where(function ($query) use ($columns) {
+                foreach ($columns as $column => $value) {
+                    is_array($value) ? $query->orWhereIn($column, $value) : $query->orWhere($column, $value);
+                }
+            });
+            if ($table === 'registration_order_items' && $retained) {
+                $query->whereNotIn('id', array_column($retained['items'], 'id'));
+            }
+            if ($query->lockForUpdate()->first()) {
                 $this->reject('Related '.$table.' evidence prevents test cleanup.');
             }
         }

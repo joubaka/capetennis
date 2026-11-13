@@ -63,6 +63,11 @@ Staff can record or undo a decline in the private draft. Saving a draft
 preserves the last public list. Publishing from the roster requires reviewing
 the differences against the current nominations and applies the saved order.
 Unpublishing hides the list and retains its nominations.
+The registration-facing public Cavaliers nomination list displays Name Surname
+alphabetically by first name, then surname (case-insensitive), with nomination ID
+as the final stable tie-break. It is an unnumbered presentation only: retain saved
+`roster_position`, private nomination/reserve order and backend publication-review
+order. Keep the existing event-isolation and category-publication gates.
 
 The Cavaliers nomination report shares a private copy of saved divisions with
 chosen existing accounts; it does not publish nominations or grant event access.

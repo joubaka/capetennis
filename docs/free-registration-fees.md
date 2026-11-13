@@ -39,7 +39,7 @@ super-user, exact event/category/player/entry/receipt IDs, a reason and evidence
 that no money was collected. Apply additionally requires the unchanged preview
 fingerprint. This is not an event-wide reset or an order purge.
 
-The service rejects other entries in the event, shared registrations, payment,
+By default the service rejects other entries in the event, shared registrations, payment,
 wallet, refund, selection and competition dependencies, and private collection
 evidence. It supports legacy receipts without a registration ID only with exact
 event/category/player linkage and the original canonical unpaid-entry audit.
@@ -51,7 +51,12 @@ registration and identity links remain intact. Event entry and finance views
 become clear; account statements deliberately retain historical entries. This
 is reversible archival, not permanent erasure of every trace.
 
-A newly created entry invalidates the empty-event precondition. Obtain a fresh
-preview and resolve that changed scope rather than reusing an earlier cleanup
-plan or removing the new entry implicitly. Execution on production requires
-explicit authorization and the reviewed code to be available there.
+A newly created entry invalidates the empty-event precondition. The explicit
+`--retain-entry=ID` exception can preserve one exact separate active frontend
+entry for the same player, category and payer. Its order must be completed and
+wholly free, with no provider, wallet, reservation, manual-payment or refund
+evidence. The full entry, registration, player links, order and item are locked
+and fingerprinted; apply and replay verify they remain unchanged. Other entries
+still block cleanup. Obtain a fresh preview instead of removing a newly created
+entry implicitly. Execution on production requires explicit authorization and
+the reviewed code to be available there.

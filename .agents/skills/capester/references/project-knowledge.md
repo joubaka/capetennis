@@ -59,6 +59,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Product and browser preferences
 
+- Registration player confirmation must end with an explicit saved button state,
+  not hidden loading markup. Keep the served standalone checkout script and its
+  resource counterpart aligned; ambiguous saves require read-only confirmation
+  before retrying. See `docs/registration-checkout-feedback.md` and the checkout
+  player-save state and rendered-browser regressions.
+
 - Use Cape Tennis navy, blue and orange for Player Plus branding. Reserve green
   for meaningful success or ball-level states. Keep rating/age badges legible and
   compact, and keep scheduling focused on one primary workflow.

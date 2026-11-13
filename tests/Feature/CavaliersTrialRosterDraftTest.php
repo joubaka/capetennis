@@ -100,7 +100,8 @@ class CavaliersTrialRosterDraftTest extends TestCase
 
         $published = $this->postJson($url, $publish)->assertOk()->assertJsonPath('published', true)->json();
         $this->assertSame([$second->id, $first->id], array_column($published['players'], 'id'));
-        $this->get($page)->assertOk()->assertSeeInOrder([$second->full_name, $first->full_name])
+        $publicNames = collect([$first, $second])->sortBy(fn ($player) => mb_strtolower($player->name).' '.mb_strtolower($player->surname))->map->full_name->all();
+        $this->get($page)->assertOk()->assertSeeInOrder($publicNames)
             ->assertDontSee($reserve->full_name)->assertDontSee($legacy->full_name);
         $this->postJson($url, $publish)->assertConflict();
         $unpublished = $this->postJson($url, ['publish' => false, 'fingerprint' => $published['fingerprint']])
@@ -163,6 +164,42 @@ class CavaliersTrialRosterDraftTest extends TestCase
             $event->load('eventCategories.category');
             file_put_contents($output.'/roster.html', view('backend.nominations.cavaliers-roster', compact('event'))->render());
         }
+    }
+
+    public function test_public_cavaliers_nominees_are_first_name_alphabetical_without_changing_private_or_stored_merit_order(): void
+    {
+        [$event, $division] = $this->division();
+        [$foreignEvent] = $this->division();
+        $hiddenDivision = $this->division($event, 'U12 Boys')[1];
+        $actor = $this->administrator($event);
+        $players = collect([
+            ['name' => 'Zoe', 'surname' => 'Alpha'], ['name' => 'Adam', 'surname' => 'Zebra'],
+            ['name' => 'Alex', 'surname' => 'Brown'], ['name' => 'Alex', 'surname' => 'Able'],
+            ['name' => 'alex', 'surname' => 'able'], ['name' => 'Private', 'surname' => 'Reserve'],
+        ])->map(fn ($name) => Player::factory()->create($name));
+        foreach ($players->take(5) as $index => $player) EventNomination::forceCreate([
+            'event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $player->id, 'roster_position' => $index + 1,
+        ]);
+        EventNomination::forceCreate(['event_id' => $event->id, 'category_event_id' => $division->id, 'nominee_name' => 'Aaron', 'nominee_surname' => 'Profileless', 'roster_position' => 6]);
+        EventNomination::forceCreate(['event_id' => $foreignEvent->id, 'category_event_id' => $division->id, 'nominee_name' => 'AAA', 'nominee_surname' => 'Foreign']);
+        EventNomination::forceCreate(['event_id' => $event->id, 'category_event_id' => $hiddenDivision->id, 'nominee_name' => 'AAA', 'nominee_surname' => 'Hidden']);
+        $division->update(['nominations_published' => true]);
+        $hiddenDivision->update(['nominations_published' => false]);
+        $this->actingAs($actor);
+        $url = route('backend.cavaliers-roster.show', [$event, $division]);
+        $privateOrder = [$players[0]->id, $players[2]->id, $players[1]->id, $players[4]->id, $players[3]->id];
+        $this->putJson($url, ['revision' => null, 'selected' => $privateOrder, 'reserves' => [$players[5]->id]])->assertOk();
+        $privateBefore = $this->getJson($url)->assertOk()->json();
+        $storedBefore = EventNomination::orderBy('id')->get()->map->getAttributes()->all();
+        auth()->logout();
+        $page = $this->get(route('events.show', $event))->assertOk()->assertSee('Alphabetical by first name.')
+            ->assertSeeInOrder(['Aaron Profileless', 'Adam Zebra', 'Alex Able', 'alex able', 'Alex Brown', 'Zoe Alpha'])
+            ->assertDontSee('Private Reserve')->assertDontSee('AAA Foreign')->assertDontSee('AAA Hidden')
+            ->assertDontSee('roster_position', false)->assertDontSee('data-roster-position', false);
+        $this->assertSame($storedBefore, EventNomination::orderBy('id')->get()->map->getAttributes()->all());
+        $this->actingAs($actor)->getJson($url)->assertOk()->assertExactJson($privateBefore);
+        $this->assertSame($privateOrder, array_column($privateBefore['selected'], 'id'));
+        $this->assertStringContainsString('<ul class="list-group list-group-flush">', $page->getContent());
     }
 
     public function test_rejects_duplicates_over_capacity_missing_players_and_stale_revisions(): void

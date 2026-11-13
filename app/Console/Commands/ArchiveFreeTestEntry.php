@@ -14,6 +14,7 @@ class ArchiveFreeTestEntry extends Command
         {entry : Exact category-entry ID} {receipt : Exact Admin Entry receipt ID}
         {--actor= : Existing super-user ID} {--reason= : Reviewed cleanup reason}
         {--evidence= : Evidence that this was an unpaid zero-money test}
+        {--retain-entry= : Exact separate completed free frontend entry to preserve unchanged}
         {--fingerprint= : Exact fingerprint returned by the read-only preview}
         {--apply : Archive only the reviewed test history atomically}';
 
@@ -31,11 +32,13 @@ class ArchiveFreeTestEntry extends Command
             return self::FAILURE;
         }
         try {
-            $result = $entries->archiveFreeTestHistory($actor, [
+            $ids = [
                 'event_id' => $this->argument('event'), 'category_event_id' => $this->argument('category'),
                 'player_id' => $this->argument('player'), 'entry_id' => $this->argument('entry'),
                 'receipt_id' => $this->argument('receipt'),
-            ], (string) $this->option('reason'), (string) $this->option('evidence'),
+            ];
+            if ($this->option('retain-entry') !== null) $ids['retained_entry_id'] = $this->option('retain-entry');
+            $result = $entries->archiveFreeTestHistory($actor, $ids, (string) $this->option('reason'), (string) $this->option('evidence'),
                 $this->option('apply') ? (string) $this->option('fingerprint') : null);
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $messages) {

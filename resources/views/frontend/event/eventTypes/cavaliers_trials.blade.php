@@ -1,5 +1,10 @@
 @php
   $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
+  $publicNominationKey = static fn ($nomination) => [
+      mb_strtolower(trim($nomination->player?->name ?? $nomination->nominee_name ?? '')),
+      mb_strtolower(trim($nomination->player?->surname ?? $nomination->nominee_surname ?? '')),
+      (int) $nomination->id,
+  ];
 @endphp
 <div class="row">
 
@@ -15,11 +20,12 @@
 
                 <div class="card p-4 mt-4 ">
                     <h5 class="pb-1 mb-4">Nominations</h5>
+                    <p class="small text-muted">Alphabetical by first name.</p>
                     <div class="row">
                         @foreach($event->eventCategories as $eventCategory)
                         @php
                             $nominations = $eventCategory->nominations->where('event_id', $event->id)
-                                ->sortBy(fn ($nomination) => $nomination->roster_position ?? PHP_INT_MAX);
+                                ->sort(static fn ($left, $right) => $publicNominationKey($left) <=> $publicNominationKey($right));
                         @endphp
                         <div class="col-md-6 col-sm-12">
                             <div class="card shadow-none bg-transparent border border-primary m-1 p-2">
