@@ -85,7 +85,7 @@ class DrawSetupController extends Controller
             $sameWorkflow = $draw->settings?->workflow === $data['workflow'];
             $roundRobin = in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
             $groupCount = $roundRobin && isset($data['groups']) ? (int) $data['groups'] : null;
-            $groupsChanged = $groupCount !== null && $draw->groups()->count() !== $groupCount;
+            $groupsChanged = $groupCount !== null && $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() !== $groupCount;
             $currentChallenges = $draw->settings?->workflow === 'feed_in_monrad' && (bool) ($draw->settings?->playoff_config['challenge_playoffs'] ?? false);
             $challengePairs = $challengePlayoffs ? array_map('intval', $data['challenge_pairs'] ?? []) : [];
             sort($challengePairs);

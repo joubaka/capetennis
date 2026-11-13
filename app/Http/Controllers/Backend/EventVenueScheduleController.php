@@ -23,12 +23,19 @@ final class EventVenueScheduleController extends Controller
         $draws = $event->draws()->whereIn('id', $data['draw_ids'])->get();
         abort_unless($draws->count() === count($data['draw_ids']), 422, 'Choose draws belonging to this event.');
         try {
-            $count = DB::transaction(fn () => $draws->sum(fn ($draw) => app(RoundRobinController::class)->prepareSchedulePlayoffs($draw)));
+            $count = DB::transaction(fn () => $draws->sum(function ($draw) {
+                if ($draw->isTwoStageRoundRobin()) {
+                    $this->authorize('generateFixtures', $draw);
+                    abort_if($draw->locked || $draw->published, 409, 'Unpublish and unlock the draw before preparing matches.');
+                    return app(\App\Services\Draw\TwoStageRoundRobinService::class)->prepare($draw)->count();
+                }
+                return app(RoundRobinController::class)->prepareSchedulePlayoffs($draw);
+            }));
         } catch (\InvalidArgumentException $exception) {
             return back()->withErrors(['playoffs' => $exception->getMessage()]);
         }
         return redirect()->route('backend.event-venue-schedule.index', ['event' => $event->id, 'draw_ids' => $data['draw_ids']])
-            ->with('success', $count ? "Prepared {$count} playoff matches for scheduling. Qualifiers remain undecided until group results are complete." : 'Existing playoff matches are ready to select.');
+            ->with('success', $count ? "Prepared {$count} qualification matches for scheduling. Qualifiers remain undecided until progression is confirmed." : 'Existing playoff matches are ready to select.');
     }
 
     public function index(Request $request, Event $event, EventAnnouncementService $announcements)

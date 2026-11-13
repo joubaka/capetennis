@@ -69,6 +69,10 @@
       }
     };
     state.selectAll = () => draws.filter(state.ready).forEach(draw=>state.selectDraw(draw.id,true));
+    state.selectAllMatches = (checked = true) => state.selectedDrawIds.forEach(id => {
+      const draw = draws.find(draw => Number(draw.id) === id);
+      rounds(draw).forEach(round => state.selectRound(id, round, checked && state.matches(id, round).some(state.eligible)));
+    });
     state.selectionCounts = () => state.selectedDrawIds.map(id => ({id, name:draws.find(draw=>Number(draw.id)===id)?.name || '',
       count:[...(state.selectedRounds.get(id)||[])].reduce((sum,round)=>sum+(state.selectedFixtures.get(id+':'+round)?.size||0),0)}));
     state.clear = () => [...state.selectedDrawIds].forEach(id=>state.selectDraw(id,false));
@@ -175,9 +179,9 @@
       ? counts.map(row=>`${row.name}: ${row.count}`).join(' · ')+` · Total: ${counts.reduce((sum,row)=>sum+row.count,0)} selected matches`
       : 'No matches selected.';};
     const renderDraws=()=>{
-      const preparationRows=[...(get('prepare-playoff-form')?.querySelectorAll('[data-playoff-draw]')||[])];
+      const preparationRows=['prepare-playoff-form','prepare-second-round-robin-form'].flatMap(id=>[...(get(id)?.querySelectorAll('[data-playoff-draw]')||[])]);
       preparationRows.forEach(row=>{const selected=state.selectedDrawIds.includes(Number(row.dataset.playoffDraw));row.hidden=!selected;const input=row.querySelector('input');input.disabled=!selected||row.dataset.playoffProtected==='1';input.checked=!input.disabled;});
-      const preparationNotice=get('pending-playoff-rounds');if(preparationNotice)preparationNotice.hidden=!preparationRows.some(row=>!row.hidden);
+      [['pending-playoff-rounds','prepare-playoff-form'],['pending-second-round-robin','prepare-second-round-robin-form']].forEach(([noticeId,formId])=>{const notice=get(noticeId);if(notice)notice.hidden=![...(get(formId)?.querySelectorAll('[data-playoff-draw]')||[])].some(row=>!row.hidden);});
       get('day-batch-draws').innerHTML=state.draws.map(draw=>`<label class="col-12 col-md-6 d-flex gap-2 align-items-center"><input type="checkbox" class="form-check-input mt-0 day-batch-draw" value="${Number(draw.id)}" ${state.selectedDrawIds.includes(Number(draw.id))?'checked':''} ${state.ready(draw)?'':'disabled'}><span>${escape(draw.name)}${draw.locked?' (locked)':state.ready(draw)?'':' (generate matches first)'}</span></label>`).join('');
       get('day-batch-order').innerHTML=state.selectedDrawIds.length?'<div class="small fw-semibold mb-1">Selected draw order</div>'+state.selectedDrawIds.map((id,index)=>`<div class="d-flex gap-2 align-items-center mb-1"><span class="flex-grow-1">${index+1}. ${escape(state.draws.find(draw=>Number(draw.id)===id)?.name)}</span><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="up" ${index?'':'disabled'} aria-label="Move draw up">Up</button><button type="button" class="btn btn-sm btn-outline-secondary" data-day-draw-move="${id}" data-direction="down" ${index<state.selectedDrawIds.length-1?'':'disabled'} aria-label="Move draw down">Down</button></div>`).join(''):'';
       get('day-batch-next-courts').disabled=!state.selectedDrawIds.length;
@@ -244,11 +248,13 @@
     state.restore(saved());applySavedControls();renderDraws();renderVenues();renderRounds();
     if(options.replanSaved){get('day-batch-replan').checked=true;get('day-batch-courts-step').hidden=false;get('day-batch-rounds-step').hidden=false;}
     if(preparationResume){get('day-batch-courts-step').hidden=false;get('day-batch-rounds-step').hidden=false;get('day-batch-limit').checked=Boolean(preparationResume.payload.limit_daily_matches);}
-    get('prepare-playoff-form')?.addEventListener('submit',()=>{
+    ['prepare-playoff-form','prepare-second-round-robin-form'].forEach(id=>get(id)?.addEventListener('submit',()=>{
       try{if(resumeKey)doc.defaultView?.sessionStorage?.setItem(resumeKey,JSON.stringify({createdAt:Date.now(),payload:buildPayload(state,readOptions())}));}catch(error){/* Preparation remains available when browser storage is unavailable. */}
-    });
+    }));
     get('day-batch-all').addEventListener('click',()=>{state.selectAll();renderDraws();renderRounds();changed();});
     get('day-batch-clear').addEventListener('click',()=>{state.clear();renderDraws();renderRounds();changed();});
+    get('day-batch-all-matches').addEventListener('click',()=>{state.selectAllMatches();renderRounds();changed();});
+    get('day-batch-clear-matches').addEventListener('click',()=>{state.selectAllMatches(false);renderRounds();changed();});
     get('day-batch-workflow').addEventListener('change',event=>{
       const input=event.target;
       if(input.id==='day-batch-order-mode')updateGenderOrder();

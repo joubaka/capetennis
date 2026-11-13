@@ -182,25 +182,35 @@ final class ScheduleAvailability
         return $possible;
     }
 
-    /** Only exact disjoint ranks in one unambiguous group prove mutually exclusive entrants. */
+    /** Exact disjoint ranks in the same unambiguous source groups prove separate entrants. */
     public static function roundRobinPositionGroup(Fixture $fixture): ?string
     {
         if ($fixture->stage === 'RR' || $fixture->registration1_id || $fixture->registration2_id) return null;
-        $groupId = (int) $fixture->registration1_source_group_id;
-        if (! $groupId || $groupId !== (int) $fixture->registration2_source_group_id) return null;
-        $group = \App\Models\DrawGroup::with('groupRegistrations')->find($groupId);
-        if (! $group || (int) $group->draw_id !== (int) $fixture->draw_id) return null;
-        $registrations = $group->groupRegistrations->pluck('registration_id');
+        $groupIds = [(int) $fixture->registration1_source_group_id, (int) $fixture->registration2_source_group_id];
+        if (min($groupIds) < 1) return null;
+        $groups = \App\Models\DrawGroup::with('groupRegistrations')->whereIn('id', $groupIds)->get()->keyBy('id');
+        if ($groups->count() !== count(array_unique($groupIds))
+            || $groups->contains(fn ($group) => (int) $group->draw_id !== (int) $fixture->draw_id)) return null;
+        $registrations = $groups->flatMap(fn ($group) => $group->groupRegistrations->pluck('registration_id'));
         if ($registrations->count() !== $registrations->unique()->count()) return null;
         $positions = [(int) $fixture->registration1_source_position, (int) $fixture->registration2_source_position];
-        if (min($positions) < 1 || max($positions) > $registrations->count() || $positions[0] === $positions[1]) return null;
+        foreach ($positions as $slot => $position) {
+            if ($position < 1 || $position > $groups[$groupIds[$slot]]->groupRegistrations->count()) return null;
+        }
+        if ($groupIds[0] === $groupIds[1] && $positions[0] === $positions[1]) return null;
         // Two registration records for the same person cannot prove disjoint participants.
         $players = DB::table('player_registrations')->whereIn('registration_id', $registrations)->pluck('player_id');
         if ($players->count() !== $players->unique()->count()) return null;
         if (Fixture::where('draw_id', $fixture->draw_id)->where(fn ($query) => $query
             ->where('parent_fixture_id', $fixture->id)->orWhere('loser_parent_fixture_id', $fixture->id))->exists()) return null;
-        sort($positions);
-        return 'rr-position:'.$fixture->draw_id.':'.$groupId.':'.implode(',', $positions);
+        if ($groupIds[0] === $groupIds[1]) {
+            sort($positions);
+            return 'rr-position:'.$fixture->draw_id.':'.$groupIds[0].':'.implode(',', $positions);
+        }
+        $sources = [$groupIds[0].'.'.$positions[0], $groupIds[1].'.'.$positions[1]];
+        sort($sources, SORT_NATURAL);
+        sort($groupIds, SORT_NUMERIC);
+        return 'rr-position:'.$fixture->draw_id.':'.implode(',', $groupIds).':'.implode(',', $sources);
     }
 
     private static function disjointParticipantGroups(?string $left, ?string $right): bool

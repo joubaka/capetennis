@@ -102,6 +102,14 @@ class Draw extends Model
         return $this->settings?->workflow === 'round_robin_round_robin';
     }
 
+    /** Legacy second-stage groups were created only by confirmed progression. */
+    public function hasConfirmedSecondRoundRobin(): bool
+    {
+        return $this->isTwoStageRoundRobin()
+            && $this->groups()->where('round_robin_phase', 2)->exists()
+            && ($this->settings?->playoff_config['_second_round_robin']['state'] ?? 'confirmed') === 'confirmed';
+    }
+
     public function hasRoundRobinProgression(): bool
     {
         return in_array($this->settings?->workflow, ['round_robin_playoffs', 'round_robin_round_robin'], true);

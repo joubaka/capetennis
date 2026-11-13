@@ -226,7 +226,7 @@ class ScheduleEngine
           ]);
           $fixture->update(['scheduled' => 1]);
           $calendar->reserveWithRest((int) $best['venue'], (string) $best['court'], $best['time'], $duration + $gap, $participantMinutes,
-            array_filter([$fixture->registration1_id, $fixture->registration2_id]));
+            $registrations);
           unset($pending[$fixtureId]);
         }
         if (! $ready) throw new \InvalidArgumentException('Schedule the qualifying matches first, or include them in this update. Check for circular fixture links.');

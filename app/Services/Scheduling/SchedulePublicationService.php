@@ -44,7 +44,7 @@ final class SchedulePublicationService
                 'court' => (string) ($team ? $slot->court_label : $slot->court),
                 'duration' => (int) (($team ? $slot->duration_min : $slot->duration_minutes) ?: ($team ? 120 : 75)),
                 'participants' => $team ? [$fixture->teamTie?->home_side_name ?: $fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->teamTie?->away_side_name ?: $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]
-                    : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]];
+                    : [($fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ') ?: app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fixture, 1)), ($fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ') ?: app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fixture, 2))]];
         })->values();
     }
 
@@ -125,7 +125,7 @@ final class SchedulePublicationService
                     ? ($fixture->teamTie
                         ? [$fixture->tie_display['home'], $fixture->tie_display['away']]
                         : [$fixture->team1->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->team2->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')])
-                    : [$fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / '), $fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ')]] : []);
+                    : [($fixture->registration1?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ') ?: app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fixture, 1)), ($fixture->registration2?->players?->map(fn ($p) => trim($p->name.' '.$p->surname))->join(' / ') ?: app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fixture, 2))]] : []);
         })->filter()->sort(fn ($left, $right) => $venueOrder->compare($left['_fixture'], $right['_fixture']))->values();
         if ($firstMatchDrawIds->isNotEmpty()) {
             // Keep the original venue order while applying each draw's visibility rule.

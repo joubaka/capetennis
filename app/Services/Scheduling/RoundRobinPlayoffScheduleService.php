@@ -87,6 +87,7 @@ final class RoundRobinPlayoffScheduleService
 
     public function resolveFromStandings(Draw $draw, array $standings, bool $preserveOccupiedSlots = false): int
     {
+        if ($draw->isTwoStageRoundRobin()) return 0;
         $fixtures = $draw->drawFixtures()->where(function ($query) {
             $query->whereNotNull('registration1_source_group_id')
                 ->orWhereNotNull('registration2_source_group_id');

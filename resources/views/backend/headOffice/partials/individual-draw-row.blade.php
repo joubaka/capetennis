@@ -34,7 +34,7 @@
     $roundRobinTotal = $draw->drawFixtures()->where('stage', 'RR')->whereIn('draw_group_id', $sourceIds)->count();
     $roundRobinCompleted = $draw->drawFixtures()->where('stage', 'RR')->whereIn('draw_group_id', $sourceIds)->whereHas('fixtureResults')->count();
     $roundRobinRemaining = max(0, $roundRobinTotal - $roundRobinCompleted);
-    $secondCreated = $draw->groups()->where('round_robin_phase', 2)->exists();
+    $secondCreated = $draw->hasConfirmedSecondRoundRobin();
     $progressReady = !$draw->locked && !$secondCreated && $roundRobinTotal > 0 && $roundRobinRemaining === 0;
     $progressLabel = $secondCreated ? 'Stage 2 created' : ($progressReady ? 'Review & progress' : 'Stage 1 incomplete');
   }

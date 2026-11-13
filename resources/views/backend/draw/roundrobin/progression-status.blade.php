@@ -3,7 +3,7 @@
     $firstStageIds = $draw->groups->where('round_robin_phase', 1)->pluck('id');
     $firstMatches = $draw->drawFixtures->where('stage', 'RR')->whereIn('draw_group_id', $firstStageIds);
     $firstComplete = $firstMatches->filter(fn ($fixture) => $fixture->fixtureResults->isNotEmpty())->count();
-    $secondCreated = $draw->groups->contains('round_robin_phase', 2);
+    $secondCreated = $draw->hasConfirmedSecondRoundRobin();
   @endphp
   <section class="card card-body my-3 no-print" aria-labelledby="rr-second-stage-heading">
     <h6 id="rr-second-stage-heading">Stage 1 → Stage 2 round robin</h6>
@@ -15,7 +15,7 @@
         <button type="button" class="btn btn-primary align-self-start progress-draw" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled($draw->locked || $firstMatches->isEmpty() || $firstComplete !== $firstMatches->count())>Review &amp; progress to second round robin</button>
       @endcan
     @endif
-    <details class="mt-3"><summary>Qualification and progression rules</summary><p class="small mt-2 mb-0">All first-place finishers enter Stage 2 Group 1, all second-place finishers Group 2, and so on. Each group starts with fresh scores. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. Second-stage matches become available for scheduling after progression.</p></details>
+    <details class="mt-3"><summary>Qualification and progression rules</summary><p class="small mt-2 mb-0">All first-place finishers enter Stage 2 Group 1, all second-place finishers Group 2, and so on. Each group starts with fresh scores. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. Second-stage qualification placeholders can be scheduled before results. Confirmed progression fills in the players without changing saved times or courts.</p></details>
   </section>
 @elseif($draw->settings?->workflow === 'round_robin_playoffs')
   @php

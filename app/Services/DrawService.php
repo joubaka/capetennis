@@ -110,8 +110,8 @@ class DrawService
         'r1_id' => $fx->registration1_id,
         'r2_id' => $fx->registration2_id,
 
-        'name1' => $fx->registration1?->display_name ?? 'TBD',
-        'name2' => $fx->registration2?->display_name ?? 'TBD',
+        'name1' => ($fx->registration1?->display_name ?? app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fx, 1)) ?? 'TBD',
+        'name2' => ($fx->registration2?->display_name ?? app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fx, 2)) ?? 'TBD',
 
         'all_sets' => $allSets,
         'score' => implode(', ', $allSets),
@@ -185,8 +185,8 @@ class DrawService
             ? $fx->drawGroup?->presentationName() : null,
           'playoff_type' => $fx->playoff_type,
 
-          'home' => $fx->registration1?->display_name ?? 'TBD',
-          'away' => $fx->registration2?->display_name ?? 'TBD',
+          'home' => ($fx->registration1?->display_name ?? app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fx, 1)) ?? 'TBD',
+          'away' => ($fx->registration2?->display_name ?? app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fx, 2)) ?? 'TBD',
           'r1_id' => $fx->registration1_id,
           'r2_id' => $fx->registration2_id,
 

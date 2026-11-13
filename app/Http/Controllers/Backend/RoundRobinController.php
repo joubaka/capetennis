@@ -803,7 +803,8 @@ class RoundRobinController extends Controller
     if ($draw->isTwoStageRoundRobin()) {
       $result = app(\App\Services\Draw\TwoStageRoundRobinService::class)->progress($draw, $request->all());
       return response()->json(['success' => true, 'progress' => $result,
-        'message' => $result['created'] ? 'Created '.$result['created'].' second-stage matches. Schedule the second round robin next.' : 'The second round robin has already been created.']);
+        'message' => $result['already_progressed'] ? 'Second-stage progression is already confirmed.'
+            : 'Second-stage qualifiers confirmed. Saved match times and courts have been preserved.']);
     }
 
     if ($draw->settings?->workflow !== 'round_robin_playoffs') {

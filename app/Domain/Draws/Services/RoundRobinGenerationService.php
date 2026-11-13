@@ -53,6 +53,7 @@ final class RoundRobinGenerationService
             foreach ($draw->groups as $group) {
                 $matchNr = $this->generateGroupFixtures($draw, $group, $matchNr);
             }
+            if ($draw->isTwoStageRoundRobin()) app(\App\Services\Draw\TwoStageRoundRobinService::class)->prepare($draw);
         });
 
         Log::info('[RoundRobinGenerationService] Generated RR fixtures', [
@@ -63,7 +64,7 @@ final class RoundRobinGenerationService
     public static function assertRegenerable(Draw $draw): void
     {
         abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
-            'Both round-robin stages must be preserved after progression.');
+            'Both round-robin stages must be preserved once second-stage matches are prepared.');
         DrawGuard::requireMutable($draw, 'regenerate RR fixtures for');
         DrawGuard::requireUnpublished($draw, 'regenerate RR fixtures for');
         if ($draw->oop_published || DB::table('published_schedule_assignments')

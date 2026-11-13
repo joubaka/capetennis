@@ -113,7 +113,7 @@ function mounted(overrides={}) {
   if(!elements.has(id)){
    const element={value:'',checked:false,listeners:{},addEventListener(name,fn){this.listeners[name]=fn;},scrollIntoView(){},
    querySelector(selector){const match=selector.match(/data-day-venue="(\d+)"/);return match?sections.get(Number(match[1])):null;},
-   querySelectorAll(selector){return selector==='[data-playoff-draw]' ? (overrides.playoffRows||[]) : selector.includes('data-day-venue')?[...sections.values()]:[];}};
+   querySelectorAll(selector){return selector==='[data-playoff-draw]' ? (id==='prepare-second-round-robin-form' ? (overrides.secondRoundRobinRows||[]) : (overrides.playoffRows||[])) : selector.includes('data-day-venue')?[...sections.values()]:[];}};
    let html='';
    Object.defineProperty(element,'innerHTML',{get:()=>html,set:value=>{
     html=value;
@@ -133,6 +133,31 @@ function mounted(overrides={}) {
  const s=mount({document:{getElementById:get,defaultView:overrides.defaultView},draws,venues,dates:days,initialDrawIds:[1],savedByDay:{[days[0]]:saved},...overrides});
  return {s,get,sections,change(input){get('day-batch-workflow').listeners.change({target:input});}};
 }
+
+test('select all matches covers every eligible round of selected draws and clear retains day setup',()=>{
+ let changes=0;
+ const app=mounted({onChange:()=>{changes++;},draws:[...structuredClone(draws),
+  {id:6,name:'Protected matches',day_round_details:{1:[group('Played only',{key:'individual:7',played:true})],2:[group('Mixed',
+   {key:'individual:8',played:true},{key:'individual:9',scheduled_at:days[1]+' 09:00:00'},
+   {key:'individual:10',scheduled_at:days[0]+' 09:00:00'},'individual:11')]}}
+ ]});
+ app.s.selectDraw(6,true);
+ app.s.selectFixture(1,1,'individual:1',false);
+ app.get('day-batch-all-matches').listeners.click();
+ assert.deepEqual(buildPayload(app.s).selected_fixture_keys,['individual:1','individual:10','individual:11','individual:2','individual:3']);
+ assert.deepEqual([...app.s.selectedRounds.get(1)],[1,2]);
+ assert.deepEqual([...app.s.selectedRounds.get(6)],[2]);
+ assert.equal(app.s.selectionCounts().reduce((sum,row)=>sum+row.count,0),5);
+ assert.equal(app.get('day-batch-replan').checked,false);
+ app.get('day-batch-all-matches').listeners.click();
+ assert.equal(buildPayload(app.s).selected_fixture_keys.length,5,'repeat selection is idempotent');
+ app.get('day-batch-clear-matches').listeners.click();
+ assert.deepEqual(app.s.selectedDrawIds,[1,6]);
+ assert.equal(app.s.day,days[0]);assert.equal(app.s.courts.get(7).size,2);
+ assert.ok(app.s.selectionCounts().every(row=>row.count===0));
+ assert.throws(()=>buildPayload(app.s),/round/i);
+ assert.equal(changes,3,'each bulk action invalidates the previous preview');
+});
 
 test('an unsaved daily-limit change cannot preview until its canonical save succeeds',async()=>{
  let previews=0,fail=true;
@@ -211,6 +236,20 @@ test('playoff preparation only submits currently selected unprotected draws',()=
  app.change({value:'2',checked:false,matches:selector=>selector==='.day-batch-draw'});
  assert.equal(app.get('pending-playoff-rounds').hidden,true);
 });
+test('second round-robin preparation respects selected draws and preserves timing on return',()=>{
+ const storage=new Map();
+ const defaultView={sessionStorage:{getItem:key=>storage.get(key),setItem:(key,value)=>storage.set(key,value),removeItem:key=>storage.delete(key)}};
+ const rows=[1,2].map(id=>{const input={};return {input,dataset:{playoffDraw:String(id),playoffProtected:'0'},querySelector:()=>input};});
+ const app=mounted({eventId:258,defaultView,secondRoundRobinRows:rows});
+ assert.equal(rows[0].input.checked,true);assert.equal(rows[1].input.disabled,true);
+ app.get('day-batch-duration').value='15';
+ app.get('prepare-second-round-robin-form').listeners.submit();
+ const resumed=mounted({eventId:258,defaultView});
+ assert.equal(resumed.get('day-batch-duration').value,15);
+ assert.deepEqual([...resumed.s.selectedDrawIds],[1]);
+ assert.equal(resumed.get('day-batch-replan').checked,false);
+});
+
 test('selecting another venue preserves edited venue hours and court groups',()=>{
  const app=mounted(),a=app.sections.get(7);
  a.fields['.day-batch-venue-open'].value='09:15';a.fields['.day-batch-venue-close'].value='17:00';a.fields['.day-batch-split'].checked=true;
@@ -271,18 +310,29 @@ test('normal day preview reveals review even after legacy selection hides advanc
   return elements.get(id);
  };
  let rendered=false;
- const context={document:{getElementById:get},workspace:{classList:{add(){}}},syncDayTiming(){},post:async()=>({matches:[]}),previewUrl:'/preview',
+ const context={document:{getElementById:get},workspace:{classList:{add(){}}},syncDayTiming(){},previewUrl:'/preview',csrf:'fictional-token',manualAssignmentUrl:'/manual',
+  fetch:async()=>({ok:true,json:async()=>({matches:[],input:{limit_daily_matches:false}})}),
   showWorkflowStep(){},notify(){},render(){rendered=true;},previewGeneration:0,programmePayload:{},dayBatchPayload:null,payload:null};
+ // Execute the real request helper as well as the callback: preview POST itself advances the generation.
+ const postStart=source.indexOf('  const post = async (url, body) => {');
+ const postEnd=source.indexOf('\n  const announcementTitle',postStart);
+ assert.ok(postStart>=0&&postEnd>postStart);
+ vm.runInNewContext(source.slice(postStart,postEnd).replace('  const post =','globalThis.post ='),context);
  vm.runInNewContext(source.slice(start,end).replace('    onPreview:async config => {','globalThis.preview=async config => {')+'\n};',context);
  await context.preview({day_batch:true,full_day_scope:days[0]});
  assert.equal(get('advanced-scheduling').hidden,false);
  assert.equal(get('advanced-scheduling').open,true);
  assert.equal(rendered,true);
+ assert.equal(context.previewGeneration,1,'the real request advances the preview generation');
  rendered=false;
- context.post=async()=>{context.previewGeneration++;return {matches:[]};};
- await context.preview({day_batch:true});
+ let finishFetch;
+ context.fetch=()=>new Promise(resolve=>{finishFetch=resolve;});
+ const pending=context.preview({day_batch:true});
+ context.previewGeneration++;
+ finishFetch({ok:true,json:async()=>({matches:[]})});
+ await assert.rejects(pending,error=>error.stalePreview===true);
  assert.equal(rendered,false,'an edited selection must not render an in-flight stale preview');
- context.post=async()=>({input:{limit_daily_matches:true}});
+ context.fetch=async()=>({ok:true,json:async()=>({input:{limit_daily_matches:true}})});
  context.invalidatePreview=()=>{context.previewGeneration++;};
  await assert.rejects(context.preview({limit_daily_matches:false}),/saved daily match limit differs/);
  assert.equal(rendered,false);

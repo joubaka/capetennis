@@ -67,7 +67,7 @@ final class DrawWorkflow
         $publicationReady = $scheduleReady && $draw->published && $draw->oop_published && app(DrawSetupGuide::class)->snapshotCurrent($draw);
         $resultsComplete = $generated && ($flexible ? ($progression['positions_complete'] ?? false)
             : $playable->every(fn ($fixture) => (bool) $fixture->winner_registration));
-        if ($draw->isTwoStageRoundRobin() && !$draw->groups()->where('round_robin_phase', 2)->exists()) $resultsComplete = false;
+        if ($draw->isTwoStageRoundRobin() && !$draw->hasConfirmedSecondRoundRobin()) $resultsComplete = false;
         if ($draw->settings?->workflow === 'round_robin_playoffs') $resultsComplete = false; // Qualification can have optional, not-yet-created branches.
         // Publication remains a separate, explicit review, including saved/public differences.
         $steps = [

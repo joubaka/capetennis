@@ -20,6 +20,12 @@ final class GroupAssignmentService
 
         $groups ??= $draw->groups()->with('groupRegistrations')->get();
         if ($groups->isEmpty()) return false;
+        if ($draw->isTwoStageRoundRobin() && ! $draw->hasConfirmedSecondRoundRobin()
+            && $groups->contains('round_robin_phase', 2)) {
+            if (! app(TwoStageRoundRobinService::class)->preparedStructureIsValid($draw)) return true;
+            $groups = $groups->where('round_robin_phase', 1);
+            $fixtures = $fixtures->whereIn('draw_group_id', $groups->pluck('id'));
+        }
         $expected = [];
         foreach ($groups as $group) {
             $ids = $group->groupRegistrations->pluck('registration_id')->filter()->map(fn ($id) => (int) $id)->sort()->values();
@@ -75,7 +81,7 @@ final class GroupAssignmentService
         return DB::transaction(function () use ($draw, $data) {
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
             abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
-                'Group membership is frozen after progression to the second round robin.');
+                'Group membership is fixed once second-stage matches are prepared. Preserve the planned qualification sources.');
             abort_if($draw->locked || $draw->published, 403, 'This draw cannot be rearranged.');
             $revision = $this->revision($draw);
             abort_if(isset($data['revision']) && ! hash_equals($revision, $data['revision']), 409,

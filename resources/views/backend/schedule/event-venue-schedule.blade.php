@@ -3499,9 +3499,8 @@
     onSaveTiming:async config => { await post(timingSettingsUrl, {duration:config.duration,player_rest:config.player_rest,court_gap:config.court_gap,limit_daily_matches:config.limit_daily_matches}); syncDayTiming(config); invalidatePreview(); },
     onPreview:async config => {
       syncDayTiming(config); programmePayload = null; dayBatchPayload = config; payload = {...config};
-      const generation = previewGeneration;
       const result = await post(previewUrl, payload);
-      if (generation !== previewGeneration) return;
+      if (result.previewGeneration !== previewGeneration) return;
       if (Boolean(result.input?.limit_daily_matches) !== Boolean(config.limit_daily_matches)) {
         invalidatePreview();
         throw new Error('The saved daily match limit differs from this selection. Click Save timing settings, then preview again.');

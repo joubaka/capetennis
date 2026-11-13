@@ -50,7 +50,7 @@ class TwoStageRoundRobinTest extends TestCase
 
     private function completeFixtures($fixtures): void
     {
-        foreach ($fixtures as $fixture) {
+        foreach ($fixtures->filter(fn ($fixture) => $fixture->registration1_id && $fixture->registration2_id) as $fixture) {
             app(DrawService::class)->saveScore($fixture, $fixture->registration1_id < $fixture->registration2_id ? [[6, 0]] : [[0, 6]]);
         }
     }
@@ -63,9 +63,130 @@ class TwoStageRoundRobinTest extends TestCase
         ]);
     }
 
+    public function test_new_draws_prepare_the_full_programme_without_qualifying_anyone(): void
+    {
+        [$draw] = $this->scenario(false);
+        $second = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 2))->get();
+        $this->assertCount(9, $second);
+        $this->assertFalse($draw->hasConfirmedSecondRoundRobin());
+        $this->assertTrue($second->every(fn ($fixture) => !$fixture->registration1_id && !$fixture->registration2_id));
+        $this->assertSame(0, $draw->groups()->where('round_robin_phase', 2)->withCount('groupRegistrations')->get()->sum('group_registrations_count'));
+        $this->assertCount(0, app(TwoStageRoundRobinService::class)->prepare($draw));
+        $this->assertFalse(app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw));
+        $fixture = $second->first();
+        $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => ['6-0']])->assertConflict();
+        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['sets' => ['6-0']])->assertConflict();
+        $first = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 1))->get();
+        foreach ($first as $fixture) {
+            $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => [$fixture->registration1_id < $fixture->registration2_id ? '6-0' : '0-6']])->assertOk();
+        }
+        $this->assertTrue($second->every(fn ($fixture) => !$fixture->fresh()->registration1_id && !$fixture->fresh()->registration2_id));
+        $this->assertSame(9, DB::table('fixture_results')->count());
+    }
+
+    public function test_placeholder_schedule_and_public_labels_survive_confirmed_progression(): void
+    {
+        [$draw] = $this->scenario(false);
+        $venue = Venue::forceCreate(['name' => 'Placeholder courts']);
+        $draw->event->venues()->attach($venue->id, ['num_courts' => 3]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 3]);
+        $options = ['day_batch' => true, 'full_day_scope' => '2026-10-30', 'start' => '2026-10-30 08:00', 'end' => '2026-10-30 22:00',
+            'draw_ids' => [$draw->id], 'draw_order' => [$draw->id], 'draw_order_mode' => 'mixed',
+            'draw_rounds' => [['draw_id' => $draw->id, 'rounds' => [1, 2, 3, 4, 5, 6]]],
+            'selected_fixture_keys' => $draw->drawFixtures()->pluck('id')->map(fn ($id) => 'individual:'.$id)->all(),
+            'venue_ids' => [$venue->id], 'day_court_labels' => [$venue->id => ['1', '2', '3']],
+            'duration' => 30, 'player_rest' => 15, 'court_gap' => 0];
+        $service = app(EventVenueScheduleService::class);
+        $preview = $service->preview($draw->event, $options);
+        $this->assertSame([], $preview['unscheduled']);
+        $this->assertCount(18, $preview['matches']);
+        $service->apply($draw->event, $options, $preview['revision']);
+        $before = OrderOfPlay::where('draw_id', $draw->id)->orderBy('id')->get()->toJson();
+        $ids = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
+        $publication = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        $working = $publication->workingRows($draw->event);
+        $placeholder = $working->first(fn ($row) => str_starts_with($row['participants'][0] ?? '', 'Group '));
+        $this->assertNotNull($placeholder);
+        $draw->update(['published' => true]);
+        $draw->settings->update(['schedule_visibility' => 'full_schedule']);
+        $publication->publish($draw->event, ['draw_id' => $draw->id]);
+        $publishedBefore = DB::table('published_schedule_assignments')->where('draw_id', $draw->id)->orderBy('id')->get()->toJson();
+        $publicBefore = $publication->publishedRows($draw->event)->firstWhere('fixture_id', $placeholder['fixture_id']);
+        $this->assertSame($placeholder['participants'], $publicBefore['participants']);
+        $hub = app(DrawService::class)->loadRoundRobinHub($draw->fresh());
+        $this->assertStringStartsWith('Group ', collect($hub['oops'])->firstWhere('id', $placeholder['fixture_id'])['home']);
+        $this->completeFixtures($draw->drawFixtures()->get());
+        $this->progress($draw)->assertOk();
+        $this->assertTrue($draw->fresh()->hasConfirmedSecondRoundRobin());
+        $this->assertSame($before, OrderOfPlay::where('draw_id', $draw->id)->orderBy('id')->get()->toJson());
+        $this->assertSame($ids, $draw->drawFixtures()->orderBy('id')->pluck('id')->all());
+        $this->assertSame($publishedBefore, DB::table('published_schedule_assignments')->where('draw_id', $draw->id)->orderBy('id')->get()->toJson());
+        request()->attributes->remove('published_schedule_rows_'.$draw->event_id);
+        $this->assertStringNotContainsString('Group ', $publication->publishedRows($draw->event)->firstWhere('fixture_id', $placeholder['fixture_id'])['participants'][0]);
+        $this->assertStringNotContainsString('Group ', $publication->workingRows($draw->event)->firstWhere('fixture_id', $placeholder['fixture_id'])['participants'][0]);
+    }
+
+    public function test_existing_draw_preparation_is_authorized_event_scoped_and_idempotent(): void
+    {
+        [$draw, , $admin] = $this->scenario(false);
+        $groupIds = $draw->groups()->where('round_robin_phase', 2)->pluck('id');
+        $draw->drawFixtures()->whereIn('draw_group_id', $groupIds)->delete();
+        $draw->groups()->whereIn('id', $groupIds)->delete();
+        $url = route('backend.event-venue-schedule.prepare-playoffs', $draw->event_id);
+        $this->actingAs(User::factory()->create()->assignRole('admin'))->post($url, ['draw_ids' => [$draw->id]])->assertForbidden();
+        $this->actingAs($admin);
+        $other = Draw::factory()->create();
+        $this->post($url, ['draw_ids' => [$other->id]])->assertUnprocessable();
+        $this->assertSame(9, $draw->drawFixtures()->count());
+        $this->post($url, ['draw_ids' => [$draw->id]])->assertRedirect();
+        $ids = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
+        $this->post($url, ['draw_ids' => [$draw->id]])->assertRedirect();
+        $this->assertSame($ids, $draw->drawFixtures()->orderBy('id')->pluck('id')->all());
+        $this->assertCount(18, $ids);
+    }
+
+    public function test_missing_placeholder_match_blocks_confirmation_without_partial_membership(): void
+    {
+        [$draw] = $this->scenario();
+        $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 2))->first()->delete();
+        $this->progress($draw)->assertConflict();
+        $this->assertFalse($draw->fresh()->hasConfirmedSecondRoundRobin());
+        $this->assertSame(0, $draw->groups()->where('round_robin_phase', 2)->withCount('groupRegistrations')->get()->sum('group_registrations_count'));
+    }
+
+    public function test_unequal_four_and_five_player_groups_prepare_four_matches_and_a_singleton_position(): void
+    {
+        [$draw] = $this->scenario(false);
+        $draw->drawFixtures()->delete();
+        $draw->groups()->where('round_robin_phase', 2)->delete();
+        $groups = $draw->groups()->orderBy('name')->get();
+        $moved = $groups[2]->groupRegistrations->pluck('registration_id')->all();
+        $groups[2]->registrations()->detach();
+        $groups[2]->delete();
+        $groups[0]->registrations()->attach($moved[0], ['seed' => 4]);
+        $groups[1]->registrations()->attach($moved[1], ['seed' => 4]);
+        $groups[1]->registrations()->attach($moved[2], ['seed' => 5]);
+        app(RoundRobinGenerationService::class)->generate($draw->fresh());
+        $first = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 1))->get();
+        $second = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 2))->get();
+        $this->assertCount(16, $first);
+        $this->assertCount(4, $second);
+        $this->assertSame([1, 2, 3, 4], $second->pluck('registration1_source_position')->all());
+        $this->assertTrue($second->every(fn ($fixture) => !$fixture->registration1_id && !$fixture->registration2_id));
+        $this->completeFixtures($first);
+        $this->progress($draw)->assertOk();
+        $singleton = $draw->groups()->where('round_robin_phase', 2)->where('qualifying_position', 5)->firstOrFail();
+        $this->assertSame(1, $singleton->groupRegistrations()->count());
+        $this->assertSame(0, $singleton->fixtures()->count());
+        $this->assertSame(20, $draw->drawFixtures()->count());
+    }
+
     public function test_format_is_selectable_without_replacing_unplayed_round_robin_groups_or_fixtures(): void
     {
         [$draw] = $this->scenario(false);
+        $secondGroupIds = $draw->groups()->where('round_robin_phase', 2)->pluck('id');
+        $draw->drawFixtures()->whereIn('draw_group_id', $secondGroupIds)->delete();
+        $draw->groups()->whereIn('id', $secondGroupIds)->delete();
         $draw->settings->update(['workflow' => 'round_robin']);
         $groups = $draw->groups()->pluck('id')->all();
         $fixtures = $draw->drawFixtures()->pluck('id')->all();
@@ -77,19 +198,19 @@ class TwoStageRoundRobinTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('value="round_robin_round_robin"', false);
         $this->get(route('headOffice.show', $draw->event_id))->assertOk()->assertSee('Round robin → round robin');
         $this->get(route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]))
-            ->assertOk()->assertSee('Second round-robin stages await progression');
+            ->assertOk()->assertSee('Prepare second-stage matches');
     }
 
     public function test_nine_players_progress_once_preserving_first_stage_and_finish_with_four_matches_each(): void
     {
         [$draw, $entrants] = $this->scenario();
-        $firstIds = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
+        $firstIds = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 1))->orderBy('id')->pluck('id')->all();
         $firstResults = DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->orderBy('id')->get()->toJson();
         $venue = Venue::forceCreate(['name' => 'Example courts']);
         $booking = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $firstIds[0], 'venue_id' => $venue->id,
             'court' => '1', 'time' => '2026-10-30 08:00', 'duration_minutes' => 30]);
         $draw->update(['published' => true]);
-        $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 9);
+        $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 0);
         $this->progress($draw)->assertOk()->assertJsonPath('progress.created', 0);
         $this->assertSame($firstIds, $draw->drawFixtures()->whereIn('id', $firstIds)->orderBy('id')->pluck('id')->all());
         $this->assertSame($firstResults, DB::table('fixture_results')->whereIn('fixture_id', $firstIds)->orderBy('id')->get()->toJson());
@@ -139,8 +260,8 @@ class TwoStageRoundRobinTest extends TestCase
         app(DrawService::class)->saveScore($fixture, $fixture->registration1_id < $fixture->registration2_id ? [[6, 1]] : [[1, 6]]);
         $this->postJson(route('backend.draw.progress', $draw), ['confirmed_group_ids' => collect($review['groups'])->pluck('id')->all(),
             'standings_snapshot' => $review['snapshot']])->assertConflict();
-        $this->assertSame(3, $draw->groups()->count());
-        $this->assertSame(9, $draw->drawFixtures()->count());
+        $this->assertSame(6, $draw->groups()->count());
+        $this->assertSame(18, $draw->drawFixtures()->count());
     }
 
     public function test_lower_second_stage_group_cannot_prefill_the_undecided_top_positions(): void
@@ -167,7 +288,7 @@ class TwoStageRoundRobinTest extends TestCase
         [$other] = $this->scenario();
         $this->cycle($other, $other->groups()->first());
         $this->getJson(route('backend.draw.progress-review', $other))->assertUnprocessable();
-        $this->assertSame(9, $other->drawFixtures()->count());
+        $this->assertSame(18, $other->drawFixtures()->count());
     }
 
     private function cycle(Draw $draw, $group): void
@@ -206,7 +327,7 @@ class TwoStageRoundRobinTest extends TestCase
         $this->assertSame([2, 2, 2], array_column($standings, 'draws'));
         $this->assertSame(['awaiting'], app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->where('position', '<=', 3)->pluck('status')->unique()->values()->all());
         [$other] = $this->scenario(false, true);
-        foreach ($other->drawFixtures as $fixture) app(DrawService::class)->saveScore($fixture, [[3, 3]]);
+        foreach ($other->drawFixtures->filter(fn ($fixture) => $fixture->registration1_id && $fixture->registration2_id) as $fixture) app(DrawService::class)->saveScore($fixture, [[3, 3]]);
         $this->getJson(route('backend.draw.progress-review', $other))->assertUnprocessable();
     }
 
@@ -220,7 +341,7 @@ class TwoStageRoundRobinTest extends TestCase
         $draw->update(['locked' => true]);
         $this->getJson(route('backend.draw.progress-review', $draw))->assertForbidden();
         $this->postJson(route('backend.draw.progress', $draw))->assertForbidden();
-        $this->assertSame(9, $draw->drawFixtures()->count());
+        $this->assertSame(18, $draw->drawFixtures()->count());
     }
 
     public function test_public_views_and_print_data_include_both_stages_and_hide_unpublished_times(): void
@@ -253,7 +374,7 @@ class TwoStageRoundRobinTest extends TestCase
         $venue = Venue::forceCreate(['name' => 'Three courts']);
         $event->venues()->attach($venue->id, ['num_courts' => 3]);
         $draw->venues()->attach($venue->id, ['num_courts' => 3]);
-        foreach ($draw->groups as $court => $group) foreach ($group->fixtures->values() as $index => $fixture) {
+        foreach ($draw->groups->where('round_robin_phase', 1)->values() as $court => $group) foreach ($group->fixtures->values() as $index => $fixture) {
             OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
                 'court' => (string) ($court + 1), 'time' => '2026-10-30 '.(8 + $index).':00', 'duration_minutes' => 30, 'gap_minutes' => 0]);
         }

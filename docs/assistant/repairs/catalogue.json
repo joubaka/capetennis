@@ -187,9 +187,9 @@
       "id": "RK-001",
       "title": "Round-robin groups finish one at a time instead of rotating",
       "scope": "Individual round-robin schedule planning; not team ties or a repair of played schedules.",
-      "symptoms": "One group completes before another starts; alternatively mixed day batches leave courts empty while ready matches exist, or an unchecked edited cap still produces a three-match warning.",
-      "cause": "Group-only ordering omits rotation; hard whole-group finish barriers can unnecessarily idle mixed day courts. The daily cap is saved event policy and cannot be disabled merely by submitting false in a preview. Check current code and saved assignments before diagnosing an event.",
-      "fix": "Use EventVenueScheduleService group rotation, larger full groups first and equal sizes by name. Mixed one-day batches treat group turns as priorities so ready matches fill courts; sequential and legacy modes retain barriers. Direct exact disjoint same-group playoff positions may share time only with validated ownership, ranks, distinct real-player membership and no incoming feeders; preserve conservative reservations for all other possible-player overlaps. Preserve fixed/played assignments, rest, availability and feeders. Save a changed daily cap through canonical timing settings before preview; reject unsaved or server-effective policy mismatches. Failed saves must not sync saved state. Review before saving; publication is separate. See DK-01.",
+      "symptoms": "One group completes before another starts; alternatively mixed day batches leave courts empty while ready matches exist, an unchecked edited cap still produces a three-match warning, or a completed preview never displays its result.",
+      "cause": "Group-only ordering omits rotation; hard whole-group finish barriers can unnecessarily idle mixed day courts. The daily cap is saved event policy and cannot be disabled merely by submitting false in a preview. A freshness token captured before the canonical request helper increments it discards every successful preview; compare the returned request token instead, as detailed in DK-01. Check current code and saved assignments before diagnosing an event.",
+      "fix": "Use EventVenueScheduleService group rotation, larger full groups first and equal sizes by name. Mixed one-day batches treat group turns as priorities so ready matches fill courts; sequential and legacy modes retain barriers. Direct exact disjoint group/position pairs from the same source group or same pair of source groups may share time only with validated ownership, ranks, distinct registration and real-player membership across those groups and no incoming feeders; preserve conservative reservations for all other possible-player overlaps. CrossGroupFinalsSchedulingTest covers four concurrent cross-group finals and saved reservations. Preserve fixed/played assignments, rest, availability and feeders. Save a changed daily cap through canonical timing settings before preview; reject unsaved or server-effective policy mismatches. Failed saves must not sync saved state. Review before saving; publication is separate. See DK-01.",
       "verification": "On 2026-11-13 the focused mixed-court, rotation, daily-cap, day-batch, playoff and repair-library suite passed locally on PHP 8.5/MySQL ct_testing: 52 tests, 1831 assertions. The day-batch frontend suite passed 23 tests, covering unsaved/failed timing saves, concurrent edits and stale/effective-policy mismatch responses. These checks do not establish deployment, remote scheduling or live publication.",
       "limits": "This guide performs no replanning, database repair or publication. Confirm event authorization and current state. If current code already follows this rule, investigate constraints rather than removing them or resetting matches.",
       "assistant_action": "guide_only",
@@ -648,6 +648,19 @@
       "assistant_action": "guide_only",
       "sources": ["docs/platform/release-checklist.md"],
       "tests": ["tests/Unit/DeploymentAssetSyncTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
+      "id": "RK-046",
+      "title": "Second round-robin phase cannot be scheduled before results",
+      "scope": "Individual round robin followed by another round robin; not knockout playoffs or a live data repair.",
+      "symptoms": "The full event programme cannot be planned because second-stage matches are absent until first-stage progression.",
+      "cause": "Fixture creation was coupled to confirmed qualifier assignment, and second-stage group existence was used as proof that progression had been confirmed.",
+      "fix": "Use TwoStageRoundRobinService preparation through canonical generation or the authorized preparation action. Create stable fixtures with source-group/finishing-position labels and no actual players. Keep preparation distinct from confirmed progression. Complete and review first-stage results before resolving qualifiers into those same fixtures, preserving saved times and courts. Reject unresolved second-stage scoring and retain phase barriers, possible-player conflicts, rest and separate schedule publication. See DK-10.",
+      "verification": "On 2026-11-14 the isolated SQLite TwoStageRoundRobinTest passed 15 tests and 191 assertions, including pre-result preparation, confirmed progression retaining bookings and published assignment identities, malformed topology, authorization, and unequal four/five-player groups. Frontend day-batch tests passed 24 cases and repair-library tests passed 3 tests with 289 assertions. MySQL stalled and browser QA was blocked by missing Playwright; no deployment or changed live event is established.",
+      "limits": "Guide only. Never fabricate qualifiers, results or registrations to obtain a schedule. Do not regenerate protected fixtures or treat placeholder preparation as confirmed progression. A live preparation, schedule save or publication needs its own current authority.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/TwoStageRoundRobinService.php", "app/Services/Scheduling/EventVenueScheduleService.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/Draw/TwoStageRoundRobinTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
     }
   ]
 }

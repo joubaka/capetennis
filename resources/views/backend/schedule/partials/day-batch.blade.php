@@ -45,11 +45,15 @@
       <p class="small text-muted">Choose rounds, then preview the selected matches. Expand a round to choose individual matches. Earlier qualifying matches need saved times.</p>
       @if(($pendingSecondRoundRobinDraws ?? collect())->isNotEmpty())
         <div class="alert alert-info mb-3" id="pending-second-round-robin">
-          <h6>Second round-robin stages await progression</h6>
-          <p class="small">Schedule the first stage now. After its results are complete, review and confirm progression in the draw to make the second-stage matches available here.</p>
+          <h6>Prepare the full second round robin</h6>
+          <p class="small">Prepare qualification placeholders now to schedule both stages. Players are filled in after first-stage results and confirmed progression; saved times and courts stay in place.</p>
+          <form id="prepare-second-round-robin-form" method="POST" action="{{ route('backend.event-venue-schedule.prepare-playoffs', $event) }}">
+            @csrf
           @foreach($pendingSecondRoundRobinDraws as $pendingDraw)
-            <a class="d-block" href="{{ route('backend.draw.roundrobin.show', $pendingDraw) }}">{{ $pendingDraw->drawName }} — review progression</a>
+            <label class="d-block mb-2" data-playoff-draw="{{ $pendingDraw->id }}" data-playoff-protected="{{ $pendingDraw->locked || $pendingDraw->published ? '1' : '0' }}"><input type="checkbox" name="draw_ids[]" value="{{ $pendingDraw->id }}" @checked(!$pendingDraw->locked && !$pendingDraw->published) @disabled($pendingDraw->locked || $pendingDraw->published)> {{ $pendingDraw->drawName }} @if($pendingDraw->locked || $pendingDraw->published) (unpublish and unlock first) @endif</label>
           @endforeach
+            <button class="btn btn-outline-primary" type="submit">Prepare second-stage matches</button>
+          </form>
         </div>
       @endif
       @if($pendingPlayoffDraws->isNotEmpty())
@@ -65,6 +69,10 @@
           </form>
         </div>
       @endif
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button type="button" id="day-batch-all-matches" class="btn btn-sm btn-outline-primary">Select all matches</button>
+        <button type="button" id="day-batch-clear-matches" class="btn btn-sm btn-outline-secondary">Clear matches</button>
+      </div>
       <div id="day-batch-rounds"></div>
       <button type="button" id="day-batch-preview" class="btn btn-primary">Preview selected matches</button>
     </section>

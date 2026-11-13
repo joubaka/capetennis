@@ -38,10 +38,19 @@ final class FixtureParticipantLabels
         foreach ([0, 1] as $slot) {
             $registration = $slot === 0 ? $fixture->registration1 : $fixture->registration2;
             $name = $registration?->players?->first()?->full_name;
-            $labels[$slot] = $name ?: $this->sourceLabel((array) ($sources[$slot] ?? []), $map, $drawNumbers);
+            $labels[$slot] = $name ?: $this->groupPositionLabel($fixture, $slot + 1) ?: $this->sourceLabel((array) ($sources[$slot] ?? []), $map, $drawNumbers);
         }
 
         return $labels;
+    }
+
+    public function groupPositionLabel(Fixture $fixture, int $slot): ?string
+    {
+        $id = (int) $fixture->getAttribute("registration{$slot}_source_group_id");
+        $position = (int) $fixture->getAttribute("registration{$slot}_source_position");
+        if (!$id || $position < 1) return null;
+        $group = $fixture->draw?->groups()->whereKey($id)->withCount('groupRegistrations')->first();
+        return $group && $position <= $group->group_registrations_count ? 'Group '.$group->name.' #'.$position : null;
     }
 
     private function sourceLabel(array $source, array $map, Collection $fixtures): string
