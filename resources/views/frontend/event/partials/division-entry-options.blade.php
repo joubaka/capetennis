@@ -3,6 +3,7 @@
   <option value="{{ $value->id }}"
           data-price="{{ $value->entry_fee }}"
           data-name="{{ $value->category->name }}"
+          @selected(($preselectedCategoryId ?? null) == $value->id)
           @disabled($placesRemaining === 0)>
     {{ $value->category->name }}@if($placesRemaining !== null) — {{ $placesRemaining === 0 ? 'Full' : $placesRemaining.' '.\Illuminate\Support\Str::plural('spot', $placesRemaining).' left' }}@endif
   </option>

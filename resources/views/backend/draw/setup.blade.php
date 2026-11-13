@@ -7,7 +7,7 @@
 @include('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings', 'workspaceSurface' => 'standalone'])
 @include('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'])
 <div class="mx-auto" style="max-width:900px">
-  <p class="text-primary mb-1">Step 1 of 5 · Format</p>
+  <p class="text-primary mb-1">Step 1 of 6 · Setup · Choose the format</p>
   <h3 class="mb-2">How should this draw start?</h3>
   <p class="text-muted mb-4">{{ $draw->drawName }} · Choose the format first. Player placement and format-specific settings come next.</p>
   @if($draw->settings?->workflow === 'feed_in_monrad' && !empty($draw->flexibleMonrad?->graph))
@@ -31,12 +31,17 @@
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @if($draw->locked || $draw->published || $draw->oop_published)
     <div class="alert alert-warning" role="alert">
-      Unlock the draw and unpublish both the draw and schedule before changing its format.
+      @if($draw->locked)<p class="mb-1">This draw is locked. Open the draw workspace and choose More tools → Unlock draw.</p>@endif
+      @if($draw->published)<p class="mb-1">The draw is published. Use Publish → Unpublish draw before changing format.</p>@endif
+      @if($draw->oop_published)<p class="mb-1">Match times are published. Review and hide the published times before changing format.</p>@endif
+      <a href="{{ route('backend.draw.roundrobin.show', $draw) }}#settings">Return to draw setup controls</a>
     </div>
   @elseif($resetSummary['results'] > 0)
     <div class="alert alert-danger" role="alert">
       This draw has {{ $resetSummary['results'] }} recorded result{{ $resetSummary['results'] === 1 ? '' : 's' }} and cannot be reset from this page.
     </div>
+  @elseif($draw->event->hasRecordedResults())
+    <div class="alert alert-danger" role="alert">Results have been recorded elsewhere in this event. Competition format and group rules cannot be changed.</div>
   @elseif($resetSummary['has_format_state'])
     <div class="alert alert-warning" role="alert">
       <strong>Changing format resets this draw.</strong>
@@ -49,7 +54,7 @@
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" id="draw-format-form"
     data-current-workflow="{{ $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
     @csrf
-    <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0)>
+    <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0 || $draw->event->hasRecordedResults())>
       <legend class="visually-hidden">Draw format</legend>
       <div class="row g-3 mb-4">
         @foreach($options as $value => [$label, $description])

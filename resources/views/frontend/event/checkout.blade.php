@@ -181,7 +181,7 @@
   </div>
 @endif
 
-<div id="wizard-checkout" class="bs-stepper wizard-icons wizard-icons-example mt-2">
+<div id="wizard-checkout" class="bs-stepper wizard-icons wizard-icons-example mt-2" data-nomination-prefilled="{{ isset($nomination) && $nomination?->player ? 'true' : 'false' }}">
 
   {{-- STEP HEADER --}}
   <div class="bs-stepper-header m-auto border-0 py-5">
@@ -284,6 +284,9 @@
                     <label class="form-label">Player</label>
                     <select name="player[]" class="select2player form-select form-select-lg">
                       <option value="0">Please select</option>
+                      @if (isset($nomination) && $nomination?->player)
+                        <option value="{{ $nomination->player_id }}" selected>{{ $nomination->display_name }}</option>
+                      @endif
                     </select>
                   </div>
 
@@ -300,7 +303,7 @@
                     <label class="form-label">Category</label>
                     <select name="category[]" class="select2Basic select2category form-select form-select-lg">
                       <option value="0">Please select</option>
-                      @include('frontend.event.partials.division-entry-options')
+                      @include('frontend.event.partials.division-entry-options', ['preselectedCategoryId' => ($nomination ?? null)?->category_event_id])
                     </select>
                     @if(collect($eventCats)->contains(fn ($division) => $division->entry_limit !== null))
                       <div class="form-text">Available spots include places held by checkouts in progress and are checked again when you continue.</div>

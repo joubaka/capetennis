@@ -40,6 +40,23 @@
       @endif
     </section>
   @endif
+  @unless($guide['team'])
+    @php
+      $individualWorkflow = app(\App\Services\Draw\DrawWorkflow::class)->forDraw($draw);
+    @endphp
+    @include('backend.draw.partials.workflow', ['workflow'=>$individualWorkflow, 'workflowContext'=>$individualWorkflow['next']])
+    @if($guide['next'] === 1 && !$draw->category_event_id && !$draw->locked && !$draw->published && !$draw->oop_published)
+      <section class="card card-body mb-3"><h2 class="h5">Before you start · Choose a category</h2>
+      @if($categories->isNotEmpty())
+        <form data-draw-guide-form method="POST" action="{{ route('draw.guide.category', [$event, $draw]) }}">@csrf
+          <label for="guide-category" class="form-label">Player category</label><select id="guide-category" name="category_event_id" class="form-select mb-3" required><option value="">Choose a category</option>@foreach($categories as $category)<option value="{{ $category->id }}">{{ $category->category?->name }}</option>@endforeach</select><button class="btn btn-primary">Save category &amp; continue</button>
+        </form>
+      @else
+        <p>No player categories are configured for this event yet.</p>@can('event-category.manage', $event)<a href="{{ route('admin.events.categories', $event) }}">Open event categories &amp; entries</a>@endcan
+      @endif</section>
+    @endif
+    <p>Open a step above to continue. Setup includes format, scoring and qualification rules. Place and save players before creating matches. Saving times keeps them private; the draw and match times publish separately.</p>
+  @else
   @php
     $publicationUrl = !$guide['team'] ? $guide['workspace'].'?review=publication#matrix' : $guide['steps'][5]['url'];
     $visibleSteps = $guide['team'] ? $guide['steps'] : [
@@ -113,4 +130,5 @@
   </section>
   @endif
   <details class="card card-body"><summary>Review saved setup{{ $guide['team'] ? ' or open another step' : '' }}</summary><div class="d-grid gap-2 mt-3">@foreach($visibleSteps as $index => $step)<a class="btn btn-outline-secondary text-start" href="{{ $step['url'] }}">{{ $guide['team'] ? $index + 1 : $index }}. {{ $step['label'] }}</a>@endforeach</div></details>
+  @endif
 </div>

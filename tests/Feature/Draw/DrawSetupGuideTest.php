@@ -49,7 +49,7 @@ class DrawSetupGuideTest extends TestCase
         $this->postJson($categoryUrl, ['category_event_id' => $foreign->id])->assertUnprocessable();
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $this->post($categoryUrl, ['category_event_id' => $category->id])->assertRedirect($url);
-        $this->get($url)->assertOk()->assertSee('Step 1 of 5');
+        $this->get($url)->assertOk()->assertSee('1. Setup')->assertSee('6. Results');
         $this->assertSame($category->id, $draw->fresh()->category_event_id);
         $this->assertSame(0, Fixture::count());
         $this->assertFalse((bool) $draw->published);
@@ -135,7 +135,7 @@ class DrawSetupGuideTest extends TestCase
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
         $this->postJson(route('draw.guide.category', [$event, $draw]), ['category_event_id' => $category->id])
             ->assertOk()->assertJsonPath('guide_url', $url);
-        $this->getJson($url)->assertOk()->assertSee('Step 1 of 5');
+        $this->getJson($url)->assertOk()->assertSee('1. Setup')->assertSee('6. Results');
         $this->assertFalse((bool) $draw->fresh()->published);
     }
 
@@ -179,8 +179,8 @@ class DrawSetupGuideTest extends TestCase
         $this->assertSame(4, $service->state($draw->fresh())['next']);
         $savedFixtures = $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all();
         $resumeUrl = route('draw.guide.show', [$event, $draw]);
-        $this->get($resumeUrl)->assertOk()->assertSee('Draw and players ready');
-        $this->get($resumeUrl)->assertOk()->assertSee('Draw and players ready');
+        $this->get($resumeUrl)->assertOk()->assertSee('2 matches · 0 with saved times');
+        $this->get($resumeUrl)->assertOk()->assertSee('2 matches · 0 with saved times');
         $this->assertSame($savedFixtures, $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all());
         $this->assertSame(1, Draw::count());
         $this->assertSame(2, Fixture::count());
@@ -211,9 +211,9 @@ class DrawSetupGuideTest extends TestCase
         $reviewUrl = route('backend.draw.roundrobin.show', $draw).'?review=publication#matrix';
 
         $this->get($url)->assertOk()
-            ->assertSeeInOrder(['1. Format', '2. Players &amp; Positions', '3. Draw &amp; Results', '4. Schedule', '5. Review &amp; publish'], false)
-            ->assertSee('Step 4 of 5 · Schedule')
-            ->assertSee('data-next-schedule href="'.$scheduleUrl.'">Schedule matches', false)
+            ->assertSeeInOrder(['1. Setup', '2. Players', '3. Matches', '4. Schedule', '5. Review &amp; publish', '6. Results'], false)
+            ->assertSee('2 matches · 0 with saved times')
+            ->assertSee('href="'.route('backend.draw.roundrobin.show', $draw).'#schedule"', false)
             ->assertSee('href="'.$reviewUrl.'"', false)
             ->assertDontSee('Later: scheduling and publication');
         $this->assertSame($before, $fixtures->map(fn ($fixture) => $fixture->fresh()->getAttributes())->all());
@@ -222,10 +222,9 @@ class DrawSetupGuideTest extends TestCase
 
         $venue = Venue::forceCreate(['name' => 'Private flow test courts']);
         OrderOfPlay::create(['fixture_id' => $fixtures[0]->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'venue_id' => $venue->id, 'court' => '1']);
-        $this->get($url)->assertOk()->assertSee('Step 4 of 5 · Schedule')->assertSee('Schedule matches');
+        $this->get($url)->assertOk()->assertSee('2 matches · 1 with saved times');
         OrderOfPlay::create(['fixture_id' => $fixtures[1]->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'venue_id' => $venue->id, 'court' => '2']);
-        $this->get($url)->assertOk()->assertSee('Step 5 of 5')->assertSee('Review saved schedule')
-            ->assertSee(e(route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all'])), false);
+        $this->get($url)->assertOk()->assertSee('2 matches · 2 with saved times')->assertSee('5. Review &amp; publish', false);
         $this->assertFalse((bool) $draw->fresh()->published);
         $this->assertFalse((bool) $draw->fresh()->oop_published);
         $this->assertDatabaseCount('published_schedule_assignments', 0);

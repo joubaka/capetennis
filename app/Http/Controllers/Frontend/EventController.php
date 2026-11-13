@@ -437,16 +437,20 @@ class EventController extends Controller
     // ---------------------------------------------------------
     // NOMINATION LOOKUP
     // ---------------------------------------------------------
-    $nomRegisteredLookup = $eventView === 'cavaliers_trials' ? $event->eventCategories
-      ->flatMap(
-        fn($cat) =>
-        $cat->categoryEventRegistrations->flatMap(
-          fn($reg) =>
-          $reg->registration?->players->map(fn($p) => $p->id . '-' . $cat->id) ?? []
-        )
-      )
-      ->flip()
-      ->all() : [];
+    $nomRegisteredLookup = $eventView === 'cavaliers_trials' ? \App\Models\CategoryEventRegistration::query()
+      ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
+      ->where('payment_status_id', 1)->whereNull('withdrawn_at')
+      ->where(fn ($query) => $query->whereNull('status')->orWhereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled']))
+      ->with('registration.players:id,name,surname')->get()->flatMap(fn ($entry) => $entry->registration?->players
+        ->map(fn ($player) => $player->id.'-'.$entry->category_event_id) ?? [])->flip()->all() : [];
+    $cavaliersRegistrationOpen = $eventView === 'cavaliers_trials' && app(\App\Services\CavaliersNominationEligibility::class)->applies($event)
+      && $event->published && $event->registrationIsOpen() && \App\Models\SiteSetting::get('registration_open', '1') === '1';
+    $cavaliersDeclinePlayerIds = $cavaliersRegistrationOpen && auth()->check() ? auth()->user()->ownedPlayerIds() : [];
+    $cavaliersCanManageNominations = $cavaliersRegistrationOpen && auth()->check()
+      && (auth()->user()->hasRole('super-user') || auth()->user()->can('event.manage', $event));
+
+    $nominationProvenance = $eventView === 'cavaliers_trials'
+      ? app(\App\Services\PublicCavaliersNominationProvenance::class)->forEvent($event) : [];
 
     Log::debug('EVENT SHOW: completed', [
       'event_id' => $event->id,
@@ -498,6 +502,8 @@ return view('frontend.event.show', compact(
       'myPaidTeamOrdersByPlayer',
       'teamPaymentsUnderReview',
       'nomRegisteredLookup',
+      'nominationProvenance',
+      'cavaliersRegistrationOpen', 'cavaliersDeclinePlayerIds', 'cavaliersCanManageNominations',
       'canEnter',
       'canWithdraw',
       'entryCloseAt',

@@ -204,7 +204,7 @@ class FlexibleMonradController extends Controller
             $draftPreview = ! $draw->published && (auth()->user()?->can('view', $draw) ?? false);
             $ids = $draw->flexibleMonrad->graph['players'];
             $state['players'] = $state['players']->whereIn('id', $ids)->values();
-            unset($state['revision']);
+            unset($state['revision'], $state['reopen_blocker']);
             $fixtures = $draw->drawFixtures()->with('orderOfPlay.venue')->get();
             $workingSchedules = auth()->user()?->hasRole('super-user')
                 ? $fixtures->mapWithKeys(function ($fixture) use ($draw) {

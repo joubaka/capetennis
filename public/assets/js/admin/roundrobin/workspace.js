@@ -42,6 +42,7 @@
     } catch (e) {}
     if (replace) history.replaceState(null, '', '#' + target);
     else if (location.hash !== '#' + target) history.pushState(null, '', '#' + target);
+    if (root.dispatchEvent && typeof Event !== 'undefined') root.dispatchEvent(new Event('draw-workflow-mounted'));
   }
   function followHash(replace) {
     const value = location.hash.slice(1).replace(/-(tab|pane)$/, '');

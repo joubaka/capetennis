@@ -49,6 +49,7 @@
       if (own !== version) return;
       if (typeof data.html !== 'string' || !data.html.includes('data-draw-guide') || /<html[\s>]|<script[\s>]/i.test(data.html)) throw new Error('Could not load the setup panel. Refresh the page and try again.');
       body.innerHTML = data.html;
+      window.dispatchEvent(new Event('draw-workflow-mounted'));
       var focus=body.querySelector('h1,h2,select,input');if(focus){if(/^H[12]$/.test(focus.tagName))focus.setAttribute('tabindex','-1');focus.focus();}
     } catch (error) { if (own === version && error.name !== 'AbortError') message(error.message || 'Could not load draw setup. Check your connection and try again.',true); }
   }

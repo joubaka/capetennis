@@ -37,7 +37,7 @@ function harness(replies, initialUnconfirmed = false, drawId = null, eventDays =
     panel.dataset.calendarUrl += '?draw_id=' + drawId;
   }
   const document = { querySelector(selector) { return selector.includes('csrf-token') ? { content: 'local-csrf' } : panel; }, querySelectorAll() { return [panel]; }, createElement() { return {}; } };
-  const window = { async fetch(url, options) {
+  const window = { dispatchEvent() {}, async fetch(url, options) {
     requests.push({ url, options, payload: options.body ? JSON.parse(options.body) : null });
     const reply = await replies.shift();
     if (reply instanceof Error) throw reply;

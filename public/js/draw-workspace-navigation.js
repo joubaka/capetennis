@@ -58,6 +58,7 @@
         link.textContent = data.published ? 'Public view' : 'Preview times';
       });
       publicationStatus(button, data.published ? 'Draw published. Schedule publication is unchanged.' : 'Draw unpublished. Schedule publication is unchanged.');
+      window.dispatchEvent(new Event('draw-workflow-saved'));
     } catch (error) { publicationStatus(button, error.message, true); }
     finally { button.disabled = false; }
   }));
@@ -98,6 +99,7 @@
       publicationStatus(button, data.oop_published
         ? (data.preview_only ? 'Times published for authorized front-page preview; the draw remains hidden from the public.' : 'Schedule published and visible with the public draw.')
         : 'Schedule unpublished.');
+      window.dispatchEvent(new Event('draw-workflow-saved'));
     } catch (error) { publicationStatus(button, error.message, true); }
     finally { siblings.forEach(item => { item.disabled = false; }); }
   }));

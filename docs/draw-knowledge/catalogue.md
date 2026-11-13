@@ -18,9 +18,13 @@ Paths below are relative to the repository root. Test references are executable 
 
 **Rule:** For individual RR scheduling, visit round 1 of each group before round 2. Within a round visit larger groups first; equal sizes use group name. Use full membership even for a partial fixture selection. Smaller groups stop contributing after their final round. Preserve fixed/played assignments, rest, availability and feeders. This does not change team-tie ordering.
 
-**Solution:** `app/Services/Scheduling/EventVenueScheduleService.php::configureRoundRobinGroupRotation()` adds group-turn dependencies using phase, round, full group size and name. Replanning is distinct from changing an already played schedule.
+**Solution:** `app/Services/Scheduling/EventVenueScheduleService.php::configureRoundRobinGroupRotation()` adds group-turn dependencies using phase, round, full group size and name. In a one-day **Mix draws · fill available courts** batch, those turns are ordering preferences instead: another ready round/group may use a free court without waiting for unrelated matches to finish. True player/rest and playoff feeder dependencies remain mandatory. Sequential and legacy planning retain group-turn barriers. Replanning is distinct from changing an already played schedule.
 
-**Regression:** `tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php` covers 5 versus 4, four unequal groups, day batches, partial selections and spare courts.
+The daily match cap is a saved event policy. An unchecked edited box does not override a saved cap in preview or manual requests. Save timing settings through the canonical endpoint first; the day planner rejects an unsaved toggle change or an effective server-policy mismatch before displaying a misleading preview. Failed timing saves must not synchronize saved-policy state.
+
+Direct unresolved playoff pairs from the same group may share a time only when their exact source positions are disjoint and in range, their draw/group ownership matches, the group has no duplicate real-player membership, and neither fixture has incoming feeder links. `ScheduleAvailability::roundRobinPositionGroup()` supplies this proof consistently for preview, apply and saved bookings. Overlapping positions, round-robin matches, other draws and ambiguous identities retain conservative possible-player reservations; court occupancy always remains mandatory.
+
+**Regression:** `tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php` covers 5 versus 4, four unequal groups, day batches, partial selections and spare courts. `MixedRoundRobinCourtFillTest` covers mixed 7/6-player draws, 15-minute court use, rest, fixed bookings and playoff feeders; `ScheduleDailyLimitTest` protects the saved policy. `tests/Frontend/schedule-day-batch.test.cjs` covers unsaved-policy, failed-save and asynchronous-edit behavior.
 
 **History:** `01a190a7-897e-7d20-abec-ca1228e55b29` (Check orange ball match duplicates); `01a1910c-30c6-7af3-97a6-0cae7efe2751` (larger-groups-first scheduling request).
 
@@ -188,9 +192,9 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Rule:** Resume required format-specific setup without silently rebuilding saved fixtures or resetting settings. Keep the main hub as the return point; preserve separate setup, scheduling and publication steps.
 
-**Solution:** Current setup-guide flow and format-specific workspaces surface scoped next actions and return links.
+**Solution:** `DrawWorkflow` derives the individual journey from saved state: Setup → Players → Matches → Schedule → Review & publish → Results. Saved player placements and generated matches complete independently; stale group fixtures and missing flexible graph records remain incomplete. The header, AJAX setup guide and single-draw scheduling/edit pages share this journey. Scheduler returns retain the draw and date; team operations retain their existing workflow. Refresh progress by the authorized, event-scoped, read-only `workflow_only` guide response after confirmed saves; never generate or publish while navigating. Format changes identify locking, draw publication, time publication and event-wide result restrictions separately. Reopening starting positions explains saved-time/result blockers before action. See `docs/draw-workflow.md` for preserved capabilities and acceptance coverage.
 
-**Regression:** `tests/Feature/Draw/DrawSetupGuideTest.php`, `DrawHubTest.php`. Historical browser verification of the prominence change was blocked; source/test references do not establish fresh visual acceptance.
+**Regression:** `DrawWorkspaceTest`, `DrawSetupGuideTest`, `DrawSetupTest`, `FlexibleMonradTest`, `OrganiserSetupJourneyTest`, `CanonicalDrawWorkspaceTest`, `tests/Frontend/draw-workflow.test.cjs`, and `tests/Browser/draw-workspace.cjs`. The local implementation/compatibility bundle passed 148 tests / 2,175 assertions on isolated SQLite. The focused navigation/publication scripts passed 29 tests, and the independent rendered-browser harness passed 17 checks, including AJAX guide mounting and widths from 320 to 1440 pixels. These checks and guidance do not authorize live changes or establish production acceptance.
 
 **History:** `01a18c08-6fee-7a60-bb27-b9fa567b04fd` (Preserve setup after draw changes); `01a1823a-d4cb-7821-b456-fc1fa1c05f1b` (Test match scheduling workflow).
 

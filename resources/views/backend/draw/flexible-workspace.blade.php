@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="{{ asset('css/flexible-workspace.css') }}?v={{ filemtime(public_path('css/flexible-workspace.css')) }}">
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'flexible'])
 <div id="flexible-draw-workspace" data-has-generated-draw="{{ $config['state']['generated'] ? '1' : '0' }}">
-  <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
+  <nav class="rr-workspace-nav mb-3" aria-label="Draw workspace" hidden>
     <button type="button" data-flexible-tab="groups">Players &amp; Positions</button>
     <button type="button" data-flexible-tab="matrix">Draw &amp; Results</button>
     <button type="button" data-flexible-tab="schedule">Schedule</button>
@@ -33,7 +33,8 @@
       <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
         <div><h2 class="h5">Schedule &amp; Venues</h2><p class="text-muted mb-0">Timetable publication is separate from draw publication.</p></div>
         <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule this draw</a>
+          <a class="btn btn-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]] + (request('schedule_date') ? ['date' => request('schedule_date')] : [])) }}">Schedule this draw</a>
+          <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar', ['event' => $draw->event_id, 'draw_id' => $draw->id, 'date' => request('schedule_date', 'all')]) }}">Review / edit saved times</a>
           <a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id]) }}">Schedule multiple draws</a>
         </div>
       </div>
@@ -53,7 +54,8 @@
       <p>{{ $title }}</p>
       <p>Best of {{ $config['state']['best_of'] }} set(s). Starting positions and bracket size are managed in Players &amp; Positions.</p>
       <a class="btn btn-outline-primary" href="{{ route('draw.setup.show', $draw) }}">Review draw format</a>
-      <p class="text-muted mt-3">Changing format requires an empty, unlocked, unpublished draw. Existing fixtures and results are protected.</p>
+      <p class="text-muted mt-3">Review the format to see the exact reset impact. Changing format requires an unlocked, unpublished draw and unpublished times; recorded results are protected. A confirmed reset can remove existing unplayed matches and times.</p>
+      <a class="btn btn-primary mb-3" href="{{ route('backend.draw.roundrobin.show', $draw) }}#groups">Continue to players</a>
       @if(($config['workflow'] ?? null) === 'feed_in_monrad' && $config['state']['generated'] && $config['state']['challenge_stage_options']['base'])
         @can('enableRollingChallenges', $draw)
           <fieldset class="border rounded p-3 mb-3" id="fm-rolling-settings" aria-describedby="fm-rolling-help">

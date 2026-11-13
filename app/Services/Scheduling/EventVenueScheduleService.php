@@ -421,7 +421,7 @@ final class EventVenueScheduleService
         if ($dayBatch) foreach ($drawRounds as $row) foreach ($row['rounds'] as $round) {
             if (! isset($dayRoundCoverage[$row['draw_id'].'|'.$round])) throw new \InvalidArgumentException('Choose matches in every selected round for this day, or remove the empty round.');
         }
-        $this->configureRoundRobinGroupRotation($nodes);
+        $this->configureRoundRobinGroupRotation($nodes, $dayBatch && $drawOrderMode === 'mixed');
         if ($dayBatch && $drawOrderMode === 'sequential') $this->configureDayDrawOrder($nodes, $drawOrder);
 
         app(ScheduleProgramme::class)->configureNodes($nodes, $programme);
@@ -1174,6 +1174,7 @@ final class EventVenueScheduleService
                 null, null, ! empty($options['programme']) ? Carbon::parse($preview['input']['start']) : null,
                 ! empty($options['programme']) ? Carbon::parse($preview['input']['end'])->addMinutes(max((int) $preview['input']['playerRest'], (int) $preview['input']['courtGap'], (int) $matches->max('court_gap'))) : null);
             $calendarDraws = Draw::whereIn('id', $matches->pluck('draw_id'))->with('flexibleMonrad')->get()->keyBy('id');
+            $calendarFixtures = Fixture::whereIn('id', $matches->where('fixture_kind', 'individual')->pluck('fixture_id'))->get()->keyBy('id');
             $dailyLimit = ! empty($preview['input']['limit_daily_matches']) ? DailyMatchLimit::load($event, $matches->pluck('fixture_key')->all()) : null;
             foreach ($matches->sortBy('scheduled_at') as $row) {
                 $at = Carbon::parse($row['scheduled_at']);
@@ -1181,7 +1182,8 @@ final class EventVenueScheduleService
                 $dailyLimit?->reserve($row['fixture_key'], $at->toDateString());
                 $courtMinutes = (int) $row['duration'] + (int) ($row['court_gap'] ?? $preview['input']['courtGap'] ?? 0);
                 $playerMinutes = (int) $row['duration'] + (int) ($preview['input']['playerRest'] ?? 60);
-                $group = $calendarDraws[$row['draw_id']]->usesFlexibleMonrad() ? 'flexible-draw-'.$row['draw_id'] : null;
+                $group = $calendarDraws[$row['draw_id']]->usesFlexibleMonrad() ? 'flexible-draw-'.$row['draw_id']
+                    : (isset($calendarFixtures[$row['fixture_id']]) && $row['fixture_kind'] === 'individual' ? ScheduleAvailability::roundRobinPositionGroup($calendarFixtures[$row['fixture_id']]) : null);
                 $available = $calendar->nextAvailableForMatch($at, $courtMinutes, $playerMinutes,
                     (int) $row['venue_id'], (string) $row['court'], $row['participant_ids'] ?? [], $group);
                 if (! $available->eq($at)) throw new \InvalidArgumentException('This batch overlaps a booking that is being kept. Save the combined schedule or generate a new preview with those bookings fixed.');
@@ -1660,7 +1662,7 @@ final class EventVenueScheduleService
             'participants' => array_values(array_unique(array_filter($participants))), 'participant_names' => $names,
             // A Flexible Monrad graph already models the winner and loser paths within one draw. Its sibling
             // classification matches can therefore share a time even while their exact players are unresolved.
-            'participant_group' => $draw->usesFlexibleMonrad() ? 'flexible-draw-'.$draw->id : null,
+            'participant_group' => $draw->usesFlexibleMonrad() ? 'flexible-draw-'.$draw->id : ScheduleAvailability::roundRobinPositionGroup($fixture),
             'automatic' => $automatic, 'played' => $played,
         ];
     }
@@ -1800,8 +1802,8 @@ final class EventVenueScheduleService
         $leftOrder = $left['fallback_order_key'] ?? $candidate['id'];
         $rightOrder = $right['fallback_order_key'] ?? $best['id'];
         if (! empty($candidate['day_batch'])) {
-            return ([$candidate['time']->timestamp, $candidate['rank_penalty'] ?? 0, $candidate['fairness'], $candidate['draw_priority'], $candidate['tie_priority'] ?? 1, count($candidate['venue_changes'] ?? []), $left['play_order'], $leftOrder]
-                <=> [$best['time']->timestamp, $best['rank_penalty'] ?? 0, $best['fairness'], $best['draw_priority'], $best['tie_priority'] ?? 1, count($best['venue_changes'] ?? []), $right['play_order'], $rightOrder]) < 0;
+            return ([$candidate['time']->timestamp, $candidate['rank_penalty'] ?? 0, $candidate['fairness'], $candidate['draw_priority'], $candidate['tie_priority'] ?? 1, count($candidate['venue_changes'] ?? []), $left['rr_rotation_priority'] ?? 0, $left['play_order'], $leftOrder]
+                <=> [$best['time']->timestamp, $best['rank_penalty'] ?? 0, $best['fairness'], $best['draw_priority'], $best['tie_priority'] ?? 1, count($best['venue_changes'] ?? []), $right['rr_rotation_priority'] ?? 0, $right['play_order'], $rightOrder]) < 0;
         }
         return ([$candidate['tie_priority'] ?? 1, $candidate['rank_penalty'] ?? 0, count($candidate['venue_changes'] ?? []), $candidate['time']->timestamp, $candidate['fairness'], $nodes[$candidate['id']]['wave'],
             $left['play_order'], $leftOrder]
@@ -1935,7 +1937,7 @@ final class EventVenueScheduleService
         return $normalized;
     }
 
-    private function configureRoundRobinGroupRotation(array &$nodes): void
+    private function configureRoundRobinGroupRotation(array &$nodes, bool $fillCourts = false): void
     {
         $waves = [];
         foreach ($nodes as $id => $node) {
@@ -1951,14 +1953,19 @@ final class EventVenueScheduleService
         foreach ($waves as $groups) {
             ksort($groups, SORT_NATURAL);
             $previous = [];
+            $priority = 0;
             foreach ($groups as $ids) {
                 foreach ($ids as $id) {
+                    $nodes[$id]['rr_rotation_priority'] = $priority;
+                    // Mixed day batches prefer rotation, but use a free court when players are ready.
+                    if ($fillCourts) continue;
                     // Group turns wait for play to finish, without adding unrelated players' rest.
                     $nodes[$id]['day_finish_dependencies'] = array_values(array_unique(array_merge(
                         $nodes[$id]['day_finish_dependencies'] ?? [], array_diff($previous, $nodes[$id]['dependencies']))));
                     $nodes[$id]['dependencies'] = array_values(array_unique(array_merge($nodes[$id]['dependencies'], $previous)));
                 }
                 $previous = $ids;
+                $priority++;
             }
         }
     }

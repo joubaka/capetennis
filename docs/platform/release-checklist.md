@@ -38,6 +38,7 @@ Use this checklist only after the named phase changes are reviewed and committed
 
 ## Operations and rollback
 
+- [ ] Investigate untracked production assets before clearing a dirty checkout: an uploaded logo can be referenced by a live event even though Git does not track it. Preserve its public URL in the configured web root as well as any private backup; moving the only copy out of the deployment source before asset sync can produce a live 404. Verify the exact referenced asset with an uncached HTTP request after deployment, rather than relying on a desktop's cached image.
 - [ ] Run `php artisan platform:preflight --strict` in the release environment.
 - [ ] Run `php artisan platform:health-check` after queue/scheduler startup.
 - [ ] Verify a recent backup with `php artisan platform:verify-backup`.

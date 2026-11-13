@@ -48,12 +48,12 @@ class CanonicalDrawWorkspaceTest extends TestCase
             $this->get(route($route, $draw))->assertRedirect($url.$hash);
         }
         $this->get($url)->assertOk()->assertSee('Players &amp; Positions', false)
-            ->assertSee('Draw &amp; Results', false)->assertSee('Setup &amp; Rules', false)
+            ->assertSee('Draw &amp; Results', false)->assertSee('1. Setup')->assertSee('6. Results')
             ->assertSee('Players and starting positions')
             ->assertSee('Drag a player into a box, or click a box to choose a player.')
             ->assertSee('Print draw &amp; results', false)->assertSee('Print draw only')
             ->assertSee('id="fm-draw-only-print"', false)->assertSee('data-share-draw', false)
-            ->assertSee('Back to Event')->assertSee('name="name"', false)
+            ->assertSee('Back to draws')->assertSee('name="name"', false)
             ->assertSee('Schedule multiple draws')
             ->assertSee('Schedule this draw')
             ->assertDontSee('Manage full schedule')->assertDontSee('Schedule only this draw')
@@ -93,16 +93,18 @@ class CanonicalDrawWorkspaceTest extends TestCase
             ->assertDontSee('Drag a player into a box, or click a box to choose a player.')
             ->assertDontSee('id="fm-status"', false)
             ->assertDontSee('Private timetable venue')->assertDontSee('Confidential court');
+        $this->getJson(route('public.flexible-monrad.live', $draw))->assertOk()->assertJsonMissingPath('state.reopen_blocker');
         $this->postJson(route('draw.toggle.publish.schedule', $draw))->assertOk();
         $this->get($public)->assertOk()->assertSee('Private timetable venue')->assertSee('Confidential court')
             ->assertSee('Find your name, then confirm the date, time, venue and court.')
             ->assertSee('2026-09-20 09:00:00');
         $this->assertStringContainsString('td[data-label="Time"]', file_get_contents(public_path('css/flexible-monrad.css')));
         $publicScript = file_get_contents(public_path('js/flexible-monrad.js'));
-        $this->assertStringContainsString("const followedBy = 'Followed by';", $publicScript);
-        foreach (['Date', 'Time', 'Venue', 'Court'] as $column) {
-            $this->assertStringContainsString("['{$column}', scheduleHidden ? followedBy", $publicScript);
-        }
+        $this->assertStringContainsString('const visibleSchedule = !scheduleHidden && match.schedule?.time ? match.schedule : null;', $publicScript);
+        $this->assertStringContainsString("['Date', schedule.date", $publicScript);
+        $this->assertStringContainsString("['Time', schedule.time", $publicScript);
+        $this->assertStringContainsString("['Venue', visibleSchedule?.venue", $publicScript);
+        $this->assertStringContainsString("['Court', visibleSchedule?.court", $publicScript);
         $this->postJson(route('draw.toggle.publish', $draw))->assertConflict();
         $this->postJson(route('draws.players.update', $draw), ['players' => []])->assertForbidden();
         $this->assertSame(4, $draw->drawFixtures()->count());

@@ -3,8 +3,9 @@
 @section('page-style')<style>[data-draw-day-editor] .btn, [data-draw-day-editor] .form-check { min-height:44px; } [data-draw-day-editor] .form-check {display:flex;align-items:center;gap:.5rem;padding-right:.5rem;}</style>@endsection
 @section('content')
 <div class="container-xxl py-3" data-draw-day-editor>
+  @unless($originDraw->isTeamDraw())@include('backend.draw.partials.workflow', ['draw'=>$originDraw, 'workflowContext'=>'schedule'])@endunless
   <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'draw_id'=>$draw->id, 'date'=>$data['date']] + $originContext) }}">Back to current schedule</a>
-  <a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$event, $originDraw, 'schedule_date'=>$data['date']]) }}">{{ $originDraw->id !== $draw->id ? 'Back to original draw' : 'Back to this draw' }} - {{ $originDraw->drawName }}</a>
+  <a class="btn btn-outline-primary mb-3" href="{{ $originDraw->isTeamDraw() ? route('draw.guide.show', [$event, $originDraw, 'schedule_date'=>$data['date']]) : route('backend.draw.roundrobin.show', [$originDraw, 'schedule_date'=>$data['date']]).'#schedule' }}">{{ $originDraw->id !== $draw->id ? 'Back to original draw' : 'Back to this draw' }} - {{ $originDraw->drawName }} · Schedule</a>
   @include('backend.schedule.partials.day-navigation', ['mode'=>'draw-day', 'navigationDraw'=>$draw])
   <h3>{{ $draw->drawName }} · {{ \Carbon\Carbon::parse($data['date'])->format('D j M Y') }}</h3>
   <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><span class="btn btn-primary" aria-current="page">Position band / draw</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.calendar.full-day', ['event'=>$event->id, 'date'=>$data['date'], 'draw_id'=>$draw->id] + $originContext) }}">Whole tie · full day across venues</a></nav>

@@ -68,6 +68,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Use Cape Tennis navy, blue and orange for Player Plus branding. Reserve green
   for meaningful success or ball-level states. Keep rating/age badges legible and
   compact, and keep scheduling focused on one primary workflow.
+- Individual draws share Setup, Players, Matches, Schedule, Review & publish and
+  Results navigation. Saved player placement is independent of fixture generation;
+  navigation and progress refresh must remain read-only. Preserve scoped day/draw
+  returns and separate draw visibility from published times. See
+  `docs/draw-workflow.md`, DK-14 and `DrawWorkflow`; team and advanced operations
+  retain their canonical services and safeguards.
 - Reuse established loading helpers and consistent blue modal/loading feedback
   for slow requests. Handle success, failure and session expiry so a spinner
   cannot remain indefinitely. A loading indicator is not evidence of performance.
@@ -138,6 +144,14 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   source-access checks and the reviewed email/PDF snapshot through managed mail.
   See `docs/architecture/event-type-template-parity.md`, `CavaliersRosterReport`
   and `CavaliersRosterReportTest`.
+- Cavaliers252 registration remains payer-sponsored individual checkout for
+  exact published nominees; decline requires an existing linked account or
+  canonical event manager. Keep registration admission separate from candidate
+  preparation and payment finalization. Confirmed public decline synchronizes
+  the private draft with revision/audit safeguards and blocks active entries or
+  unresolved/payment-evidenced checkouts without changing financial state.
+  See `docs/architecture/event-type-template-parity.md`,
+  `CavaliersNominationWorkflowTest` and `PublicCavaliersNominationProvenanceTest`.
 
 ## Operational evidence
 

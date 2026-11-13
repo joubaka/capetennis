@@ -13,6 +13,36 @@ class DrawWorkspaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_workflow_progress_requires_every_eligible_player_and_current_matches(): void
+    {
+        foreach (['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'] as $format) {
+            [$draw, $category] = $this->workspace();
+            $draw->settings()->create(['workflow'=>$format, 'score_format'=>'best_of_3_full']);
+            $players = collect(range(1, 3))->map(fn () => $this->entrant($category));
+            $group = $draw->groups()->create(['name'=>'A']);
+            $group->registrations()->sync($players->take(2)->pluck('id')->all());
+            $presenter = app(\App\Services\Draw\DrawWorkflow::class);
+            $this->assertFalse($presenter->forDraw($draw->fresh())['playersReady']);
+            $group->registrations()->sync($players->pluck('id')->all());
+            $this->assertSame('matches', $presenter->forDraw($draw->fresh())['next']);
+            app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
+            $this->assertSame('schedule', $presenter->forDraw($draw->fresh())['next']);
+            $group->registrations()->detach($players->last()->id);
+            $this->assertFalse($presenter->forDraw($draw->fresh())['generated']);
+        }
+    }
+
+    public function test_workflow_refresh_is_private_event_scoped_and_read_only(): void
+    {
+        [$draw] = $this->workspace();
+        $url = route('draw.guide.show', [$draw->event_id, $draw, 'workflow_only'=>1]);
+        $this->getJson($url)->assertOk()->assertJsonStructure(['workflow_html'])->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->assertDatabaseCount('draw_groups', 0);
+        $this->getJson(route('draw.guide.show', [Event::factory()->create(), $draw, 'workflow_only'=>1]))->assertNotFound();
+        $this->actingAs(User::factory()->create())->getJson($url)->assertForbidden();
+    }
+
     private function workspace(): array
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
@@ -43,7 +73,7 @@ class DrawWorkspaceTest extends TestCase
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertRedirect(route('draw.setup.show', $draw));
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/individual-format.html', $this->get(route('draw.setup.show', $draw))->assertOk()->getContent());
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
-            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
         $page = $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Players &amp; Positions', false)->assertSee('Draw &amp; Results', false)
             ->assertSee('data-workspace="setup">Draw settings', false)->assertSee('data-workspace="rules">Rules &amp; notes', false)->assertSee('Print Draw Pack')
@@ -55,7 +85,7 @@ class DrawWorkspaceTest extends TestCase
         $page->assertSee('Create your groups first. Then choose players and add them to a group.');
         $this->assertSame(1, substr_count($page->getContent(), 'id="groups-tab-boxes"'));
         $this->assertSame(1, substr_count($page->getContent(), 'id="rr-apply-group-count"'));
-        $this->assertMatchesRegularExpression('/<details\s+data-individual-draw-tools\s*>/', $page->getContent());
+        $this->assertMatchesRegularExpression('/<details\b[^>]*\bdata-individual-draw-tools\b[^>]*>/', $page->getContent());
         $page->assertSee('More tools');
         $page->assertDontSee('data-individual-draw-tools open', false);
         $page->assertSee('href="'.route('admin.events.entries.new', $draw->event_id).'">Manage event entries', false);
@@ -78,7 +108,7 @@ class DrawWorkspaceTest extends TestCase
         $before = $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all();
         $service->save($draw, ['groups' => [['group_id' => $group->id, 'registration_ids' => [$players[2]->id, $players[0]->id]]]]);
         $url = route('draw.guide.show', [$draw->event_id, $draw]);
-        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('Step 2 of 5');
+        $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('2. Players');
         $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches');
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
             ->assertSee('Saved groups differ from the generated matches')
@@ -87,7 +117,7 @@ class DrawWorkspaceTest extends TestCase
         $this->assertSame($before, $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all());
         app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
         $this->assertFalse($service->fixturesNeedRegeneration($draw));
-        $this->get($url)->assertOk()->assertSee('Draw and players ready')->assertDontSee('Saved groups differ from the generated matches');
+        $this->get($url)->assertOk()->assertSee('3. Matches')->assertDontSee('Saved groups differ from the generated matches');
     }
 
     public function test_group_fixture_comparison_handles_odd_groups_swapped_sides_and_duplicate_fixtures(): void
@@ -277,7 +307,7 @@ class DrawWorkspaceTest extends TestCase
         ]);
         $a = $draw->groups()->create(['name' => 'A']);
         $b = $draw->groups()->create(['name' => 'B']);
-        $draw->settings()->create(['boxes' => 2, 'num_sets' => 3]);
+        $draw->settings()->create(['boxes' => 2, 'num_sets' => 3, 'workflow' => 'round_robin_playoffs', 'score_format' => 'best_of_3_full']);
         foreach (['Alex Test', 'Blair Test', 'Casey Test', 'Drew Test', 'Ellis Test', 'Frankie Test'] as $index => $name) {
             $player = $this->entrant($category);
             $player->players()->first()->update(['name' => explode(' ', $name)[0], 'surname' => 'Test']);

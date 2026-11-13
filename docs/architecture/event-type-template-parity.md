@@ -68,6 +68,39 @@ alphabetically by first name, then surname (case-insensitive), with nomination I
 as the final stable tie-break. It is an unnumbered presentation only: retain saved
 `roster_position`, private nomination/reserve order and backend publication-review
 order. Keep the existing event-isolation and category-publication gates.
+For configured Trials252, small public region/source badges use only the exact
+published Inter-Districts242 and Platteland241 source events, published owned
+teams in the prior age/gender group, and canonical public main-roster membership.
+Project only region/source for already published target nominees. Private
+reserves and finalized candidate snapshots never supply public provenance;
+missing, unlinked or conflicting source/region evidence produces no badge.
+Membership provenance is not proof of played matches or the selector's reason.
+
+Configured Cavaliers252 uses the existing individual registration checkout,
+not team-payment orders. Any otherwise eligible authenticated payer may sponsor
+an exact currently published nominee while registration is open. The public
+Register link prefills the server-resolved nominee and division; this neither
+links the player to the payer nor bypasses profile/agreement gates. Registration
+admission is rechecked under the division lock before creating checkout records.
+Keep this registration-only gate out of candidate preparation and verified
+payment finalization. A Registered marker means a paid/free active entry in that
+exact division, excluding withdrawn/cancelled/deleted or unpaid records.
+
+Public nomination decline requires an already linked account or canonical event
+manager, an open published/unlocked division and a saved private draft. Preview
+is read-only; explicit confirmation is actor/session-bound and expires. Reject
+active entries and every unresolved checkout, even after its clock expires, plus
+wallet reservations/debits, PayFast handoff/settlement, EFT proof, receipts and
+other payment evidence. Do not cancel, expire, refund or alter financial records
+as part of a nomination decision. Under the same division lock, remove only the
+reviewed published nominee, remove that player from draft selected/reserves, add
+them once to declined, bump the draft revision and audit the actual actor. Lock
+division before draft/nominees consistently with admin publication. Original-ID
+replays are no-ops only for the recorded decline; stale saves or replays cannot
+remove a fresh administrative republication. Never promote/publish a replacement
+or send mail automatically. See `CavaliersNominationWorkflowTest` and
+`PublicCavaliersNominationProvenanceTest` for admission, payer/identity, published
+provenance and financial-state preservation evidence.
 
 The Cavaliers nomination report shares a private copy of saved divisions with
 chosen existing accounts; it does not publish nominations or grant event access.

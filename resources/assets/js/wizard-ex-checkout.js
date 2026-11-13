@@ -22,6 +22,7 @@ $(function () {
   // ===============================
   const wizardCheckout = document.querySelector('#wizard-checkout');
   if (!wizardCheckout) return;
+  const escapeText = value => $('<span>').text(value).html();
 
   const wizardCheckoutNext = wizardCheckout.querySelectorAll('.btn-next');
 
@@ -74,7 +75,7 @@ $(function () {
       $container.append(
         '<div id="' + cardId + '" class="confirm-player-card card mb-3 border-warning" data-player-id="' + player.id + '" data-confirmed="0">' +
           '<div class="card-header d-flex justify-content-between align-items-center py-3">' +
-            '<div><h6 class="mb-0"><i class="ti ti-user me-1"></i> ' + player.name + '</h6></div>' +
+            '<div><h6 class="mb-0"><i class="ti ti-user me-1"></i> ' + escapeText(player.name) + '</h6></div>' +
             '<span class="badge bg-warning text-dark confirm-badge"><i class="ti ti-clock me-1"></i>Pending</span>' +
           '</div>' +
           '<div class="card-body">' +
@@ -345,7 +346,7 @@ $(function () {
       $container.append(
         '<div id="' + cardId + '" class="coc-player-card border rounded p-3 mb-3" data-player-id="' + player.id + '" data-accepted="0">' +
           '<div class="d-flex justify-content-between align-items-center">' +
-            '<div><strong>' + player.name + '</strong></div>' +
+            '<div><strong>' + escapeText(player.name) + '</strong></div>' +
             '<div class="coc-status"><span class="badge bg-secondary">Checking...</span></div>' +
           '</div>' +
           '<div class="coc-action mt-2"></div>' +
@@ -652,6 +653,7 @@ $(function () {
   }
 
   initSelect2();
+  if (wizardCheckout.dataset.nominationPrefilled === 'true') appendPlayers($('.playerRow'));
 
 })();
 
@@ -678,24 +680,16 @@ function appendPlayers(rows) {
       return;
     }
 
-    const playerName = $playerSelect.find(':selected').data('name');
+    const playerName = $playerSelect.find(':selected').text().trim();
     const categoryName = $categorySelect.find(':selected').data('name');
 
-    const price = parseFloat(
-      $categorySelect.find(':selected').data('price') ||
-      $('#eventPrice').val()
-    );
-
-    $('.playersCart').append(
-      `<div>${playerName} – ${categoryName}</div>`
-    );
-
-    $('#myUl').append(`
-      <li class="list-group-item d-flex justify-content-between">
-        <span>${playerName} – ${categoryName}</span>
-        <strong>R${price.toFixed(2)}</strong>
-      </li>
-    `);
+    const categoryPrice = $categorySelect.find(':selected').attr('data-price');
+    const price = parseFloat(categoryPrice !== undefined && categoryPrice !== '' ? categoryPrice : $('#eventPrice').val());
+    const label = playerName + ' – ' + categoryName;
+    $('.playersCart').append($('<div>').text(label));
+    const item = $('<li>').addClass('list-group-item d-flex justify-content-between');
+    item.append($('<span>').text(label), $('<strong>').text('R' + price.toFixed(2)));
+    $('#myUl').append(item);
 
     total += price;
   });

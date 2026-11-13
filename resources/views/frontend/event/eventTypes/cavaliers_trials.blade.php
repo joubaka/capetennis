@@ -41,13 +41,21 @@
                                     @foreach($nominations as $nomination)
 
                                     <li class="list-group-item">{{$nomination->display_name}}
+                                    @if ($provenance = $nominationProvenance[$eventCategory->id][$nomination->id] ?? null)
+                                        <small class="badge rounded-pill bg-label-primary text-wrap ms-1">({{ $provenance['region'] }} · {{ $provenance['source'] }})</small>
+                                    @endif
 
 
-                                    @if(isset($nomRegisteredLookup[$nomination->player_id]))
-
-                                        <span class=""><i class="text-success fa-solid fa-circle-check"></i></span>
-                                      @else
-                                                      @endif
+                                    @if(isset($nomRegisteredLookup[$nomination->player_id.'-'.$eventCategory->id]))
+                                        <span class="badge bg-label-success ms-1">Registered</span>
+                                    @elseif (($cavaliersRegistrationOpen ?? false) && $nomination->player_id && !$eventCategory->isLocked())
+                                        <div class="d-flex flex-wrap gap-2 mt-2">
+                                            <a class="btn btn-sm btn-outline-primary" href="{{ route('register.register', ['id' => $event->id, 'nomination' => $nomination->id]) }}">Register</a>
+                                            @if (($cavaliersCanManageNominations ?? false) || in_array((int) $nomination->player_id, $cavaliersDeclinePlayerIds ?? [], true))
+                                                <a class="btn btn-sm btn-outline-danger" href="{{ route('cavaliers.nominations.decline', [$event, $eventCategory, $nomination->id]) }}">Decline</a>
+                                            @endif
+                                        </div>
+                                    @endif
 
                                     </li>
                                     @endforeach

@@ -47,7 +47,7 @@
     @endforeach
   </div></details>
 </div>
-<nav class="rr-workspace-nav" aria-label="Draw workspace">
+<nav class="rr-workspace-nav" aria-label="Draw workspace" @unless($draw->isTeamDraw()) hidden @endunless>
   @unless($draw->isTeamDraw())<a href="{{ route('draw.setup.show', $draw) }}">Format</a>@endunless
   <button type="button" data-workspace="setup">Draw settings</button>
   <button type="button" data-workspace="players">{{ $draw->isTeamDraw() ? 'Players & Groups' : 'Players & Positions' }}</button>
@@ -531,6 +531,12 @@
          MATRIX TAB
        ============================ --}}
     <div class="tab-pane fade show active" id="matrix-pane" role="tabpanel">
+      @unless($draw->isTeamDraw())
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          @can('generateFixtures', $draw)<button type="button" class="btn btn-primary" data-journey-create-matches>Review pairings &amp; create matches</button>@endcan
+          <span class="small text-muted">Preview before generating. Existing matches and results remain protected by the normal rebuild checks.</span>
+        </div>
+      @endunless
       <div class="card mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
@@ -831,7 +837,7 @@
           <i class="ti ti-calendar-plus me-1"></i> Schedule Matches
         </button>
         @else
-        <a class="btn btn-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule this draw</a>
+        <a class="btn btn-primary btn-sm" href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]] + (request('schedule_date') ? ['date'=>request('schedule_date')] : [])) }}">Schedule this draw</a>
         @endif
       </div>
     </div>

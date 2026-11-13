@@ -20,6 +20,11 @@ final class DrawSetupGuideController extends Controller
 
     public function show(Request $request, Event $event, Draw $draw, DrawSetupGuide $guide)
     {
+        if ($request->boolean('workflow_only')) {
+            $this->authorizeGuide($event, $draw);
+            abort_if($draw->isTeamDraw(), 404);
+            return response()->json(['workflow_html' => view('backend.draw.partials.workflow', ['draw' => $draw])->render()])->header('Cache-Control', 'private, no-store');
+        }
         $this->authorizeGuide($event, $draw);
         $scheduleDate = $request->validate(['schedule_date'=>['nullable', 'date_format:Y-m-d']])['schedule_date'] ?? null;
         $state = $guide->state($draw);

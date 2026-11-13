@@ -64,7 +64,9 @@ final class ScheduleAvailability
             ->when($draw, fn ($q) => $q->where('draw_id', '!=', $draw->id))
             ->distinct()->pluck('draw_id') : collect();
         if ($legacyDraws->isNotEmpty()) {
-            $possible += self::legacyParticipants(Fixture::whereIn('draw_id', $legacyDraws)->get()->keyBy('id'));
+            $legacyFixtures = Fixture::whereIn('draw_id', $legacyDraws)->get()->keyBy('id');
+            $possible += self::legacyParticipants($legacyFixtures);
+            foreach ($legacyFixtures as $fixture) $participantGroups[$fixture->id] = self::roundRobinPositionGroup($fixture);
         }
         $reservationDraws = $monrads->pluck('draw_id')->merge($legacyDraws);
         $bookings = OrderOfPlay::with('fixture.draw')->whereNotIn('fixture_id', $excludeFixtures)->whereNotNull('time')
@@ -180,6 +182,37 @@ final class ScheduleAvailability
         return $possible;
     }
 
+    /** Only exact disjoint ranks in one unambiguous group prove mutually exclusive entrants. */
+    public static function roundRobinPositionGroup(Fixture $fixture): ?string
+    {
+        if ($fixture->stage === 'RR' || $fixture->registration1_id || $fixture->registration2_id) return null;
+        $groupId = (int) $fixture->registration1_source_group_id;
+        if (! $groupId || $groupId !== (int) $fixture->registration2_source_group_id) return null;
+        $group = \App\Models\DrawGroup::with('groupRegistrations')->find($groupId);
+        if (! $group || (int) $group->draw_id !== (int) $fixture->draw_id) return null;
+        $registrations = $group->groupRegistrations->pluck('registration_id');
+        if ($registrations->count() !== $registrations->unique()->count()) return null;
+        $positions = [(int) $fixture->registration1_source_position, (int) $fixture->registration2_source_position];
+        if (min($positions) < 1 || max($positions) > $registrations->count() || $positions[0] === $positions[1]) return null;
+        // Two registration records for the same person cannot prove disjoint participants.
+        $players = DB::table('player_registrations')->whereIn('registration_id', $registrations)->pluck('player_id');
+        if ($players->count() !== $players->unique()->count()) return null;
+        if (Fixture::where('draw_id', $fixture->draw_id)->where(fn ($query) => $query
+            ->where('parent_fixture_id', $fixture->id)->orWhere('loser_parent_fixture_id', $fixture->id))->exists()) return null;
+        sort($positions);
+        return 'rr-position:'.$fixture->draw_id.':'.$groupId.':'.implode(',', $positions);
+    }
+
+    private static function disjointParticipantGroups(?string $left, ?string $right): bool
+    {
+        if (! $left || ! $right) return false;
+        if (str_starts_with($left, 'flexible-draw-')) return $left === $right;
+        if (! str_starts_with($left, 'rr-position:') || ! str_starts_with($right, 'rr-position:')) return false;
+        $one = explode(':', $left); $two = explode(':', $right);
+        return $one[1] === $two[1] && $one[2] === $two[2]
+            && ! array_intersect(explode(',', $one[3]), explode(',', $two[3]));
+    }
+
     public static function participants(array $matches): array
     {
         $result = [];
@@ -278,14 +311,14 @@ final class ScheduleAvailability
         $ids = $this->identities($registrations);
         $court = self::courtKey($court);
         $slots = array_filter($this->slots, fn ($s) => ($s['venue'] === $venue && $s['court'] === $court)
-            || (! $participantGroup || $s['participant_group'] !== $participantGroup)
+            || ! self::disjointParticipantGroups($participantGroup, $s['participant_group'])
                 && array_intersect($ids, $s['registrations']));
         usort($slots, fn ($a, $b) => $a['start'] <=> $b['start']);
         $at = $start->copy();
         foreach ($slots as $slot) {
             $courtConflict = $slot['venue'] === $venue && $slot['court'] === $court
                 && $at->lt($slot['court_end']) && $at->copy()->addMinutes($courtMinutes)->gt($slot['start']);
-            $participantConflict = (! $participantGroup || $slot['participant_group'] !== $participantGroup)
+            $participantConflict = ! self::disjointParticipantGroups($participantGroup, $slot['participant_group'])
                 && array_intersect($ids, $slot['registrations'])
                 && $at->lt($slot['participant_end']) && $at->copy()->addMinutes($participantMinutes)->gt($slot['start']);
             if ($courtConflict || $participantConflict) {

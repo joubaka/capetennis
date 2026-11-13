@@ -16,6 +16,97 @@ class FlexibleMonradTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_workflow_finishes_only_after_all_placement_results_are_recorded(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $service->generate($draw, 1);
+        $presenter = app(\App\Services\Draw\DrawWorkflow::class);
+        foreach (range(1, 4) as $index) {
+            $state = $service->state($draw->fresh());
+            $match = collect((array) $state['matches'])->first(fn ($match) => !$match['automatic'] && !$match['winner'] && count(array_filter($match['players'])) === 2);
+            $this->assertNotNull($match);
+            $this->assertFalse($presenter->forDraw($draw->fresh())['resultsComplete']);
+            $service->score($draw, $match['id'], [[6, 0]], $record->fresh()->revision, false);
+        }
+        $this->assertTrue($presenter->forDraw($draw->fresh())['steps']['results']['complete']);
+        $this->assertTrue($presenter->forDraw($draw->fresh())['resultsComplete']);
+    }
+
+    public function test_workflow_schedule_and_publication_progress_tracks_private_changes(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $service->generate($draw, 1);
+        $venue = \App\Models\Venue::forceCreate(['name'=>'Workflow test courts']);
+        foreach ($draw->drawFixtures()->get() as $index => $fixture) {
+            \App\Models\OrderOfPlay::create(['fixture_id'=>$fixture->id, 'draw_id'=>$draw->id, 'venue_id'=>$venue->id, 'court'=>(string) ($index + 1), 'time'=>'2026-11-14 09:00:00']);
+        }
+        $presenter = app(\App\Services\Draw\DrawWorkflow::class);
+        $this->assertSame('review', $presenter->forDraw($draw->fresh())['next']);
+        $this->assertFalse($presenter->forDraw($draw->fresh())['steps']['review']['complete']);
+        $draw->update(['published'=>true]);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($draw->event, ['draw_id'=>$draw->id]);
+        $this->assertTrue($presenter->forDraw($draw->fresh())['steps']['review']['complete']);
+        $this->assertSame('results', $presenter->forDraw($draw->fresh())['next']);
+        \App\Models\OrderOfPlay::where('draw_id', $draw->id)->first()->update(['time'=>'2026-11-14 10:00:00']);
+        $this->assertSame('review', $presenter->forDraw($draw->fresh())['next']);
+        $this->assertFalse($presenter->forDraw($draw->fresh())['steps']['review']['complete']);
+        $this->assertNotNull($service->state($draw->fresh())['reopen_blocker']);
+    }
+
+    public function test_all_standalone_formats_keep_saved_byes_and_player_progress_without_generation(): void
+    {
+        foreach (['playoffs', 'monrad', 'feed_in_monrad', 'custom_monrad'] as $format) {
+            [$draw, $draft] = $this->setupDraw();
+            $draw->settings()->update(['workflow'=>$format]);
+            $draft['slots']['bb'] = ['type'=>'bye'];
+            app(FlexibleMonradService::class)->save($draw->fresh(), $draft, 0);
+            $state = app(\App\Services\Draw\DrawWorkflow::class)->forDraw($draw->fresh());
+            $this->assertTrue($state['playersReady'], $format);
+            $this->assertFalse($state['generated']);
+            $this->assertSame('matches', $state['next']);
+            $this->assertSame('bye', $draw->fresh()->flexibleMonrad->draft['slots']['bb']['type']);
+        }
+        $this->assertDatabaseCount('fixtures', 0);
+    }
+
+    public function test_workflow_distinguishes_saved_players_from_matches_and_is_read_only(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $presenter = app(\App\Services\Draw\DrawWorkflow::class);
+        $before = $draw->fresh()->flexibleMonrad->toArray();
+        $state = $presenter->forDraw($draw->fresh());
+        $this->assertTrue($state['steps']['players']['complete']);
+        $this->assertFalse($state['steps']['matches']['complete']);
+        $this->assertSame('matches', $state['next']);
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->assertSame($before, $draw->fresh()->flexibleMonrad->toArray());
+        $service->generate($draw, 1);
+        $state = $presenter->forDraw($draw->fresh());
+        $this->assertTrue($state['steps']['matches']['complete']);
+        $this->assertSame('schedule', $state['next']);
+        $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('data-draw-journey', false)->assertSee('Review &amp; publish', false);
+    }
+
+    public function test_workflow_partial_drafts_and_missing_generated_records_are_not_complete(): void
+    {
+        [$draw, $draft] = $this->setupDraw();
+        $service = app(FlexibleMonradService::class);
+        $service->save($draw, $draft, 0);
+        $record = $draw->fresh()->flexibleMonrad;
+        $record->update(['draft' => ['size' => 4, 'slots' => []]]);
+        $this->assertFalse(app(\App\Services\Draw\DrawWorkflow::class)->forDraw($draw->fresh())['playersReady']);
+        $record->update(['draft' => $draft]);
+        $record = $service->generate($draw, 1);
+        Fixture::whereKey(array_values($record->fixture_map)[0])->delete();
+        $this->assertFalse(app(\App\Services\Draw\DrawWorkflow::class)->forDraw($draw->fresh())['generated']);
+    }
+
     private function setupDraw(): array
     {
         $event = Event::factory()->create();
@@ -53,8 +144,8 @@ class FlexibleMonradTest extends TestCase
         $this->assertSame(91, (int) Fixture::findOrFail($record->fixture_map['main_a'])->match_nr);
         $this->assertSame(4, $draw->drawFixtures()->count());
         $state = $service->state($draw->fresh());
-        $this->assertSame(91, (int) $state['matches']['main_a']['number']);
-        $this->assertSame(3, (int) $state['matches']['main_final']['number']);
+        $this->assertSame(91, (int) ((array) $state['matches'])['main_a']['number']);
+        $this->assertSame(3, (int) ((array) $state['matches'])['main_final']['number']);
     }
 
     public function test_demo_preview_uses_the_same_round_order_as_new_fixtures(): void
@@ -484,7 +575,7 @@ class FlexibleMonradTest extends TestCase
         $this->get(route('flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 0])->assertOk()->assertJsonPath('revision', 1);
         $this->putJson(route('flexible-monrad.save', $draw), ['draft' => $draft, 'revision' => 0])->assertConflict();
-        $this->get(route('public.flexible-monrad.show', $draw))->assertNotFound();
+        $this->get(route('public.flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk()->assertJsonPath('generated', true);
         $this->assertSame(4, $draw->drawFixtures()->count());
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 2])->assertOk();

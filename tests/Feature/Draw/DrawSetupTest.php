@@ -13,6 +13,19 @@ class DrawSetupTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_format_page_explains_event_wide_result_freeze_before_submission(): void
+    {
+        $draw = $this->draw();
+        $other = Draw::factory()->create(['event_id'=>$draw->event_id]);
+        $fixture = Fixture::factory()->create(['draw_id'=>$other->id]);
+        DB::table('fixture_results')->insert(['fixture_id'=>$fixture->id, 'set_nr'=>1, 'created_at'=>now(), 'updated_at'=>now()]);
+        $this->get(route('draw.setup.show', $draw))->assertOk()
+            ->assertSee('Results have been recorded elsewhere in this event')
+            ->assertSee('<fieldset disabled>', false);
+        $this->assertDatabaseCount('fixtures', 1);
+        $this->assertDatabaseCount('fixture_results', 1);
+    }
+
     private function draw(): Draw
     {
         $event = Event::factory()->create();
@@ -195,7 +208,7 @@ class DrawSetupTest extends TestCase
         foreach (['playoffs' => 3, 'monrad' => 4, 'custom_monrad' => 4, 'feed_in_monrad' => 4] as $workflow => $count) {
             $draw = $this->draw();
             $this->post(route('draw.setup.store', $draw), ['workflow' => $workflow])->assertRedirect(route('backend.draw.roundrobin.show', $draw));
-            $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Players &amp; Positions', false)->assertSee('Setup &amp; Rules', false);
+            $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Players &amp; Positions', false)->assertSee('1. Setup')->assertSee('6. Results');
             $this->get(route('flexible-monrad.show', $draw))->assertRedirect(route('backend.draw.roundrobin.show', $draw));
             $this->assertSame($workflow, $draw->fresh()->settings->workflow);
             $this->assertIsObject(app(FlexibleMonradService::class)->state($draw->fresh())['draft']['slots']);
@@ -245,7 +258,7 @@ class DrawSetupTest extends TestCase
         $this->assertSame(36, $draw->drawFixtures()->count());
         $this->assertSame(16, $draw->registrations()->reorder()->count());
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertSee('Feed-in Monrad')
-            ->assertSee('Players &amp; Positions', false)->assertSee('Setup &amp; Rules', false);
+            ->assertSee('Players &amp; Positions', false)->assertSee('1. Setup')->assertSee('6. Results');
         $programme = app(\App\Services\Scheduling\ScheduleProgramme::class);
         $this->assertTrue($programme->supports($draw));
         $this->assertTrue(app(\App\Domain\Draws\Services\DrawReadinessService::class)->for($draw)['checks']['format']['ok']);
@@ -330,10 +343,10 @@ class DrawSetupTest extends TestCase
         $this->assertSame([2, 4, 6, 8], $draw->flexibleMonrad->draft['challenge_pairs']);
         $this->assertSame('feed_in_monrad', $draw->settings->workflow);
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()
-            ->assertSeeInOrder(['>Format</a>', 'data-flexible-tab="settings"', 'data-flexible-tab="groups"', 'data-flexible-tab="matrix"'], false)
-            ->assertDontSee('data-flexible-tab="schedule"', false)->assertDontSee('data-workspace-review', false);
+            ->assertSeeInOrder(['1. Setup', '2. Players', '3. Matches', '4. Schedule', '5. Review &amp; publish', '6. Results'], false)
+            ->assertSee('data-flexible-tab="schedule"', false);
         $this->get(route('draw.setup.show', $draw))->assertOk()
-            ->assertSee('aria-current="page"', false)->assertSee('draw-progress-modal');
+            ->assertSee('data-journey-step="setup"', false)->assertSee('draw-progress-modal');
         $this->postJson(route('flexible-monrad.generate', $draw), ['revision' => 1])->assertOk();
         $this->assertSame(40, $draw->drawFixtures()->count());
     }
@@ -554,7 +567,7 @@ class DrawSetupTest extends TestCase
         ]);
 
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
-            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
 
         $draw->refresh();
         $this->assertSame('round_robin_playoffs', $draw->settings->workflow);
@@ -577,7 +590,7 @@ class DrawSetupTest extends TestCase
 
         $this->assertNull($draw->settings?->workflow);
         $this->post(route('draw.setup.store', $draw), ['workflow' => 'round_robin_playoffs'])
-            ->assertRedirect(route('backend.draw.roundrobin.show', $draw));
+            ->assertRedirect(route('backend.draw.roundrobin.show', $draw).'#settings');
 
         $draw->refresh();
         $this->assertSame('round_robin_playoffs', $draw->settings->workflow);

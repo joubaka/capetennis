@@ -12,13 +12,14 @@
 @endsection
 @section('content')
 <div class="container-xxl py-3">
+  @if($contextDraw && !$contextDraw->isTeamDraw())@include('backend.draw.partials.workflow', ['draw'=>$contextDraw, 'workflowContext'=>'schedule'])@endif
   @php
     $viewContext = array_intersect_key($data, array_flip(['draw_id','origin_draw_id']));
     $viewingDraw = !empty($data['draw_id']) ? $draws->firstWhere('id',(int)$data['draw_id']) : null;
   @endphp
   <a class="btn btn-outline-primary mb-3" href="{{ route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'date'=>$data['date']] + $viewContext) }}">Back to saved schedule</a>
   <h3>Replan selected rounds - whole ties</h3>
-  @if($contextDraw)<a class="btn btn-outline-primary mb-3" href="{{ route('draw.guide.show', [$event, $contextDraw, 'schedule_date'=>$data['date']]) }}">Back to original draw - {{ $contextDraw->drawName }}</a>@endif
+  @if($contextDraw)<a class="btn btn-outline-primary mb-3" href="{{ $contextDraw->isTeamDraw() ? route('draw.guide.show', [$event, $contextDraw, 'schedule_date'=>$data['date']]) : route('backend.draw.roundrobin.show', [$contextDraw, 'schedule_date'=>$data['date']]).'#schedule' }}">Back to original draw - {{ $contextDraw->drawName }} · Schedule</a>@endif
   <div class="alert alert-info">Planning scope: selected draws and rounds across all selected venues. Calendar venue and draw filters do not restrict the matches included. Each selected round includes unscheduled matches as well as saved matches on this day. Review the preview before saving.</div>
   @include('backend.schedule.partials.day-navigation', ['mode'=>'whole-tie', 'navigationDraw'=>$viewingDraw])
   <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><a class="btn btn-outline-primary" href="{{ route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>$data['date']] + ($viewingDraw ? ['draw_ids'=>[$viewingDraw->id]] : []) + (!empty($data['origin_draw_id']) ? ['origin_draw_id'=>$data['origin_draw_id']] : [])) }}">Position band / draw</a><span class="btn btn-primary" aria-current="page">Whole tie · full day across venues</span></nav>

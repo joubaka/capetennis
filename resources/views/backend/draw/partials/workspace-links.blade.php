@@ -1,4 +1,4 @@
-<nav class="rr-workspace-nav mb-3" aria-label="Draw workspace">
+<nav class="rr-workspace-nav mb-3" aria-label="Draw workspace" @unless($draw->isTeamDraw()) hidden @endunless>
   @php($choosingFormat = request()->routeIs('draw.setup.show'))
   @unless($draw->isTeamDraw())
     <a class="btn {{ $choosingFormat ? 'btn-primary' : 'btn-label-secondary' }}" href="{{ route('draw.setup.show', $draw) }}" @if($choosingFormat) aria-current="page" @endif>Format</a>

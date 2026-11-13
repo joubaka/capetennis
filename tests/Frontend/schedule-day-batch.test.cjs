@@ -134,6 +134,44 @@ function mounted(overrides={}) {
  return {s,get,sections,change(input){get('day-batch-workflow').listeners.change({target:input});}};
 }
 
+test('an unsaved daily-limit change cannot preview until its canonical save succeeds',async()=>{
+ let previews=0,fail=true;
+ const app=mounted({onPreview:()=>{previews++;},onSaveTiming:async()=>{if(fail)throw new Error('Save failed');}});
+ const preview=app.get('day-batch-preview'),save=app.get('day-batch-save-timing');
+ app.get('day-batch-limit').checked=true;
+ await preview.listeners.click({currentTarget:preview});
+ assert.equal(previews,0);
+ await save.listeners.click({currentTarget:save});
+ await preview.listeners.click({currentTarget:preview});
+ assert.equal(previews,0);
+ fail=false;
+ await save.listeners.click({currentTarget:save});
+ await preview.listeners.click({currentTarget:preview});
+ assert.equal(previews,1);
+ app.get('day-batch-limit').checked=false;
+ await preview.listeners.click({currentTarget:preview});
+ assert.equal(previews,1);
+});
+
+test('a successful timing save elsewhere synchronizes the day controls and saved policy',async()=>{
+ let payload;
+ const app=mounted({onPreview:value=>{payload=value;}});
+ app.s.updateSavedTiming({duration:15,player_rest:0,court_gap:0,limit_daily_matches:true});
+ assert.equal(app.get('day-batch-limit').checked,true);
+ const button=app.get('day-batch-preview');await button.listeners.click({currentTarget:button});
+ assert.equal(payload.limit_daily_matches,true);assert.equal(payload.duration,15);
+});
+
+test('an edit made while saving remains unsaved and cannot preview as the saved policy',async()=>{
+ let finish,previews=0;
+ const app=mounted({onPreview:()=>{previews++;},onSaveTiming:()=>new Promise(resolve=>{finish=resolve;})});
+ app.get('day-batch-limit').checked=true;
+ const save=app.get('day-batch-save-timing'),preview=app.get('day-batch-preview');
+ const pending=save.listeners.click({currentTarget:save});
+ app.get('day-batch-limit').checked=false;finish();await pending;
+ await preview.listeners.click({currentTarget:preview});assert.equal(previews,0);
+});
+
 test('match chooser shows escaped player and conditional names and keeps played matches disabled',()=>{
  const app=mounted({savedByDay:{},draws:[{id:1,name:'Fictional draw',day_round_details:{1:[group('Finals',
   {key:'individual:1',number:15,participants:['Player <A>','Player B']},
@@ -234,12 +272,20 @@ test('normal day preview reveals review even after legacy selection hides advanc
  };
  let rendered=false;
  const context={document:{getElementById:get},workspace:{classList:{add(){}}},syncDayTiming(){},post:async()=>({matches:[]}),previewUrl:'/preview',
-  showWorkflowStep(){},notify(){},render(){rendered=true;},programmePayload:{},dayBatchPayload:null,payload:null};
+  showWorkflowStep(){},notify(){},render(){rendered=true;},previewGeneration:0,programmePayload:{},dayBatchPayload:null,payload:null};
  vm.runInNewContext(source.slice(start,end).replace('    onPreview:async config => {','globalThis.preview=async config => {')+'\n};',context);
  await context.preview({day_batch:true,full_day_scope:days[0]});
  assert.equal(get('advanced-scheduling').hidden,false);
  assert.equal(get('advanced-scheduling').open,true);
  assert.equal(rendered,true);
+ rendered=false;
+ context.post=async()=>{context.previewGeneration++;return {matches:[]};};
+ await context.preview({day_batch:true});
+ assert.equal(rendered,false,'an edited selection must not render an in-flight stale preview');
+ context.post=async()=>({input:{limit_daily_matches:true}});
+ context.invalidatePreview=()=>{context.previewGeneration++;};
+ await assert.rejects(context.preview({limit_daily_matches:false}),/saved daily match limit differs/);
+ assert.equal(rendered,false);
 });
 test('saving a day stays disabled until every selected match fits while legacy partial saves remain available',()=>{
  const source=fs.readFileSync('resources/views/backend/schedule/event-venue-schedule.blade.php','utf8');

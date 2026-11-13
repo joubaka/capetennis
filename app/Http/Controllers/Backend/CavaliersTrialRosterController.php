@@ -197,9 +197,9 @@ class CavaliersTrialRosterController extends Controller
         $publish = (bool) $input['publish'];
 
         $publication = DB::transaction(function () use ($event, $categoryEvent, $input, $publish, $eligibility) {
-            $draft = $this->draft($categoryEvent)->lockForUpdate()->first();
             $division = CategoryEvent::query()->whereKey($categoryEvent->id)->where('event_id', $event->id)
                 ->lockForUpdate()->firstOrFail();
+            $draft = $this->draft($categoryEvent)->lockForUpdate()->first();
             $existing = $division->nominations()->orderBy('id')->lockForUpdate()->get();
             abort_unless($this->fingerprint($division, $existing) === $input['fingerprint'], 409,
                 'The event nominations changed. Reload the division and review the list again.');

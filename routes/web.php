@@ -165,6 +165,10 @@ Route::get('/home/get_events', [HomeController::class, 'get_events'])->name('hom
 
 //register
 Route::get('register/register/{id}', [RegisterController::class, 'register'])->middleware(['auth', 'agreement', 'profile.updated'])->name('register.register');
+Route::middleware(['auth', 'throttle:15,1'])->prefix('cavaliers/events/{event}/categories/{categoryEvent}/nominations/{nomination}')->name('cavaliers.nominations.')->group(function () {
+  Route::get('/decline', [\App\Http\Controllers\Frontend\CavaliersNominationController::class, 'decline'])->whereNumber('nomination')->name('decline');
+  Route::post('/decline', [\App\Http\Controllers\Frontend\CavaliersNominationController::class, 'confirm'])->whereNumber('nomination')->name('decline.confirm');
+});
 Route::get('register/search-players', [RegisterController::class, 'searchPlayers'])->middleware('auth')->name('register.search.players');
 Route::post('register/player-details', [RegisterController::class, 'getPlayerDetails'])->middleware('auth')->name('register.player.details');
 Route::post('register/update-player-details', [RegisterController::class, 'updatePlayerDetails'])->middleware('auth')->name('register.update.player.details');

@@ -117,8 +117,8 @@ class OrganiserSetupJourneyTest extends TestCase
         $this->get(route('headOffice.show', $event))->assertOk()
             ->assertSee('Continue setup')
             ->assertSee(e($guideUrl), false);
-        $this->get($guideUrl)->assertOk()->assertSee('Step 2 of 5')
-            ->assertSee('Place your players');
+        $this->get($guideUrl)->assertOk()->assertSee('1. Setup')->assertSee('2. Players')
+            ->assertSee('Place and save players before creating matches');
         $this->assertSame($before, $draw->fresh()->getAttributes());
         $this->assertDatabaseCount('draws', 1);
         $this->assertDatabaseCount('fixtures', 0);
@@ -165,8 +165,8 @@ class OrganiserSetupJourneyTest extends TestCase
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'winner_registration' => null]);
         $url = route('draw.guide.show', [$event, $draw]);
-        $this->get($url)->assertOk()->assertSee('Step 4 of 5 · Schedule')
-            ->assertSee('Schedule matches')->assertDontSee('Later: scheduling and publication')
+        $this->get($url)->assertOk()->assertSee('4. Schedule')
+            ->assertSee('5. Review &amp; publish', false)->assertDontSee('Later: scheduling and publication')
             ->assertSee(e(route('backend.draw.roundrobin.show', $draw).'?review=publication#matrix'), false);
         $this->get(route('backend.draw.roundrobin.show', [$draw, 'review' => 'publication']))->assertOk()
             ->assertSee('data-publication-review-toggle', false)
@@ -174,7 +174,7 @@ class OrganiserSetupJourneyTest extends TestCase
             ->assertSee('Draw and schedule publish separately.');
         $venue = Venue::forceCreate(['name' => 'Synthetic Trials courts']);
         OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $draw->id, 'time' => '2026-10-30 09:00:00', 'court' => '1', 'venue_id' => $venue->id]);
-        $this->get($url)->assertOk()->assertSee('Review saved schedule');
+        $this->get($url)->assertOk()->assertSee('1 matches · 1 with saved times');
         $this->assertFalse((bool) $draw->fresh()->published);
         $this->assertFalse((bool) $draw->fresh()->oop_published);
     }

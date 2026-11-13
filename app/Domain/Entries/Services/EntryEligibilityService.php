@@ -102,6 +102,7 @@ class EntryEligibilityService
     public function assertCanRegister(CategoryEvent $categoryEvent, int $playerId): void
     {
         $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
+        app(\App\Services\CavaliersNominationEligibility::class)->assertCanRegister($categoryEvent, $playerId);
         $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
 
         if (SiteSetting::get('registration_open', '1') !== '1') {

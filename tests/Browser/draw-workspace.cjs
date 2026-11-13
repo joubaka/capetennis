@@ -23,6 +23,8 @@ let revision = initial('RR_ASSIGNMENT_REVISION'),
   assignedVenues = [],
   failSave = false;
 const calls = [];
+const workflowMarkup = () => snapshot.match(/<section class="draw-journey[\s\S]*?<\/section>/)[0]
+  .replace(/\d+ matches · \d+ with saved times/, `${fixtures.length} matches · 0 with saved times`);
 const json = (response, data, status = 200) => {
   response.writeHead(status, { 'Content-Type': 'application/json' });
   response.end(JSON.stringify(data));
@@ -34,7 +36,8 @@ const hub = () => ({
   standings: {}
 });
 const server = http.createServer(async (request, response) => {
-  const pathname = new URL(request.url, 'http://localhost').pathname;
+  const requestUrl = new URL(request.url, 'http://localhost');
+  const pathname = requestUrl.pathname;
   if (request.method === 'POST') {
     let raw = '';
     for await (const chunk of request) raw += chunk;
@@ -105,6 +108,11 @@ const server = http.createServer(async (request, response) => {
     }
     return json(response, { success: true });
   }
+  if (pathname.endsWith('/continue')) {
+    const base = 'http://127.0.0.1:' + server.address().port;
+    const workflow = workflowMarkup().replaceAll('http://localhost', base).replaceAll('http:\/\/localhost', base);
+    return json(response, { workflow_html: workflow, html: `<div data-draw-guide><h1>Continue test draw</h1>${workflow}</div>` });
+  }
   if (pathname.endsWith('/groups-data')) return json(response, { groups, revision });
   if (pathname.endsWith('/available-players')) {
     const assigned = groups.flatMap(g => g.players.map(p => p.id));
@@ -122,6 +130,10 @@ const server = http.createServer(async (request, response) => {
     return response.end('<svg width="500" height="150"><text x="20" y="40">Regression bracket preview</text></svg>');
   }
   if (pathname.endsWith('/venues/json')) return json(response, assignedVenues);
+  if (/\/individual-schedule\/\d+\/data$/.test(pathname)) return json(response, {
+    fixtures: fixtures.map(fixture => ({id:fixture.id,match_nr:fixture.match_nr,p1:fixture.home,p2:fixture.away})),
+    venues: assignedVenues
+  });
   if (pathname.includes('/schedule/')) return json(response, []);
   if (pathname === '/' || pathname.includes('/draw/roundrobin/')) {
     const base = 'http://127.0.0.1:' + server.address().port;
@@ -194,12 +206,30 @@ async function run() {
     }
   };
   try {
-    await page.goto(url);
+    const workspacePath = new URL(snapshot.match(/href="([^"]+)" data-journey-step="players"/)[1]).pathname;
+    await page.goto(url + workspacePath + '#groups');
     await page.locator('.rr-group-card').first().waitFor();
-    await check('Four main sections and initial player workspace', async () => {
-      assert.equal(await page.locator('[data-workspace]').count(), 4);
+    await check('Six workflow steps and initial player workspace', async () => {
+      assert.equal(await page.locator('[data-journey-step]').count(), 6);
+      assert.equal(await page.locator('[data-journey-step="players"]').getAttribute('aria-current'), 'step');
       assert.equal(await page.locator('#groups-pane').evaluate(el => el.classList.contains('active')), true);
       assert.equal(await page.locator('.rr-group-card').count(), 2);
+    });
+    await check('AJAX setup modal mounts the same styled workflow without mutating', async () => {
+      const before = calls.length;
+      await page.getByText('More tools', {exact: true}).click();
+      await page.getByRole('link', {name: 'Review setup', exact: true}).click();
+      const modal = page.locator('[data-draw-guide-modal]');
+      await modal.locator('[data-journey-step="players"][aria-current="step"]').waitFor();
+      assert.equal(await modal.locator('[data-journey-step]').count(), 6);
+      assert.equal(await modal.locator('.draw-journey-steps').evaluate(el => getComputedStyle(el).display), 'grid');
+      assert.deepEqual(calls.slice(before).filter(call => call.path !== '/audit/interactions'), []);
+      await modal.getByRole('button', {name:'Close draw setup'}).click();
+      await modal.waitFor({state:'hidden'});
+      assert.equal(await page.locator('#groups-pane.active').isVisible(), true);
+      // A closed Bootstrap modal retains its markup; subsequent controls refer
+      // to the visible workspace, not its hidden modal copy.
+      await modal.locator('[data-draw-guide-body]').evaluate(el => el.replaceChildren());
     });
     await check('Search and bulk assignment preserve players', async () => {
       await page.locator('#rr-player-search').fill('Casey');
@@ -280,15 +310,15 @@ async function run() {
       assert.deepEqual(calls.slice(mutationCount).map(call => call.path).filter(pathname => pathname !== '/audit/interactions'), []);
     });
     await check('All sections and every print choice remain reachable', async () => {
-      await page.getByRole('button', { name: 'Draw settings', exact: true }).click();
+      await page.locator('[data-journey-step="setup"]').click();
       await page.locator('#settings-pane.active').waitFor();
       await page.getByText('View full setup', { exact: true }).click();
       assert.equal(await page.locator('#complete-seeding-matrix').isVisible(), true);
-      await page.getByRole('button', { name: 'Rules & notes', exact: true }).click();
+      await page.locator('[data-draw-journey]').getByRole('link', { name: 'Rules & notes', exact: true }).click();
       assert.equal(await page.locator('#btn-save-notes').isVisible(), true);
     });
     await check('Every print action opens a populated printable document', async () => {
-      await page.getByText('More tools', { exact: true }).click();
+      if (!(await page.locator('#rr-open-print').isVisible())) await page.getByText('More tools', { exact: true }).click();
       await page.locator('#rr-open-print').click();
       for (const id of ['fixtures', 'matrix', 'bracket', 'empty-bracket', 'combined', 'draw-pack']) {
         assert.equal(await page.locator('#btn-print-' + id).isVisible(), true);
@@ -340,22 +370,30 @@ async function run() {
     });
     await check('Mobile assignment actions and navigation fit the viewport', async () => {
       await page.setViewportSize({ width: 390, height: 844 });
-      await page.getByRole('button', { name: 'Players & Positions', exact: true }).click();
+      await page.locator('[data-journey-step="players"]').click();
       await page.locator('#groups-pane.show.active').waitFor();
       await page.waitForFunction(() => getComputedStyle(document.querySelector('#groups-pane')).opacity === '1');
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2);
       assert.equal(overflow, false);
       await page.screenshot({ path: path.join(root, 'storage/app/testing/draw-workspace-mobile.png'), fullPage: true });
     });
-    await check('All four work areas also fit a 360px screen', async () => {
-      await page.setViewportSize({ width: 360, height: 800 });
-      for (const label of ['Players & Positions', 'Draw & Results', 'Draw settings', 'Rules & notes']) {
-        await page.getByRole('button', { name: label, exact: true }).click();
-        assert.equal(
-          await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2),
-          false,
-          label
-        );
+    await check('Workflow areas fit phones tablets and desktop without duplicate navigation', async () => {
+      for (const width of [320, 360, 390, 430, 768, 1280, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const label of ['players', 'matches', 'setup', 'schedule', 'results']) {
+          await page.locator('[data-journey-step="'+label+'"]').click();
+          await page.locator('[data-journey-step="'+label+'"][aria-current="step"]').waitFor();
+          assert.equal(await page.locator('[data-journey-step="'+label+'"]').getAttribute('aria-current'), 'step', `${label} active at ${width}`);
+          assert.equal(await page.locator('nav[aria-label="Draw workspace"]:visible').count(), 0, 'old primary navigation stays hidden');
+          assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 2), false, `${label} at ${width}`);
+          assert.deepEqual(await page.locator('[data-journey-step]').evaluateAll(links => links.filter(link => {
+            const rect = link.getBoundingClientRect();
+            return rect.left < -1 || rect.right > innerWidth + 1;
+          }).map(link => link.textContent)), [], `${label} workflow clipping at ${width}`);
+        }
+        await page.locator('[data-journey-step="players"]').click();
+        await page.locator('[data-draw-journey]').scrollIntoViewIfNeeded();
+        await page.screenshot({path:path.join(root, `storage/app/testing/workflow-browser-${width}.png`), fullPage:false});
       }
     });
     await check('No page JavaScript errors', async () => assert.deepEqual(errors, []));

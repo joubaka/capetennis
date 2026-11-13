@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-045",
+      "title": "Draw setup circles between format, players, matches and scheduling",
+      "scope": "Individual draw workflow navigation and saved progress across all seven supported formats; existing team operations remain separate.",
+      "symptoms": "A fully placed draft appears unfinished until matches are generated; format is difficult to find; returning from scheduling opens another setup journey; a generic lock/publication warning conceals the actual blocker.",
+      "cause": "The guide and format-specific workspaces used different navigation models. Player placement and fixture generation shared a completion flag, and scoped scheduler return links led back to the guide.",
+      "fix": "Use the shared DrawWorkflow presentation and Setup, Players, Matches, Schedule, Review & publish, Results destinations. Derive saved player readiness separately from generated matches, reject stale or missing fixture projections, and refresh progress through the authorized read-only workflow endpoint. Preserve exact draw/day context on scheduler returns. Explain current format, publication, result and booking blockers without automatically unlocking, hiding, reopening or rebuilding. Keep canonical mutations, revisions and explicit reset/publication confirmation. See docs/draw-workflow.md and DK-14.",
+      "verification": "On 2026-11-13 the isolated SQLite draw/compatibility bundle passed 148 tests and 2,175 assertions; independent scheduling/publication preservation passed 53 tests and 523 assertions. Independent access checks passed 6 tests and 50 assertions; public metadata isolation passed 1 test and 32 assertions. JavaScript checks passed 29 tests; the rendered-fixture browser harness passed 17 checks across seven widths with isolated HTTP doubles. Precompiled-view compatibility passed 20 tests and 203 assertions. PHP syntax, draw routes and Blade compilation passed. No production verification is claimed.",
+      "limits": "Guide only. Navigation never authorizes mutation. Recorded results, saved bookings, event isolation and publication snapshots retain their canonical protections. Existing live draws are not reset or published by this procedure. Deployment and any live change require separate authorization.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/DrawWorkflow.php", "app/Services/Draw/DrawSetupGuide.php", "app/Http/Controllers/Backend/DrawSetupGuideController.php", "app/Services/Draw/FlexibleMonradService.php", "docs/draw-workflow.md", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/Draw/DrawSetupGuideTest.php", "tests/Feature/Draw/DrawWorkspaceTest.php", "tests/Feature/Draw/FlexibleMonradTest.php", "tests/Frontend/draw-workflow.test.cjs", "tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/Draw/DrawDayScheduleEditTest.php"]
+    },
+    {
       "id": "RK-027",
       "title": "Confirm Order returns an individual registration to a pending PayFast attempt",
       "scope": "An ordinary public individual registration cart that exactly matches one unresolved PayFast handoff owned by the signed-in payer.",
@@ -174,18 +187,22 @@
       "id": "RK-001",
       "title": "Round-robin groups finish one at a time instead of rotating",
       "scope": "Individual round-robin schedule planning; not team ties or a repair of played schedules.",
-      "symptoms": "One group completes its programme before another starts, despite a request to rotate group rounds.",
-      "cause": "A planner that orders fixtures by group alone omits the dependencies between group turns. Check current code and saved assignments before diagnosing an existing event.",
-      "fix": "Use EventVenueScheduleService planning with configureRoundRobinGroupRotation: visit each group's round before the next round, larger full groups first and equal sizes by name. Preserve fixed and played assignments, rest, court availability and playoff feeders. Review the proposed schedule through the existing scheduling workflow before saving; publication is separate.",
-      "verification": "Reviewed current owning source and regression definitions on 2026-11-02. The referenced regression covers unequal groups, partial selections, day batches and spare courts. Source review is not a claim of fresh event, browser, deployment or live verification.",
+      "symptoms": "One group completes before another starts; alternatively mixed day batches leave courts empty while ready matches exist, or an unchecked edited cap still produces a three-match warning.",
+      "cause": "Group-only ordering omits rotation; hard whole-group finish barriers can unnecessarily idle mixed day courts. The daily cap is saved event policy and cannot be disabled merely by submitting false in a preview. Check current code and saved assignments before diagnosing an event.",
+      "fix": "Use EventVenueScheduleService group rotation, larger full groups first and equal sizes by name. Mixed one-day batches treat group turns as priorities so ready matches fill courts; sequential and legacy modes retain barriers. Direct exact disjoint same-group playoff positions may share time only with validated ownership, ranks, distinct real-player membership and no incoming feeders; preserve conservative reservations for all other possible-player overlaps. Preserve fixed/played assignments, rest, availability and feeders. Save a changed daily cap through canonical timing settings before preview; reject unsaved or server-effective policy mismatches. Failed saves must not sync saved state. Review before saving; publication is separate. See DK-01.",
+      "verification": "On 2026-11-13 the focused mixed-court, rotation, daily-cap, day-batch, playoff and repair-library suite passed locally on PHP 8.5/MySQL ct_testing: 52 tests, 1831 assertions. The day-batch frontend suite passed 23 tests, covering unsaved/failed timing saves, concurrent edits and stale/effective-policy mismatch responses. These checks do not establish deployment, remote scheduling or live publication.",
       "limits": "This guide performs no replanning, database repair or publication. Confirm event authorization and current state. If current code already follows this rule, investigate constraints rather than removing them or resetting matches.",
       "assistant_action": "guide_only",
       "sources": [
         "app/Services/Scheduling/EventVenueScheduleService.php",
+        "app/Domain/Draws/Services/ScheduleAvailability.php",
         "docs/draw-knowledge/catalogue.md"
       ],
       "tests": [
-        "tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php"
+        "tests/Feature/Draw/RoundRobinGroupRotationSchedulingTest.php",
+        "tests/Feature/Draw/MixedRoundRobinCourtFillTest.php",
+        "tests/Feature/Draw/ScheduleDailyLimitTest.php",
+        "tests/Frontend/schedule-day-batch.test.cjs"
       ]
     },
     {
@@ -618,6 +635,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Domain/Entries/Services/FreeTestEntryArchiveService.php", "app/Domain/Entries/Services/EntryService.php", "app/Domain/Finance/Services/FinancialLedgerService.php", "app/Console/Commands/ArchiveFreeTestEntry.php", "docs/free-registration-fees.md"],
       "tests": ["tests/Feature/FreeTestEntryArchiveTest.php", "tests/Feature/FreeRegistrationFeesTest.php"]
+    },
+    {
+      "id": "RK-044",
+      "title": "Event logo works in a cached browser but is broken on mobile",
+      "scope": "Uploaded event images referenced by an exact public URL when the deployment checkout and web root are separate.",
+      "symptoms": "The event image displays broken-image text on a fresh client while an older browser still shows it. An uncached request to the referenced image returns 404.",
+      "cause": "An untracked uploaded logo was preserved outside the deployment source while clearing a dirty production checkout, before it had been copied into the configured public web root. A cached desktop image hid the missing public file.",
+      "fix": "Read the rendered image URL and map that exact path to the configured public web root. Verify the preserved file exists and the destination is missing before restoring a copy without overwriting another file. Keep the backup and avoid database, identity or event changes. Do not reintroduce an untracked source file merely to clear another deployment blocker. Check active asset references before moving untracked production images, and preserve their public URLs during release preparation.",
+      "verification": "On 2026-11-13 uncached requests on both public hostnames returned 404 before restoration and 200 image/png with matching content length afterward. The reloaded event page displayed the restored image. This was a missing-file repair, not a verified mobile CSS or installed-PWA repair.",
+      "limits": "Guide only. Restoring a production asset requires current authority or correction within an already authorized release. Do not overwrite an existing or ambiguous destination, delete user uploads, expose private backups, or treat an untracked filename as proof it is unused.",
+      "assistant_action": "guide_only",
+      "sources": ["docs/platform/release-checklist.md"],
+      "tests": ["tests/Unit/DeploymentAssetSyncTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
     }
   ]
 }

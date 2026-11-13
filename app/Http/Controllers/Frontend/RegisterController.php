@@ -283,9 +283,21 @@ class RegisterController extends Controller
       return redirect()->route('events.show', $event->id)->withErrors(['msg' => $message]);
     }
 
+    $nomination = null;
+    $cavaliersEligibility = app(\App\Services\CavaliersNominationEligibility::class);
+    if ($cavaliersEligibility->applies($event) && request()->has('nomination')) {
+      $input = request()->validate(['nomination' => 'required|integer|min:1']);
+      $nomination = \App\Models\EventNomination::with(['player:id,name,surname', 'categoryEvent.event'])
+        ->whereKey($input['nomination'])->where('event_id', $event->id)->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))->firstOrFail();
+      abort_unless($nomination->player_id && $nomination->player, 422, 'The event manager must link this nominee to a player profile before registration.');
+      try { app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($nomination->categoryEvent, (int) $nomination->player_id); }
+      catch (\RuntimeException $exception) { throw \Illuminate\Validation\ValidationException::withMessages(['nomination' => $exception->getMessage()]); }
+    }
+
     $players = collect(); // Players loaded via AJAX Select2
 
     $eventCategories = CategoryEvent::where('event_id', $id)
+      ->when($cavaliersEligibility->applies($event), fn ($query) => $query->where('nominations_published', true))
       ->with('category')
       ->get();
 
@@ -337,7 +349,8 @@ class RegisterController extends Controller
       'parentEvent',
       'agreement',
       'requireCodeOfConduct',
-      'requireTerms'
+      'requireTerms',
+      'nomination'
     ));
   }
 
@@ -1408,7 +1421,20 @@ class RegisterController extends Controller
     // ----------------------------
     $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart) {
 
-      CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get();
+      $lockedDivisions = CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+
+      // A decline/publication change may commit while the preflight waits for this
+      // same division lock. Recheck scoped nomination admission before any writes.
+      foreach ($cart as $pair) {
+        [$lockedCategoryId, $lockedPlayerId] = array_map('intval', explode(':', $pair));
+        $lockedDivision = $lockedDivisions->get($lockedCategoryId);
+        abort_unless($lockedDivision, 404);
+        if ((int) $lockedDivision->event_id === \App\Services\CavaliersTrialCandidates::TRIALS_EVENT
+            && app(\App\Services\CavaliersNominationEligibility::class)->applies($lockedDivision->event)) {
+          try { app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($lockedDivision, $lockedPlayerId); }
+          catch (\RuntimeException $exception) { throw \Illuminate\Validation\ValidationException::withMessages(['msg' => $exception->getMessage()]); }
+        }
+      }
 
       $previousOrderIds = RegistrationOrderItems::where('user_id', $authUser->id)
         ->whereIn('category_event_id', $categoryIds)->whereIn('player_id', $playerIds)

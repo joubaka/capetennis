@@ -583,6 +583,10 @@ final class FlexibleMonradService
                 ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
                 : ($draw->settings?->requiresFullSets() === false ? 'Custom set scores allowed.' : 'Enter completed sets using the configured match format.'),
             'generated' => (bool) $record?->graph, 'published' => (bool) $draw->published, 'locked' => (bool) $draw->locked,
+            'reopen_blocker' => $draw->drawFixtures()->where('stage', 'FM')->withRecordedResult()->exists()
+                ? 'Results have been recorded. Starting positions cannot be reopened.'
+                : (($draw->drawFixtures()->where('stage', 'FM')->whereHas('orderOfPlay')->exists() || DB::table('schedules')->where('draw_id', $draw->id)->exists())
+                    ? 'Saved match times prevent reopening. Review Schedule and remove the affected bookings first.' : null),
             'players' => $players, 'swappable_registration_ids' => $swappable, 'matches' => (object) $matches, 'positions' => $progression['positions'],
             'has_withdrawals' => (bool) $withdrawn,
             'withdrawals_pending' => (bool) array_diff($withdrawn, $record?->graph['withdrawn'] ?? [])];

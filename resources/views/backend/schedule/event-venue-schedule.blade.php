@@ -309,6 +309,9 @@
       <a class="btn btn-outline-secondary" href="{{ route('headOffice.show', $event) }}">Back to draws</a><a class="btn btn-outline-primary" data-saved-schedule-link href="{{ route('backend.event-venue-schedule.calendar', $savedCalendarScope) }}">Review saved days</a></div>
   </div>
 
+  @if($guideSelection->count() === 1 && !$guideSelection->first()->isTeamDraw())
+    @include('backend.draw.partials.workflow', ['draw'=>$guideSelection->first(), 'workflowContext'=>'schedule'])
+  @endif
   @if(($adaptationNotices ?? collect())->isNotEmpty())
     <div class="alert alert-warning mb-3" role="status" data-schedule-adaptation-notice>
       <strong>Team changes updated the draws.</strong>
@@ -455,7 +458,7 @@
     <section class="mb-3" aria-label="Review setup and publication">
       <h2 class="h6 mb-1">Review setup and publication</h2>
       <p class="small text-muted mb-2">Preview and save the schedule, then review publication. Saving does not publish match times.</p>
-      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a data-draw-guide-open class="btn btn-outline-primary" href="{{ route('draw.guide.show', [$event, $guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])) }}">Review setup &amp; publication · {{ $guideDraw->drawName }}</a>@endforeach</div>
+      <div class="d-flex flex-wrap gap-2">@foreach($guideSelection as $guideDraw)<a @if($guideDraw->isTeamDraw()) data-draw-guide-open @endif class="btn btn-outline-primary" href="{{ $guideDraw->isTeamDraw() ? route('draw.guide.show', [$event, $guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])) : route('backend.draw.roundrobin.show', [$guideDraw] + ($planningDate ? ['schedule_date'=>$planningDate] : [])).'#schedule' }}">Back to {{ $guideDraw->drawName }} · Schedule</a>@endforeach</div>
     </section>
   @endif
 
@@ -1918,6 +1921,7 @@
         limit_daily_matches:document.getElementById('schedule-daily-limit').checked,
       };
       const saved = await post(timingSettingsUrl, data);
+      dayBatchState?.updateSavedTiming(data);
       status.textContent = saved.message;
       programmePayload = null; invalidatePreview();
     } catch (error) { status.textContent = error.message; }
@@ -3492,10 +3496,16 @@
     savedByDay:@json($scheduleDraft['day_batch_settings'] ?? []),
     getConfig:() => ({}),
     onChange:() => { dayBatchPayload = null; payload = null; invalidatePreview('Selection changed. Preview the selected rounds again.'); workspace.classList.remove('day-batch-review'); },
-    onSaveTiming:async config => { syncDayTiming(config); await post(timingSettingsUrl, {duration:config.duration,player_rest:config.player_rest,court_gap:config.court_gap,limit_daily_matches:config.limit_daily_matches}); invalidatePreview(); },
+    onSaveTiming:async config => { await post(timingSettingsUrl, {duration:config.duration,player_rest:config.player_rest,court_gap:config.court_gap,limit_daily_matches:config.limit_daily_matches}); syncDayTiming(config); invalidatePreview(); },
     onPreview:async config => {
       syncDayTiming(config); programmePayload = null; dayBatchPayload = config; payload = {...config};
+      const generation = previewGeneration;
       const result = await post(previewUrl, payload);
+      if (generation !== previewGeneration) return;
+      if (Boolean(result.input?.limit_daily_matches) !== Boolean(config.limit_daily_matches)) {
+        invalidatePreview();
+        throw new Error('The saved daily match limit differs from this selection. Click Save timing settings, then preview again.');
+      }
       workspace.classList.add('day-batch-review');
       document.getElementById('advanced-scheduling').hidden = false;
       document.getElementById('advanced-scheduling').open = true;

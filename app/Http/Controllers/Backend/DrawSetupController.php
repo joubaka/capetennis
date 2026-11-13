@@ -15,8 +15,8 @@ class DrawSetupController extends Controller
         'round_robin' => ['Round robin only', 'Everyone plays within their group. Final standings decide the result; there are no playoffs.'],
         'round_robin_playoffs' => ['Round robin → playoffs', 'Build groups first, then choose how players advance to playoffs.'],
         'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then regroup equal finishing positions for a second round robin.'],
-        'playoffs' => ['Playoffs only', 'Start with a knockout bracket. Winners advance; no placement matches.'],
-        'monrad' => ['Monrad only', 'Start everyone in the opening round. Winners and losers play for finishing positions.'],
+        'playoffs' => ['Knockout — Playoffs only', 'Winners advance; losing players are eliminated. No placement matches.'],
+        'monrad' => ['Play for every position — Monrad only', 'Winners and losers continue for finishing positions. With eight players, play out positions 1–8.'],
         'feed_in_monrad' => ['Feed-in Monrad', 'Start everyone in the opening round. Earlier-round losers play through a feed-in draw against later-round losers, with matches for every finishing position.'],
         'custom_monrad' => ['Custom Monrad', 'Place players in different starting rounds, then play for finishing positions.'],
     ];

@@ -625,7 +625,10 @@
       button.title = state.locked ? 'Unlock the draw before changing publication.' : !state.generated ? 'Generate and review the fixtures before publishing.' : '';
     });
     $('fm-reopen').hidden = !state.generated || config.readOnly || !config.canEdit || state.published || state.locked;
-    $('fm-reopen').disabled = busy;
+    $('fm-reopen').disabled = busy || !!state.reopen_blocker;
+    $('fm-reopen').title = state.reopen_blocker || 'Rebuild unplayed matches while keeping starting positions. Review the reset before confirming.';
+    const reopenHelp = document.getElementById('fm-reopen-help');
+    if (reopenHelp) { reopenHelp.hidden = !state.generated || !state.reopen_blocker; reopenHelp.textContent = state.reopen_blocker || ''; }
     const withdrawn = state.players.filter(p => p.withdrawn);
     $('fm-withdrawn').hidden = !withdrawn.length;
     const lateWithdrawals = withdrawn.filter(p => p.late_withdrawal);
@@ -852,6 +855,7 @@
     render();
     try {
       await fn();
+      if (!config.demo && !config.readOnly) window.dispatchEvent(new Event('draw-workflow-saved'));
     } catch (error) {
       message(error.message, true);
     } finally {
@@ -1206,7 +1210,8 @@
       message(`Withdrawal redraw prepared. ${state.preserved_schedule_count || 0} previous time slots were preserved in the audit snapshot. Review the remaining players and generate the replacement draw, then preview this category in Schedule.`);
     });
   });
-  $('fm-reopen').addEventListener('click', () =>
+  $('fm-reopen').addEventListener('click', () => {
+    if (state.reopen_blocker || !confirm('Reopen starting positions? This removes the current generated matches so you can rebuild them. Player starting positions are kept. Saved times and recorded results block this operation.')) return;
     run(async () => {
       if (config.demo) {
         state.generated = false;
@@ -1215,8 +1220,8 @@
         demoGraph = null;
       } else state = await request(config.urls.reopen, { revision: state.revision });
       message('Starting positions reopened. Generate fixtures again when ready.');
-    })
-  );
+    });
+  });
   $('fm-score-save').addEventListener('click', () => submitScore(false));
   $('fm-score-delete').addEventListener('click', () => submitScore(true));
   $('fm-print')?.addEventListener('click', () => window.print());

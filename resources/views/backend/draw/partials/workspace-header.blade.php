@@ -95,6 +95,7 @@
       <a class="btn btn-sm btn-outline-secondary" href="{{ route('headOffice.show', $draw->event_id) }}">Back to draws</a>
   </x-slot:actions>
 </x-backend.page-header>
+@include('backend.draw.partials.workflow')
 @if($workspaceHasDayPublication)
   @include('backend.schedule.partials.draw-day-publication', ['publicationDraw' => $draw, 'workspaceDayPublication' => true])
 @endif

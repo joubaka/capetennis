@@ -195,7 +195,7 @@ final class DrawSetupGuide
         return compact('steps', 'warnings', 'team', 'participants', 'generated', 'scheduleComplete', 'workspace', 'competition', 'linkedPlayoff', 'sourceDraw', 'complete') + ['next' => $next === false ? 5 : $next];
     }
 
-    private function snapshotCurrent(Draw $draw): bool
+    public function snapshotCurrent(Draw $draw): bool
     {
         $team = $draw->isTeamDraw();
         $kind = $team ? 'team' : 'individual';

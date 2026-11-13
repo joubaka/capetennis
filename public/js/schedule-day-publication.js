@@ -114,6 +114,7 @@
       var result = await response.json();
       if (!response.ok || result.success !== true) throw new Error(result.message || 'The publication request could not be confirmed.');
       render(result);
+      window.dispatchEvent(new Event('draw-workflow-saved'));
       await Promise.all(peers.filter(function (peer) { return peer !== refreshPeer; }).map(function (peer) { return peer(); }));
       show(scoped ? (result.action === 'hide' ? 'This draw’s day times hidden.' : 'This draw’s day times published.') : (result.action === 'hide' ? 'Whole-day times hidden. All day statuses are current.' : 'Whole-day times published. All day statuses are current.'));
     } catch (error) {
