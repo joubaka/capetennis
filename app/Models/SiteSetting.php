@@ -151,6 +151,10 @@ GUIDE);
     /** Shared per-receipt rounding for fresh, request-local reporting snapshots. */
     public static function calculatePayfastFeeWithRates(float $amount, float $percentage, float $flatFee, float $vatRate): float
     {
+        if ($amount <= 0) {
+            return 0.0;
+        }
+
         return round((($amount * $percentage / 100) + $flatFee) * (1 + $vatRate / 100), 2);
     }
 

@@ -107,8 +107,7 @@ class EntryService
 
             app(\App\Services\DivisionCapacityService::class)->assertAvailable($lockedCategoryEvent);
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
-            $capeTennisFee = round((float) $lockedCategoryEvent->event()
-                ->value('cape_tennis_fee'), 2);
+            $capeTennisFee = $lockedCategoryEvent->registrationCapeTennisFee();
             // A draw-only entrant keeps its registration identity when becoming
             // a category entry, so existing starting positions and results survive.
             $registration = $this->drawOnlyRegistration($lockedCategoryEvent, $playerId);

@@ -380,6 +380,11 @@
                  value="{{ auth()->user()->email ?? '' }}" placeholder="your@email.com">
         </div>
         <div class="mb-3">
+          <label for="seriesEmailCc" class="form-label">CC / additional copies (optional)</label>
+          <input type="text" id="seriesEmailCc" class="form-control" maxlength="5200" placeholder="name@example.com, another@example.com" aria-describedby="seriesEmailCcHelp">
+          <div id="seriesEmailCcHelp" class="form-text">Add up to 20 addresses, separated by commas. Each added address receives one separate copy; player addresses stay private. Addresses already in the list receive only one copy.</div>
+        </div>
+        <div class="mb-3">
           <label class="form-label">Subject <span class="text-danger">*</span></label>
           <input type="text" id="seriesEmailSubject" class="form-control" required>
         </div>
@@ -499,11 +504,14 @@ document.addEventListener('DOMContentLoaded', function () {
         message: message,
         fromName: document.getElementById('seriesEmailFromName').value.trim(),
         replyTo: document.getElementById('seriesEmailReplyTo').value.trim(),
+        cc: document.getElementById('seriesEmailCc').value.trim(),
       }),
     })
     .then(r => {
-      if (!r.ok) throw new Error('Server returned ' + r.status);
-      return r.json();
+      return r.json().then(data => {
+        if (!r.ok) throw new Error(Object.values(data.errors || {}).flat()[0] || data.message || 'Server returned ' + r.status);
+        return data;
+      });
     })
     .then(data => {
       if (data.review_required && data.review_url) { window.CapeMailReview.open(data.review_url); return; }
@@ -546,7 +554,7 @@ document.addEventListener('DOMContentLoaded', function () {
     })
     .catch(err => {
       console.error(err);
-      toastr.error('An error occurred while sending emails. Check the console for details.', 'Error', { timeOut: 5000 });
+      toastr.error(err.message || 'Unable to prepare the email review.', 'Error', { timeOut: 5000 });
     })
     .finally(() => {
       btn.disabled = false;

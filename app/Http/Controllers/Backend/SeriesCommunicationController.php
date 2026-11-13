@@ -16,7 +16,10 @@ class SeriesCommunicationController extends Controller
         $emailCount = $batches->sum(fn ($batch)=>count($batch->recipients));
         $uniqueCount = $batches->flatMap(fn ($batch)=>array_column($batch->recipients,'email'))->unique()->count();
 
-        return view('backend.series.email-review',compact('series','intent','batches','emailCount','uniqueCount'));
+        $recipients = $batches->flatMap(fn ($batch) => $batch->recipients)->unique('email')->sortBy('email')->values()->all();
+        $issues = $batches->flatMap(fn ($batch) => $batch->issues ?? [])->unique()->sort()->values();
+
+        return view('backend.series.email-review',compact('series','intent','batches','emailCount','uniqueCount','recipients','issues'));
     }
 
     public function send(Request $request, Series $series, SeriesCommunicationService $service)

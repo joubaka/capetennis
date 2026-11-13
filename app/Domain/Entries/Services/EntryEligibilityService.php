@@ -116,6 +116,9 @@ class EntryEligibilityService
 
         $duplicate = $categoryEvent->categoryEventRegistrations()
             ->where('payment_status_id', 1)
+            ->whereNull('withdrawn_at')
+            ->where(fn ($query) => $query->whereNull('status')
+                ->orWhereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled']))
             ->whereHas('registration.players', fn ($q) => $q->where('players.id', $playerId))
             ->exists();
 

@@ -109,7 +109,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   email per normalized address across the selected series. Fingerprint all source
   players, including overlaps suppressed from later event batches; keep every
   event permission check. Event attribution supports reporting and must not append
-  other-event private player details. See `SeriesCommunicationService`,
+  other-event private player details. Show one combined recipient list and message
+  preview. Optional CC/additional contacts receive separate private copies once,
+  deduplicated after all player contacts and saved in the immutable review options;
+  never add repeated CC headers to individual deliveries. See `SeriesCommunicationService`,
   `ReviewedSeriesCommunicationTest` and repair RK-040.
 - Whole-event wrap-ups use confirmed event entries or active confirmed team roster
   slots. Recheck whole-event permission for review, approval, history and both
@@ -131,6 +134,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   and `CavaliersRosterReportTest`.
 
 ## Operational evidence
+
+- Free individual administrative entries capture zero Cape Tennis fees using
+  effective category pricing; an explicit paid category override remains paid.
+  Zero payment amounts have zero PayFast estimates. Preserve explicit historical
+  fee snapshots after repricing; existing erroneous snapshots need a separate
+  reviewed correction. See `docs/free-registration-fees.md` and the canonical
+  entry and ledger services. Withdrawal preserves paid history; frontend
+  duplicate checks must distinguish that history from active participation.
+  See repair RK-041 and `FreeRegistrationFeesTest`.
 
 - Refund-funded standard team replacements create a distinct original-payer
   checkout; they do not transfer the original payment history. Partial funding

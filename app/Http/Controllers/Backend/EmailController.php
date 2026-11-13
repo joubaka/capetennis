@@ -519,13 +519,13 @@ class EmailController extends Controller
     $this->reportUrls = [];
     $data = $request->validate([
       'campaign_key'=>'required|uuid','emailSubject'=>'required|string|max:200','message'=>'required|string|max:30000',
-      'fromName'=>'nullable|string|max:100','replyTo'=>'nullable|email|max:255',
+      'fromName'=>'nullable|string|max:100','replyTo'=>'nullable|email|max:255','cc'=>'nullable|string|max:5200',
     ]);
     $sender = \App\Services\CommunicationSender::resolve($request->all(), $request->user());
-    app(\App\Services\SeriesCommunicationService::class)->preview($series,$request->user(),$data['campaign_key'],$data['emailSubject'],$data['message'],$sender['from_name'],$sender['reply_to']);
+    app(\App\Services\SeriesCommunicationService::class)->preview($series,$request->user(),$data['campaign_key'],$data['emailSubject'],$data['message'],$sender['from_name'],$sender['reply_to'],$data['cc'] ?? '');
     $reviewUrl = route('series.email.review',['series'=>$series,'intent'=>$data['campaign_key']]);
 
-    return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$reviewUrl,'message'=>'No emails queued. Review every event recipient and exact message before approving this intent.']);
+    return response()->json(['success'=>true,'review_required'=>true,'review_url'=>$reviewUrl,'message'=>'No emails queued. Review the combined recipient list and exact message before approving this intent.']);
   }
 
   /** ✅ Helper: queue the job safely */

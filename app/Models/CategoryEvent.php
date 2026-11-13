@@ -20,6 +20,19 @@ class CategoryEvent extends Model
 
   public $timestamps = false;
 
+    /** Category overrides take precedence, including an explicit free entry. */
+    public function effectiveEntryFee(): float
+    {
+        return round((float) ($this->entry_fee ?? $this->event?->entryFee ?? 0), 2);
+    }
+
+    public function registrationCapeTennisFee(): float
+    {
+        return $this->effectiveEntryFee() > 0
+            ? round((float) $this->event?->cape_tennis_fee, 2)
+            : 0.0;
+    }
+
     //used
     public function category()
     {

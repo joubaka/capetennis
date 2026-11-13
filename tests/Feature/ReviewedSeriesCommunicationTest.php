@@ -47,9 +47,9 @@ class ReviewedSeriesCommunicationTest extends TestCase
         return [$series,$actor,$events,$player];
     }
 
-    private function preview(Series $series, User $actor, string $intent): void
+    private function preview(Series $series, User $actor, string $intent, string $cc = ''): void
     {
-        $this->actingAs($actor)->postJson(route('series.email.players',$series),['campaign_key'=>$intent,'emailSubject'=>'Clothing','message'=>'Collect clothing','fromName'=>'Event organiser','replyTo'=>$actor->email])
+        $this->actingAs($actor)->postJson(route('series.email.players',$series),['campaign_key'=>$intent,'emailSubject'=>'Clothing','message'=>'Collect clothing','fromName'=>'Event organiser','replyTo'=>$actor->email,'cc'=>$cc])
             ->assertOk()->assertJsonPath('review_required',true);
     }
 
@@ -313,6 +313,51 @@ class ReviewedSeriesCommunicationTest extends TestCase
         Queue::assertNothingPushed();
         $this->post(route('series.email.approve',$series),['intent'=>$intent,'confirmed'=>1,'acknowledge_missing'=>1])->assertRedirect();
         Queue::assertPushed(SendBulkEmailJob::class,1);
+    }
+
+    public function test_combined_review_shows_one_list_and_one_identical_message_with_cc_once(): void
+    {
+        [$series,$actor,$events,$player]=$this->fixture(true,true);
+        $secondary='secondary@example.test';
+        $lastPlayer=\App\Models\Player::where('email','event'.$events->last()->id.'@example.test')->firstOrFail();
+        $lastPlayer->update(['email_2'=>$secondary]);
+        $intent=(string)Str::uuid();
+        $this->preview($series,$actor,$intent,' EXTRA@example.test,extra@example.test; '.$secondary.'; EVENT'.$events->last()->id.'@example.test');
+        $review=$this->get(route('series.email.review',['series'=>$series,'intent'=>$intent]))->assertOk()
+            ->assertSee('All series recipients')->assertSee('CC / additional copies:')->assertSee('extra@example.test');
+        $html=$review->getContent();
+        $this->assertSame(1,substr_count($html,'<summary>Review all '));
+        $this->assertSame(1,substr_count($html,'<iframe '));
+        $this->assertSame(1,substr_count($html,'data-series-combined-review'));
+        if ($path=getenv('SERIES_REVIEW_FIXTURE_PATH')) file_put_contents($path,$html);
+        $batches=app(SeriesCommunicationService::class)->batches($series,$actor,$intent);
+        $recipients=$batches->flatMap(fn($batch)=>$batch->recipients);
+        $this->assertCount(5,$recipients);
+        $this->assertCount(1,$recipients->where('email','extra@example.test'));
+        $this->assertCount(1,$recipients->pluck('html')->unique());
+        $this->assertSame('cc',$recipients->firstWhere('email','extra@example.test')['kind']);
+        $this->post(route('series.email.approve',$series),['intent'=>$intent,'confirmed'=>1])->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs',5);
+        Queue::assertPushed(SendBulkEmailJob::class,5);
+        $this->post(route('series.email.approve',$series),['intent'=>$intent,'confirmed'=>1])->assertSessionHas('info');
+        Queue::assertPushed(SendBulkEmailJob::class,5);
+        $this->assertSame(1,BulkEmailLog::where('recipient_email','extra@example.test')->count());
+        Mail::assertNothingSent();
+    }
+
+    public function test_cc_must_be_valid_and_cannot_change_within_reviewed_intent(): void
+    {
+        [$series,$actor]=$this->fixture(false);
+        foreach (['invalid',"person@example.test\r\nBcc: injected@example.test", implode(',',array_map(fn($i)=>'person'.$i.'@example.test',range(1,21)))] as $cc) {
+            $this->actingAs($actor)->postJson(route('series.email.players',$series),['campaign_key'=>(string)Str::uuid(),'emailSubject'=>'Clothing','message'=>'Collect clothing','cc'=>$cc])
+                ->assertUnprocessable()->assertJsonValidationErrors('cc');
+        }
+        $this->assertDatabaseCount('event_communication_batches',0);
+        $intent=(string)Str::uuid();
+        $this->preview($series,$actor,$intent,'extra@example.test');
+        $this->actingAs($actor)->postJson(route('series.email.players',$series),['campaign_key'=>$intent,'emailSubject'=>'Clothing','message'=>'Collect clothing','fromName'=>'Event organiser','replyTo'=>$actor->email,'cc'=>'different@example.test'])
+            ->assertUnprocessable()->assertJsonValidationErrors('intent');
+        Queue::assertNothingPushed();
     }
 
 }

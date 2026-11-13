@@ -44,10 +44,20 @@ class SeriesCommunicationService
         return hash('sha256', json_encode($normalize($value), JSON_THROW_ON_ERROR));
     }
 
-    private function plans(Collection $events, string $subject, string $body): Collection
+    private function normalizeCc(string $input): array
+    {
+        $emails = collect(preg_split('/[,;\r\n]+/', $input))->map(fn ($email) => strtolower(trim($email)))->filter()->unique()->sort()->values();
+        if ($emails->count() > 20 || $emails->contains(fn ($email) => strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL))) {
+            throw ValidationException::withMessages(['cc'=>'Enter up to 20 valid CC email addresses, separated by commas.']);
+        }
+
+        return $emails->all();
+    }
+
+    private function plans(Collection $events, string $subject, string $body, array $cc = []): Collection
     {
         $seen = [];
-        return $events->mapWithKeys(function (Event $event) use ($subject, $body, &$seen) {
+        return $events->mapWithKeys(function (Event $event) use ($subject, $body, $cc, $events, &$seen) {
             $rows = $this->communications->confirmedPlayers($event);
             $recipients = collect();
             $issues = collect();
@@ -60,6 +70,12 @@ class SeriesCommunicationService
                 }
             }
             foreach ($recipients->keys() as $email) $seen[$email] = true;
+            // Add copies only after every player contact has been seen.
+            if ($event->id === $events->last()->id) {
+                foreach ($cc as $email) {
+                    if (!isset($seen[$email])) $recipients->put($email, ['email'=>$email, 'name'=>'Additional copy', 'kind'=>'cc', 'subject'=>$subject, 'html'=>nl2br(e($body))]);
+                }
+            }
             $plan = ['recipients'=>$recipients->sortBy('email')->values()->all(), 'issues'=>$issues->unique()->sort()->values()->all()];
             // Include source players even when assigned to an earlier event for delivery.
             $plan['fingerprint'] = $this->fingerprint(['series_unique_active_v1', $event->id, $subject, $body, $plan, $rows->all()]);
@@ -79,13 +95,14 @@ class SeriesCommunicationService
         return $batches;
     }
 
-    public function preview(Series $series, User $actor, string $intent, string $subject, string $body, string $fromName, string $replyTo): Collection
+    public function preview(Series $series, User $actor, string $intent, string $subject, string $body, string $fromName, string $replyTo, string $ccInput = ''): Collection
     {
         \App\Services\CommunicationSender::resolve(['from_name' => $fromName, 'reply_to' => $replyTo], $actor);
         $events = $this->events($series,$actor);
+        $cc = $this->normalizeCc($ccInput);
         $body = trim(strip_tags(preg_replace('/<\/(p|div|li)>|<br\s*\/?\s*>/i',"\n",$body)));
-        $options = ['audience'=>'series_unique_active_v1','source'=>'series_compose','series_id'=>$series->id,'intent'=>$intent,'event_ids'=>$events->pluck('id')->all(),'from_name'=>$fromName,'reply_to'=>$replyTo];
-        $plans = $this->plans($events,$subject,$body);
+        $options = ['audience'=>'series_unique_active_v1','source'=>'series_compose','series_id'=>$series->id,'intent'=>$intent,'event_ids'=>$events->pluck('id')->all(),'from_name'=>$fromName,'reply_to'=>$replyTo,'cc'=>$cc];
+        $plans = $this->plans($events,$subject,$body,$cc);
         if ($plans->sum(fn ($plan)=>count($plan['recipients']))===0) {
             throw ValidationException::withMessages(['audience'=>'No active confirmed player in this series has a valid contact.']);
         }
@@ -120,7 +137,7 @@ class SeriesCommunicationService
                 return true;
             }
             abort_if($batches->contains(fn ($batch)=>$batch->approved_at),422,'This review has inconsistent approval records. Prepare a fresh review.');
-            $plans = $this->plans($events, $batches->first()->subject, $batches->first()->body);
+            $plans = $this->plans($events, $batches->first()->subject, $batches->first()->body, $batches->first()->options['cc'] ?? []);
             // Check every event before creating any queue reservation.
             foreach ($batches as $batch) {
                 abort_unless(($batch->options['audience'] ?? null) === 'series_unique_active_v1', 422, 'This review uses an older audience. Prepare a fresh series review.');
@@ -139,7 +156,7 @@ class SeriesCommunicationService
                     $this->dispatcher->dispatch('bulk_event_mail',$batch,[$recipient],[
                         'event_id'=>$batch->event_id,'created_by'=>$actor->id,'event_communication_batch_id'=>$batch->id,
                         'campaign_key'=>$intent,'series_id'=>$series->id,'subject'=>$recipient['subject'],'body'=>$recipient['html'],
-                        'from_name'=>$batch->options['from_name'],'reply_to'=>$batch->options['reply_to'],'recipient_kind'=>'players','manual_retry_only'=>true,
+                        'from_name'=>$batch->options['from_name'],'reply_to'=>$batch->options['reply_to'],'recipient_kind'=>$recipient['kind'],'manual_retry_only'=>true,
                     ]);
                 }
             }

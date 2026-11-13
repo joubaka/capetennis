@@ -166,7 +166,7 @@ class FinancialLedgerService
 
         $context = $summaryOnly && $rawTransactions->isNotEmpty()
             ? $this->summaryReceiptContext($event, $rawTransactions) : null;
-        $pfRows = $rawTransactions->map(fn ($tx) => $this->mapPayfastRow($tx, $feePerEntry, $context));
+        $pfRows = $rawTransactions->map(fn ($tx) => $this->mapPayfastRow($tx, $feePerEntry, $context, $event));
 
         // ── Wallet-only individual orders (no PayFast tx at all) ──────────
         $walletOnlyRows = $this->buildWalletOnlyRows($event, $feePerEntry, $summaryOnly);
@@ -686,7 +686,7 @@ class FinancialLedgerService
         ];
     }
 
-    private function mapPayfastRow(Transaction $tx, float $feePerEntry, ?array $context = null): object
+    private function mapPayfastRow(Transaction $tx, float $feePerEntry, ?array $context = null, ?Event $event = null): object
     {
         $categoryAdjustment = $tx->custom_str5 === 'CategoryAdjustment'
             ? \App\Models\CategoryAdjustment::whereKey($tx->custom_int5)->where('event_id', $tx->event_id)
@@ -766,10 +766,16 @@ class FinancialLedgerService
         // was supplied by the caller. Unmarked zero-value rows carry no liability.
         $hasFinancialValue = $grossTx > 0;
         $capturedCapeFee = $tx->cape_tennis_fee;
+        // Only infer a free admin liability when no fee was captured. An explicit
+        // snapshot survives later event/category repricing and is never rewritten.
+        $legacyFreeAdmin = $isAdminEntry && $capturedCapeFee === null
+            && (int) $tx->category_event?->event_id === (int) $tx->event_id
+            && $event !== null
+            && round((float) ($tx->category_event->entry_fee ?? $event->entryFee), 2) <= 0;
         $capeFeeAmount = ($isAdminEntry || $hasFinancialValue)
             ? ($capturedCapeFee !== null
                 ? abs(round((float) $capturedCapeFee, 2))
-                : round($feePerEntry * $entryCount, 2))
+                : ($legacyFreeAdmin ? 0.0 : round($feePerEntry * $entryCount, 2)))
             : 0.0;
         $capeFeeTx = ($participation || $requiresReconciliation) ? 0.0 : -1 * $capeFeeAmount;
         $netTx     = round($grossTx + $pfFeeTx + $capeFeeTx, 2);
