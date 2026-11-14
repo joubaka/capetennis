@@ -31,8 +31,8 @@ When the administrator explicitly confirms that the intended format is one full
 set, use the bounded preview/apply correction rather than replaying score entry.
 Validate every recorded score against the chosen preset, exact event/draw scope,
 eligible entrants and current unchanged evidence. Preserve fixture and result
-identities, scores, schedules and publication. Reject frozen or progressed
-competition, special outcomes and contradictory winner evidence. Reconcile only
+identities, scores, schedules and publication. Reject frozen staged competition,
+played or dependent playoffs, special outcomes and contradictory winner evidence. Reconcile only
 the permitted outcome metadata through the correction service and audit the
 actor and before/after state. Correction must not resend match notifications or
 generate playoffs, fixtures or duplicate rating evidence.
@@ -47,6 +47,16 @@ The canonical operation is `OneSetRoundRobinCorrectionService`, exposed by
 php artisan draw:correct-one-set DRAW_ID --event=EVENT_ID --actor=USER_ID
 php artisan draw:correct-one-set DRAW_ID --event=EVENT_ID --actor=USER_ID --apply --snapshot=REVIEWED_SNAPSHOT
 ```
+
+An ordinary round-robin-to-playoffs draw may explicitly opt into
+`--preserve-playoffs` on both preview and apply. This narrow path supports only
+the complete configured set of unplayed independent two-player placement finals.
+Every stage and source group/position must match the saved configuration. Any
+occupied player slot must agree with the corrected, completed and unambiguously
+ranked source standings. Scored, started, conflicting or linked knockout
+fixtures remain rejected. Preview fingerprints and audit retain all playoff
+attributes and bookings; apply changes only the scoring settings and permitted
+round-robin outcome metadata. It does not resolve, reseed or regenerate playoffs.
 
 The first command is read-only; inspect its proposed format and outcomes before
 applying the exact unchanged snapshot. A correction is not score-entry replay.

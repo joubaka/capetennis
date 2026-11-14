@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Gate;
 
 class CorrectOneSetRoundRobin extends Command
 {
-    protected $signature = 'draw:correct-one-set {draw} {--event= : Exact owning event ID} {--actor= : Authorized event administrator ID} {--apply : Apply the unchanged preview} {--snapshot= : Required preview fingerprint for apply}';
+    protected $signature = 'draw:correct-one-set {draw} {--event= : Exact owning event ID} {--actor= : Authorized event administrator ID} {--apply : Apply the unchanged preview} {--snapshot= : Required preview fingerprint for apply} {--preserve-playoffs : Preserve only verified unplayed independent position-pair finals}';
     protected $description = 'Preview or explicitly correct an unconfigured round robin to one full set without replaying scores.';
 
     public function handle(OneSetRoundRobinCorrectionService $service): int
@@ -19,8 +19,8 @@ class CorrectOneSetRoundRobin extends Command
             $actor = User::findOrFail((int) $this->option('actor'));
             Gate::forUser($actor)->authorize('correctRoundRobinScoring', $draw);
             $result = $this->option('apply')
-                ? $service->apply($draw, (int) $this->option('event'), (string) $this->option('snapshot'), $actor)
-                : $service->review($draw, (int) $this->option('event'));
+                ? $service->apply($draw, (int) $this->option('event'), (string) $this->option('snapshot'), $actor, (bool) $this->option('preserve-playoffs'))
+                : $service->review($draw, (int) $this->option('event'), (bool) $this->option('preserve-playoffs'));
             $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR));
             return self::SUCCESS;
         } catch (\Throwable $exception) {

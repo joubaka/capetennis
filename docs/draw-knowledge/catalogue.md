@@ -421,6 +421,12 @@ and unchanged-snapshot correction. Validate scores and dependencies, preserve
 score rows and bookings, audit the change and avoid score-entry notification
 replay. See [detailed standings](detailed-standings.md) for scope and procedure.
 
+The explicit `--preserve-playoffs` path may retain the exact configured unplayed
+independent two-player placement finals. Every concrete occupant must match a
+completed and resolved corrected source position. Snapshot and audit retain all
+playoff rows and bookings unchanged; no reseeding or progression occurs. Other
+playoff structures and played or conflicting fixtures remain rejected.
+
 **Sources:** `RoundRobinStandingsDetailService`,
 `OneSetRoundRobinCorrectionService`, `CorrectOneSetRoundRobin`, canonical
 standings and the shared `resources/js/roundrobin-standings.js` renderer.
