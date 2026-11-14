@@ -174,6 +174,11 @@ class DynamicBracketEngine
                         $child1MidY = $child1['y'] + ($child1['height'] / 2);
                         $child2MidY = $child2['y'] + ($child2['height'] / 2);
                         $y = $child1MidY;
+                    } elseif ($size === 3 && $child1) {
+                        // The sole preliminary feeds the final's top slot, not
+                        // another preliminary row at the section's original Y.
+                        $child1MidY = $child1['y'] + ($child1['height'] / 2);
+                        $y = $child1MidY;
                     } else {
                         $y = $startY + ($i * $matchSpacing);
                     }

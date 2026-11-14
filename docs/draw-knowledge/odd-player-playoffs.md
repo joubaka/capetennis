@@ -32,6 +32,9 @@ group player appears only after complete, unambiguous group results.
 Unresolved group-position sources render as awaiting qualification, not BYE.
 `DynamicBracketEngine` renders exactly one preliminary and one final for the
 three-player section, without phantom matches or positions.
+The final's top player line starts at the preliminary's midpoint, so its
+winner connector joins that slot directly. The direct entrant occupies the
+bottom line; the final retains the normal match height.
 
 Regression: `tests/Feature/Draw/OddPlayerPlayoffTest.php` covers preservation,
 authorization, event isolation, stale snapshots, idempotency, actual progression,

@@ -211,4 +211,39 @@ class OddPlayerPlayoffTest extends TestCase
         }
         foreach ($xpath->query('//svg//text[@class="id-red"]') as $id) $this->assertMatchesRegularExpression('/^#\d+$/', trim($id->textContent));
     }
+
+    public function test_odd_tail_connector_joins_the_final_winner_slot_and_standard_round_geometry_is_unchanged(): void
+    {
+        [$draw, $actor] = $this->scenario();
+        $service = app(OddPlayerPlayoffService::class);
+        $review = $service->review($draw, $draw->event_id);
+        $service->apply($draw, $draw->event_id, $review['snapshot'], $actor);
+        $data = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+        $tail = collect($data['brackets'])->firstWhere('slug', 'cons');
+        $preliminary = $tail['rounds'][1][0]; $final = $tail['rounds'][2][0];
+        $winnerY = $preliminary['y'] + $preliminary['height'] / 2;
+        $this->assertEquals($winnerY, $final['y']);
+        $this->assertSame(\App\Services\DynamicBracketEngine::BOX_HEIGHT, $final['height']);
+        $this->assertSame($preliminary['x'] + \App\Services\DynamicBracketEngine::ROUND_GAP, $final['x']);
+        $html = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->getContent();
+        $document = new \DOMDocument(); $previous = libxml_use_internal_errors(true);
+        $document->loadHTML($html, LIBXML_NONET);
+        libxml_clear_errors(); libxml_use_internal_errors($previous);
+        $xpath = new \DOMXPath($document);
+        $fromX = $preliminary['x'] + $preliminary['width']; $targetX = $final['x'];
+        $this->assertSame(1, $xpath->query('//svg//line[@x1="'.$fromX.'" and @x2="'.$targetX.'" and @y1="'.$winnerY.'" and @y2="'.$winnerY.'"]')->length);
+        $this->assertSame(1, $xpath->query('//svg//line[@x1="'.$targetX.'" and @x2="'.($targetX + $final['width']).'" and @y1="'.$winnerY.'" and @y2="'.$winnerY.'"]')->length);
+        foreach ([2, 4, 8] as $size) {
+            $draw->settings()->update(['playoff_config' => [['slug' => 'main', 'name' => 'Main', 'enabled' => true,
+                'size' => $size, 'positions' => range(1, $size)]]]);
+            $standard = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build()['brackets'][0];
+            foreach ($standard['rounds'] as $round => $matches) foreach ($matches as $index => $match) {
+                if ($round === 1) { $this->assertSame(\App\Services\DynamicBracketEngine::BOX_HEIGHT, $match['height']); continue; }
+                $one = $standard['rounds'][$round - 1][$index * 2];
+                $two = $standard['rounds'][$round - 1][$index * 2 + 1];
+                $this->assertEquals($one['y'] + $one['height'] / 2, $match['y']);
+                $this->assertEquals(($two['y'] + $two['height'] / 2) - ($one['y'] + $one['height'] / 2), $match['height']);
+            }
+        }
+    }
 }
