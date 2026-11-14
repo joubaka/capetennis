@@ -576,7 +576,9 @@ class DynamicBracketEngine
             $group = $groups->firstWhere('id', $fixture->getAttribute("registration{$slot}_source_group_id"));
             $registrationId = $fixture->getAttribute("registration{$slot}_id");
             $position = (int) $fixture->getAttribute("registration{$slot}_source_position");
-            if ($group && $registrationId && $position > 0) $map[(int) $registrationId] = $group->name.$position;
+            if ($group && $registrationId && $position > 0 && $group->groupRegistrations->contains('registration_id', $registrationId)) {
+                $map[(int) $registrationId] = $group->name.$position;
+            }
         }
         return $map;
     }

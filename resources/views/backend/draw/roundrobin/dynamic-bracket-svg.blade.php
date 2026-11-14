@@ -173,8 +173,8 @@
                     if (($bracket['posTo'] ?? 0) - ($bracket['posFrom'] ?? 0) === 2 && $roundNum === 2 && $empty1 && $feed1) {
                         $p1 = 'Winner of preliminary';
                     }
-                    $isFeeder1 = str_starts_with($p1, 'W') || str_starts_with($p1, 'L');
-                    $isFeeder2 = str_starts_with($p2, 'W') || str_starts_with($p2, 'L');
+                    $isFeeder1 = $empty1 && (str_starts_with($p1, 'W') || str_starts_with($p1, 'L'));
+                    $isFeeder2 = $empty2 && (str_starts_with($p2, 'W') || str_starts_with($p2, 'L'));
                     $feederIsWin1 = str_starts_with($p1, 'W');
                     $feederIsWin2 = str_starts_with($p2, 'W');
                     $identity1 = !$empty1 && !$isFeeder1 && !$isEmpty;
@@ -369,8 +369,8 @@
                     }
                     if ($feed1 && ($p1 === '---' || $p1 === 'TBD')) $p1 = $feed1;
                     if ($feed2 && ($p2 === '---' || $p2 === 'TBD')) $p2 = $feed2;
-                    $isFeeder1 = str_starts_with($p1, 'W') || str_starts_with($p1, 'L');
-                    $isFeeder2 = str_starts_with($p2, 'W') || str_starts_with($p2, 'L');
+                    $isFeeder1 = $empty1 && (str_starts_with($p1, 'W') || str_starts_with($p1, 'L'));
+                    $isFeeder2 = $empty2 && (str_starts_with($p2, 'W') || str_starts_with($p2, 'L'));
                     $feederIsWin1 = str_starts_with($p1, 'W');
                     $feederIsWin2 = str_starts_with($p2, 'W');
                     $identity1 = !$empty1 && !$isFeeder1 && !$isEmpty;

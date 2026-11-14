@@ -70,6 +70,7 @@ class OddPlayerPlayoffTest extends TestCase
         $this->postJson(route('backend.draw.progress', $draw), $progressPayload)->assertOk();
         $this->assertSame(25, $draw->drawFixtures()->count());
         $this->assertNull($final->fresh()->winner_registration);
+        $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('Winner of preliminary');
         $preliminary = Fixture::findOrFail($result['added_fixture_id']);
         $this->assertSame($regs[6]->id, $preliminary->registration1_id);
         $this->assertSame($regs[5]->id, $preliminary->registration2_id);
@@ -159,5 +160,55 @@ class OddPlayerPlayoffTest extends TestCase
         $changedOtherPair = $config; $changedOtherPair[0]['positions'] = [2, 1];
         $this->postJson(route('backend.draw.update-playoff-config', $draw), ['playoff_config' => $changedOtherPair])->assertStatus(422);
         $this->assertSame(25, $draw->drawFixtures()->count());
+    }
+
+    public function test_seed_badges_use_canonical_timed_standings_and_confirmed_sources_override_later_drift(): void
+    {
+        [$draw, , $regs] = $this->scenario();
+        foreach ([[1,5,10],[2,5,5],[3,20,0]] as [$opponent,$home,$away]) {
+            $fixture = $draw->drawFixtures()->where('stage','RR')->where('registration1_id',$regs[0]->id)
+                ->where('registration2_id',$regs[$opponent]->id)->firstOrFail();
+            $fixture->fixtureResults()->update(['registration1_score' => $home, 'registration2_score' => $away,
+                'winner_registration' => $home === $away ? null : ($home > $away ? $regs[0]->id : $regs[$opponent]->id)]);
+            $fixture->update(['winner_registration' => $home === $away ? null : ($home > $away ? $regs[0]->id : $regs[$opponent]->id)]);
+        }
+        $data = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+        $this->assertSame('A2', $data['seedOriginMap'][$regs[0]->id]);
+        $this->assertSame('A3', $data['seedOriginMap'][$regs[2]->id]);
+        $pair = $draw->drawFixtures()->where('stage','MAIN')->firstOrFail();
+        $pair->update(['registration1_id' => $regs[0]->id]);
+        $confirmed = (new \App\Services\DynamicBracketEngine($draw->fresh()))->build();
+        $this->assertSame('A1', $confirmed['seedOriginMap'][$regs[0]->id]);
+    }
+
+    public function test_generic_pair_svg_keeps_ratings_on_separate_lines_and_seed_badges_inside_the_match(): void
+    {
+        [$draw, $actor] = $this->scenario();
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $actor->assignRole('super-user');
+        $this->mock(\App\Services\Performance\PlayerRatingBadgeService::class, function ($mock) {
+            $mock->shouldReceive('forPlayer')->andReturn(['display_label' => '65.2 | Medium', 'title' => 'Fictional rating']);
+        });
+        $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw->fresh());
+        app(RoundRobinPlayoffScheduleService::class)->resolveFromStandings($draw->fresh(), $standings, true);
+        $html = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->getContent();
+        $document = new \DOMDocument();
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML($html, LIBXML_NONET);
+        libxml_clear_errors(); libxml_use_internal_errors($previous);
+        $xpath = new \DOMXPath($document);
+        $names = $xpath->query('//svg//text[contains(@class,"player-name")]');
+        $ratings = $xpath->query('//svg//text[@class="player-rating-line"]');
+        $this->assertSame(6, $names->length);
+        $this->assertSame(6, $ratings->length);
+        foreach ($names as $name) $this->assertSame(0, $xpath->query('.//*[@data-rating-svg]', $name)->length);
+        foreach ($ratings as $rating) $this->assertStringContainsString('65.2 | Medium', $rating->textContent);
+        $this->assertSame(6, $xpath->query('//svg//text[@class="seed-origin"]')->length);
+        foreach ($xpath->query('//svg//text[@class="seed-origin"]') as $seed) {
+            $row = $xpath->query('../rect[@class="match-row-bg"]', $seed)->item(0);
+            $this->assertSame((float) $row->getAttribute('x') + (float) $row->getAttribute('width') - 16,
+                (float) $seed->getAttribute('x'));
+        }
+        foreach ($xpath->query('//svg//text[@class="id-red"]') as $id) $this->assertMatchesRegularExpression('/^#\d+$/', trim($id->textContent));
     }
 }
