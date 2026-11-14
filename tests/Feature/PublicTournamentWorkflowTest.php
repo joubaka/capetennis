@@ -19,6 +19,79 @@ class PublicTournamentWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_cards_and_draw_pages_agree_when_publication_flag_has_no_visible_assignments(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => true]);
+        $draw->settings()->create(['workflow' => 'round_robin']);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Times to follow')->assertDontSee('Draw &amp; times live', false);
+        $this->get(route('public.roundrobin.show', $draw))->assertOk()
+            ->assertSee('Match times to follow')->assertDontSee('Match times published')
+            ->assertSee('Match times and venues have not been published yet.')
+            ->assertSee(route('events.show', $event).'#event-draws-match-times', false);
+    }
+
+    public function test_summary_uses_published_venues_and_dates_not_later_working_changes(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'drawName' => 'Synthetic mobile draw', 'published' => true, 'oop_published' => true]);
+        $draw->settings()->create(['workflow' => 'round_robin']);
+        $venue = new Venue; $venue->name = 'Published synthetic venue'; $venue->save();
+        $planned = new Venue; $planned->name = 'Provisional synthetic venue'; $planned->save();
+        $working = new Venue; $working->name = 'PRIVATE WORKING VENUE'; $working->save();
+        $draw->venues()->attach($planned);
+        $fixture = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id]);
+        $slot = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'time' => '2026-11-14 08:00:00']);
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $slot->update(['venue_id' => $working->id, 'time' => '2026-11-15 13:00:00']);
+        $response = $this->get(route('events.show', $event))->assertOk()
+            ->assertSee('Published matches from Sat 14 Nov 2026, 08:00')->assertSee('Check the schedule for your own match time.')
+            ->assertSee('Published synthetic venue')->assertDontSee('PRIVATE WORKING VENUE');
+        $html = $response->getContent();
+        $this->assertSame(1, substr_count($html, 'id="event-draws-match-times"'));
+        $this->assertLessThan(strpos($html, '>Event information</h4>'), strpos($html, 'id="event-draws-match-times"'));
+        if (getenv('PUBLIC_WORKFLOW_SNAPSHOT') === '1') {
+            @mkdir(storage_path('app/testing'), 0777, true);
+            file_put_contents(storage_path('app/testing/public-workflow.html'), $html);
+        }
+        $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('Published synthetic venue')->assertDontSee('PRIVATE WORKING VENUE')->assertDontSee('Provisional synthetic venue');
+    }
+
+    public function test_summary_rejects_foreign_fixture_assignments_and_draft_publication(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => true]);
+        $other = Draw::factory()->create();
+        $foreign = \App\Models\Fixture::factory()->create(['draw_id' => $other->id]);
+        \Illuminate\Support\Facades\DB::table('published_schedule_assignments')->insert([
+            'event_id' => $event->id, 'draw_id' => $draw->id, 'fixture_kind' => 'individual', 'fixture_id' => $foreign->id,
+            'scheduled_at' => '2026-11-14 08:00:00', 'court' => 'FOREIGN COURT', 'duration' => 30, 'published_at' => now(),
+        ]);
+        $summary = app(\App\Services\PublicDrawPresentation::class)->summary($draw);
+        $this->assertFalse($summary['available']);
+        $this->assertNull($summary['first_time']);
+        $draw->update(['published' => false]);
+        $this->get(route('public.roundrobin.show', $draw))->assertForbidden();
+    }
+
+    public function test_first_match_only_summary_does_not_reveal_later_venues_or_dates(): void
+    {
+        $event = Event::factory()->create(['eventType' => 6]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true, 'oop_published' => true]);
+        $draw->settings()->create(['workflow' => 'round_robin', 'schedule_visibility' => \App\Models\DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH]);
+        $players = \App\Models\Registration::factory()->count(2)->create();
+        foreach (['Visible opening venue', 'HIDDEN LATER VENUE'] as $index => $name) {
+            $venue = new Venue; $venue->name = $name; $venue->save();
+            $fixture = \App\Models\Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR', 'registration1_id' => $players[0]->id, 'registration2_id' => $players[1]->id]);
+            OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'time' => $index ? '2026-11-15 13:00:00' : '2026-11-14 08:00:00']);
+        }
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
+        $summary = app(\App\Services\PublicDrawPresentation::class)->summary($draw);
+        $this->assertSame(['Visible opening venue'], $summary['venues']->all());
+        $this->assertSame('2026-11-14 08:00:00', $summary['first_time']);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Visible opening venue')->assertDontSee('HIDDEN LATER VENUE');
+    }
+
     public function test_legacy_draw_url_does_not_bypass_draw_publication(): void
     {
         $event = Event::factory()->create();

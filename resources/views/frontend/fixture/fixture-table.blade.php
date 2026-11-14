@@ -1,3 +1,6 @@
+@php
+  $fixtureScheduleAvailable = app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'];
+@endphp
 <style>
   .winner-home { background-color: rgba(40,167,69,0.25) !important; color:#155724 !important; }
   .loser-home  { background-color: rgba(220,53,69,0.25) !important; color:#721c24 !important; }
@@ -76,23 +79,23 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
 
 <div class="card{{ ($hideFixtureHeader ?? false) ? ' public-tie-matches' : '' }}">
   @unless($hideFixtureHeader ?? false)
-  <div class="card-header d-flex justify-content-between align-items-center">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
     <div>
       <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
       <span class="badge {{ $draw->published ? 'public-fixture-status' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
-      <span class="badge {{ $draw->scheduleIsPublished() ? 'public-fixture-status' : 'bg-label-secondary' }}">
-        {{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}
+      <span class="badge {{ $fixtureScheduleAvailable ? 'public-fixture-status' : 'bg-label-secondary' }}">
+        {{ $fixtureScheduleAvailable ? 'Match times published' : 'Match times to follow' }}
       </span>
     </div>
-    <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">
-      <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
+    <a href="{{ route('events.show', $event) }}#event-draws-match-times" class="btn btn-sm btn-outline-secondary public-fixture-back">
+      <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament draws
     </a>
   </div>
 
   @endunless
   <div class="card-body">
 
-    @unless($draw->scheduleIsPublished() || ($hideFixtureHeader ?? false))
+    @unless($fixtureScheduleAvailable || ($hideFixtureHeader ?? false))
       <div class="alert alert-info" role="status">
         The draw is available, but match times and venues have not been published yet.
       </div>

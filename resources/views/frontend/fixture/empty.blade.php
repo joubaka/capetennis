@@ -14,7 +14,7 @@
       <div class="alert alert-info" role="status">
         No matches are available to view yet. Please check back for updates.
       </div>
-      <a href="{{ route('events.show', $event) }}" class="btn btn-outline-secondary">Back to tournament</a>
+      <a href="{{ route('events.show', $event) }}#event-draws-match-times" class="btn btn-outline-secondary">Back to tournament</a>
     </div>
   </div>
   </div>

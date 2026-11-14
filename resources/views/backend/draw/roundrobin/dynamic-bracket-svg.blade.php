@@ -170,6 +170,9 @@
                     // Replace '---' with feeder label if available
                     if ($feed1 && ($p1 === '---' || $p1 === 'TBD')) $p1 = $feed1;
                     if ($feed2 && ($p2 === '---' || $p2 === 'TBD')) $p2 = $feed2;
+                    if (($bracket['posTo'] ?? 0) - ($bracket['posFrom'] ?? 0) === 2 && $roundNum === 2 && $empty1 && $feed1) {
+                        $p1 = 'Winner of preliminary';
+                    }
                     $isFeeder1 = str_starts_with($p1, 'W') || str_starts_with($p1, 'L');
                     $isFeeder2 = str_starts_with($p2, 'W') || str_starts_with($p2, 'L');
                     $feederIsWin1 = str_starts_with($p1, 'W');
@@ -181,8 +184,8 @@
                     $loser1 = $identity1 && $outcomes[0] === 'loser-home';
                     $winner2 = $identity2 && $outcomes[1] === 'winner-home';
                     $loser2 = $identity2 && $outcomes[1] === 'loser-home';
-                    $identityWidth1 = min(160, max(42, min(mb_strlen($p1), 22) * 7 + 12));
-                    $identityWidth2 = min(160, max(42, min(mb_strlen($p2), 22) * 7 + 12));
+                    $identityWidth1 = min(150, max(42, min(mb_strlen($p1), 21) * 7 + 12));
+                    $identityWidth2 = min(150, max(42, min(mb_strlen($p2), 21) * 7 + 12));
                 @endphp
 
                 <g>
@@ -195,13 +198,14 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty ? $p1 : Str::limit($p1, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
+                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit($p1, 18) }}</text>
+                    <text x="{{ $x + 5 }}" y="{{ $topLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel1 && !$isBye1)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
@@ -214,13 +218,14 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty ? $p2 : Str::limit($p2, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
+                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit($p2, 18) }}</text>
+                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel2 && !$isBye2)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif
@@ -270,7 +275,7 @@
                         @if($isAdmin)
                             {{-- Middle Match Info (admin only) --}}
                             <text x="{{ $rightX - 6 }}" y="{{ $midY + 4 }}" class="id-red" text-anchor="end">#{{ $fx?->id }}</text>
-                            <text x="{{ $x - 10 }}" y="{{ $midY + 4 }}" class="id-red" text-anchor="end">({{ $fx?->match_nr }})</text>
+
                         @endif
 
                         {{-- Clickable hit area for score entry --}}
@@ -375,8 +380,8 @@
                     $loser1 = $identity1 && $outcomes[0] === 'loser-home';
                     $winner2 = $identity2 && $outcomes[1] === 'winner-home';
                     $loser2 = $identity2 && $outcomes[1] === 'loser-home';
-                    $identityWidth1 = min(160, max(42, min(mb_strlen($p1), 22) * 7 + 12));
-                    $identityWidth2 = min(160, max(42, min(mb_strlen($p2), 22) * 7 + 12));
+                    $identityWidth1 = min(150, max(42, min(mb_strlen($p1), 21) * 7 + 12));
+                    $identityWidth2 = min(150, max(42, min(mb_strlen($p2), 21) * 7 + 12));
                 @endphp
 
                 <g>
@@ -394,13 +399,14 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}"
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty ? $p1 : Str::limit($p1, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
+                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit($p1, 18) }}</text>
+                    <text x="{{ $x + 5 }}" y="{{ $topLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin1 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel1 && !$isBye1)
-                        @php $badgeX1 = $x + 5 + min(strlen($p1), 22) * 7 + 4; @endphp
+                        @php $badgeX1 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX1 }}" y="{{ $topLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX1 + 9 }}" y="{{ $topLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel1 }}</text>
                     @endif
@@ -413,13 +419,14 @@
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}"
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty ? $p2 : Str::limit($p2, \App\Services\Performance\PlayerRatingBadgeService::visible() ? 14 : 22) }}@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
+                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit($p2, 18) }}</text>
+                    <text x="{{ $x + 5 }}" y="{{ $bottomLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $origin2 }}</text>
                     @elseif(!$isEmpty && $vSeedLabel2 && !$isBye2)
-                        @php $badgeX2 = $x + 5 + min(strlen($p2), 22) * 7 + 4; @endphp
+                        @php $badgeX2 = $rightX - 25; @endphp
                         <rect x="{{ $badgeX2 }}" y="{{ $bottomLineY - 14 }}" width="18" height="11" fill="#6366f1" rx="2" />
                         <text x="{{ $badgeX2 + 9 }}" y="{{ $bottomLineY - 5 }}" class="seed-origin" text-anchor="middle">{{ $vSeedLabel2 }}</text>
                     @endif

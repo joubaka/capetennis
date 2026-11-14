@@ -168,6 +168,7 @@
     justify-content: space-between;
   }
   .individual-event-view .event-draw-name {
+    overflow-wrap: anywhere;
     color: #172e45;
     font-size: 1rem;
     font-weight: 750;
@@ -178,7 +179,7 @@
     background: rgba(20, 121, 110, .1);
     border-radius: 999px;
     color: #11665d;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     font-size: .7rem;
     font-weight: 700;
     letter-spacing: .02em;
@@ -204,6 +205,8 @@
     font-size: 1rem;
     margin-top: .05rem;
   }
+  .individual-event-view .event-draw-meta > span > span { overflow-wrap: anywhere; min-width: 0; }
+  .individual-event-view .event-draw-card-heading { flex-wrap: wrap; }
   .individual-event-view .event-draw-actions {
     display: flex;
     flex-wrap: wrap;
@@ -215,7 +218,7 @@
     display: inline-flex;
     flex: 1 1 6rem;
     justify-content: center;
-    min-height: 2.35rem;
+    min-height: 2.75rem;
   }
   .individual-event-view .event-draw-actions .event-draw-score {
     flex: 0 0 auto;

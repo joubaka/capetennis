@@ -14,6 +14,7 @@
       </div>
     @endif
 
+    @include('frontend.event.partials.event-draws')
     @include('frontend.event.partials.event-information')
     @include('frontend.event.partials.event-announcements')
 
@@ -47,7 +48,6 @@
       'documentNewWindow' => false,
       'documentUploadModal' => '#addFileModal',
     ])
-    @include('frontend.event.partials.event-draws')
 
     {{-- PLAYERS --}}
     <div class="card mb-4">

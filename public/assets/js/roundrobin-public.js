@@ -332,15 +332,21 @@
   $(document).ready(init);
 
   $(document).ready(function () {
-    if (['', '#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
-      document.getElementById('oop-tab')?.click();
-    } else if (['#draw', '#matrix'].includes(window.location.hash)) {
-      document.getElementById('matrix-tab')?.click();
-    } else if (window.location.hash === '#standings') {
-      document.getElementById('standings-tab')?.click();
-    } else if (['#playoffs', '#main-bracket'].includes(window.location.hash)) {
-      document.getElementById('main-bracket-tab')?.click();
+    const tabs = {'oop-tab': 'schedule', 'matrix-tab': 'draw', 'standings-tab': 'standings', 'main-bracket-tab': 'playoffs'};
+    function openHash() {
+      const hash = window.location.hash;
+      const id = ['#draw', '#matrix'].includes(hash) ? 'matrix-tab'
+        : hash === '#standings' ? 'standings-tab'
+        : ['#playoffs', '#main-bracket'].includes(hash) ? 'main-bracket-tab' : 'oop-tab';
+      document.getElementById(id)?.click();
     }
+    Object.entries(tabs).forEach(([id, name]) => {
+      document.getElementById(id)?.addEventListener('shown.bs.tab', () => {
+        history.replaceState(null, '', '#' + name);
+      });
+    });
+    window.addEventListener('hashchange', openHash);
+    openHash();
   });
 
 })(jQuery, window, document);

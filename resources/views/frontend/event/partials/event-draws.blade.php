@@ -5,7 +5,7 @@
       <span class="event-draws-header-icon" aria-hidden="true"><i class="ti ti-tournament"></i></span>
       <div>
         <h5 class="mb-1">Draws and match times</h5>
-        <p class="text-muted small mb-0">Open a draw to see the bracket, venue and published match times.</p>
+        <p class="text-muted small mb-0">Choose your draw, then find your name in the schedule for your match date, time and venue.</p>
       </div>
     </div>
     <div class="card-body">
@@ -29,8 +29,8 @@
 
           @foreach($sortedDraws as $draw)
             @php
-              $firstSchedule = $draw->order_of_play->whereNotNull('time')->sortBy('time')->first();
-              $drawVenueNames = $draw->venues->pluck('name')->filter()->unique()->values();
+              $drawSummary = app(\App\Services\PublicDrawPresentation::class)->summary($draw, $scheduleRows ?? null);
+              $drawVenueNames = $drawSummary['venues'];
               $publicDrawUrl = $draw->usesFlexibleMonrad()
                 ? route('public.flexible-monrad.show', $draw)
                 : route('public.roundrobin.show', $draw);
@@ -42,17 +42,17 @@
                 <div class="event-draw-card-heading">
                   <div class="event-draw-name">{{ $draw->drawName ?? 'Draw #'.$draw->id }}</div>
                   @if($draw->published)
-                    <span class="event-draw-state">{{ $draw->scheduleIsPublished() ? 'Draw & times live' : 'Draw live' }}</span>
+                    <span class="event-draw-state">{{ $drawSummary['available'] ? 'Draw & times live' : 'Draw live' }}</span>
                   @elseif($canViewDraw)
                     <span class="event-draw-state">Draft</span>
                   @endif
                 </div>
                 <div class="event-draw-meta">
                   @if($drawVenueNames->isNotEmpty())
-                    <span><i class="ti ti-map-pin" aria-hidden="true"></i><span>{{ $drawVenueNames->join(', ') }}</span></span>
+                    <span><i class="ti ti-map-pin" aria-hidden="true"></i><span>{{ $drawSummary['provisional_venues'] ? 'Planned venue: ' : '' }}{{ $drawVenueNames->join(', ') }}</span></span>
                   @endif
-                  @if($draw->scheduleIsPublished() && $firstSchedule?->time)
-                    <span><i class="ti ti-clock" aria-hidden="true"></i><span>First match {{ \Carbon\Carbon::parse($firstSchedule->time)->format('H:i') }}</span></span>
+                  @if($drawSummary['available'] && $drawSummary['first_time'])
+                    <span><i class="ti ti-clock" aria-hidden="true"></i><span>Published matches from {{ \Carbon\Carbon::parse($drawSummary['first_time'])->format('D j M Y, H:i') }}<small class="d-block">Check the schedule for your own match time.</small></span></span>
                   @endif
                 </div>
               </div>
@@ -62,7 +62,7 @@
                   <a href="{{ $publicDrawUrl }}#draw" class="btn btn-sm btn-outline-primary">
                     <i class="ti ti-tournament me-1" aria-hidden="true"></i>View draw
                   </a>
-                  @if($draw->scheduleIsPublished())
+                  @if($drawSummary['available'])
                     <a href="{{ $publicDrawUrl }}#schedule" class="btn btn-sm btn-success">
                       <i class="ti ti-clock me-1" aria-hidden="true"></i>View schedule
                     </a>

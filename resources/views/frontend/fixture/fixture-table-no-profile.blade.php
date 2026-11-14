@@ -5,20 +5,24 @@ use App\Helpers\Fixtures;
 
 
 ?>
+@php
+  $fixtureScheduleAvailable = app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'];
+@endphp
 
-<div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
     <div>
         <h3 class="mb-1">{{ $draw->drawName }} {{ $draw->age }}</h3>
         <span class="badge bg-label-success">Draw published</span>
-        <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-success' : 'bg-label-secondary' }}">
-            {{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}
+        <span class="badge {{ $fixtureScheduleAvailable ? 'bg-label-success' : 'bg-label-secondary' }}">
+            {{ $fixtureScheduleAvailable ? 'Match times published' : 'Match times to follow' }}
         </span>
     </div>
-    <a class="btn btn-sm btn-outline-secondary" href="{{ route('events.show', $event) }}">
-        <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament
+    <a class="btn btn-sm btn-outline-secondary" href="{{ route('events.show', $event) }}#event-draws-match-times">
+        <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament draws
     </a>
 </div>
-@unless($draw->scheduleIsPublished())
+@unless($fixtureScheduleAvailable)
     <div class="alert alert-info" role="status">
         The draw is available, but match times and venues have not been published yet.
     </div>

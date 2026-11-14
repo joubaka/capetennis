@@ -1,5 +1,8 @@
 # Draw workflow and preservation checklist
 
+For the visitor-facing event, draw, schedule and fixture journey, see
+[Public draws, schedules and fixture navigation](draw-knowledge/public-workflow.md).
+
 ## User journey
 
 The individual draw journey is **Setup → Players → Matches → Schedule → Review & publish → Results**. This is navigation over existing draw operations, not permission to change tournament state. Existing team workflows remain supported.

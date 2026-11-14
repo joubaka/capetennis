@@ -5,7 +5,7 @@
 @section('content')
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-4">
     <div><h3>Order of Play</h3><div>{{ $event->name }}</div><strong>{{ $venue->name }}</strong></div>
-    <a class="btn btn-outline-primary align-self-start" href="{{ route('events.show', $event) }}">Back to tournament</a>
+    <a class="btn btn-outline-primary align-self-start" href="{{ route('events.show', $event) }}#event-draws-match-times">Back to tournament</a>
   </div>
   <div class="d-flex flex-wrap gap-2 mb-3">
     @foreach($availableDates as $availableDate)

@@ -1,3 +1,6 @@
+@php
+  $fixtureScheduleAvailable = app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'];
+@endphp
 <style>.fixture-round > summary .when-open,.fixture-tie > summary .when-open{display:none}.fixture-round[open] > summary .when-open,.fixture-tie[open] > summary .when-open{display:inline}.fixture-round[open] > summary .when-closed,.fixture-tie[open] > summary .when-closed{display:none}.fixture-tie > summary{padding:.75rem;border:1px solid #d9dee3;border-radius:.4rem;background:#f5f7fa}.fixture-toggle{font-size:.8rem;color:#315785;font-weight:600}</style>
 <style>
   .public-fixture-page .badge.bg-label-success { background: #e4f1e7 !important; color: #235c31 !important; }
@@ -67,18 +70,18 @@
       <div>
         <h3 class="mb-2">{{ $draw->drawName }}</h3>
         <span class="badge {{ $draw->published ? 'bg-label-success' : 'bg-label-warning' }}">{{ $draw->published ? 'Draw published' : 'Draft preview · Draw not published' }}</span>
-        <span class="badge {{ $draw->scheduleIsPublished() ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $draw->scheduleIsPublished() ? 'Match times published' : 'Match times to follow' }}</span>
+        <span class="badge {{ $fixtureScheduleAvailable ? 'bg-label-success' : 'bg-label-secondary' }}">{{ $fixtureScheduleAvailable ? 'Match times published' : 'Match times to follow' }}</span>
       </div>
-      <a href="{{ route('events.show', $event) }}" class="btn btn-sm btn-outline-secondary public-fixture-back">Back to tournament</a>
+      <a href="{{ route('events.show', $event) }}#event-draws-match-times" class="btn btn-sm btn-outline-secondary public-fixture-back">Back to tournament draws</a>
     </div>
   </div>
-  @if((int) $event->id === 241 && $draw->scheduleIsPublished())
+  @if((int) $event->id === 241 && $fixtureScheduleAvailable)
     <div class="alert mb-3" style="background:#fff3cd;color:#664d03;border:1px solid #e6c76a;" role="note">
       <strong class="d-block mb-1">NB: NOT BEFORE times</strong>
       All scheduled times are NOT BEFORE times. A match will not start before its listed time, but it may start later if earlier matches are still being played. Please be at your assigned venue and ready to play by the listed time, and check Cape Tennis for schedule updates.
     </div>
   @endif
-  @unless($draw->scheduleIsPublished())
+  @unless($fixtureScheduleAvailable)
     <div class="alert alert-info" role="status">The draw is available, but match times and venues have not been published yet.</div>
   @endunless
   @foreach($fixtures->groupBy(fn ($fixture) => (int) $fixture->round_nr) as $round => $roundFixtures)

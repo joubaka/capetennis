@@ -132,7 +132,7 @@
     console.log('🔹 Rendering public matrix');
 
     const wrapper = $('#rr-matrix-wrapper');
-    wrapper.empty().addClass('rr-matrix-scroll');
+    wrapper.empty();
 
     if (!RR_GROUPS.length) {
       wrapper.html('<div class="text-muted text-center py-4">No groups are available for this draw.</div>');
@@ -158,19 +158,20 @@
         <span class="rr-group-meta">${players.length} players · ${fixtures.length} matches · ${completed} completed</span>
       </div>
       <div class="rr-matrix-scroll rr-matrix-table-shell">
-        <table class="table table-bordered table-sm rr-matrix-table">
+        <table class="table table-bordered table-sm rr-matrix-table" style="--rr-matrix-width: ${220 + players.length * 190}px">
           <caption class="visually-hidden">Round robin results for Box ${escapeHtml(group.name)}</caption>
+          <colgroup><col class="rr-matrix-player-column"><col span="${players.length}"></colgroup>
           <thead>
             <tr>
               <th scope="col" aria-label="Player"></th>
-              ${players.map(p => `<th scope="col" class="text-center" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</th>`).join('')}
+              ${players.map(p => `<th scope="col" class="text-center" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}${window.CTPlayerRatings?.marker({registrationId:p.id}) || ''}</th>`).join('')}
             </tr>
           </thead>
           <tbody>
       `;
 
       players.forEach(rowP => {
-        html += `<tr><th scope="row" class="small" title="${escapeHtml(rowP.name)}">${escapeHtml(rowP.name)}</th>`;
+        html += `<tr><th scope="row" class="small" title="${escapeHtml(rowP.name)}">${escapeHtml(rowP.name)}${window.CTPlayerRatings?.marker({registrationId:rowP.id}) || ''}</th>`;
 
         players.forEach(colP => {
           if (rowP.id === colP.id) {
@@ -188,12 +189,22 @@
             return;
           }
 
+          const winner = Number(fx.winner || 0);
+          const knownWinner = winner > 0 && (winner === Number(fx.r1_id) || winner === Number(fx.r2_id));
+          const outcome = knownWinner ? (winner === Number(rowP.id) ? 'winner-home' : 'loser-home') : '';
           const score = formatScoreCell(fx, rowP.id);
           const time = fx.schedule_hidden === true
             ? 'Followed by'
             : (fx.time ? formatDayTimeVenue(fx) : '');
 
-          html += `<td class="text-center rr-match-cell">${escapeHtml(score || time || '—')}</td>`;
+          const schedule = formatScheduleParts(fx);
+          const venue = fx.venue_name || fx.venue_title || fx.venue || '';
+          const cellContent = score
+            ? escapeHtml(score)
+            : (time && fx.schedule_hidden !== true
+              ? `<span class="rr-public-match-time">${escapeHtml(schedule.date)} <strong>${escapeHtml(schedule.time)}</strong></span>${venue ? `<span class="rr-public-match-venue">${escapeHtml(venue)}</span>` : ''}`
+              : escapeHtml(time || '—'));
+          html += `<td class="text-center rr-match-cell ${outcome}">${cellContent}</td>`;
         });
 
         html += `</tr>`;
@@ -205,13 +216,18 @@
         if (!fx) return;
         const home = players.find(player => player.id === fx.r1_id)?.name || fx.name1 || 'Player';
         const away = players.find(player => player.id === fx.r2_id)?.name || fx.name2 || 'Player';
+        const winner = Number(fx.winner || 0);
+        const knownWinner = winner > 0 && (winner === Number(fx.r1_id) || winner === Number(fx.r2_id));
+        const homeClass = knownWinner ? (winner === Number(fx.r1_id) ? 'winner-home' : 'loser-home') : '';
+        const awayClass = knownWinner ? (winner === Number(fx.r2_id) ? 'winner-home' : 'loser-home') : '';
+        const outcomeLabel = cls => cls ? `<small class="result-label">${cls === 'winner-home' ? 'Won' : 'Lost'}</small>` : '';
         const score = formatScoreCell(fx, fx.r1_id);
         const status = score || (fx.schedule_hidden === true
           ? 'Followed by'
           : (fx.time ? formatDayTimeVenue(fx) : 'Awaiting schedule'));
 
         html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
-          <span class="rr-mobile-players"><span>${escapeHtml(home)}</span><span class="rr-mobile-versus">vs</span><span>${escapeHtml(away)}</span></span>
+          <span class="rr-mobile-players"><span class="${homeClass}">${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}${outcomeLabel(homeClass)}</span><span class="rr-mobile-versus">vs</span><span class="${awayClass}">${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}${outcomeLabel(awayClass)}</span></span>
           <span class="rr-mobile-status">${escapeHtml(status)}</span>
         </div>`;
       });
@@ -236,9 +252,19 @@
       return;
     }
 
-    // The backend already returns the organiser's canonical play_order.
-    // Keep that sequence instead of regrouping matches in the browser.
-    const sorted = RR_OOP.slice();
+    // The public schedule reads chronologically across group matches and playoffs.
+    // Hidden/unreleased times must not affect the visible ordering.
+    const timestamp = fx => {
+      if (!fx.time || fx.schedule_hidden === true) return Number.POSITIVE_INFINITY;
+      const value = new Date(String(fx.time).replace(' ', 'T')).getTime();
+      return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
+    };
+    const sorted = RR_OOP.slice().sort((a, b) => {
+      const first = timestamp(a), second = timestamp(b);
+      if (first !== second) return first < second ? -1 : 1;
+      return (Number(a.match_nr) || 0) - (Number(b.match_nr) || 0)
+        || (Number(a.id) || 0) - (Number(b.id) || 0);
+    });
 
     let html = '';
 
@@ -306,11 +332,21 @@
   $(document).ready(init);
 
   $(document).ready(function () {
-    if (['#schedule', '#oop', '#match-times'].includes(window.location.hash)) {
-      document.getElementById('oop-tab')?.click();
-    } else if (['', '#draw', '#matrix'].includes(window.location.hash)) {
-      document.getElementById('matrix-tab')?.click();
+    const tabs = {'oop-tab': 'schedule', 'matrix-tab': 'draw', 'standings-tab': 'standings', 'main-bracket-tab': 'playoffs'};
+    function openHash() {
+      const hash = window.location.hash;
+      const id = ['#draw', '#matrix'].includes(hash) ? 'matrix-tab'
+        : hash === '#standings' ? 'standings-tab'
+        : ['#playoffs', '#main-bracket'].includes(hash) ? 'main-bracket-tab' : 'oop-tab';
+      document.getElementById(id)?.click();
     }
+    Object.entries(tabs).forEach(([id, name]) => {
+      document.getElementById(id)?.addEventListener('shown.bs.tab', () => {
+        history.replaceState(null, '', '#' + name);
+      });
+    });
+    window.addEventListener('hashchange', openHash);
+    openHash();
   });
 
 })(jQuery, window, document);

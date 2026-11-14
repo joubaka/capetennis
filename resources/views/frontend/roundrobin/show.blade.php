@@ -282,7 +282,7 @@
        
         </div>
         <div class="card-body p-0">
-        @if($draw->oop_published)
+        @if($publicDrawSummary['available'] ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'])
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
     <caption class="visually-hidden">Player match dates, start times, venues and scores</caption>
     <thead class="table-light">

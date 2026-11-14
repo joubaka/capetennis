@@ -74,6 +74,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   returns and separate draw visibility from published times. See
   `docs/draw-workflow.md`, DK-14 and `DrawWorkflow`; team and advanced operations
   retain their canonical services and safeguards.
+- Public draw cards, headers and fixture empty states share filtered published
+  schedule availability, dates and venues. Configured fallback venues are planned;
+  the earliest visible match is not necessarily the historical draw start.
+  Return fragments must resolve the visible mobile/desktop draw section, and
+  selected public tabs retain their URL. See `docs/draw-knowledge/public-workflow.md`,
+  `PublicDrawPresentation` and `PublicTournamentWorkflowTest`.
 - Two completed round-robin groups may use the explicit hybrid conversion for
   crossed top-two championship playoffs and one lower round robin. Carry only
   mutual lower-player results through read-only source-fixture references; never

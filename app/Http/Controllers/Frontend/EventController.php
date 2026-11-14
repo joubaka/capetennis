@@ -511,6 +511,7 @@ return view('frontend.event.show', compact(
       'categoryResults',
       'entryCount',
       'drawPublicationSummary',
+      'scheduleRows',
       'canPreviewUnpublishedDraws',
       'canManageRegionalTeamSelection',
       'isEventWideAdministrator',

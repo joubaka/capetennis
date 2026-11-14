@@ -55,6 +55,16 @@
     [data-event-draw-section]:focus { outline: 3px solid #173f7a; outline-offset: 3px; }
   </style>
   <script>
+    function openEventDrawSection() {
+      if (!['#event-draws-match-times', '#event-draws-mobile'].includes(location.hash)) return;
+      const target = Array.from(document.querySelectorAll('[data-event-draw-section]'))
+        .find(section => section.getClientRects().length > 0);
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+    document.addEventListener('DOMContentLoaded', openEventDrawSection);
+    window.addEventListener('hashchange', openEventDrawSection);
     document.addEventListener('click', function (event) {
       const link = event.target.closest('[data-event-draw-jump]');
       if (!link) return;

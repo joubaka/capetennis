@@ -561,90 +561,23 @@ class DynamicBracketEngine
      */
     protected function buildSeedOriginMap(): array
     {
-        if ($this->draw->hasHybridRoundRobin()) {
-            $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($this->draw);
-            $map = [];
-            foreach ($this->draw->groups->where('round_robin_phase', 1) as $group) {
-                foreach (array_values($standings[$group->id] ?? []) as $index => $row) {
-                    $map[$row['reg_id']] = $group->name.($index + 1);
-                }
-            }
-            return $map;
-        }
+        $this->draw->loadMissing(['groups.groupRegistrations.registration.players', 'drawFixtures.fixtureResults']);
+        $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($this->draw);
+        $groups = $this->draw->hasHybridRoundRobin()
+            ? $this->draw->groups->where('round_robin_phase', 1) : $this->draw->groups;
         $map = [];
-
-        $this->draw->loadMissing([
-            'groups.groupRegistrations.registration.players',
-            'drawFixtures.fixtureResults',
-        ]);
-
-        foreach ($this->draw->groups as $group) {
-            $standings = [];
-
-            foreach ($group->groupRegistrations as $gr) {
-                $regId = $gr->registration_id;
-                $standings[$regId] = [
-                    'reg_id'    => $regId,
-                    'wins'      => 0,
-                    'losses'    => 0,
-                    'sets_won'  => 0,
-                    'sets_lost' => 0,
-                ];
-            }
-
-            foreach ($this->draw->drawFixtures->where('draw_group_id', $group->id)->where('stage', 'RR') as $fx) {
-                if ($fx->fixtureResults->isEmpty()) continue;
-
-                $home = $fx->registration1_id;
-                $away = $fx->registration2_id;
-                $homeSets = 0;
-                $awaySets = 0;
-                $homeGames = 0;
-                $awayGames = 0;
-
-                foreach ($fx->fixtureResults as $set) {
-                    if ($set->registration1_score > $set->registration2_score) $homeSets++;
-                    else $awaySets++;
-                    $homeGames += $set->registration1_score;
-                    $awayGames += $set->registration2_score;
-                }
-
-                if (isset($standings[$home])) {
-                    $standings[$home]['sets_won']   += $homeSets;
-                    $standings[$home]['sets_lost']  += $awaySets;
-                    $standings[$home]['games_won']  = ($standings[$home]['games_won']  ?? 0) + $homeGames;
-                    $standings[$home]['games_lost'] = ($standings[$home]['games_lost'] ?? 0) + $awayGames;
-                    $standings[$home][$homeSets > $awaySets ? 'wins' : 'losses']++;
-                }
-                if (isset($standings[$away])) {
-                    $standings[$away]['sets_won']   += $awaySets;
-                    $standings[$away]['sets_lost']  += $homeSets;
-                    $standings[$away]['games_won']  = ($standings[$away]['games_won']  ?? 0) + $awayGames;
-                    $standings[$away]['games_lost'] = ($standings[$away]['games_lost'] ?? 0) + $homeGames;
-                    $standings[$away][$awaySets > $homeSets ? 'wins' : 'losses']++;
-                }
-            }
-
-            // Sort: wins desc, then set diff desc, then game diff desc
-            $sorted = collect($standings)->sort(function ($a, $b) {
-                if ($a['wins'] !== $b['wins']) {
-                    return $b['wins'] - $a['wins'];
-                }
-                $setDiffA = $a['sets_won'] - $a['sets_lost'];
-                $setDiffB = $b['sets_won'] - $b['sets_lost'];
-                if ($setDiffA !== $setDiffB) {
-                    return $setDiffB - $setDiffA;
-                }
-                $gameDiffA = ($a['games_won'] ?? 0) - ($a['games_lost'] ?? 0);
-                $gameDiffB = ($b['games_won'] ?? 0) - ($b['games_lost'] ?? 0);
-                return $gameDiffB - $gameDiffA;
-            })->values();
-
-            foreach ($sorted as $pos => $entry) {
-                $map[$entry['reg_id']] = $group->name . ($pos + 1);
+        foreach ($groups as $group) {
+            foreach (array_values($standings[$group->id] ?? []) as $index => $row) {
+                $map[(int) $row['reg_id']] = $group->name.($index + 1);
             }
         }
-
+        // Confirmed qualification sources remain authoritative after progression.
+        foreach ($this->fixtures as $fixture) foreach ([1, 2] as $slot) {
+            $group = $groups->firstWhere('id', $fixture->getAttribute("registration{$slot}_source_group_id"));
+            $registrationId = $fixture->getAttribute("registration{$slot}_id");
+            $position = (int) $fixture->getAttribute("registration{$slot}_source_position");
+            if ($group && $registrationId && $position > 0) $map[(int) $registrationId] = $group->name.$position;
+        }
         return $map;
     }
 }

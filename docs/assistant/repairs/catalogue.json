@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-050",
+      "title": "Public draw cards disagree with schedules or lose mobile navigation",
+      "scope": "Public event draw cards, round-robin and Flexible Monrad viewers, and fixture return navigation; read-only presentation only.",
+      "symptoms": "An event card says times to follow while its draw page says times published; configured venues disagree with published matches; mobile returns target a hidden desktop section; changing tabs leaves a stale shared URL.",
+      "cause": "Presentation mixed raw publication flags and working venue configuration with filtered published schedule snapshots. Responsive draw sections had different IDs and tab changes did not consistently synchronize the URL fragment.",
+      "fix": "Use PublicDrawPresentation summaries from canonical filtered publishedRows for public availability, visible dates and venues. Label configured fallback venues as planned and the earliest visible match as Published matches from. Place mobile draws ahead of event information, resolve incoming return fragments to the visible section, and synchronize public tab selection with URL fragments. See docs/draw-knowledge/public-workflow.md. Preserve current visibility, fixture ownership, first-match-only filtering and authorised preview checks; do not publish or change tournament data to repair presentation.",
+      "verification": "On 2026-11-14 the isolated SQLite presentation bundle passed 14 tests and 116 assertions. The Edge browser fixture passed two tests across 320, 390, 768 and 1450px for public round-robin navigation and rendered event cards. Route registration, private-path Blade compilation and diff checks passed. These are local checks, not live verification.",
+      "limits": "Guide only. Navigation and labels do not authorise publishing, scheduling, score changes, regeneration or deployment. Recheck current source and focused regressions before applying this procedure; preserve unrelated worktree edits.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/PublicDrawPresentation.php", "app/Services/Scheduling/SchedulePublicationService.php", "app/Http/Controllers/Frontend/EventController.php", "docs/draw-knowledge/public-workflow.md"],
+      "tests": ["tests/Feature/PublicTournamentWorkflowTest.php", "tests/Feature/Draw/PublicDrawPresentationTest.php", "tests/Browser/public-roundrobin-display.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-045",
       "title": "Draw setup circles between format, players, matches and scheduling",
       "scope": "Individual draw workflow navigation and saved progress across all seven supported formats; existing team operations remain separate.",

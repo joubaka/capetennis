@@ -51,9 +51,9 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="true"/', $html);
         $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="oop-pane"/', $html);
         $this->assertStringContainsString('Find your name, then confirm the date, time and venue.', $html);
-        $this->assertStringContainsString('<th class="text-center">Match</th>', $html);
-        $this->assertStringContainsString('<th class="text-center">Date</th>', $html);
-        $this->assertStringContainsString('<th>Venue</th>', $html);
+        $this->assertStringContainsString('Match times to follow', $html);
+        $this->assertStringContainsString('Match times and venues have not been published yet.', $html);
+        $this->assertStringNotContainsString('Match times published', $html);
         $this->assertStringNotContainsString('<th class="text-center">Court</th>', $html);
         $this->assertStringContainsString('roundrobin-public.js?v=', $html);
         $this->assertStringContainsString('draw-roundrobin.css?v=', $html);

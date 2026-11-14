@@ -26,7 +26,7 @@
       Find your name, then confirm the date, time, venue and court.
       Dates, times and venues stay blank until the schedule is available.
     </p>
-    @if($draw->oop_published || ($config['canPreviewSchedule'] ?? false))
+    @if(($publicDrawSummary['available'] ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available']) || ($config['canPreviewSchedule'] ?? false) || (!$draw->published && $draw->oop_published && (auth()->user()?->can('view', $draw) ?? false)))
       <div id="fm-timetable"></div>
     @else
       <div class="fm-public-schedule-pending" role="status">
@@ -61,12 +61,23 @@
         const active = button.dataset.fmPublicTab === name;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', String(active));
+        button.tabIndex = active ? 0 : -1;
       });
       if (updateHash) history.replaceState(null, '', name === 'draw' ? '#draw' : '#schedule');
     }
 
     buttons.forEach(button => button.addEventListener('click', () => selectTab(button.dataset.fmPublicTab, true)));
-    selectTab(['#schedule', '#oop', '#match-times'].includes(location.hash) ? 'schedule' : 'draw');
+    buttons.forEach((button, index) => button.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length;
+      buttons[next].focus();
+      selectTab(buttons[next].dataset.fmPublicTab, true);
+    }));
+    const openHash = () => selectTab(['#schedule', '#oop', '#match-times'].includes(location.hash) ? 'schedule' : 'draw');
+    window.addEventListener('hashchange', openHash);
+    openHash();
   })();
 </script>
 @endif
