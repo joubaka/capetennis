@@ -52,6 +52,7 @@ test('public schedule is default and matrix venue text stays inside cells at pho
         window.RR_STANDINGS = {};
         window.CTPlayerRatings = {marker: () => '<span style="display:inline-block;white-space:nowrap;font-size:10px">55.9 | MEDIUM</span>'};
       });
+      await page.addScriptTag({path: path.join(root, 'public/assets/js/roundrobin-standings.js')});
       await page.addScriptTag({path: path.join(root, 'public/assets/js/roundrobin-public.js')});
       await page.waitForSelector('.rr-group-section', {state: 'attached'});
       assert.equal(await page.locator('#oop-tab').getAttribute('aria-selected'), 'true');

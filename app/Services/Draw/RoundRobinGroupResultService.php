@@ -11,6 +11,7 @@ final class RoundRobinGroupResultService
 {
     public function annotate(Draw $draw, array $standings): array
     {
+        $standings = app(RoundRobinStandingsDetailService::class)->annotate($draw, $standings);
         if ($draw->isTwoStageRoundRobin()) {
             $offset = $draw->hasHybridRoundRobin() ? 4 : 0;
             foreach ($draw->groups->sortBy(fn ($group) => sprintf('%d_%04d_%010d', $group->round_robin_phase, $group->qualifying_position ?? 0, $group->id)) as $group) {

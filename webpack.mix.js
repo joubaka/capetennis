@@ -182,6 +182,7 @@ mix.copy('resources/js/admin/core/state.js',   'public/assets/js/admin/core/stat
 mix.copy('resources/js/admin/roundrobin/matrix.js',       'public/assets/js/admin/roundrobin/matrix.js');
 mix.copy('resources/js/admin/roundrobin/scores.js',        'public/assets/js/admin/roundrobin/scores.js');
 mix.copy('resources/js/admin/roundrobin/standings.js',     'public/assets/js/admin/roundrobin/standings.js');
+mix.copy('resources/js/roundrobin-standings.js', 'public/assets/js/roundrobin-standings.js');
 mix.copy('resources/js/admin/roundrobin/oop.js',           'public/assets/js/admin/roundrobin/oop.js');
 mix.copy('resources/js/admin/roundrobin/groups.js',        'public/assets/js/admin/roundrobin/groups.js');
 mix.copy('resources/js/admin/roundrobin/schedule.js',      'public/assets/js/admin/roundrobin/schedule.js');

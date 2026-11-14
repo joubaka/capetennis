@@ -159,7 +159,8 @@ class InterproDrawBuilder
     // ---------------------------------------------------------------------
     // STANDINGS
     // ---------------------------------------------------------------------
-    $standings = $this->buildStandingsFromFixtures($draw);
+    $standings = app(\App\Services\Draw\RoundRobinGroupResultService::class)->annotate($draw,
+      app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw));
 
     Log::info("✅ [RR HUB] READY");
 

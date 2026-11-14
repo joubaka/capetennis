@@ -206,7 +206,8 @@ class DrawService
     // ---------------------------------------------------------------------
     // STANDINGS
     // ---------------------------------------------------------------------
-    $standings = app(\App\Services\Draw\RoundRobinGroupResultService::class)->annotate($draw, $this->buildStandingsFromFixtures($draw));
+    // Presentation always uses the canonical read model, including points and drawn outcomes.
+    $standings = app(\App\Services\Draw\RoundRobinGroupResultService::class)->annotate($draw, $this->canonicalStandings->forDraw($draw));
 
     Log::info("✅ [RR HUB] READY");
 

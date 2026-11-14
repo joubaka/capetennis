@@ -19,6 +19,7 @@ function render(status) {
     getGroups: () => [{id: 1, name: 'A'}], getStandings: () => ({1: rows}),
     getFixtures: () => ({1: [{r1_id: 1, r2_id: 2, winner: 2}]}), on() {}
   }});
+  vm.runInContext(fs.readFileSync('public/assets/js/roundrobin-standings.js', 'utf8'), context);
   vm.runInContext(fs.readFileSync('public/assets/js/admin/roundrobin/standings.js', 'utf8'), context);
   window.RRStandings.render();
   return html;

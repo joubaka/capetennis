@@ -406,6 +406,29 @@ and `DrawFinalPlacementService`.
 **Regression:** `tests/Feature/Draw/HybridRoundRobinTest.php`. Test execution,
 independent review and live evidence must be reported separately.
 
+## DK-32 — Detailed standings and blank-format one-set results
+
+Show canonical played/won/drawn/lost/remaining counts and points, set and game
+totals, percentages to two decimal places, and each player's opponent results.
+Retain server ordering and escape all dynamic labels. A saved set is not proof
+of a completed match: show incomplete evidence separately and do not promote
+legacy blank-format draws globally to one-set competitions. Hybrid carried
+results remain source references and count once per destination group.
+
+When an administrator confirms one full set was intended for an otherwise
+unconfigured ordinary round robin, use the dedicated event/draw/actor preview
+and unchanged-snapshot correction. Validate scores and dependencies, preserve
+score rows and bookings, audit the change and avoid score-entry notification
+replay. See [detailed standings](detailed-standings.md) for scope and procedure.
+
+**Sources:** `RoundRobinStandingsDetailService`,
+`OneSetRoundRobinCorrectionService`, `CorrectOneSetRoundRobin`, canonical
+standings and the shared `resources/js/roundrobin-standings.js` renderer.
+
+**Regression:** `tests/Feature/Draw/DetailedRoundRobinStandingsTest.php` and
+the renderer's focused frontend regressions. Browser checks, test execution and
+production application remain separately reportable.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

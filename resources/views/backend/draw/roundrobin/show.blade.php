@@ -1229,6 +1229,7 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
      ═══════════════════════════════════════════════════════════ --}}
 <script src="{{ asset('assets/js/admin/roundrobin/matrix.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/matrix.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/scores.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/scores.js')) }}"></script>
+<script src="{{ asset('assets/js/roundrobin-standings.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-standings.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/standings.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/standings.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/oop.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/oop.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/groups.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/groups.js')) }}"></script>

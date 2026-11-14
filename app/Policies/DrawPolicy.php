@@ -7,6 +7,11 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    /** Explicit scored-format maintenance, distinct from normal scoring or settings edits. */
+    public function correctRoundRobinScoring(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && ! $draw->isTeamDraw() && $this->canManage($user, $draw, false);
+    }
     /** Scoped live structural conversion; convenor/scorer access is insufficient. */
     public function convertHybridRoundRobin(User $user, Draw $draw): bool
     {

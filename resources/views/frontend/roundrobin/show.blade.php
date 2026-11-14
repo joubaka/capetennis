@@ -388,7 +388,8 @@
 
     window.RR_MAIN_BRACKET_URL = "{{ route('public.roundrobin.main-bracket', $draw) }}";
 </script>
-<script src="{{ asset('assets/js/roundrobin-public.js') }}?v={{ filemtime(public_path('assets/js/roundrobin-public.js')) }}"></script>
+<script src="{{ asset('assets/js/roundrobin-standings.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-standings.js')) }}"></script>
+<script src="{{ asset('assets/js/roundrobin-public.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-public.js')) }}"></script>
 
 <script>
 (function(){

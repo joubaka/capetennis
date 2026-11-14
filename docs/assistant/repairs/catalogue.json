@@ -674,6 +674,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/Draw/HybridRoundRobinService.php", "app/Console/Commands/ConvertHybridRoundRobin.php", "docs/draw-knowledge/hybrid-round-robin.md", "app/Services/Draw/DrawFinalPlacementService.php"],
       "tests": ["tests/Feature/Draw/HybridRoundRobinTest.php", "tests/Feature/Draw/TwoStageRoundRobinTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
+      "id": "RK-048",
+      "title": "Round-robin percentages show scores but wins and losses remain zero",
+      "scope": "Detailed individual round-robin standings; separately confirmed one-full-set correction for ordinary unconfigured first-stage round robins only.",
+      "symptoms": "A table shows set/game percentages while match wins, losses and points remain zero, and rounded ratios conceal close ordering. Opponent results and remaining matches are difficult to inspect.",
+      "cause": "A recorded set is not necessarily a complete match. Blank legacy scoring settings retain the three-set fallback, so one set does not establish a match winner. Separate renderers also provided inconsistent summary columns and rounded percentages.",
+      "fix": "Use canonical standings and RoundRobinStandingsDetailService with the shared renderer for played, won, drawn, lost, remaining, points, set/game totals, precise percentages and escaped per-opponent evidence. Retain canonical ordering and label incomplete or carried results. Do not infer one-set rules globally. After explicit administrator confirmation, use draw:correct-one-set with exact event, draw, actor and unchanged preview snapshot. OneSetRoundRobinCorrectionService validates all recorded scores, entrants and dependencies, preserves score rows/bookings/publication, reconciles permitted outcome metadata and records the audit without replaying score notifications. See docs/draw-knowledge/detailed-standings.md.",
+      "verification": "On 2026-11-14 independent isolated SQLite detailed, hybrid and two-stage regressions passed 25 tests and 335 assertions on PHP 8.5. Sixteen related JavaScript tests passed, including the shared renderer, group winners, timed scoring, ratings and public venue visibility. Repair-library validation passed 3 tests and 306 assertions; routes, command registration, Blade compilation and whitespace checks passed. Local browser DOM checks verified both adapters, opponent details, Enter toggle and keyboard horizontal scrolling without body overflow at a measured 391px width. Screenshot capture was blocked, and browser automation ended on active-URL verification. No live correction or deployment is established by these checks.",
+      "limits": "Guide only. Production correction and deployment need current explicit authority. Never reinterpret chosen multi-set formats, progressed/frozen groups, special outcomes, Trials or conflicting scores. Optional cached loser metadata must follow the actual schema; never copy score rows or notify players merely to refresh standings.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/RoundRobinStandingsDetailService.php", "app/Services/Draw/OneSetRoundRobinCorrectionService.php", "app/Console/Commands/CorrectOneSetRoundRobin.php", "docs/draw-knowledge/detailed-standings.md"],
+      "tests": ["tests/Feature/Draw/DetailedRoundRobinStandingsTest.php", "tests/Feature/Draw/HybridRoundRobinTest.php", "tests/Frontend/detailed-roundrobin-standings.test.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
     }
   ]
 }

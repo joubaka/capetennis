@@ -81,6 +81,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   preserve scored fixtures. See `docs/draw-knowledge/hybrid-round-robin.md`, DK-31
   and `HybridRoundRobinService`; ordinary equal-position progression still starts
   with fresh scores. Recheck exact live state and current operational authority.
+- Detailed RR standings use canonical completed outcomes, precise percentages
+  and per-opponent evidence; a saved set alone is not a match win. Blank historical
+  scoring settings retain their legacy fallback until an explicit scoped
+  one-set correction is reviewed. See DK-32 and
+  `docs/draw-knowledge/detailed-standings.md`; do not replay scores or duplicate
+  carried fixture evidence to refresh a table.
 - Reuse established loading helpers and consistent blue modal/loading feedback
   for slow requests. Handle success, failure and session expiry so a spinner
   cannot remain indefinitely. A loading indicator is not evidence of performance.

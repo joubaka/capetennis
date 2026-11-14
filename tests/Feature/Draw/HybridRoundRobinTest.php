@@ -107,6 +107,13 @@ class HybridRoundRobinTest extends TestCase
         $this->assertSame(2, $rows[$players['B3']]['wins']);
         $this->assertSame(1, $rows[$players['A3']]['wins']);
         $hub = app(DrawService::class)->loadRoundRobinHub($draw);
+        $detailRows = collect($hub['standings'][$lower])->keyBy('reg_id');
+        $this->assertSame(2, $detailRows[$players['B3']]['played']);
+        $this->assertSame(2, $detailRows[$players['B3']]['remaining']);
+        $this->assertCount(4, $detailRows[$players['B3']]['match_details']);
+        $this->assertCount(2, collect($detailRows[$players['B3']]['match_details'])->where('carried', true));
+        $this->assertSame(1, $detailRows[$players['B4']]['draws']);
+        $this->assertCount(4, collect($detailRows[$players['B4']]['match_details'])->pluck('opponent')->unique());
         $this->assertCount(10, $hub['rrFixtures'][$lower]);
         $this->assertCount(4, collect($hub['rrFixtures'][$lower])->where('carried', true));
         $this->assertCount(26, $hub['oops']);
