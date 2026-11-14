@@ -7,6 +7,21 @@ const renderer = require('../../public/assets/js/roundrobin-standings.js');
 const row = (name, extra = {}) => ({player:name, reg_id:1, played:2, remaining:1, wins:1, losses:1, draws:0,
   points:2, sets_won:1, sets_lost:1, games_won:9, games_lost:7, match_details:[], ...extra});
 
+test('finished group matches get factual completion text without inferring final standings or overriding explicit status', () => {
+  const complete = [row('Alpha', {played:3,remaining:0,incomplete_results:0}), row('Bravo', {played:3,remaining:0,incomplete_results:0})];
+  const html = renderer.renderGroup({name:'A'}, complete);
+  assert.ok(html.includes('Group matches complete.'));
+  assert.equal(html.includes('Provisional standings'), false);
+  assert.equal(html.includes('Final group standings.'), false);
+  assert.equal(html.includes('Group winner</span>'), false);
+  for (const incomplete of [{remaining:undefined},{remaining:null},{remaining:'0'},{played:0},{played:'3'},
+    {incomplete_results:undefined},{incomplete_results:1},{match_details:[{fixture_id:7,status:'incomplete'}]}]) {
+    assert.equal(renderer.renderGroup({name:'A'}, [complete[0], {...complete[1],...incomplete}]).includes('Group matches complete.'), false);
+  }
+  assert.ok(renderer.renderGroup({name:'A'}, [{...complete[0],group_result_status:'tied'},complete[1]]).includes('leading tie unresolved'));
+  assert.ok(renderer.renderGroup({name:'A'}, [{...complete[0],group_result_message:'Await confirmed qualification.'},complete[1]]).includes('Await confirmed qualification.'));
+});
+
 test('shared standings preserve server order and expose complete totals with precise percentages', () => {
   const html = renderer.renderGroup({name:'A'}, [row('Server first', {games_won:10,games_lost:8}), row('Server second')]);
   assert.ok(html.indexOf('Server first') < html.indexOf('Server second'), 'presentation must never re-sort canonical order');

@@ -16,9 +16,14 @@
     var html = '<section class="rr-detailed-standings mb-4" style="min-width:0;max-width:100%">';
     html += '<h6 class="fw-bold mt-4">Box ' + escape(group.name) + '</h6>';
     var first = rows[0];
+    var matchesComplete = rows.every(function (row) {
+      return !row.group_result_status && !row.group_result_message && row.remaining === 0 && Number.isFinite(row.played) && row.played > 0
+        && row.incomplete_results === 0 && !(row.match_details || []).some(function (match) { return match.status === 'incomplete'; });
+    });
     var message = first.group_result_message || (first.group_result_status === 'complete' ? 'Final group standings.'
       : first.group_result_status === 'tied' ? 'Group winner pending: leading tie unresolved.'
       : first.group_result_status === 'incomplete' ? 'Group winner pending: complete every group match.'
+      : matchesComplete ? 'Group matches complete.'
       : 'Provisional standings — remaining results may change the order.');
     html += '<p class="small text-muted">' + escape(message) + '</p>';
     var incomplete = new Set();
