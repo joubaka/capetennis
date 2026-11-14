@@ -144,16 +144,16 @@
     justify-content: center;
     width: 2.5rem;
   }
-  .individual-event-view .event-draw-grid { display: grid; gap: .8rem; }
+  .individual-event-view .event-draw-grid { display: grid; gap: .5rem; }
   .individual-event-view .event-draw-card {
     background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
     border: 1px solid #dbe5ec;
     border-left: 3px solid #14796e;
     border-radius: .75rem;
     display: grid;
-    gap: .9rem;
+    gap: .65rem;
     grid-template-columns: minmax(0, 1fr);
-    padding: 1rem;
+    padding: .75rem;
     transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
   }
   .individual-event-view .event-draw-card:hover {
@@ -190,8 +190,8 @@
     color: #65788b;
     display: grid;
     font-size: .82rem;
-    gap: .45rem;
-    margin-top: .55rem;
+    gap: .25rem;
+    margin-top: .35rem;
   }
   .individual-event-view .event-draw-meta > span {
     align-items: start;
@@ -224,6 +224,23 @@
     flex: 0 0 auto;
     padding-inline: .7rem;
   }
+  @media (min-width: 992px) {
+    .individual-event-view .event-draw-card {
+      align-items: center;
+      column-gap: 1rem;
+      grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+      padding: .65rem .8rem;
+    }
+    .individual-event-view .event-draw-card > div { min-width: 0; }
+    .individual-event-view .event-draw-actions {
+      justify-content: flex-end;
+      max-width: 28rem;
+    }
+    .individual-event-view .event-draw-actions .btn {
+      flex: 0 1 auto;
+      min-height: 2.25rem;
+    }
+  }
   #event-draws-match-times { scroll-margin-top: 8rem; }
   #event-draws-match-times:focus,
   #event-draws-match-times:target {
@@ -249,6 +266,7 @@
     .user-profile-header .mx-4 { margin-inline: 1.1rem !important; }
     .public-event-view .event-category .list-group-item { align-items: flex-start !important; flex-direction: column; }
     .individual-event-view .event-draw-card { padding: .9rem; }
+    .individual-event-view .event-draw-actions .btn { min-height: 44px; }
     .individual-event-view .event-draw-actions .btn:not(.event-draw-score) { flex-basis: 100%; }
   }
 
