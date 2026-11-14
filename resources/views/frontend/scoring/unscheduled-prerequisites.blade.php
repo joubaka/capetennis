@@ -1,10 +1,4 @@
 @if($unscheduledPrerequisites->isNotEmpty())
-  <section class="card border-warning mb-3" aria-labelledby="unscheduled-prerequisites-heading" data-unscheduled-prerequisites>
-    <div class="card-header">
-      <h2 id="unscheduled-prerequisites-heading" class="h5 mb-1">Unscheduled prerequisites</h2>
-      <p class="small text-muted mb-0">These unscored matches feed the booked matches in this view. No court or time is assigned. Enter a confirmed result here, or schedule the match through the draw workspace.</p>
-    </div>
-    <div class="card-body d-grid gap-3">
       @foreach($unscheduledPrerequisites as $prerequisite)
         @php
           $prerequisiteDraw = $prerequisite->draw;
@@ -15,9 +9,12 @@
           catch (\InvalidArgumentException $exception) { /* An unbooked timed match requires valid draw defaults. */ }
           $prerequisiteTarget = $prerequisite->scoring_prerequisite_anchor;
         @endphp
-        <article class="border rounded p-3" data-unscheduled-prerequisite="{{ $prerequisite->id }}">
+        <article class="card match-card" data-unscheduled-prerequisites data-unscheduled-prerequisite="{{ $prerequisite->id }}" data-score-state="outstanding" data-score-timing="unscheduled">
+          <div class="card-body">
           <span class="badge bg-label-warning mb-2">Unscheduled prerequisite</span>
           <div class="small text-muted">{{ $prerequisiteDraw->drawName }} · Match {{ $prerequisite->match_nr ?: $prerequisite->id }} · Feeds {{ $prerequisiteTarget['label'] ?: 'Match '.$prerequisiteTarget['match_nr'] }}</div>
+          <div class="small text-muted">No court or time assigned.</div>
+          <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
           <p class="fw-semibold my-2">{{ $prerequisiteHome }} vs {{ $prerequisiteAway }}</p>
           @if(!$prerequisiteTiming)
             <p class="small text-warning mb-0">Review timed settings before entering this unscheduled match.
@@ -34,8 +31,8 @@
           @else
             <span class="small text-muted">Waiting for players. Complete its earlier qualification matches first.</span>
           @endif
+          </div>
+          </div>
         </article>
       @endforeach
-    </div>
-  </section>
 @endif

@@ -57,10 +57,10 @@ class UnscheduledScoringPrerequisitesTest extends TestCase
             ->mapWithKeys(fn($table)=>[$table=>DB::table($table)->orderBy('id')->get()->toJson()])->all();
     }
 
-    public function test_working_venue_shows_a_separate_prerequisite_without_queue_or_schedule_changes_and_normal_score_advances_parent(): void
+    public function test_working_venue_includes_prerequisite_in_queue_without_schedule_changes_and_normal_score_advances_parent(): void
     {
         [$event,$draw,$venue,$preliminary,$parent,$completed]=$this->scenario(); $before=$this->snapshot();
-        $page=$this->get($this->url($event,$venue))->assertOk()->assertSee('Unscheduled prerequisites')
+        $page=$this->get($this->url($event,$venue))->assertOk()->assertSee('Unscheduled prerequisite')
             ->assertSee('data-unscheduled-prerequisite="'.$preliminary->id.'"',false)->assertSee('Positions 5–7 final');
         $this->assertSame([$preliminary->id],$page->viewData('unscheduledPrerequisites')->pluck('id')->all());
         $this->assertSame([$completed->id,$parent->id],$page->viewData('matches')->sortBy('match_nr')->pluck('id')->all());
@@ -70,6 +70,10 @@ class UnscheduledScoringPrerequisitesTest extends TestCase
         $document=new \DOMDocument(); $previous=libxml_use_internal_errors(true); $document->loadHTML($page->getContent(),LIBXML_NONET);
         libxml_clear_errors(); libxml_use_internal_errors($previous); $xpath=new \DOMXPath($document);
         $card=$xpath->query('//*[@data-unscheduled-prerequisite="'.$preliminary->id.'"]')->item(0);
+        $this->assertSame('outstanding',$card->getAttribute('data-score-state'));
+        $this->assertSame('unscheduled',$card->getAttribute('data-score-timing'));
+        $this->assertSame('score-match-list',$card->parentNode->getAttribute('id'));
+        $this->assertSame('2',trim($xpath->query('//*[@id="score-visible-count"]')->item(0)->textContent));
         $this->assertSame(0,$xpath->query('.//*[contains(@class,"js-toggle-match")]',$card)->length);
         $button=$xpath->query('.//button[contains(@class,"js-open-score")]',$card)->item(0);
         foreach (['data-walkover-winner','data-retired-registration','data-deciding-winner','data-home-registration','data-away-registration','data-match-minutes'] as $attribute) $this->assertTrue($button->hasAttribute($attribute));

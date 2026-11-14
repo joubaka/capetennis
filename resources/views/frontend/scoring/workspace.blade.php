@@ -171,7 +171,6 @@
         </div>
       @endif
     @endforeach
-    @include('frontend.scoring.unscheduled-prerequisites')
     <div class="offcanvas offcanvas-end next-court-panel" tabindex="-1" id="next-on-court-panel"
          aria-labelledby="next-on-court-title">
       <div class="offcanvas-header border-bottom">
@@ -360,7 +359,7 @@
         <p class="small text-muted mb-0">Start play, enter results, or review completed matches.</p>
       </div>
       <div class="scoring-queue-summary" aria-live="polite">
-        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty() && !($match instanceof \App\Models\Fixture && $match->isWalkover()))->count() }}</strong>
+        <strong id="score-visible-count">{{ $matches->filter(fn($match) => $match->fixtureResults->isEmpty() && !($match instanceof \App\Models\Fixture && $match->isWalkover()))->count() + $unscheduledPrerequisites->count() }}</strong>
         <span id="score-visible-label">outstanding</span>
         <span> · {{ $ready }} ready to score</span>
       </div>
@@ -376,6 +375,7 @@
     </div>
 
     <div id="score-match-list" class="d-grid gap-2">
+      @include('frontend.scoring.unscheduled-prerequisites')
       @forelse($matches as $match)
         @php
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
