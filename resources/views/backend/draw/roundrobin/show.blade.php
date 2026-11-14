@@ -302,6 +302,7 @@
           @endunless
         </div>
       </div>
+      @include('backend.draw.roundrobin.odd-tail-option')
       <form id="drawSettingsForm">
       @csrf
       {{-- BASIC SETTINGS --}}
@@ -1247,6 +1248,7 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
 
 @include('backend.draw.roundrobin.print-scripts')
 <script src="{{ asset('js/draw-progression.js') }}?v={{ filemtime(public_path('js/draw-progression.js')) }}"></script>
+<script src="{{ asset('js/roundrobin-progression-prompt.js') }}?v={{ filemtime(public_path('js/roundrobin-progression-prompt.js')) }}"></script>
 
 
 

@@ -9,9 +9,9 @@
 
     async function afterSave(match, before, refresh) {
         const after = state(match.drawId);
-        if (match.engine !== 'standard' || match.stage !== 'RR' || match.hasResult !== '0'
-            || !before || !after || !after.pending || before.total < 1
-            || before.completed !== before.total - 1 || after.completed !== after.total
+        if (match.engine !== 'standard' || match.stage !== 'RR'
+            || !before || !after || !after.pending || after.total < 1
+            || after.completed !== after.total
             || prompted.has(match.drawId)) return;
 
         prompted.add(match.drawId);

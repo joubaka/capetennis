@@ -81,8 +81,9 @@ final class RoundRobinPlayoffScheduleService
             ->reject(fn ($entry) => app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $entry));
 
         return $config->isNotEmpty()
-            && $config->every(fn ($entry) => (int) ($entry['size'] ?? 0) === 2)
-            && $this->pairDefinitions($draw)->count() === $config->count();
+            && $config->every(fn ($entry) => (int) ($entry['size'] ?? 0) === 2
+                || ((int) ($entry['size'] ?? 0) === 3 && ($entry['odd_tail'] ?? false)))
+            && $this->pairDefinitions($draw)->count() === $config->reject(fn ($entry) => $entry['odd_tail'] ?? false)->count();
     }
 
     public function resolveFromStandings(Draw $draw, array $standings, bool $preserveOccupiedSlots = false): int
@@ -163,10 +164,22 @@ final class RoundRobinPlayoffScheduleService
             return false;
         }
 
-        $fixtures = $draw->drawFixtures()->where('stage', 'RR')->where('draw_group_id', $groupId);
-        $total = (clone $fixtures)->count();
-
-        return $total > 0 && (clone $fixtures)->whereHas('fixtureResults')->count() === $total;
+        $group = $draw->groups()->with('groupRegistrations')->find($groupId);
+        if (!$group) return false;
+        $ids = $group->groupRegistrations->pluck('registration_id')->map(fn ($id) => (int) $id);
+        $fixtures = $draw->drawFixtures()->where('stage', 'RR')->where('draw_group_id', $groupId)
+            ->with(['fixtureResults', 'draw.settings'])->get();
+        if ($ids->count() < 2 || $fixtures->count() !== intdiv($ids->count() * ($ids->count() - 1), 2)) return false;
+        $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
+        $pairs = [];
+        foreach ($fixtures as $fixture) {
+            $pair = [(int) $fixture->registration1_id, (int) $fixture->registration2_id]; sort($pair);
+            $key = implode(':', $pair);
+            if ($pair[0] === $pair[1] || !$ids->contains($pair[0]) || !$ids->contains($pair[1]) || isset($pairs[$key])
+                || ($outcomes->winner($fixture) === null && !$outcomes->isDraw($fixture))) return false;
+            $pairs[$key] = true;
+        }
+        return true;
     }
 
     private function registrationAt(array|Collection $rows, int $position): ?int

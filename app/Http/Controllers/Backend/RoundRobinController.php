@@ -957,18 +957,7 @@ class RoundRobinController extends Controller
 
   private function roundRobinProgressReadiness(Draw $draw): array
   {
-    $roundRobin = $draw->drawFixtures()->where('stage', 'RR');
-    $total = (clone $roundRobin)->count();
-    $completed = (clone $roundRobin)->withRecordedResult()->count();
-    $remaining = max(0, $total - $completed);
-
-    return [
-      'ready' => $total > 0 && $completed === $total,
-      'message' => $total === 0
-        ? 'Create the round-robin fixtures before progressing this draw.'
-        : "Complete all round-robin results first. {$remaining} of {$total} matches still need a result.",
-      'round_robin' => compact('total', 'completed', 'remaining'),
-    ];
+    return app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
   }
 
   private function roundRobinProgressReview(Draw $draw, ?array $hub = null): array
@@ -1733,7 +1722,8 @@ class RoundRobinController extends Controller
         $size = filter_var($item['size'] ?? null, FILTER_VALIDATE_INT);
         $positions = $item['positions'] ?? null;
         $order = $item['group_order'] ?? [];
-        return in_array($size, [2, 4, 8, 16, 32, 64], true)
+        return (in_array($size, [2, 4, 8, 16, 32, 64], true)
+            || ($size === 3 && ($item['odd_tail'] ?? false) && $groups->count() === 1))
           && is_string($item['slug'] ?? null) && is_string($item['name'] ?? null)
           && is_array($positions) && array_is_list($positions) && count($positions) > 0
           && count(array_unique($positions, SORT_REGULAR)) === count($positions)

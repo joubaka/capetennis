@@ -65,6 +65,7 @@ final class DrawFinalPlacementService
                 : $this->terminalPlacements($fixtures);
         }
 
+        $placements = $this->unpairedRoundRobinPosition($draw, $placements);
         return $this->applyAdjustments($placements, $adjustments);
     }
 
@@ -104,6 +105,19 @@ final class DrawFinalPlacementService
                 $rows->put($position, $this->awaiting($position));
             }
 
+            if ($size === 3 && ($definition['odd_tail'] ?? false)) {
+                $final = $stageFixtures->sortByDesc('round')->first();
+                if ($final) $this->applyPair($rows, $final, $start);
+                $preliminary = $stageFixtures->first(fn ($f) => $final && (int) $f->parent_fixture_id === (int) $final->id);
+                if ($preliminary && $preliminary->winner_registration) {
+                    $loser = (int) $preliminary->winner_registration === (int) $preliminary->registration1_id
+                        ? $preliminary->registration2 : $preliminary->registration1;
+                    if ($loser) $rows->put($start + 2, $this->resolved($start + 2, $loser));
+                }
+                $positionOffset += 3;
+                continue;
+            }
+
             if ($size === 2) {
                 $fixture = $stageFixtures->sortBy([
                     ['round', 'desc'],
@@ -137,6 +151,28 @@ final class DrawFinalPlacementService
         }
 
         return $rows->sortKeys()->values();
+    }
+
+    /** A completed single-group pair draw may leave only its last player unpaired. */
+    private function unpairedRoundRobinPosition(Draw $draw, Collection $placements): Collection
+    {
+        if ($draw->settings?->workflow !== 'round_robin_playoffs') return $placements;
+        $draw->loadMissing(['groups.groupRegistrations.registration.players', 'drawFixtures.fixtureResults']);
+        if ($draw->groups->count() !== 1) return $placements;
+        $group = $draw->groups->first();
+        $n = $group->groupRegistrations->count();
+        $config = collect($draw->settings->playoff_config ?? [])->filter(fn ($e) => is_array($e) && ($e['enabled'] ?? false))->values();
+        if ($n < 3 || $n % 2 !== 1 || $config->contains(fn ($e) => (int) ($e['size'] ?? 0) !== 2)
+            || $config->flatMap(fn ($e) => array_map('intval', $e['positions'] ?? []))->all() !== range(1, $n - 1)) return $placements;
+        $fixtures = $draw->drawFixtures->where('stage', 'RR')->where('draw_group_id', $group->id);
+        $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
+        $complete = $fixtures->count() === intdiv($n * ($n - 1), 2)
+            && $fixtures->every(fn ($f) => $outcomes->winner($f) !== null || $outcomes->isDraw($f));
+        $rows = collect(app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw)[$group->id] ?? []);
+        $complete = $complete && app(TwoStageRoundRobinService::class)->positionsResolved($draw, $rows->values()->all(), $fixtures);
+        $last = $rows->values()->last();
+        $registration = $group->groupRegistrations->firstWhere('registration_id', $last['reg_id'] ?? null)?->registration;
+        return $placements->push($complete && $registration ? $this->resolved($n, $registration) : $this->awaiting($n));
     }
 
     private function legacyEightPlayerPlacements(Collection $fixtures): Collection

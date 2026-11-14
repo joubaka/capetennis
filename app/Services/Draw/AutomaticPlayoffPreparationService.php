@@ -14,6 +14,7 @@ final class AutomaticPlayoffPreparationService
     public function replaceUnbookedPlaceholders(Draw $draw, array $configuration): bool
     {
         $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+        app(OddPlayerPlayoffService::class)->assertRetainedOption($draw, $configuration);
         $previous = $draw->settings?->playoff_config ?? [];
         $structure = fn (array $config) => collect($config)->map(fn ($entry) => [
             'slug' => strtoupper((string) ($entry['slug'] ?? 'MAIN')),

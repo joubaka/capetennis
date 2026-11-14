@@ -210,14 +210,17 @@ class VenueScoringController extends Controller
         $playoffProgression = $draws->filter(fn (Draw $draw) => $visibleDrawIds->contains($draw->id)
             && $draw->settings?->workflow === 'round_robin_playoffs'
             && ! $draw->isTeamDraw() && $user->can('progress', $draw))
-            ->mapWithKeys(fn (Draw $draw) => [$draw->id => [
+            ->mapWithKeys(function (Draw $draw) {
+              $completion = app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
+              return [$draw->id => [
                 'drawName' => $draw->drawName,
-                'total' => (int) $draw->progression_rr_total,
-                'completed' => (int) $draw->progression_rr_completed,
+                'total' => $completion['round_robin']['total'],
+                'completed' => $completion['round_robin']['completed'],
                 'pending' => (int) $draw->progression_pending_sources > 0 || (int) $draw->progression_playoff_total === 0,
                 'url' => route('backend.draw.progress', $draw),
                 'reviewUrl' => route('backend.draw.progress-review', $draw),
-            ]]);
+              ]];
+            });
 
         return view('frontend.scoring.workspace', [
             'event' => $event,

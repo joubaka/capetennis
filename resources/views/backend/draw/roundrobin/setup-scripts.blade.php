@@ -398,7 +398,7 @@ function renderPlayoffTable() {
           </td>
           <td data-label="Bracket size">
             <select class="form-select form-select-sm playoff-size" aria-label="Bracket size for ${escapeSettingsText(playoff.name)}" data-idx="${idx}" style="width: 80px;">
-              ${[2, 4, 8, 16, 32].map(size => 
+              ${(playoff.odd_tail ? [3] : [2, 4, 8, 16, 32]).map(size =>
                 `<option value="${size}" ${playoff.size == size ? 'selected' : ''}>${size}</option>`
               ).join('')}
             </select>

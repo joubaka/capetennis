@@ -32,14 +32,20 @@ test('cancel leaves the score saved and does not progress or refresh', async () 
     assert.equal(app.prompts.length, 1); assert.equal(app.reviews.length, 0); assert.equal(refreshed, false);
 });
 
-test('nonfinal, corrected, playoff, team, unauthorized and resolved draws do not prompt', async () => {
+test('playoff, team, unauthorized and incomplete or resolved draws do not prompt', async () => {
     for (const [changedMatch, changedBefore, update] of [
-        [{stage: 'MAIN'}, {}, {}], [{engine: 'team'}, {}, {}], [{hasResult: '1'}, {}, {}],
-        [{}, {completed: 10}, {}], [{}, {completed: 12}, {}], [{}, {}, {pending: false}],
+        [{stage: 'MAIN'}, {}, {}], [{engine: 'team'}, {}, {}], [{}, {}, {pending: false}],
         [{drawId: '99'}, {}, {}], [{}, {}, {completed: 11}],
     ]) {
         const app = scenario(); Object.assign(app.after, update);
         await app.api.afterSave({...match, ...changedMatch}, {...before, ...changedBefore}, async () => {});
         assert.equal(app.prompts.length, 0);
     }
+});
+
+test('a final result saved over existing scores still offers pending progression', async () => {
+    const app = scenario();
+    await app.api.afterSave({...match, hasResult: '1'}, {...before, completed: 12}, async () => {});
+    assert.equal(app.prompts.length, 1);
+    assert.equal(app.reviews.length, 1);
 });

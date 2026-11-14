@@ -118,10 +118,12 @@
                     $empty1 = is_null($fx?->registration1_id);
                     $empty2 = is_null($fx?->registration2_id);
                     $hasWinner = !is_null($fx?->winner_registration);
-                    $isBye1 = $empty1 && ($roundNum === 1 || $hasWinner);
-                    $isBye2 = $empty2 && ($roundNum === 1 || $hasWinner);
+                    $isBye1 = $empty1 && !$fx?->registration1_source_group_id && ($roundNum === 1 || $hasWinner);
+                    $isBye2 = $empty2 && !$fx?->registration2_source_group_id && ($roundNum === 1 || $hasWinner);
                     $p1 = $empty1 ? ($isBye1 ? 'BYE' : '---') : ($fx?->registration1?->players?->pluck('full_name')->join(' / ') ?? '---');
                     $p2 = $empty2 ? ($isBye2 ? 'BYE' : '---') : ($fx?->registration2?->players?->pluck('full_name')->join(' / ') ?? '---');
+                    if ($empty1 && $fx?->registration1_source_group_id) $p1 = 'Awaiting #' . $fx->registration1_source_position;
+                    if ($empty2 && $fx?->registration2_source_group_id) $p2 = 'Awaiting #' . $fx->registration2_source_position;
 
                     // Feeder labels: show "W1001" / "L1002" when slot is TBD
                     $wFeed = $fx ? ($winnerFeeders[$fx->id] ?? []) : [];
@@ -132,7 +134,7 @@
                     $feed2 = '';
                     if ($empty1 && !$isBye1 && !$isEmpty) {
                         if (count($wFeed) >= 2) $feed1 = 'W' . $wFeed[0];
-                        elseif (count($wFeed) === 1 && count($lFeed) >= 1) $feed1 = 'W' . $wFeed[0];
+                        elseif (count($wFeed) === 1) $feed1 = 'W' . $wFeed[0];
                         elseif (count($lFeed) >= 2) $feed1 = 'L' . $lFeed[0];
                         elseif (count($lFeed) === 1) $feed1 = 'L' . $lFeed[0];
                     }
@@ -148,6 +150,8 @@
                     // Seed source labels for round 1 (e.g. "A1", "C4")
                     $vSeedLabel1 = ($roundNum === 1) ? ($match['seedLabel1'] ?? null) : null;
                     $vSeedLabel2 = ($roundNum === 1) ? ($match['seedLabel2'] ?? null) : null;
+                    if ($fx?->registration1_source_group_id) $vSeedLabel1 = ($draw->groups->firstWhere('id', $fx->registration1_source_group_id)?->name ?? 'Group') . $fx->registration1_source_position;
+                    if ($fx?->registration2_source_group_id) $vSeedLabel2 = ($draw->groups->firstWhere('id', $fx->registration2_source_group_id)?->name ?? 'Group') . $fx->registration2_source_position;
 
                     if ($isEmpty) {
                         // Use virtual data from engine when fx is null
@@ -312,10 +316,12 @@
                     $empty2 = is_null($fx?->registration2_id);
                     $hasWinner = !is_null($fx?->winner_registration);
                     $fxByeSlots = $byeSlots[$fx?->id] ?? [];
-                    $isBye1 = $empty1 && ($hasWinner || !empty($fxByeSlots['slot1']));
-                    $isBye2 = $empty2 && ($hasWinner || !empty($fxByeSlots['slot2']));
+                    $isBye1 = $empty1 && !$fx?->registration1_source_group_id && ($hasWinner || !empty($fxByeSlots['slot1']));
+                    $isBye2 = $empty2 && !$fx?->registration2_source_group_id && ($hasWinner || !empty($fxByeSlots['slot2']));
                     $p1 = $empty1 ? ($isBye1 ? 'BYE' : '---') : ($fx?->registration1?->players?->pluck('full_name')->join(' / ') ?? '---');
                     $p2 = $empty2 ? ($isBye2 ? 'BYE' : '---') : ($fx?->registration2?->players?->pluck('full_name')->join(' / ') ?? '---');
+                    if ($empty1 && $fx?->registration1_source_group_id) $p1 = 'Awaiting #' . $fx->registration1_source_position;
+                    if ($empty2 && $fx?->registration2_source_group_id) $p2 = 'Awaiting #' . $fx->registration2_source_position;
                     $label = $playoff['label'] ?? '';
                     $isFinal = $playoff['isFinal'] ?? false;
 

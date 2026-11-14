@@ -151,7 +151,8 @@ class DynamicBracketEngine
         }
 
         for ($round = 1; $round <= $numRounds; $round++) {
-            $expectedMatches = pow(2, $numRounds - $round);
+            // Three-player tails have one preliminary and one final, no phantom bye fixture.
+            $expectedMatches = $size === 3 ? 1 : pow(2, $numRounds - $round);
             $roundFixtures = $mainFixtures->where('round', $round)->sortBy('match_nr')->values();
             
             $matchesInRound = [];
@@ -202,7 +203,7 @@ class DynamicBracketEngine
                     'y' => (int)$y,
                     'width' => self::BOX_WIDTH,
                     'height' => $height,
-                    'roundLabel' => $this->getRoundLabel($round, $numRounds),
+                    'roundLabel' => $size === 3 && $round === 1 ? 'Preliminary' : $this->getRoundLabel($round, $numRounds),
                     'virtualMatchNr' => $virtualMatchNr,
                     'seedLabel1' => $sl1,
                     'seedLabel2' => $sl2,

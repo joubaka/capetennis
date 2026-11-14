@@ -1060,7 +1060,7 @@ class VenueScoringWorkspaceTest extends TestCase
     public function test_playoff_prompt_readiness_counts_the_whole_draw_and_only_exposes_authorized_pending_draws(): void
     {
         [$event, $draw, $venue, $fixture] = $this->scheduledFixture('Prompt venue');
-        $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs']);
+        $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs', 'num_sets' => 1]);
         [, , , $otherVenueFixture] = $this->scheduledFixture('Elsewhere', $event, $draw);
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
         $url = route('frontend.scoring.workspace', ['event' => $event, 'venue' => $venue->id]);
@@ -1099,7 +1099,7 @@ class VenueScoringWorkspaceTest extends TestCase
         $otherDateFixture->orderOfPlay()->update(['venue_id' => $venue->id, 'time' => '2026-09-11 08:00:00']);
         foreach ([$visibleDraw, $otherVenueDraw, $otherDateDraw] as $index => $draw) {
             $draw->update(['drawName' => 'Ready draw '.($index + 1)]);
-            $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs']);
+            $draw->settings()->updateOrCreate([], ['workflow' => 'round_robin_playoffs', 'num_sets' => 1]);
         }
         foreach ([$visibleFixture, $otherVenueFixture, $otherDateFixture] as $fixture) {
             FixtureResult::factory()->create(['fixture_id' => $fixture->id]);

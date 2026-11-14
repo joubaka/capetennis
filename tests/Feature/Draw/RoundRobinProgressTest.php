@@ -15,6 +15,29 @@ class RoundRobinProgressTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_progress_review_requires_completed_outcomes_and_accepts_walkovers_and_timed_draws(): void
+    {
+        [$draw, $category] = $this->draw([]);
+        $this->completeGroup($draw, 'A', $this->entrants($category, 2));
+        $fixture = $draw->drawFixtures()->where('stage', 'RR')->firstOrFail();
+        $draw->settings()->update(['num_sets' => 3]);
+        $before = $fixture->fixtureResults()->get()->toJson();
+        $url = route('backend.draw.progress-review', $draw);
+        $this->getJson($url)->assertUnprocessable()->assertJsonPath('round_robin.remaining', 1);
+        $this->postJson(route('backend.draw.progress', $draw))->assertUnprocessable();
+        $this->assertSame($before, $fixture->fixtureResults()->get()->toJson());
+        $this->assertSame(1, $draw->drawFixtures()->count());
+
+        $fixture->fixtureResults()->delete();
+        $fixture->update(['match_status' => 3, 'winner_registration' => $fixture->registration1_id]);
+        $this->getJson($url)->assertOk();
+
+        $draw->settings()->update(['score_format' => 'timed', 'num_sets' => 1]);
+        $fixture->update(['match_status' => 1, 'winner_registration' => null]);
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 4, 'registration2_score' => 4]);
+        $this->getJson($url)->assertOk()->assertJsonPath('review.groups.0.standings.0.draws', 1);
+    }
+
     public function test_workspace_explains_progression_and_only_offers_confirmation_after_all_results(): void
     {
         [$draw, $category] = $this->draw([['name' => 'Main', 'slug' => 'main', 'enabled' => true, 'size' => 2, 'positions' => [1, 2]]]);
@@ -34,6 +57,7 @@ class RoundRobinProgressTest extends TestCase
         $this->get($url)->assertOk()->assertSee('Unlock it before progressing')->assertDontSee('class="btn btn-primary progress-draw"', false);
         $draw->update(['locked' => false]);
         FixtureResult::query()->delete();
+        $draw->drawFixtures()->where('stage', 'RR')->update(['match_status' => 0, 'winner_registration' => null]);
         $this->get($url)->assertOk()->assertSee('some group results are incomplete')->assertDontSee('progress-draw"', false);
     }
 

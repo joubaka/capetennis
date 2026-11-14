@@ -1541,6 +1541,9 @@ Route::delete(
   Route::get('draw/{draw}/progress-review', [RoundRobinController::class, 'progressReview'])
     ->name('backend.draw.progress-review');
 
+  Route::post('draw/{draw}/odd-player-playoff', [\App\Http\Controllers\Backend\OddPlayerPlayoffController::class, 'store'])
+    ->name('backend.draw.odd-player-playoff');
+
   Route::post('draw/{draw}/recovery/preview', [\App\Http\Controllers\Backend\DrawRecoveryController::class, 'preview'])
     ->name('backend.draw.recovery.preview');
   Route::post('draw/{draw}/recovery/apply', [\App\Http\Controllers\Backend\DrawRecoveryController::class, 'apply'])

@@ -687,6 +687,19 @@
       "assistant_action": "guide_only",
       "sources": ["app/Services/Draw/RoundRobinStandingsDetailService.php", "app/Services/Draw/OneSetRoundRobinCorrectionService.php", "app/Console/Commands/CorrectOneSetRoundRobin.php", "docs/draw-knowledge/detailed-standings.md"],
       "tests": ["tests/Feature/Draw/DetailedRoundRobinStandingsTest.php", "tests/Feature/Draw/PreparedPlayoffScoringCorrectionTest.php", "tests/Feature/Draw/HybridRoundRobinTest.php", "tests/Frontend/detailed-roundrobin-standings.test.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
+      "id": "RK-049",
+      "title": "Completed round robin does not offer playoff progression",
+      "scope": "Individual round-robin-to-playoff workspace and venue scoring prompts; explicit confirmation into existing qualifier placeholders.",
+      "symptoms": "The last group score saves but no progression offer appears, the review button remains absent until reload, or a saved partial result is mistaken for a completed match.",
+      "cause": "The review action was rendered only at page load, without an admin score-save listener. Venue prompts required a previously empty score row and an exact recorded-row count transition. Recorded rows alone do not establish completed match outcomes.",
+      "fix": "Use RoundRobinProgressReadiness completed canonical winner/draw evidence in the review endpoint, initial action and venue state. After saving a round-robin result, offer the existing authorized standings review when qualifiers are pending and the whole group stage is complete. Wait for the score modal to finish hiding; keep the explicit review action when dismissed. Confirm every group and submit a fresh snapshot through the existing progression endpoint; resolve existing slots without regenerating fixtures or changing bookings.",
+      "verification": "Focused JavaScript regressions exercise confirm, cancel, duplicate suppression, a hiding score modal, incomplete results, existing scores, bracket saves and already qualified draws. RoundRobinProgressTest covers partial-match rejection, scoreless walkovers, timed draws and preserved score rows. Rerun the named tests against current owning code before any operation.",
+      "limits": "Guide only. No automatic qualification, regeneration, score replay, publication or scheduling. Current authorization and a current standings snapshot are required for any live progression.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/RoundRobinProgressReadiness.php", "app/Http/Controllers/Backend/RoundRobinController.php", "docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Feature/Draw/RoundRobinProgressTest.php", "tests/Frontend/roundrobin-progression-prompt.test.cjs", "tests/Browser/scoring-playoff-prompt.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
     }
   ]
 }

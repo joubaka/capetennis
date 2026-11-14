@@ -79,7 +79,8 @@ class ManageDrawController extends Controller
             'playoff_config' => 'sometimes|required|array|min:1',
             'playoff_config.*.name' => 'required|string|max:255',
             'playoff_config.*.slug' => 'required|string|max:255|distinct',
-            'playoff_config.*.size' => ['required', 'integer', Rule::in([2, 4, 8, 16, 32])],
+            'playoff_config.*.size' => ['required', 'integer', Rule::in([2, 3, 4, 8, 16, 32])],
+            'playoff_config.*.odd_tail' => 'sometimes|boolean',
             'playoff_config.*.positions' => 'present|array',
             'playoff_config.*.positions.*' => 'integer|min:1',
             'playoff_config.*.enabled' => 'required|boolean',
@@ -137,6 +138,7 @@ class ManageDrawController extends Controller
         \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data, $competitionRulesOnly) {
             $draw->refresh();
             $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            if (isset($updateData['playoff_config'])) app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $updateData['playoff_config']);
             abort_if($lockedDraw->locked, 403, 'Unlock the draw before changing its settings.');
             abort_if(
                 $lockedDraw->event?->hasRecordedResults(),
@@ -240,6 +242,7 @@ class ManageDrawController extends Controller
       'playoff_config.*.name' => 'required|string',
       'playoff_config.*.slug' => 'required|string',
       'playoff_config.*.size' => 'required|integer|min:2',
+      'playoff_config.*.odd_tail' => 'sometimes|boolean',
       'playoff_config.*.positions' => 'required|array|min:1', // At least 1 position per playoff
       'playoff_config.*.enabled' => 'required|boolean',
       'preset_key' => 'nullable|string', // Accept preset key
@@ -253,6 +256,7 @@ class ManageDrawController extends Controller
 
     \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $validated): void {
       $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $validated['playoff_config']);
       abort_if(
         $lockedDraw->locked || $lockedDraw->event?->hasRecordedResults(),
         403,

@@ -62,6 +62,8 @@ Direct unresolved playoff pairs from the same source group or the same pair of s
 
 **Solution:** `app/Http/Controllers/Backend/RoundRobinController.php::progress()` rechecks the review under lock and resolves existing sources before progression. Preserve fixture IDs, RR scores and bookings.
 
+**Completion prompts:** `RoundRobinProgressReadiness` supplies the same canonical completed-outcome count to progression review, the draw workspace and venue scoring. Saved partial sets are not completed matches; valid timed draws and scoreless walkovers do count. After a group score saves, offer the existing explicit standings review when the whole draw is complete and qualifiers are still pending. Wait for the score modal to close, keep a persistent review button if the offer is dismissed, and obtain a fresh snapshot before any progression write. See `public/js/roundrobin-progression-prompt.js`, `public/js/scoring-playoff-prompt.js` and their focused Node regressions.
+
 **Regression:** `tests/Feature/Draw/RoundRobinProgressTest.php` covers in-place Main/Plate resolution, repeated progression, stale snapshots, event authorization, rollback and scored downstream fixtures.
 
 **History:** `01a190e5-d917-7311-87e8-9cc539a602be` (Check Arrensburg playoff progression). Its later turns supersede earlier audit gaps about missing draws/points in review.
@@ -126,7 +128,11 @@ Direct unresolved playoff pairs from the same source group or the same pair of s
 
 **Solution:** Current preset/setup code and dynamic playoff generation in `RoundRobinController.php` use saved group membership and applicable qualifying positions.
 
+**Odd single-group position pairs:** The separate opt-in in draw Settings gives an odd field a three-player final band: last place plays next-to-last, then that winner plays the third-from-last. Enable it after the ordinary pair fixtures are prepared and before that last pair is qualified or played. `OddPlayerPlayoffService` reviews the owning event and current snapshot, retains the existing final and every booking, and adds only one unscheduled feeder. Schedule that preliminary before its final using the normal scheduler. Other formats retain their configured progression; do not replace played structure or infer this option automatically.
+
 **Regression:** `tests/Feature/Draw/AllPlayersPlayoffGenerationTest.php::test_every_assigned_player_gets_one_opening_playoff_slot_for_large_and_uneven_fields()`.
+
+The optional single-group odd tail is covered by `tests/Feature/Draw/OddPlayerPlayoffTest.php`, including in-place progression, preserved bookings, completed final positions and protected configuration. See [the option's scope and setup procedure](odd-player-playoffs.md).
 
 **History:** `01a18dc4-d7a0-7903-b6c0-1cb18abeb6b4` (Option to add walkover for match; earlier turns contain the all-player request); Audit draw settings.
 
