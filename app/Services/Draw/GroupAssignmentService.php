@@ -15,7 +15,11 @@ final class GroupAssignmentService
     /** Compare saved group membership with existing RR fixtures without changing either. */
     public function fixturesNeedRegeneration(Draw $draw, ?\Illuminate\Support\Collection $fixtures = null, ?\Illuminate\Support\Collection $groups = null): bool
     {
-        $fixtures ??= $draw->drawFixtures()->where('stage', 'RR')->get(['draw_group_id', 'registration1_id', 'registration2_id']);
+        $fixtures ??= $draw->drawFixtures()->where('stage', 'RR')->get();
+        if ($draw->hasHybridRoundRobin()) {
+            $draw->loadMissing('groups.groupRegistrations');
+            $fixtures = HybridRoundRobinService::effectiveFixtures($draw, $fixtures);
+        }
         if ($fixtures->isEmpty()) return false;
 
         $groups ??= $draw->groups()->with('groupRegistrations')->get();

@@ -627,6 +627,7 @@ class RoundRobinController extends Controller
     }
 
     $this->authorize('generateBrackets', $draw);
+    abort_if($draw->hasHybridRoundRobin(), 409, 'This hybrid stage is already generated. Preserve its carried results and playoff paths.');
     abort_if($draw->isRoundRobinOnly(), 422, 'Playoffs are not available for a round-robin-only draw.');
     if ($draw->drawFixtures()->where('stage', '!=', 'RR')->whereHas('fixtureResults')->exists()) {
       return response()->json(['success' => false, 'message' => 'Playoff fixtures with recorded scores cannot be regenerated.'], 422);
@@ -1653,6 +1654,7 @@ class RoundRobinController extends Controller
     }
 
     $this->authorize('generateBrackets', $draw);
+    abort_if($draw->hasHybridRoundRobin(), 409, 'This hybrid stage is already generated. Preserve its carried results and playoff paths.');
     abort_if($draw->isRoundRobinOnly(), 422, 'Playoffs are not available for a round-robin-only draw.');
 
     \Log::info("===============================================");

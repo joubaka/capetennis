@@ -74,6 +74,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   returns and separate draw visibility from published times. See
   `docs/draw-workflow.md`, DK-14 and `DrawWorkflow`; team and advanced operations
   retain their canonical services and safeguards.
+- Two completed round-robin groups may use the explicit hybrid conversion for
+  crossed top-two championship playoffs and one lower round robin. Carry only
+  mutual lower-player results through read-only source-fixture references; never
+  duplicate played fixtures or rating evidence. Generic format reset cannot
+  preserve scored fixtures. See `docs/draw-knowledge/hybrid-round-robin.md`, DK-31
+  and `HybridRoundRobinService`; ordinary equal-position progression still starts
+  with fresh scores. Recheck exact live state and current operational authority.
 - Reuse established loading helpers and consistent blue modal/loading feedback
   for slow requests. Handle success, failure and session expiry so a spinner
   cannot remain indefinitely. A loading indicator is not evidence of performance.

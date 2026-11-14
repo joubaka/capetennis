@@ -384,6 +384,28 @@ An individual round-robin workspace can restore the Playoffs tab before its Java
 
 The owning script is `resources/js/admin/roundrobin/brackets.js`, which Mix copies to `public/assets/js/admin/roundrobin/brackets.js`. Verify that both copies match. The focused regression is `tests/Frontend/playoff-preview-load.test.cjs`; `tests/Browser/draw-workspace.cjs` exercises restoration, a failed read, and successful retry against a local fixture.
 
+## DK-31 — Top-two championship with a carried lower round robin
+
+Two completed source groups can progress into crossed semifinals, a final and a
+third-place match for the top two from each group, while all remaining players
+form one lower round robin. Carry only mutual source results and create only
+missing pairings. Preserve original fixture and result records; project carried
+comparisons read-only so ratings do not receive duplicated evidence. Ordinary
+equal-position two-stage progression remains a fresh-score format.
+
+Use the scoped preview/apply command through `HybridRoundRobinService`, rather
+than the generic format reset. See [the conversion guide](hybrid-round-robin.md)
+for scope, stop conditions and operational steps. New matches are unscheduled.
+Current publication is preserved; new scheduling and publication need their own
+authority. Historical approval never authorizes a later live conversion.
+
+**Sources:** `app/Services/Draw/HybridRoundRobinService.php`,
+`app/Console/Commands/ConvertHybridRoundRobin.php`, canonical and timed standings,
+and `DrawFinalPlacementService`.
+
+**Regression:** `tests/Feature/Draw/HybridRoundRobinTest.php`. Test execution,
+independent review and live evidence must be reported separately.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

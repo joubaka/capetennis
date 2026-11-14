@@ -84,7 +84,7 @@ class DrawService
     // ---------------------------------------------------------------------
     $rrFixtures = [];
 
-    foreach ($draw->drawFixtures as $fx) {
+    foreach (\App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw) as $fx) {
 
       // Build set strings
       $allSets = $fx->fixtureResults
@@ -105,6 +105,7 @@ class DrawService
 
       // FIX: Correct assignment (remove “[]= [] =”)
       $rrFixtures[$gid][] = [
+        'carried' => $fx->isDirty('draw_group_id'),
         'id' => $fx->id,
         'group_id' => $gid,
         'r1_id' => $fx->registration1_id,

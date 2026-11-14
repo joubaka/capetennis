@@ -46,7 +46,7 @@ final class StandingsService
         $standings = [];
         foreach ($draw->drawFixtures as $fixture) $fixture->setRelation('draw', $draw);
         foreach ($draw->groups as $group) {
-            $standings[$group->id] = $this->forGroup($group, $draw->drawFixtures);
+            $standings[$group->id] = $this->forGroup($group, \App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw));
         }
 
         return $standings;

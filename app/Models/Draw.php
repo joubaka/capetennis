@@ -95,7 +95,11 @@ class Draw extends Model
 
     public function isRoundRobinOnly(): bool
     {
-        return in_array($this->settings?->workflow, ['round_robin', 'round_robin_round_robin'], true);
+        return ! $this->hasHybridRoundRobin() && in_array($this->settings?->workflow, ['round_robin', 'round_robin_round_robin'], true);
+    }
+    public function hasHybridRoundRobin(): bool
+    {
+        return \App\Services\Draw\HybridRoundRobinService::active($this);
     }
     public function isTwoStageRoundRobin(): bool
     {
@@ -117,6 +121,7 @@ class Draw extends Model
 
     public function roundRobinLabel(): string
     {
+        if ($this->hasHybridRoundRobin()) return 'Round robin → top-four playoffs & lower round robin';
         return $this->isTwoStageRoundRobin() ? 'Round robin → round robin'
             : ($this->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs');
     }

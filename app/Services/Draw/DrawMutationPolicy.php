@@ -61,7 +61,7 @@ class DrawMutationPolicy
     /** Can bracket playoff be generated/regenerated? */
     public function canGenerateBrackets(): bool
     {
-        return ! $this->draw->locked && ! $this->draw->published;
+        return ! $this->draw->hasHybridRoundRobin() && ! $this->draw->locked && ! $this->draw->published;
     }
 
     /** Can a score be saved on a fixture? */

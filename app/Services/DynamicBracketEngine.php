@@ -560,6 +560,16 @@ class DynamicBracketEngine
      */
     protected function buildSeedOriginMap(): array
     {
+        if ($this->draw->hasHybridRoundRobin()) {
+            $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($this->draw);
+            $map = [];
+            foreach ($this->draw->groups->where('round_robin_phase', 1) as $group) {
+                foreach (array_values($standings[$group->id] ?? []) as $index => $row) {
+                    $map[$row['reg_id']] = $group->name.($index + 1);
+                }
+            }
+            return $map;
+        }
         $map = [];
 
         $this->draw->loadMissing([

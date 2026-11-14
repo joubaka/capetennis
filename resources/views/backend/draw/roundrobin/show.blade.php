@@ -282,6 +282,7 @@
           @unless($roundRobinOnly)
             <div id="rr-saved-playoff-summary">
             @php
+              $playoffConfig = collect($playoffConfig)->filter(fn ($playoff) => is_array($playoff) && isset($playoff['slug']))->all();
               $unusedPlayoffs = collect($playoffConfig)->filter(fn ($playoff) => !($playoff['enabled'] ?? false) || app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $playoff));
             @endphp
             <ul class="mb-0">

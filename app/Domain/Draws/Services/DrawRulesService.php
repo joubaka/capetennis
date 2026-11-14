@@ -34,7 +34,9 @@ final class DrawRulesService
         if ($roundRobin) {
             $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Equal scores are allowed and share the match points. Standings award 2 points for a win, 1 for a draw and 0 for a loss, ordered by points, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
         }
-        if ($draw->isTwoStageRoundRobin()) {
+        if ($draw->hasHybridRoundRobin()) {
+            $add('second_round_robin', 'Top-four playoffs and lower round robin', 'The top two from each first-stage group qualify for crossed semi-finals: A1 v B2 and B1 v A2. Winners play for positions 1–2; losers play for 3–4. Remaining players form one round robin for positions 5 onward. Only their mutual first-stage results carry forward, counted once; play only opponents they have not yet met. First-stage results and memberships remain frozen.');
+        } elseif ($draw->isTwoStageRoundRobin()) {
             $add('second_round_robin', 'Two-stage round robin', 'Complete every first-stage match and resolve all tied positions before confirming progression. All first-place finishers enter second-stage Group 1, all second-place finishers Group 2, and so on. Results start afresh in each second-stage group. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. First-stage results and memberships are frozen after progression. Second-stage qualification placeholders can be scheduled before results. Confirmed progression fills in the players while retaining saved times and courts.');
         }
         if ($roundRobin && ! $draw->isRoundRobinOnly()) {

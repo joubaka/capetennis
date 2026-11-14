@@ -1,6 +1,6 @@
 @extends('layouts/contentNavbarLayout')
 
-@section('title', ($draw->isTwoStageRoundRobin() ? 'Round Robin → Round Robin' : ($draw->isRoundRobinOnly() ? 'Round Robin' : 'Round Robin & Playoffs')) . ' — ' . ($draw->drawName ?? 'Draw'))
+@section('title', ($draw->hasHybridRoundRobin() ? 'Round Robin & Playoffs' : ($draw->isTwoStageRoundRobin() ? 'Round Robin → Round Robin' : ($draw->isRoundRobinOnly() ? 'Round Robin' : 'Round Robin & Playoffs'))) . ' — ' . ($draw->drawName ?? 'Draw'))
 
 @section('content')
 <link rel="stylesheet" href="{{ asset('css/public-draw.css') }}?v={{ filemtime(public_path('css/public-draw.css')) }}">
@@ -171,7 +171,9 @@
 
   @include('frontend.draw.partials.public-header')
 
-  @if($draw->isTwoStageRoundRobin())
+  @if($draw->hasHybridRoundRobin())
+    <p class="alert alert-info">Top-four playoffs: A1 plays B2 and B1 plays A2. Winners play for positions 1–2; losers play for 3–4. Positions 5 onward use one round robin with mutual first-stage results carried forward once. Only opponents who have not yet met play new matches.</p>
+  @elseif($draw->isTwoStageRoundRobin())
     <p class="alert alert-info">Round robin → round robin. Equal first-stage finishing positions qualify into second-stage groups. Results start afresh; Stage 2 Group 1 decides the highest final positions, followed by Group 2 and the remaining groups.</p>
   @endif
 

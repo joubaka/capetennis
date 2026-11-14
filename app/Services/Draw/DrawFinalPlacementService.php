@@ -18,9 +18,17 @@ final class DrawFinalPlacementService
             $draw->loadMissing(['groups.groupRegistrations.registration.players', 'drawFixtures.fixtureResults']);
             $standings = app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
             $rows = collect();
-            $offset = 0;
+            $offset = $draw->hasHybridRoundRobin() ? 4 : 0;
+            if ($draw->hasHybridRoundRobin()) {
+                $draw->loadMissing(['drawFixtures.registration1.players', 'drawFixtures.registration2.players']);
+                foreach ([1, 3] as $position) {
+                    $fixture = $draw->drawFixtures->where('stage', 'MAIN')->firstWhere('position', $position);
+                    if ($fixture) $this->applyPair($rows, $fixture, $position);
+                }
+                $rows = $rows->values();
+            }
             foreach ($draw->groups->where('round_robin_phase', 2)->sortBy('qualifying_position') as $group) {
-                $fixtures = $draw->drawFixtures->where('draw_group_id', $group->id)->where('stage', 'RR');
+                $fixtures = HybridRoundRobinService::effectiveFixtures($draw)->where('draw_group_id', $group->id)->where('stage', 'RR');
                 $groupRows = collect($standings[$group->id] ?? []);
                 $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures)
                     && app(TwoStageRoundRobinService::class)->positionsResolved($draw, $groupRows->all(), $fixtures);

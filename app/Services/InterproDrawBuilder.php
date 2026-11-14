@@ -72,7 +72,7 @@ class InterproDrawBuilder
     // ---------------------------------------------------------------------
     $rrFixtures = [];
 
-    foreach ($draw->drawFixtures as $fx) {
+    foreach (\App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw) as $fx) {
 
       // Build set strings
       $allSets = $fx->fixtureResults
@@ -93,6 +93,7 @@ class InterproDrawBuilder
 
       // FIX: Correct assignment (remove “[]= [] =”)
       $rrFixtures[$gid][] = [
+        'carried' => $fx->isDirty('draw_group_id'),
         'id' => $fx->id,
         'group_id' => $gid,
         'r1_id' => $fx->registration1_id,
@@ -889,7 +890,7 @@ class InterproDrawBuilder
     // ============================================================
     // 2) PROCESS ONLY RR FIXTURES
     // ============================================================
-    foreach ($draw->drawFixtures as $fx) {
+    foreach (\App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw) as $fx) {
 
       // ❗ Skip ALL Main / Plate / Consolation fixtures
       if ($fx->stage !== 'RR') {
@@ -982,7 +983,7 @@ class InterproDrawBuilder
     // ============================================================
     $headToHead = function ($regA, $regB) use ($draw) {
 
-      foreach ($draw->drawFixtures as $fx) {
+      foreach (\App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw) as $fx) {
 
         // Only RR fixtures matter
         if ($fx->stage !== 'RR')

@@ -83,6 +83,7 @@
 
   function scoreButton(fx, rowPlayer, columnPlayer, mobile) {
     var scoreHtml = formatScoreCell(fx, rowPlayer.id);
+    if (fx.carried) return '<span class="rr-cell-score">' + scoreHtml + '</span><span class="rr-cell-hint">Carried result</span>';
     var resultText = (fx.all_sets || []).join(', ');
     var content;
     var actionLabel;

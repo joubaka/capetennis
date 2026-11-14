@@ -12,10 +12,10 @@ final class RoundRobinGroupResultService
     public function annotate(Draw $draw, array $standings): array
     {
         if ($draw->isTwoStageRoundRobin()) {
-            $offset = 0;
+            $offset = $draw->hasHybridRoundRobin() ? 4 : 0;
             foreach ($draw->groups->sortBy(fn ($group) => sprintf('%d_%04d_%010d', $group->round_robin_phase, $group->qualifying_position ?? 0, $group->id)) as $group) {
                 $rows = array_values($standings[$group->id] ?? []);
-                $fixtures = $draw->drawFixtures->where('draw_group_id', $group->id)->where('stage', 'RR');
+                $fixtures = HybridRoundRobinService::effectiveFixtures($draw)->where('draw_group_id', $group->id)->where('stage', 'RR');
                 $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures);
                 $tied = ! app(TwoStageRoundRobinService::class)->positionsResolved($draw, $rows, $fixtures);
                 $second = (int) $group->round_robin_phase === 2;
@@ -25,7 +25,7 @@ final class RoundRobinGroupResultService
                     $row['display_position'] = $second ? ($complete && ! $tied ? $offset + $index + 1 : '—') : $index + 1;
                     $row['group_result_message'] = $second
                         ? ($complete && ! $tied ? 'Stage 2 — final positions.' : 'Stage 2 — final positions pending complete results and resolved ties.')
-                        : 'Stage 1 — equal finishing positions qualify together for stage 2.';
+                        : ($draw->hasHybridRoundRobin() ? 'Stage 1 — top two qualify for positions 1–4; remaining players carry mutual results into positions 5 onward.' : 'Stage 1 — equal finishing positions qualify together for stage 2.');
                 }
                 unset($row);
                 $standings[$group->id] = $rows;

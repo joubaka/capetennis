@@ -7,6 +7,11 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    /** Scoped live structural conversion; convenor/scorer access is insufficient. */
+    public function convertHybridRoundRobin(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && $this->canManage($user, $draw, false);
+    }
     /** Non-destructive live progression; only event administrators may opt in. */
     public function enableRollingChallenges(User $user, Draw $draw): bool
     {
