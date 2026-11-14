@@ -4,7 +4,7 @@ namespace App\Services\Draw;
 
 use App\Models\{Draw, DrawAuditLog, Fixture, OrderOfPlay, User};
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\{Auth, DB, Gate};
+use Illuminate\Support\Facades\{Auth, DB, Gate, Schema};
 
 /** A four-player championship and one lower round robin, without copying results. */
 final class HybridRoundRobinService
@@ -45,6 +45,11 @@ final class HybridRoundRobinService
     public function review(Draw $draw, int $eventId): array
     {
         abort_unless((int) $draw->event_id === $eventId, 422, 'The draw does not belong to this event.');
+        abort_unless(Schema::hasColumns('fixtures', [
+            'draw_id', 'draw_group_id', 'stage', 'round', 'match_nr', 'match_status', 'registration1_id', 'registration2_id',
+            'bracket_id', 'position', 'playoff_type', 'parent_fixture_id', 'loser_parent_fixture_id', 'feeder_slot', 'loser_feeder_slot',
+            'registration1_source_group_id', 'registration1_source_position', 'registration2_source_group_id', 'registration2_source_position',
+        ]), 409, 'Fixture progression schema is incomplete. Apply the reviewed fixture migrations, including 2026_11_14_100000_add_loser_feeder_slot_to_fixtures.php, before reviewing or applying this conversion.');
         $draw->load(['settings', 'groups.groupRegistrations', 'drawFixtures.fixtureResults', 'drawFixtures.orderOfPlay']);
         abort_if($draw->locked || $draw->isTeamDraw(), 409, 'Use an unlocked individual draw.');
         if (self::active($draw)) return ['already_applied' => true, 'configuration' => $draw->settings->playoff_config['_second_round_robin']];

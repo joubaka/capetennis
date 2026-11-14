@@ -6,6 +6,12 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_loser_feeder_slot_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_14_100000_add_loser_feeder_slot_to_fixtures.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
     public function test_plus_publication_notification_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

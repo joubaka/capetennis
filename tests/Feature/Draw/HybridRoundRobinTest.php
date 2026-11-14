@@ -15,6 +15,30 @@ class HybridRoundRobinTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_missing_production_progression_column_blocks_before_mutation_and_migration_repairs_it_idempotently(): void
+    {
+        [$draw, $actor] = $this->scenario();
+        $service = app(HybridRoundRobinService::class);
+        $plan = $service->review($draw, $draw->event_id);
+        $beforeResults = DB::table('fixture_results')->orderBy('id')->get()->toJson();
+        $beforeFixtures = $draw->drawFixtures()->orderBy('id')->pluck('id')->all();
+        $beforeGroups = $draw->groups()->orderBy('id')->pluck('id')->all();
+        \Illuminate\Support\Facades\Schema::table('fixtures', fn ($table) => $table->dropColumn('loser_feeder_slot'));
+        $this->artisan('draw:convert-hybrid', ['draw' => $draw->id, '--event' => $draw->event_id, '--actor' => $actor->id])->assertFailed();
+        $this->artisan('draw:convert-hybrid', ['draw' => $draw->id, '--event' => $draw->event_id, '--actor' => $actor->id, '--apply' => true, '--snapshot' => $plan['snapshot']])->assertFailed();
+        $this->assertSame($beforeFixtures, $draw->drawFixtures()->orderBy('id')->pluck('id')->all());
+        $this->assertSame($beforeGroups, $draw->groups()->orderBy('id')->pluck('id')->all());
+        $this->assertSame($beforeResults, DB::table('fixture_results')->orderBy('id')->get()->toJson());
+        $migration = require database_path('migrations/2026_11_14_100000_add_loser_feeder_slot_to_fixtures.php');
+        $migration->up();
+        $migration->up();
+        $this->assertTrue(\Illuminate\Support\Facades\Schema::hasColumn('fixtures', 'loser_feeder_slot'));
+        $plan = $service->review($draw->fresh(), $draw->event_id);
+        $this->assertCount(10, $service->apply($draw, $draw->event_id, $plan['snapshot'], $actor)['created_fixture_ids']);
+        $this->assertSame([1, 2], $draw->drawFixtures()->where('stage', 'MAIN')->where('round', 1)->orderBy('id')->pluck('loser_feeder_slot')->all());
+        $this->assertSame($beforeResults, DB::table('fixture_results')->orderBy('id')->get()->toJson());
+    }
+
     private function scenario(bool $timed = true): array
     {
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);

@@ -20,6 +20,12 @@ matches; standings and completeness use read-only fixture projections.
 
 ## Preview and apply
 
+Verify the deployed schema includes `fixtures.loser_feeder_slot`, which records
+the two semifinal losers' destination slots. A testing-only bootstrap definition
+does not establish production availability. Deploy the exact reviewed production
+migration when missing; do not run unrelated pending migrations. Preview must
+reject a missing prerequisite before any competition records are replaced.
+
 Use an existing event administrator or super-user as the audit actor. Preview
 the exact event and draw with the canonical command:
 
