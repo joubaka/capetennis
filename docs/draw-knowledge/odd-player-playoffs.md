@@ -45,3 +45,19 @@ canonical completion. Related regressions are
 
 Local verification does not establish deployment or authorization for a live
 draw. Current operational approval and a fresh live review are always required.
+
+### Unscheduled prerequisites in venue scoring
+
+The working venue scoring page shows organizers a separate unscheduled
+prerequisite section for unplayed, unbooked winner or loser feeders of the
+visible booked matches. Lookup stays within each anchor's event and draw,
+walks at most ten levels and one hundred candidates, and excludes completed
+or booked ancestors. Published views and dedicated event scorekeepers do not
+receive these cards. Normal queue counts and next-on-court choices stay intact.
+
+These cards reuse the normal score modal without assigning a time or court.
+Invalid timed defaults show a settings notice instead of inventing timing or
+preventing the booked queue from loading. Saving a prerequisite advances its
+existing parent slot through the normal scoring service; it does not move
+the parent booking. Regression:
+`tests/Feature/Draw/UnscheduledScoringPrerequisitesTest.php`.

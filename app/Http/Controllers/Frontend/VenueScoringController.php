@@ -178,6 +178,9 @@ class VenueScoringController extends Controller
         $matches = $matches
             ->sort(fn ($left, $right): int => $this->venueMatchOrder->compare($left, $right))
             ->values();
+        $unscheduledPrerequisites = !$publishedSchedule && $restrictedVenueId === null
+            ? app(\App\Services\Scoring\UnscheduledScoringPrerequisites::class)->forVisibleFixtures($event, $fixtures, $user)
+            : collect();
 
         $completed = $matches->filter(fn ($match) => $match->fixtureResults->isNotEmpty()
             || ($match instanceof Fixture && $match->isWalkover()))->count();
@@ -208,7 +211,7 @@ class VenueScoringController extends Controller
         // Scoring permission alone never grants playoff progression permission.
         $visibleDrawIds = $matches->pluck('draw_id')->unique();
         $playoffProgression = $draws->filter(fn (Draw $draw) => $visibleDrawIds->contains($draw->id)
-            && $draw->settings?->workflow === 'round_robin_playoffs'
+            && in_array($draw->settings?->workflow, ['round_robin_playoffs', 'round_robin_round_robin'], true)
             && ! $draw->isTeamDraw() && $user->can('progress', $draw))
             ->mapWithKeys(function (Draw $draw) {
               $completion = app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
@@ -216,7 +219,12 @@ class VenueScoringController extends Controller
                 'drawName' => $draw->drawName,
                 'total' => $completion['round_robin']['total'],
                 'completed' => $completion['round_robin']['completed'],
-                'pending' => (int) $draw->progression_pending_sources > 0 || (int) $draw->progression_playoff_total === 0,
+                'ready' => $completion['ready'],
+                'pending' => $completion['pending'],
+                'kind' => $completion['kind'],
+                'destination' => $completion['destination'],
+                'message' => $completion['message'],
+                'standingsUrl' => route('backend.draw.roundrobin.show', $draw).'#standings',
                 'url' => route('backend.draw.progress', $draw),
                 'reviewUrl' => route('backend.draw.progress-review', $draw),
               ]];
@@ -240,6 +248,7 @@ class VenueScoringController extends Controller
             'availableDates' => $availableDates,
             'scheduleDrawIds' => $scheduleDrawIds,
             'playoffProgression' => $playoffProgression,
+            'unscheduledPrerequisites' => $unscheduledPrerequisites,
         ]);
     }
 

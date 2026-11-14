@@ -14,7 +14,7 @@ class DrawSetupController extends Controller
     public const OPTIONS = [
         'round_robin' => ['Round robin only', 'Everyone plays within their group. Final standings decide the result; there are no playoffs.'],
         'round_robin_playoffs' => ['Round robin → playoffs', 'Build groups first, then choose how players advance to playoffs.'],
-        'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then regroup equal finishing positions for a second round robin.'],
+        'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then choose equal-position groups or top-four playoffs with one lower round robin.'],
         'playoffs' => ['Knockout — Playoffs only', 'Winners advance; losing players are eliminated. No placement matches.'],
         'monrad' => ['Play for every position — Monrad only', 'Winners and losers continue for finishing positions. With eight players, play out positions 1–8.'],
         'feed_in_monrad' => ['Feed-in Monrad', 'Start everyone in the opening round. Earlier-round losers play through a feed-in draw against later-round losers, with matches for every finishing position.'],
@@ -58,6 +58,7 @@ class DrawSetupController extends Controller
             'category_event_id' => ['nullable', 'integer', Rule::exists('category_events', 'id')->where('event_id', $draw->event_id)],
             'reset_existing' => ['nullable', 'boolean'],
             'groups' => ['nullable', 'integer', 'min:1', 'max:26'],
+            'second_stage_format' => ['sometimes', Rule::in(['equal_positions', \App\Services\Draw\HybridRoundRobinService::FORMAT])],
             'challenge_playoffs' => ['sometimes', 'boolean'],
             'challenge_pairs' => [Rule::requiredIf(fn () => $request->input('workflow') === 'feed_in_monrad' && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
             'challenge_pairs.*' => ['integer', 'distinct', Rule::in(range(2, 62, 2))],
@@ -85,6 +86,22 @@ class DrawSetupController extends Controller
             $sameWorkflow = $draw->settings?->workflow === $data['workflow'];
             $roundRobin = in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
             $groupCount = $roundRobin && isset($data['groups']) ? (int) $data['groups'] : null;
+            $secondStageFormat = $data['workflow'] === 'round_robin_round_robin'
+                ? ($data['second_stage_format'] ?? ($draw->hasHybridRoundRobin() ? \App\Services\Draw\HybridRoundRobinService::FORMAT : 'equal_positions')) : null;
+            $hybrid = $secondStageFormat === \App\Services\Draw\HybridRoundRobinService::FORMAT;
+            $sameSecondStage = $draw->hasHybridRoundRobin() === $hybrid;
+            abort_if($hybrid && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) !== 2, 422,
+                'The top-four playoffs and lower round robin format requires exactly two groups.');
+            if (!$sameSecondStage && $sameWorkflow) {
+                abort_if($draw->groups()->where('round_robin_phase', 2)->exists()
+                    || $draw->drawFixtures()->where('stage', '!=', 'RR')->exists(), 409,
+                    'Choose the second-stage format before preparing later-stage groups or fixtures. Existing fixtures and bookings cannot be replaced by this option.');
+            }
+            if ($hybrid && !$sameWorkflow) {
+                abort_if($draw->groups()->where('round_robin_phase', 2)->exists()
+                    || $draw->drawFixtures()->where('stage', '!=', 'RR')->exists(), 409,
+                    'Choose this format in a new draw before preparing later-stage fixtures. Existing fixtures and bookings remain protected.');
+            }
             $groupsChanged = $groupCount !== null && $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() !== $groupCount;
             $currentChallenges = $draw->settings?->workflow === 'feed_in_monrad' && (bool) ($draw->settings?->playoff_config['challenge_playoffs'] ?? false);
             $challengePairs = $challengePlayoffs ? array_map('intval', $data['challenge_pairs'] ?? []) : [];
@@ -101,7 +118,7 @@ class DrawSetupController extends Controller
                 throw \Illuminate\Validation\ValidationException::withMessages(['challenge_pairs' => 'Select at least one challenge pair present in this field.']);
             }
             $sameChallenges = $currentChallenges === $challengePlayoffs;
-            if ($sameWorkflow && $sameChallenges && $currentPairs === $challengePairs && ! $groupsChanged) return;
+            if ($sameWorkflow && $sameSecondStage && $sameChallenges && $currentPairs === $challengePairs && ! $groupsChanged) return;
             abort_if($draw->event?->hasRecordedResults(), 409,
                 'Draw format and group rules cannot change after the first tournament result has been recorded.');
             $preserveStarts = in_array($draw->settings?->workflow, ['monrad', 'feed_in_monrad'], true)
@@ -129,6 +146,12 @@ class DrawSetupController extends Controller
             $settings = ['workflow' => $data['workflow']];
             if ($resetCounts) {
                 $settings += ['boxes' => null, 'playoff_size' => null, 'playoff_config' => null, 'preset_key' => null];
+            }
+            if ($data['workflow'] === 'round_robin_round_robin' && (!$sameWorkflow || !$sameSecondStage || $resetCounts)) {
+                $settings['playoff_config'] = $hybrid ? [
+                    '_second_round_robin' => ['state' => 'selected', 'format' => \App\Services\Draw\HybridRoundRobinService::FORMAT, 'carried_fixture_ids' => []],
+                    'main' => ['enabled' => true, 'slug' => 'MAIN', 'name' => 'Positions 1–4', 'size' => 4, 'positions' => [1, 2]],
+                ] : [];
             }
             if ($groupCount !== null) {
                 $settings['boxes'] = $groupCount;

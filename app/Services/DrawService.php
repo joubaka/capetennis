@@ -1216,6 +1216,7 @@ class DrawService
   public function saveBracketScore(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
   {
     abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to score this match.');
+    if ($fixture->draw?->hasHybridRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
     Log::info("🎾 [BracketScore] Saving score for fixture {$fixture->id}", [
       'fixture_id' => $fixture->id,
       'stage' => $fixture->stage,

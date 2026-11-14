@@ -80,13 +80,17 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Return fragments must resolve the visible mobile/desktop draw section, and
   selected public tabs retain their URL. See `docs/draw-knowledge/public-workflow.md`,
   `PublicDrawPresentation` and `PublicTournamentWorkflowTest`.
-- Two completed round-robin groups may use the explicit hybrid conversion for
-  crossed top-two championship playoffs and one lower round robin. Carry only
-  mutual lower-player results through read-only source-fixture references; never
-  duplicate played fixtures or rating evidence. Generic format reset cannot
-  preserve scored fixtures. See `docs/draw-knowledge/hybrid-round-robin.md`, DK-31
-  and `HybridRoundRobinService`; ordinary equal-position progression still starts
-  with fresh scores. Recheck exact live state and current operational authority.
+- New two-stage draws may explicitly select crossed top-two championship
+  playoffs plus one lower round robin before later-stage structures exist.
+  `PendingHybridRoundRobinService` prepares stable sources, then normal reviewed
+  progression qualifies players without replacing fixtures or bookings. Count
+  phase-one canonical outcomes only; warn on unresolved ties and suppress prompts
+  after confirmation. Carry mutual lower-player results through read-only source
+  references, never duplicated fixtures or rating evidence. Historical completed
+  draws retain a separate explicit `HybridRoundRobinService` conversion; prompts
+  must never call it automatically. Ordinary equal-position groups start with
+  fresh scores. See `docs/draw-knowledge/hybrid-round-robin.md`, DK-04, DK-10,
+  DK-31 and RK-049; recheck current state and operational authority for live work.
 - Detailed RR standings use canonical completed outcomes, precise percentages
   and per-opponent evidence; a saved set alone is not a match win. Blank historical
   scoring settings retain their legacy fallback until an explicit scoped

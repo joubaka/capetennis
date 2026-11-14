@@ -1,18 +1,18 @@
 @if($draw->isTwoStageRoundRobin())
   @php
-    $firstStageIds = $draw->groups->where('round_robin_phase', 1)->pluck('id');
-    $firstMatches = $draw->drawFixtures->where('stage', 'RR')->whereIn('draw_group_id', $firstStageIds);
-    $firstComplete = $firstMatches->filter(fn ($fixture) => $fixture->fixtureResults->isNotEmpty())->count();
+    $completion = app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
+    $firstTotal = $completion['round_robin']['total'];
+    $firstComplete = $completion['round_robin']['completed'];
     $secondCreated = $draw->hasConfirmedSecondRoundRobin();
   @endphp
-  <section class="card card-body my-3 no-print" aria-labelledby="rr-second-stage-heading">
+  <section class="card card-body my-3 no-print" aria-labelledby="rr-second-stage-heading" data-rr-progression data-progress-keep-visible="1" data-progress-destination="{{ $completion['destination'] }}" data-has-qualifiers="{{ $secondCreated ? '1' : '0' }}">
     <h6 id="rr-second-stage-heading">{{ $draw->hasHybridRoundRobin() ? 'Stage 2 · Top-four playoffs and positions 5 onward' : 'Stage 1 → Stage 2 round robin' }}</h6>
     @if($secondCreated)
       <p class="mb-0">Stage 2 groups and matches are ready. First-stage results and membership are frozen. Schedule and score the second-stage matches to determine final positions.</p>
     @else
-      <p>{{ $firstComplete }} of {{ $firstMatches->count() }} first-stage results recorded. Complete every match and resolve tied positions, then review and confirm each group.</p>
+      <p data-progress-message>{{ $firstComplete }} of {{ $firstTotal }} first-stage results recorded. {{ $firstTotal > 0 && $firstComplete === $firstTotal && !$completion['ready'] ? $completion['message'] : 'Complete every match and resolve tied positions, then review and confirm each group.' }}</p>
       @can('progress', $draw)
-        <button type="button" class="btn btn-primary align-self-start progress-draw" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled($draw->locked || $firstMatches->isEmpty() || $firstComplete !== $firstMatches->count())>Review &amp; progress to second round robin</button>
+        <button type="button" class="btn btn-primary align-self-start progress-draw" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled($draw->locked || !$completion['ready'])>Review &amp; progress to {{ $completion['destination'] }}</button>
       @endcan
     @endif
     @if($draw->hasHybridRoundRobin())
@@ -30,7 +30,7 @@
     $progressPlayoffs = $draw->drawFixtures()->where('stage', '!=', 'RR')->get(['registration1_id', 'registration2_id']);
     $progressHasQualifiers = $progressPlayoffs->contains(fn ($fixture) => $fixture->registration1_id || $fixture->registration2_id);
   @endphp
-  <section class="card card-body my-3 no-print" aria-labelledby="playoff-progression-heading" data-rr-progression data-has-qualifiers="{{ $progressHasQualifiers ? '1' : '0' }}">
+  <section class="card card-body my-3 no-print" aria-labelledby="playoff-progression-heading" data-rr-progression data-progress-destination="playoffs" data-has-qualifiers="{{ $progressHasQualifiers ? '1' : '0' }}">
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
       <div>
         <h6 id="playoff-progression-heading" class="mb-1">Group stage → playoffs @if($progressHasQualifiers)<span class="badge bg-label-success ms-2">Playoffs created</span>@elseif($progressPlayoffs->isNotEmpty())<span class="badge bg-label-secondary ms-2">Qualifiers pending</span>@endif</h6>

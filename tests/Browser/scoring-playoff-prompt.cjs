@@ -7,12 +7,12 @@ const source = fs.readFileSync(path.resolve(__dirname, '../../public/js/scoring-
 
 function scenario(confirm = true) {
     const after = {drawName: 'Example draw', total: 12, completed: 12, pending: true, url: '/progress', reviewUrl: '/review'};
-    const prompts = [], reviews = [];
-    const context = {window: {}, document: {querySelector: () => ({dataset: {playoffProgression: JSON.stringify({7: after})}})},
+    const prompts = [], reviews = [], navigations = [];
+    const context = {window: {location:{assign:url=>navigations.push(url)}}, document: {querySelector: () => ({dataset: {playoffProgression: JSON.stringify({7: after})}})},
         Swal: {fire: async options => { prompts.push(options); return {isConfirmed: confirm}; }}};
     context.window.CTDrawProgression = {review: async options => {reviews.push(options); await options.onSuccess();}};
     vm.runInNewContext(source, context);
-    return {api: context.window.CTScoringPlayoffs, after, prompts, reviews};
+    return {api: context.window.CTScoringPlayoffs, after, prompts, reviews, navigations};
 }
 const match = {drawId: '7', engine: 'standard', stage: 'RR', hasResult: '0'};
 const before = {total: 12, completed: 11, pending: true};
@@ -48,4 +48,23 @@ test('a final result saved over existing scores still offers pending progression
     await app.api.afterSave({...match, hasResult: '1'}, {...before, completed: 12}, async () => {});
     assert.equal(app.prompts.length, 1);
     assert.equal(app.reviews.length, 1);
+});
+
+test('two-stage and hybrid prompts describe their destination and confirmed draws stay silent',async()=>{
+    for (const destination of ['second round robin','top-four playoffs and the lower round robin']) {
+        const app=scenario(); Object.assign(app.after,{destination,ready:true});
+        await app.api.afterSave(match,before,async()=>{});
+        assert.match(app.prompts[0].text,new RegExp(destination)); assert.equal(app.reviews.length,1);
+        const confirmed=scenario(); Object.assign(confirmed.after,{destination,pending:false,ready:true});
+        await confirmed.api.afterSave(match,before,async()=>{}); assert.equal(confirmed.prompts.length,0);
+    }
+});
+
+test('complete tied groups offer standings only, then allow normal review after resolution',async()=>{
+    const app=scenario(); Object.assign(app.after,{ready:false,message:'Resolve tied positions.',standingsUrl:'/draw#standings'});
+    await app.api.afterSave(match,before,async()=>{}); await app.api.afterSave(match,before,async()=>{});
+    assert.equal(app.prompts.length,1); assert.equal(app.prompts[0].icon,'warning'); assert.equal(app.reviews.length,0);
+    assert.deepEqual(app.navigations,['/draw#standings']);
+    app.after.ready=true; await app.api.afterSave(match,before,async()=>{});
+    assert.equal(app.prompts.length,2); assert.equal(app.reviews.length,1);
 });

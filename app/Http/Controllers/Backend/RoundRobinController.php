@@ -758,6 +758,8 @@ class RoundRobinController extends Controller
     $draw->loadMissing(['settings', 'groups', 'event']);
 
     if ($draw->isTwoStageRoundRobin()) {
+      $completion = app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
+      if (!$completion['ready']) return response()->json(['success' => false] + $completion, 422);
       return response()->json(['success' => true, 'draw' => ['id' => $draw->id, 'name' => $draw->drawName],
         'review' => app(\App\Services\Draw\TwoStageRoundRobinService::class)->review($draw)]);
     }

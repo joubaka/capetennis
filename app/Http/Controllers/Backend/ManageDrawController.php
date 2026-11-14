@@ -138,6 +138,8 @@ class ManageDrawController extends Controller
         \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data, $competitionRulesOnly) {
             $draw->refresh();
             $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            abort_if(isset($updateData['playoff_config']) && $lockedDraw->hasHybridRoundRobin(), 422,
+                'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
             if (isset($updateData['playoff_config'])) app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $updateData['playoff_config']);
             abort_if($lockedDraw->locked, 403, 'Unlock the draw before changing its settings.');
             abort_if(
@@ -256,6 +258,8 @@ class ManageDrawController extends Controller
 
     \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $validated): void {
       $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      abort_if($lockedDraw->hasHybridRoundRobin(), 422,
+          'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
       app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $validated['playoff_config']);
       abort_if(
         $lockedDraw->locked || $lockedDraw->event?->hasRecordedResults(),

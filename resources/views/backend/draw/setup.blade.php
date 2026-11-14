@@ -52,7 +52,7 @@
     </div>
   @endif
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" id="draw-format-form"
-    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
+    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
     @csrf
     <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0 || $draw->event->hasRecordedResults())>
       <legend class="visually-hidden">Draw format</legend>
@@ -89,10 +89,18 @@
         <label for="format-group-count" class="form-label">Number of groups</label>
         <select id="format-group-count" name="groups" class="form-select mb-2" disabled>
           @foreach(range(1, 26) as $count)
-            <option value="{{ $count }}" @selected((int) old('groups', request('groups', $draw->groups()->count() ?: 1)) === $count)>{{ $count }}</option>
+            <option value="{{ $count }}" @selected((int) old('groups', request('groups', $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() ?: 1)) === $count)>{{ $count }}</option>
           @endforeach
         </select>
         <p id="format-playoff-suggestion" class="small text-muted mb-0" role="status"></p>
+        <div id="second-stage-format-question" class="mt-3" hidden>
+          <label for="second-stage-format" class="form-label">How should the second stage work?</label>
+          <select id="second-stage-format" name="second_stage_format" class="form-select" disabled>
+            <option value="equal_positions" @selected(!$draw->hasHybridRoundRobin())>Equal finishing positions → new round-robin groups</option>
+            <option value="top_two_playoffs_remainder_rr" @selected($draw->hasHybridRoundRobin())>Top two from each group → semifinals; remaining players → one round robin</option>
+          </select>
+          <p class="form-text">The top-four option uses exactly two groups with at least three players each. A1 plays B2 and B1 plays A2, followed by a final and a third-place match. Other players carry their mutual results forward and play only new opponents. Choose this before preparing later-stage fixtures.</p>
+        </div>
       </section>
       @if($resetSummary['has_format_state'])
         <p class="text-muted">Switching between Monrad and Feed-in Monrad preserves the bracket size, player starting positions and explicit byes. Fixtures and scheduled times still reset.</p>
@@ -135,12 +143,18 @@
   const groups = document.getElementById('format-group-question');
   const count = document.getElementById('format-group-count');
   const submit = form.querySelector('button[type="submit"]');
+  const secondStage = document.getElementById('second-stage-format-question');
+  const secondFormat = document.getElementById('second-stage-format');
   const describeGroups = () => {
     const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    const staged = workflow === 'round_robin_round_robin';
+    secondStage.hidden = !staged;
+    secondFormat.disabled = !staged || groups.hidden;
+    if (staged && secondFormat.value === 'top_two_playoffs_remainder_rr') count.value = '2';
     const n = Number(count.value);
     document.getElementById('format-playoff-suggestion').textContent = workflow === 'round_robin_playoffs'
       ? (n === 1 ? 'Suggested: the top two players play a championship final.' : `Suggested: each group winner qualifies for a ${2 ** Math.ceil(Math.log2(n))}-place championship bracket. Unused places are byes.`) + ' You can change qualifiers and add placement playoffs in the next step.'
-      : workflow === 'round_robin_round_robin' ? 'Equal finishing positions will enter second-stage groups after the first round robin.' : 'Final standings decide each group; no playoffs are created.';
+      : staged ? (secondFormat.value === 'top_two_playoffs_remainder_rr' ? 'Two groups qualify into top-four playoffs and one lower round robin with carried results.' : 'Equal finishing positions will enter second-stage groups after the first round robin.') : 'Final standings decide each group; no playoffs are created.';
   };
   const refresh = () => {
     option.disabled = form.querySelector('[name="workflow"]:checked')?.value !== 'feed_in_monrad';
@@ -152,6 +166,7 @@
       ? 'Continue to groups →' : '{{ $resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →' }}';
   };
   count.addEventListener('change', describeGroups);
+  secondFormat.addEventListener('change', describeGroups);
   form.addEventListener('submit', event => {
     const workflow = form.querySelector('[name="workflow"]:checked')?.value;
     if (['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'].includes(workflow) && groups.hidden) {

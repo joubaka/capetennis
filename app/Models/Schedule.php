@@ -11,6 +11,6 @@ class Schedule extends Model
 
     public function venue()
     {
-        return $this->belongsTo(Venues::class);
+        return $this->belongsTo(Venue::class);
     }
 }

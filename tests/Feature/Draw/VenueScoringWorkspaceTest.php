@@ -307,7 +307,8 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertStringContainsString("showWorkspaceNotice(result.message, playing ? 'success' : 'warning')", $template);
         $this->assertStringContainsString('saveButton.disabled = false;', $template);
         $this->assertStringContainsString('clearButton.disabled = false;', $template);
-        $this->assertStringContainsString('data-num-sets=', $template);
+        $this->assertStringContainsString("@include('frontend.scoring.score-button')", $template);
+        $this->assertStringContainsString('data-num-sets=', file_get_contents(resource_path('views/frontend/scoring/score-button.blade.php')));
         $this->assertStringContainsString('CTSetScoreGrid.populate', $template);
         $this->assertStringContainsString('shared.scoring.set-grid', $template);
         $this->assertTrue(method_exists(\App\Http\Controllers\Frontend\VenueScoringController::class, 'startFixture'));

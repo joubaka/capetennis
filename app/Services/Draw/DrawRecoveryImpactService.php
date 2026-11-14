@@ -50,6 +50,13 @@ final class DrawRecoveryImpactService
     public function assertSafeOrdinaryCorrection(Fixture $fixture): void
     {
         TwoStageRoundRobinService::assertScoreMutable($fixture);
+        $draw = $fixture->draw;
+        if ($fixture->stage === 'RR' && $draw?->hasHybridRoundRobin() && !$draw->hasConfirmedSecondRoundRobin()
+            && app(PendingHybridRoundRobinService::class)->preparedStructureIsValid($draw)) {
+            // No participant has qualified yet. Stable group-position sources
+            // survive an ordinary first-stage correction without any rebuild.
+            return;
+        }
         $dependents = $this->dependents($fixture);
         if ($fixture->stage === 'RR') {
             $fixedBracket = $dependents->first(fn (Fixture $dependent) =>

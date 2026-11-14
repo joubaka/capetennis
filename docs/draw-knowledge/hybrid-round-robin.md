@@ -1,5 +1,39 @@
 # Championship playoffs with a carried lower round robin
 
+## New draws: select, prepare, review and confirm
+
+Before creating later-stage groups or fixtures, choose Round robin → round robin
+in Setup and select the top-two playoff / lower round-robin alternative. It uses
+exactly two source groups, each with at least three entrants. Equal-position
+groups remain the default. Changing this choice after later-stage preparation
+is rejected; the choice never resets an existing programme or its bookings.
+
+`PendingHybridRoundRobinService` prepares stable crossed semifinal, final,
+third-place and lower cross-group qualification fixtures. Their group-position
+sources can be scheduled before results. Actual players remain unqualified.
+Only cross-group lower pairings are created; mutual lower-player results later
+remain read-only references to their first-stage fixture records.
+
+The last completed first-stage result offers the normal authorized standings
+review on both admin and venue scoring screens. Partial sets do not count as
+completed outcomes, while valid timed draws and scoreless walkovers do. If ties,
+eligibility or malformed topology block qualification, the offer explains the
+blocker and opens standings without a progression write. Review and confirm each
+group against a fresh snapshot including all three booking stores before filling
+the existing slots. Progression is locked, audited and idempotent; no fixtures,
+scores or bookings are replaced. Confirmed hybrids suppress further offers and
+freeze source results. Only fully unqualified, unplayed pending topology permits
+ordinary first-stage score corrections. Prepared playoff fixtures cannot be
+scored before confirmation, or while either participant is unresolved.
+
+Generic playoff configuration cannot remove the hybrid marker or replace its
+prepared structure. Match scoring settings retain their normal pre-result
+editing rules. `PendingHybridProgressionTest` and the shared prompt regressions
+cover this new path. This capability does not modify an already confirmed live
+hybrid, and it does not run the historical conversion command below.
+
+## Historical completed-source conversion
+
 This conversion applies to an unlocked individual two-stage round-robin draw
 with exactly two completed first-stage groups, each containing at least three
 players. First-stage standings must be resolved. Any existing second-stage
@@ -18,7 +52,7 @@ four championship fixtures. Never copy played fixture or result records: that
 would duplicate rating evidence. Carried matrix cells refer to frozen source
 matches; standings and completeness use read-only fixture projections.
 
-## Preview and apply
+### Preview and apply
 
 Verify the deployed schema includes `fixtures.loser_feeder_slot`, which records
 the two semifinal losers' destination slots. A testing-only bootstrap definition

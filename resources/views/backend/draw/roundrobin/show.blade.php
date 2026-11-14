@@ -282,7 +282,7 @@
           @unless($roundRobinOnly)
             <div id="rr-saved-playoff-summary">
             @php
-              $playoffConfig = collect($playoffConfig)->filter(fn ($playoff) => is_array($playoff) && isset($playoff['slug']))->all();
+              $playoffConfig = collect($playoffConfig)->filter(fn ($playoff) => is_array($playoff) && isset($playoff['slug']))->values()->all();
               $unusedPlayoffs = collect($playoffConfig)->filter(fn ($playoff) => !($playoff['enabled'] ?? false) || app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $playoff));
             @endphp
             <ul class="mb-0">
@@ -352,7 +352,10 @@
               <p class="small text-muted mt-2 mb-0" id="timed-slot-summary" aria-live="polite"></p>
               <p class="small mb-0 mt-2">Most games wins when time expires. Group ties are draws (win 2 points, draw 1, loss 0). A tied playoff is decided by one deciding point. Scheduling uses playing time plus the changeover gap; player rest remains separate.</p>
             </fieldset>
-          @unless($roundRobinOnly)
+          @if($draw->hasHybridRoundRobin())
+            <p class="alert alert-info mt-3">Hybrid qualification and playoff structure are fixed by the selected second-stage format. Review first-stage results to qualify players; generic playoff editing cannot replace these fixtures.</p>
+          @endif
+          @unless($roundRobinOnly || $draw->hasHybridRoundRobin())
           <hr class="my-4">
 
       {{-- PLAYOFF CONFIGURATION --}}
@@ -453,7 +456,7 @@
         </div>
       </div>
       </form>
-      @unless($roundRobinOnly)
+      @unless($roundRobinOnly || $draw->hasHybridRoundRobin())
       <details class="mb-3"><summary class="p-3">View full setup</summary>
       {{-- PLAYER ACCOUNTING --}}
       <div class="card mb-3 border-info">

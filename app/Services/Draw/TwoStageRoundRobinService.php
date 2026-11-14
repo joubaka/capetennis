@@ -40,12 +40,15 @@ final class TwoStageRoundRobinService
             $fixture->fixtureResults->map(fn ($set) => [$set->set_nr, $set->registration1_score, $set->registration2_score])->all(),
         ])->all();
 
-        return ['groups' => $review, 'destination' => 'second round robin',
+        $result = ['groups' => $review, 'destination' => $draw->hasHybridRoundRobin() ? 'top-four playoffs and the lower round robin' : 'second round robin',
+            'pending' => !$draw->hasConfirmedSecondRoundRobin(),
             'snapshot' => hash('sha256', json_encode([$review, $evidence]))];
+        return $draw->hasHybridRoundRobin() ? app(PendingHybridRoundRobinService::class)->decorateReview($draw, $result) : $result;
     }
 
     public function progress(Draw $draw, array $input): array
     {
+        if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->progress($draw, $input);
         return DB::transaction(function () use ($draw, $input) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked, 403, 'Unlock the draw before progressing.');
@@ -93,6 +96,7 @@ final class TwoStageRoundRobinService
     public function prepare(Draw $draw): Collection
     {
         if (! $draw->isTwoStageRoundRobin()) return collect();
+        if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->prepare($draw);
         return DB::transaction(function () use ($draw) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $draw->load('settings', 'groups.groupRegistrations');
@@ -148,7 +152,7 @@ final class TwoStageRoundRobinService
     private function setState(Draw $draw, string $state): void
     {
         $config = $draw->settings->playoff_config ?? [];
-        $config['_second_round_robin'] = ['state' => $state];
+        $config['_second_round_robin'] = array_replace($config['_second_round_robin'] ?? [], ['state' => $state]);
         $draw->settings->update(['playoff_config' => $config]);
     }
 
@@ -179,6 +183,7 @@ final class TwoStageRoundRobinService
 
     public function preparedStructureIsValid(Draw $draw): bool
     {
+        if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->preparedStructureIsValid($draw);
         $draw->load('groups.groupRegistrations', 'drawFixtures');
         $sources = $draw->groups->where('round_robin_phase', 1)->map(fn ($group) => [
             'id' => $group->id, 'standings' => array_fill(0, $group->groupRegistrations->count(), null),
@@ -201,7 +206,10 @@ final class TwoStageRoundRobinService
             sort($pair);
             $key = implode(':', $pair);
             $sets = $fixture->fixtureResults->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->all();
+            $fixture->setRelation('draw', $draw);
+            $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
             if ($pair[0] === $pair[1] || ! $ids->contains($pair[0]) || ! $ids->contains($pair[1]) || isset($pairs[$key])
+                || ($outcomes->winner($fixture) === null && !$outcomes->isDraw($fixture))
                 || (!$fixture->isWalkover() && !$fixture->isRetired() && ! app(ScoreValidationService::class)->validate($fixture, $sets)['valid'])) return false;
             $pairs[$key] = true;
         }
@@ -220,6 +228,10 @@ final class TwoStageRoundRobinService
     public static function assertScoreMutable(Fixture $fixture): void
     {
         $draw = $fixture->draw;
+        if ($draw?->hasHybridRoundRobin() && $fixture->stage !== 'RR') {
+            abort_unless($draw->hasConfirmedSecondRoundRobin() && $fixture->registration1_id && $fixture->registration2_id, 409,
+                'Confirm hybrid progression and both participants before scoring playoff matches.');
+        }
         if ($draw?->isTwoStageRoundRobin() && (int) $fixture->drawGroup?->round_robin_phase === 2) {
             abort_unless($draw->hasConfirmedSecondRoundRobin() && $fixture->registration1_id && $fixture->registration2_id, 409,
                 'Confirm first-stage progression before scoring second-stage matches.');

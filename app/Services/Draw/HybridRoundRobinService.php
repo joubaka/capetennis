@@ -23,13 +23,13 @@ final class HybridRoundRobinService
         $fixtures ??= $draw->drawFixtures;
         if (! self::active($draw)) return $fixtures;
         $config = $draw->settings->playoff_config['_second_round_robin'];
-        $lower = $draw->groups->firstWhere('id', $config['lower_group_id']);
+        $lower = $draw->groups->firstWhere('id', $config['lower_group_id'] ?? 0);
         if (! $lower) return $fixtures;
         $members = $lower->groupRegistrations->pluck('registration_id');
         $sourceGroups = $draw->groups->where('round_robin_phase', 1)->pluck('id');
         $carried = $fixtures->filter(fn ($fixture) => (int) $fixture->draw_id === (int) $draw->id
             && $fixture->stage === 'RR' && $sourceGroups->contains($fixture->draw_group_id)
-            && in_array((int) $fixture->id, $config['carried_fixture_ids'], true)
+            && in_array((int) $fixture->id, $config['carried_fixture_ids'] ?? [], true)
             && $members->contains($fixture->registration1_id) && $members->contains($fixture->registration2_id))
             ->map(function ($fixture) use ($draw, $lower) {
                 $copy = clone $fixture;
@@ -52,7 +52,11 @@ final class HybridRoundRobinService
         ]), 409, 'Fixture progression schema is incomplete. Apply the reviewed fixture migrations, including 2026_11_14_100000_add_loser_feeder_slot_to_fixtures.php, before reviewing or applying this conversion.');
         $draw->load(['settings', 'groups.groupRegistrations', 'drawFixtures.fixtureResults', 'drawFixtures.orderOfPlay']);
         abort_if($draw->locked || $draw->isTeamDraw(), 409, 'Use an unlocked individual draw.');
-        if (self::active($draw)) return ['already_applied' => true, 'configuration' => $draw->settings->playoff_config['_second_round_robin']];
+        if (self::active($draw)) {
+            abort_unless($draw->hasConfirmedSecondRoundRobin(), 409,
+                'This hybrid is prepared for normal first-stage review and progression; do not use the conversion command.');
+            return ['already_applied' => true, 'configuration' => $draw->settings->playoff_config['_second_round_robin']];
+        }
         $review = app(TwoStageRoundRobinService::class)->review($draw);
         $groups = collect($review['groups'])->values();
         abort_unless($groups->count() === 2 && $groups->every(fn ($group) => count($group['standings']) >= 3), 422,
