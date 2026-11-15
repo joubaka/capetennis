@@ -49,12 +49,13 @@ class PlayerPathwayService
         $benchmark_division = null;
         $wilsonCutoff = $this->validScore(config('pathway.wilson_a_above'));
         $tsaCutoff = $this->validScore(config('pathway.tsa_above'));
+        $competitionBandsAvailable = $wilsonCutoff !== null && $tsaCutoff !== null && $tsaCutoff > $wilsonCutoff;
         // Locate the displayed saved badge without claiming a fresh progression assessment.
         $savedComparable = $current_stage === 'standard' && $score !== null
             && ($stageRating['comparable'] ?? false) === true && ($stageRating['local'] ?? false) !== true;
-        $currentCompetition = $savedComparable && $wilsonCutoff !== null
+        $currentCompetition = $savedComparable && $competitionBandsAvailable
             ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.($score > $wilsonCutoff ? 'A' : 'B')) : null;
-        $suggestedDivision = $current_stage === 'standard' && $eligible && $wilsonCutoff !== null ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
+        $suggestedDivision = $current_stage === 'standard' && $eligible && $competitionBandsAvailable ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
         $suggestedCompetition = $suggestedDivision ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.$suggestedDivision) : null;
         $targetKey = $current_stage === 'standard' ? null : $current_stage;
         $target = $this->target($targetKey);
@@ -136,7 +137,11 @@ class PlayerPathwayService
         $badge = ['stage' => $badgeStage, 'score' => $stageProgress[$badgeStage]['score'] ?? null,
             'local' => $stageProgress[$badgeStage]['local'] ?? false];
 
+        $presentation = $this->presentation($current_stage, $score, $stageRating, $metrics, $move, $currentCompetition, $competitionBandsAvailable, $wilsonCutoff, $tsaCutoff);
+
         return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition', 'move', 'moveOptions') + [
+            'presentation' => $presentation,
+            'competition_bands_available' => $competitionBandsAvailable,
             'stage_label' => $stage ? self::STAGES[$stage] : 'Stage not recorded',
             'current_stage_label' => $current_stage ? self::STAGES[$current_stage] : 'Not rated yet',
             'metrics' => $metrics,
@@ -144,6 +149,49 @@ class PlayerPathwayService
             'currentCompetition' => $currentCompetition,
             'benchmarks' => $this->benchmarks(),
         ];
+    }
+
+    private function presentation(?string $stage, ?float $score, array $rating, array $metrics, ?array $move, ?string $competition, bool $bandsAvailable, ?float $wilson, ?float $tsa): array
+    {
+        $pending = $move !== null && $move['score'] === null;
+        $comparable = $score !== null && ($rating['comparable'] ?? false) === true && ($rating['local'] ?? false) !== true;
+        $state = match (true) {
+            $pending => 'move_pending',
+            $stage === null => 'no_rating',
+            !$comparable => 'insufficient_evidence',
+            $stage === 'standard' && !$bandsAvailable => 'configuration_unavailable',
+            ($metrics['stale'] ?? true) || !($metrics['assessment_available'] ?? !($metrics['stale'] ?? true)) => 'update_pending',
+            default => 'current',
+        };
+        $label = $pending ? BallRatingModel::LABELS[$move['to']].' · CTR pending'
+            : ($stage === 'standard' ? ($competition ?? 'Green/Yellow ball · stage pending') : (BallRatingModel::LABELS[$stage] ?? 'Not rated yet'));
+        $status = match ($state) {
+            'move_pending' => 'Recorded move · rating pending',
+            'no_rating' => 'No saved rating yet',
+            'insufficient_evidence' => 'Insufficient comparable evidence',
+            'configuration_unavailable' => 'Tournament guide awaiting configuration',
+            'update_pending' => 'Latest saved stage · update pending',
+            default => 'Current rating stage',
+        };
+        $why = match (true) {
+            $pending => 'Play eligible published singles at the recorded destination level to establish its rating.',
+            $stage === null => 'Play eligible published singles at your ball level to establish a saved rating.',
+            !$comparable => 'Your ball level is recorded, but a within-group or noncomparable estimate cannot establish a tournament recommendation.',
+            $stage === 'standard' && !$bandsAvailable => 'The tournament rating bands are unavailable. Ask Cape Tennis to review the guide.',
+            $stage === 'red' || $stage === 'orange' => 'This is the highest ball level with your saved rating evidence. Progression uses only this ball level’s CTR and published events.',
+            default => 'Your saved Green/Yellow CTR of '.number_format($score, 1).' is '.match ($competition) {
+                'Wilson B' => 'at or below '.self::formatCutoff($wilson).', the Wilson B band.',
+                'Wilson A' => 'above '.self::formatCutoff($wilson).' through '.self::formatCutoff($tsa).', the Wilson A band.',
+                default => 'above '.self::formatCutoff($tsa).', the TSA tournament band.',
+            },
+        };
+        return ['stage' => $label, 'status' => $status, 'state' => $state, 'why' => $why,
+            'event_stage' => in_array($state, ['current', 'update_pending'], true) ? ($competition ?? $stage) : null];
+    }
+
+    public static function formatCutoff(?float $value): string
+    {
+        return $value === null ? 'unavailable' : rtrim(rtrim(number_format($value, 2, '.', ''), '0'), '.');
     }
 
     private function moveEvidence(PlayerPathwayMove $move, array $metrics): array
@@ -260,6 +308,8 @@ class PlayerPathwayService
             'wilsonCutoff' => (new self)->validScore(config('pathway.wilson_a_above')), 'suggestedDivision' => null,
             'tsaCutoff' => (new self)->validScore(config('pathway.tsa_above')), 'suggestedCompetition' => null,
             'currentCompetition' => null,
+            'competition_bands_available' => false,
+            'presentation' => ['stage' => 'Not rated yet', 'state' => 'no_rating', 'status' => 'No saved rating yet', 'why' => 'No saved ball-level rating is available.', 'event_stage' => null],
             'benchmarks' => (new self)->benchmarks(),
         ];
     }

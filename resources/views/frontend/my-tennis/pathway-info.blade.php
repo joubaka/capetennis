@@ -15,6 +15,8 @@
     <p><strong>Your progress so far:</strong> {{ $movePending ? 'CTR pending for the recorded move' : (isset($progress['score']) ? number_format($progress['score'], 1).' CTR' : 'Rating unavailable') }} · {{ $progress['events'] ?? 'Unknown' }} published events. {{ $movePending ? 'Not assessed' : ($progress['status'] ?? 'Not assessed') }}</p>
     @if($progress['reason'] ?? null)<p>{{ $progress['reason'] }}</p>@endif
     <p>These targets look at your latest {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days of results. Progress can change as that window moves, and playing at a higher level does not complete earlier stages.</p>
+  @elseif(!$pathway['competition_bands_available'])
+    <p>Tournament rating bands are awaiting configuration. Ask Cape Tennis to review the guide; check event requirements with the organiser.</p>
   @elseif($infoStage === 'tsa')
     <p>Thinking about TSA tournaments? Chat with your coach about which events would suit you, then check their age, entry and nomination requirements.</p>
     <p>The Cape Tennis guide suggests exploring TSA tournaments with a Green/Yellow CTR above {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }}. A CTR of exactly {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }} remains in the Wilson A band. Review suitability with your coach and the organiser.</p>
