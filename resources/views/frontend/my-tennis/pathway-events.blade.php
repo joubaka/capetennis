@@ -1,5 +1,5 @@
 @isset($pathwayEvents)
-<section class="mt-3" aria-labelledby="pathway-events-heading" data-pathway-upcoming-events>
+<section id="pathway-upcoming-events" class="mt-3" aria-labelledby="pathway-events-heading" data-pathway-upcoming-events>
   <h3 class="h6" id="pathway-events-heading">Upcoming events for your stage</h3>
   @if($pathwayEvents['stage'])
     <p class="small text-muted">Matches for {{ $pathway['presentation']['stage'] }}@if($pathway['presentation']['state'] === 'update_pending') · based on your latest saved rating; update pending@endif. Check age, division, invitation and entry requirements with the organiser. A stage match does not guarantee entry.</p>

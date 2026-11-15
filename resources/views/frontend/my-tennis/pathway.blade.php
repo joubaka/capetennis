@@ -51,7 +51,10 @@
           @foreach($pathway['next_steps'] as $step)<li>{{ $step }}</li>@endforeach
         </ul>
       @endif
-      <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse events</a>
+      @if($pathway['presentation']['event_stage'])
+        <a class="btn btn-sm btn-primary pathway-browse" href="#pathway-upcoming-events">View matching events</a>
+      @endif
+      <a class="btn btn-sm btn-outline-primary pathway-browse" href="{{ route('home') }}">Browse all events</a>
     </div>
     <div class="pathway-current-level">
       @if($pendingMove)
