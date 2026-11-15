@@ -14,9 +14,9 @@
       </div>
     @endif
 
+    @include('frontend.event.partials.event-announcements')
     @include('frontend.event.partials.event-draws')
     @include('frontend.event.partials.event-information')
-    @include('frontend.event.partials.event-announcements')
 
   </div>
 
