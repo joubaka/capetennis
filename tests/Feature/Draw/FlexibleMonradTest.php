@@ -379,6 +379,7 @@ class FlexibleMonradTest extends TestCase
             $state = $service->state($draw->fresh());
             $this->assertSame(TennisScoreFormat::maxSets($format), $state['score_max_sets']);
             $this->assertSame(TennisScoreFormat::rules($format), $state['score_guidance']);
+            $this->assertSame(TennisScoreFormat::get($format)['set_types'], $state['score_set_types']);
             $this->putJson(route('flexible-monrad.score', [$draw, $fixture]), ['revision' => $state['revision'], 'sets' => $sets])->assertOk();
         }
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()

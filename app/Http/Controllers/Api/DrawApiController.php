@@ -31,15 +31,32 @@ class DrawApiController extends Controller
         $this->authorize('view', $draw);
 
         $hub = $this->service->loadRoundRobinHub($draw);
+        $groups = $draw->groups()->with('groupRegistrations.registration.players')
+            ->orderBy('round_robin_phase')->orderBy('qualifying_position')->orderBy('name')->get();
+        $draw->setRelation('groups', $groups);
 
         return response()->json([
             'success'    => true,
             'locked'     => (bool) $draw->locked,
             'published'  => (bool) $draw->published,
             'engineMode' => $draw->engine_mode ?? 'legacy',
+            'scoreRevisions' => app(\App\Services\Draw\IndividualScoreRevision::class)->forDraw($draw),
             'standings'  => $hub['standings'] ?? [],
             'rrFixtures' => $hub['rrFixtures'] ?? [],
             'oops'       => $hub['oops'] ?? [],
+            'groups'     => $groups->map(fn ($group) => [
+                'id' => $group->id, 'name' => $group->presentationName(),
+                'round_robin_phase' => $group->round_robin_phase, 'qualifying_position' => $group->qualifying_position,
+                'registrations' => $group->groupRegistrations->map(fn ($member) => [
+                    'id' => $member->registration_id, 'display_name' => $member->registration?->display_name ?? 'Unknown',
+                    'seed' => $member->seed ?? 9999,
+                ])->values(),
+            ])->values(),
+            'can_assign' => request()->user()->can('modifyGroups', $draw)
+                && \App\Services\Draw\DrawMutationPolicy::for($draw)->canEditAssignments(),
+            'can_generate' => request()->user()->can('generateFixtures', $draw)
+                && \App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures(),
+            'progression_html' => view('backend.draw.roundrobin.progression-status', ['draw' => $draw])->render(),
         ]);
     }
 
@@ -47,6 +64,13 @@ class DrawApiController extends Controller
     // POST /api/draws/{draw}/fixtures/{fixture}/score
     // ─────────────────────────────────────────────
     public function storeScore(Request $request, Draw $draw, Fixture $fixture)
+    {
+        $this->authorize('saveScore', $draw);
+        return app(\App\Services\Draw\IndividualScoreRevision::class)->locked($draw, $fixture,
+            fn ($currentDraw, $currentFixture) => $this->storeScoreLocked($request, $currentDraw, $currentFixture));
+    }
+
+    private function storeScoreLocked(Request $request, Draw $draw, Fixture $fixture)
     {
         $this->authorize('saveScore', $draw);
         if ($request->user()->is_event_score_keeper($draw->event_id)) {
@@ -70,6 +94,8 @@ class DrawApiController extends Controller
         } catch (DrawMutationException $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 403);
         }
+
+        app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixture, $request->input('score_revision'));
 
         if ($request->filled('walkover_winner_id')) {
             $data = $request->validate(['walkover_winner_id' => 'required|integer|min:1', 'sets' => 'prohibited',
@@ -145,7 +171,14 @@ class DrawApiController extends Controller
     // ─────────────────────────────────────────────
     // DELETE /api/draws/{draw}/fixtures/{fixture}/score
     // ─────────────────────────────────────────────
-    public function deleteScore(Draw $draw, Fixture $fixture)
+    public function deleteScore(Request $request, Draw $draw, Fixture $fixture)
+    {
+        $this->authorize('deleteScore', $draw);
+        return app(\App\Services\Draw\IndividualScoreRevision::class)->locked($draw, $fixture,
+            fn ($currentDraw, $currentFixture) => $this->deleteScoreLocked($request, $currentDraw, $currentFixture));
+    }
+
+    private function deleteScoreLocked(Request $request, Draw $draw, Fixture $fixture)
     {
         // Guard before authorize so JSON body is preserved for locked/published draws
         if ($draw->locked) {
@@ -162,6 +195,8 @@ class DrawApiController extends Controller
         if ((int) $fixture->draw_id !== (int) $draw->id) {
             return response()->json(['success' => false, 'message' => 'Fixture does not belong to this draw.'], 422);
         }
+
+        app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixture, $request->input('score_revision'));
 
         // Load results before the transaction clears them
         $fixture->loadMissing('fixtureResults');

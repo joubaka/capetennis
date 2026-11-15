@@ -50,24 +50,37 @@ groups and does not report those changes as like-for-like monthly gains.
 
 ## Playing format
 
-Explicit red, orange, green, mini or short-court formats are excluded. The actual
-scheduled event court is preferred; otherwise a consistent draw allocation can
-establish its ball type. Mixed or unresolved allocations are excluded. Unknown
-court assignment in an event with modified-ball courts is excluded.
+The current `AllAgeRatingModel::VERSION = 6` accepts otherwise eligible played
+singles across ball and court formats. Its `format()` does not exclude matches
+or infer standard format from age, category, missing metadata or court labels.
+These labels do not add strength offsets. Identity, publication, completed-match,
+date and duplicate-source checks still apply. Red and Orange use their separate
+ball-level projections; this does not make their scores interchangeable.
 
-U10-and-younger categories require explicit standard/yellow format evidence.
-Conventional U11+ legacy category labels may assume standard format when metadata
-is absent. A player's age is not used to infer the format of a match. Assumed
-matches are counted and identified in the UI, and evidence confidence is capped
-at Medium. Confidence measures evidence sufficiency, not calibrated accuracy.
+Earlier policies excluded some modified or unresolved formats. Historical
+validation results from those policies are not evidence that version 6 is
+calibrated to competition levels. `AllAgeRatingModelTest` covers the current
+format behavior. Confidence describes evidence sufficiency, not accuracy or
+Wilson/TSA readiness.
+
+Player Plus therefore offers coach-discussion event options rather than assigning
+a Wilson division or TSA recommendation from CTR cutoffs. Red/Orange progression
+targets remain separate. An externally validated competition-level policy is
+required before restoring personalized division recommendations.
 
 ## Integration and saved data
 
 The additive `all_age` snapshot retains legacy `cohorts` for explicit historical
-review. Profiles, current age filters, event membership lists, authorized badges,
+review. Combined-model profiles, event membership lists, authorized badges,
 the integration API and default monthly history use the shared projection.
 Disconnected or missing estimates never fall back silently to an age-relative
-score. The site-wide directory displays coverage and keeps unrated profiles.
+score. Directory presentation follows the distinct ball-level policy below.
+
+The Super Admin directory's ordinary Overall choice is an all-age view of the
+Green/Yellow CTR (`standard`) graph, not this combined model. It displays the
+same scores as its CTR choice and clears age restrictions. Explicit historical
+Overall comparison-group links remain a labelled review of this combined graph.
+See `ball-level-classification.md` for directory filter and navigation rules.
 
 Model/policy hashes invalidate earlier saved calculations. Existing background
 commands rebuild the private current snapshot and monthly history; ordinary page

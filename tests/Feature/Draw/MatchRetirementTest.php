@@ -43,8 +43,8 @@ class MatchRetirementTest extends TestCase
             $loserParent = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'CONS', 'match_status' => 0]);
             $fixture->update(['parent_fixture_id' => $parent->id, 'loser_parent_fixture_id' => $loserParent->id]);
             $payload = ['retired_registration_id' => $fixture->registration1_id, 'sets' => ['6-4', '3-2']];
-            $this->postJson($url, $payload)->assertOk();
-            $this->postJson($url, $payload)->assertOk();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertOk();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertOk();
             $fresh = $fixture->fresh();
             $this->assertTrue($fresh->isRetired());
             $this->assertSame((int) $fixture->registration2_id, app(IndividualMatchOutcomeService::class)->winner($fresh));
@@ -61,14 +61,14 @@ class MatchRetirementTest extends TestCase
     public function test_round_robin_counts_only_completed_sets_and_real_games_with_opponent_match_win(): void
     {
         [$draw, $fixture, $url] = $this->match('RR');
-        $this->postJson($url, ['retired_registration_id' => $fixture->registration1_id, 'sets' => ['6-4', '3-2']])->assertOk();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['retired_registration_id' => $fixture->registration1_id, 'sets' => ['6-4', '3-2']]))->assertOk();
         $rows = collect(app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id])->keyBy('reg_id');
         $this->assertSame(1, $rows[$fixture->registration2_id]['wins']);
         $this->assertSame(1, $rows[$fixture->registration1_id]['sets_won']);
         $this->assertSame(0, $rows[$fixture->registration2_id]['sets_won']);
         $this->assertSame(9, $rows[$fixture->registration1_id]['games_won']);
         $this->assertSame(6, $rows[$fixture->registration2_id]['games_won']);
-        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]))->assertOk();
+        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])->assertOk();
         $this->assertFalse($fixture->fresh()->isRetired());
         $this->assertSame(0, $fixture->fixtureResults()->count());
         $log = DrawAuditLog::where('draw_id', $draw->id)->where('action', 'score_deleted')->firstOrFail();
@@ -79,20 +79,20 @@ class MatchRetirementTest extends TestCase
     {
         [$draw, $fixture, $url] = $this->match();
         $payload = ['retired_registration_id' => $fixture->registration1_id, 'sets' => ['3-2']];
-        $this->postJson($url, $payload + ['walkover_winner_id' => $fixture->registration2_id])->assertUnprocessable();
-        $this->postJson($url, $payload + ['deciding_point_winner_id' => $fixture->registration2_id])->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload + ['walkover_winner_id' => $fixture->registration2_id]))->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload + ['deciding_point_winner_id' => $fixture->registration2_id]))->assertUnprocessable();
         foreach ([[], ['3-2', '1-0'], ['6-4', '6-4'], ['6-4', '9-1']] as $sets) {
-            $this->postJson($url, array_replace($payload, ['sets' => $sets]))->assertUnprocessable();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (array_replace($payload, ['sets' => $sets])))->assertUnprocessable();
         }
-        $this->postJson($url, array_replace($payload, ['retired_registration_id' => Registration::factory()->create()->id]))->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (array_replace($payload, ['retired_registration_id' => Registration::factory()->create()->id])))->assertUnprocessable();
         $other = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
         DB::table('event_admins')->insert(['event_id' => $other->event_id, 'user_id' => auth()->id()]);
-        $this->postJson(route('api.draws.fixtures.score.store', [$other, $fixture]), $payload)->assertUnprocessable();
+        $this->postJson(route('api.draws.fixtures.score.store', [$other, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertUnprocessable();
         $draw->update(['locked' => true]);
-        $this->postJson($url, $payload)->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertForbidden();
         $draw->update(['locked' => false]);
         $this->actingAs(User::factory()->create());
-        $this->postJson($url, $payload)->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertForbidden();
         $this->assertNull($fixture->fresh()->winner_registration);
         $this->assertSame(0, $fixture->fixtureResults()->count());
     }
@@ -100,12 +100,12 @@ class MatchRetirementTest extends TestCase
     public function test_timed_retirement_awards_opponent_points_and_corrections_protect_later_results(): void
     {
         [$draw, $fixture, $url] = $this->match('RR', 'timed');
-        $this->postJson($url, ['retired_registration_id' => $fixture->registration1_id, 'sets' => ['3-1']])->assertOk();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['retired_registration_id' => $fixture->registration1_id, 'sets' => ['3-1']]))->assertOk();
         $rows = collect(app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id])->keyBy('reg_id');
         $this->assertSame(2, $rows[$fixture->registration2_id]['points']);
         $this->assertSame(0, $rows[$fixture->registration1_id]['sets_won']);
         Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'winner_registration' => $fixture->registration2_id, 'match_status' => 1]);
-        $this->postJson($url, ['sets' => ['1-3']])->assertConflict();
-        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]))->assertConflict();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['1-3']]))->assertConflict();
+        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])->assertConflict();
     }
 }

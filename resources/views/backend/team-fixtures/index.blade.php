@@ -135,7 +135,7 @@ $display = $fx->scheduled_at;
   <a href="javascript:void(0);"
      id="edit-btn-{{ $fx->id }}"
      class="btn btn-sm btn-outline-primary edit-score-btn"
-     data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}"
+     data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}" data-score-revision="{{ app(\App\Services\TeamFixtureScoreService::class)->revision($fx) }}"
      data-action="{{ route('backend.team-fixtures.update', $fx->id) }}"
      data-home="{{ e($homeLabel) }}"
      data-away="{{ e($awayLabel) }}"

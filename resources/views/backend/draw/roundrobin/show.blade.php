@@ -16,7 +16,7 @@
   $roundRobinOnly = $draw->isRoundRobinOnly();
   $competitionRulesEditable = auth()->user()->can('editCompetitionRules', $draw);
   $assignmentService = app(\App\Services\Draw\GroupAssignmentService::class);
-  $eligibleRoster = $assignmentService->eligible($draw)->with(['registration.players', 'categoryEvent.category'])->get()->map(fn ($entry) => [
+  $eligibleRoster = $assignmentService->assignable($draw)->with(['registration.players', 'categoryEvent.category'])->get()->map(fn ($entry) => [
     'id' => $entry->registration_id, 'name' => $entry->registration->display_name,
     'category_id' => $entry->category_event_id, 'category' => $entry->categoryEvent->category?->name ?? 'Players',
   ])->unique('id')->values();
@@ -1122,7 +1122,11 @@
 
 <script>
     window.RR_ROSTER = @json($eligibleRoster);
+    window.RR_SCORE_REVISIONS = @json(app(\App\Services\Draw\IndividualScoreRevision::class)->forDraw($draw));
+    window.RR_REBUILD_REVISION = @json(app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw));
     window.RR_ASSIGNMENT_REVISION = @json($assignmentService->revision($draw));
+    window.RR_NEEDS_SELECTION_CONFIRMATION = @json($assignmentService->selectionNeedsConfirmation($draw));
+    window.RR_PENDING_HYBRID = @json($draw->hasHybridRoundRobin());
     window.RR_CAN_ASSIGN = @json(auth()->user()->can('modifyGroups', $draw) && \App\Services\Draw\DrawMutationPolicy::for($draw)->canEditAssignments());
     window.RR_CAN_GENERATE = @json(auth()->user()->can('generateFixtures', $draw) && \App\Services\Draw\DrawMutationPolicy::for($draw)->canGenerateFixtures());
     window.RR_CAN_SCORE = @json(auth()->user()->can('saveScore', $draw));
@@ -1145,6 +1149,7 @@
     window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_SCORE_FORMAT = @json($draw->settings?->score_format);
+    window.RR_SCORE_SET_TYPES = @json($draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format)['set_types'] : []);
     window.RR_MATCH_MINUTES = @json($draw->settings?->match_duration_minutes);
     window.RR_CHANGEOVER_MINUTES = @json($draw->settings?->changeover_minutes);
     window.RR_SCORE_MAX_SETS = {{ optional($draw->settings)->score_format
@@ -1232,6 +1237,7 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
      RR Page Modules
      ═══════════════════════════════════════════════════════════ --}}
 <script src="{{ asset('assets/js/admin/roundrobin/matrix.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/matrix.js')) }}"></script>
+<script src="{{ asset('js/set-score-grid.js') }}?v={{ filemtime(public_path('js/set-score-grid.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/scores.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/scores.js')) }}"></script>
 <script src="{{ asset('assets/js/roundrobin-standings.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-standings.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/standings.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/standings.js')) }}"></script>

@@ -125,7 +125,7 @@ class TeamFullPresetAcceptanceTest extends TestCase
         $outsider = User::factory()->create()->assignRole('admin');
         $foreign = Event::factory()->create(['eventType' => 3]);
         DB::table('event_admins')->insert(['event_id' => $foreign->id, 'user_id' => $outsider->id]);
-        $this->actingAs($outsider)->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 6, 'set1_away' => 2])->assertForbidden();
+        $this->actingAs($outsider)->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]))->assertForbidden();
         $this->putJson(route('backend.team-rules.update', $event), ['rules' => $rules])->assertForbidden();
         $this->actingAs($admin);
         foreach ($fixtures as $fixture) {
@@ -133,7 +133,7 @@ class TeamFullPresetAcceptanceTest extends TestCase
             if (!$fixture->isDoubles()) {
                 $scores += ['set2_home' => 6, 'set2_away' => 3];
             }
-            $this->postJson(route('frontend.fixtures.score.store', $fixture), $scores)->assertOk()->assertJsonPath('winner', 'home');
+            $this->postJson(route('frontend.fixtures.score.store', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores))->assertOk()->assertJsonPath('winner', 'home');
         }
         $this->assertSame(3, $draw->teamTies()->where('status', 'completed')->count());
         $standings = app(TeamStandingsService::class)->forDraw($draw->fresh());
@@ -147,19 +147,19 @@ class TeamFullPresetAcceptanceTest extends TestCase
         $baseline = collect(app(TeamStandingsService::class)->forDraw($draw->fresh()))->keyBy('team_id');
         $homeId = $first->teamTie->home_team_id;
         $awayId = $first->teamTie->away_team_id;
-        $this->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
+        $this->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]))->assertOk()->assertJsonPath('winner', 'away');
         $corrected = collect(app(TeamStandingsService::class)->forDraw($draw->fresh()))->keyBy('team_id');
         $this->assertEquals($baseline[$homeId]['points'] - 5, $corrected[$homeId]['points']);
         $this->assertEquals($baseline[$awayId]['points'] + 5, $corrected[$awayId]['points']);
         $this->assertSame(2, $first->teamResults()->count());
-        $this->delete(route('frontend.fixtures.score.delete', $first))->assertRedirect();
+        $this->delete(route('frontend.fixtures.score.delete', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())])->assertRedirect();
         $this->assertSame(0, $first->teamResults()->count());
         $this->assertSame('published', $first->teamTie()->first()->status);
         $this->assertSame(2, $draw->teamTies()->where('status', 'completed')->count());
         $deleted = collect(app(TeamStandingsService::class)->forDraw($draw->fresh()))->keyBy('team_id');
         $this->assertEquals($baseline[$homeId]['points'] - 8, $deleted[$homeId]['points']);
         $this->assertEquals($baseline[$awayId]['points'], $deleted[$awayId]['points']);
-        $this->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3])->assertOk();
+        $this->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]))->assertOk();
         $this->assertSame(3, $draw->teamTies()->where('status', 'completed')->count());
         $this->assertEquals($baseline->all(), collect(app(TeamStandingsService::class)->forDraw($draw->fresh()))->keyBy('team_id')->all());
         $this->get(route('backend.team-draw.standings', $draw))->assertOk();

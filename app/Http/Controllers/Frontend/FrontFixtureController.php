@@ -360,6 +360,7 @@ class FrontFixtureController extends Controller
     }
 
     $rules['participant_revision'] = 'nullable|string|size:64';
+    $rules['score_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     app(TeamFixtureScoreService::class)->save($fixture, $validated);
@@ -370,6 +371,7 @@ class FrontFixtureController extends Controller
 
       return response()->json([
         'success' => true,
+        'score_revision' => app(TeamFixtureScoreService::class)->revision($fixture->fresh()),
         // this partial should render the scores in <td>
         'html' => view('frontend.fixture.partials.result-col', compact('fixture'))->render(),
         'winner' => $winner,

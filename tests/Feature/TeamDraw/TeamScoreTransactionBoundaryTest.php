@@ -61,7 +61,7 @@ class TeamScoreTransactionBoundaryTest extends TestCase
 
         $this->assertSame(0, DB::transactionLevel());
         try {
-            app(TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 3]);
+            app(TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 3, 'score_revision' => app(TeamFixtureScoreService::class)->revision($fixture->fresh())]);
             $this->fail('The injected query error should propagate.');
         } catch (TeamScoreBusyException|QueryException $exception) {
             $this->assertSame($busy, $exception instanceof TeamScoreBusyException);

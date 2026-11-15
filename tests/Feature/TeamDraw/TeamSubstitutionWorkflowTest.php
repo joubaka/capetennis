@@ -355,14 +355,14 @@ class TeamSubstitutionWorkflowTest extends TestCase
         $scores = ['set1_home' => 6, 'set1_away' => 2];
         $scoreUrl = route('backend.team-fixtures.insertScore', $fixture);
         $startUrl = route('frontend.scoring.team-fixtures.playing', [$this->event, $fixture]);
-        $this->postJson($scoreUrl, $scores)->assertStatus(409);
-        $this->postJson($scoreUrl, $scores + ['participant_revision' => $oldRevision])->assertStatus(409);
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores))->assertStatus(409);
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores + ['participant_revision' => $oldRevision]))->assertStatus(409);
         $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $oldRevision])->assertStatus(409);
         $this->assertDatabaseCount('team_fixture_results', 0);
         $this->assertSame(0, (int) $fixture->fresh()->match_status);
         $revision = app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture->fresh());
         $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $revision])->assertOk();
-        $this->postJson($scoreUrl, $scores + ['participant_revision' => $revision])->assertRedirect();
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores + ['participant_revision' => $revision]))->assertRedirect();
         $this->assertDatabaseCount('team_fixture_results', 1);
     }
 
@@ -382,15 +382,15 @@ class TeamSubstitutionWorkflowTest extends TestCase
         $scores = ['set1_home' => 6, 'set1_away' => 2];
         $scoreUrl = route('backend.team-fixtures.insertScore', $fixture);
         $startUrl = route('frontend.scoring.team-fixtures.playing', [$this->event, $fixture]);
-        $this->postJson($scoreUrl, $scores)->assertStatus(409);
-        $this->postJson($scoreUrl, $scores + ['participant_revision' => $oldRevision])->assertStatus(409);
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores))->assertStatus(409);
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores + ['participant_revision' => $oldRevision]))->assertStatus(409);
         $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $oldRevision])->assertStatus(409);
         $this->assertDatabaseCount('team_substitutions', 0);
         $this->assertDatabaseCount('team_fixture_results', 0);
         $this->assertSame(0, (int) $fixture->fresh()->match_status);
         $revision = $history->revision($fixture->fresh());
         $this->postJson($startUrl, ['playing' => true, 'participant_revision' => $revision])->assertOk();
-        $this->postJson($scoreUrl, $scores + ['participant_revision' => $revision])->assertRedirect();
+        $this->postJson($scoreUrl, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores + ['participant_revision' => $revision]))->assertRedirect();
         $this->assertDatabaseCount('team_fixture_results', 1);
     }
 

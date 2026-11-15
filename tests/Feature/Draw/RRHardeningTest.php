@@ -138,9 +138,7 @@ class RRHardeningTest extends TestCase
         $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
-            route('backend.roundrobin.score.store', $fixture),
-            ['sets' => ['6-4', '6-3']]
-        );
+            route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-4', '6-3']]));
 
         $response->assertOk();
     }
@@ -156,9 +154,7 @@ class RRHardeningTest extends TestCase
         ]);
 
         $this->actingAs($this->adminUser($draw))->post(
-            route('backend.roundrobin.score.store', $fixture),
-            ['sets' => ['6-4', '6-3']]
-        )->assertOk();
+            route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-4', '6-3']]))->assertOk();
 
         $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id]);
     }
@@ -170,9 +166,9 @@ class RRHardeningTest extends TestCase
             'num_sets' => 1,
             'score_format' => TennisScoreFormat::ONE_SET_TO_3,
         ]);
+        $shortFixture = $this->makeRRFixture($shortDraw);
         $this->actingAs($this->adminUser($shortDraw))->postJson(
-            route('backend.roundrobin.score.store', $this->makeRRFixture($shortDraw)),
-            ['sets' => ['3-2']],
+            route('backend.roundrobin.score.store', $shortFixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($shortFixture)->fresh())] + (['sets' => ['3-2']]),
         )->assertOk();
 
         $customDraw = $this->makeDraw(['published' => true]);
@@ -180,9 +176,9 @@ class RRHardeningTest extends TestCase
             'num_sets' => 1,
             'score_format' => TennisScoreFormat::CUSTOM_1,
         ]);
+        $customFixture = $this->makeRRFixture($customDraw);
         $this->actingAs($this->adminUser($customDraw))->postJson(
-            route('backend.roundrobin.score.store', $this->makeRRFixture($customDraw)),
-            ['sets' => ['123-121']],
+            route('backend.roundrobin.score.store', $customFixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($customFixture)->fresh())] + (['sets' => ['123-121']]),
         )->assertOk();
     }
 
@@ -197,9 +193,7 @@ class RRHardeningTest extends TestCase
         $user    = $this->adminUser($draw);
 
         $response = $this->actingAs($user)->post(
-            route('backend.roundrobin.score.store', $fixture),
-            ['sets' => ['6-4']]
-        );
+            route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-4']]));
 
         $response->assertForbidden();
     }
@@ -216,7 +210,7 @@ class RRHardeningTest extends TestCase
 
         $response = $this->actingAs($user)->delete(
             route('backend.roundrobin.score.delete', $fixture)
-        );
+        , ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertForbidden();
     }
@@ -233,7 +227,7 @@ class RRHardeningTest extends TestCase
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.save-groups', $draw),
-            ['groups' => [['group_id' => $group->id, 'registration_ids' => []]]]
+            ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()), 'groups' => [['group_id' => $group->id, 'registration_ids' => []]]]
         );
 
         $response->assertForbidden();
@@ -250,7 +244,7 @@ class RRHardeningTest extends TestCase
 
         $response = $this->actingAs($user)->post(
             route('backend.draw.regenerate-rr', $draw)
-        );
+        , ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + (['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision(($draw)->fresh())]));
 
         $response->assertForbidden();
     }
@@ -311,7 +305,7 @@ class RRHardeningTest extends TestCase
         // Send a completely invalid payload (not an array of groups)
         $response = $this->actingAs($user)->postJson(
             route('backend.draw.save-groups', $draw),
-            ['groups' => 'not-an-array']
+            ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()), 'groups' => 'not-an-array']
         );
 
         // Controller returns 422 for invalid payload
@@ -331,7 +325,7 @@ class RRHardeningTest extends TestCase
 
         $this->actingAs($user)->delete(
             route('backend.roundrobin.score.delete', $fixture)
-        );
+        , ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $this->assertDatabaseHas('draw_audit_logs', [
             'draw_id'    => $draw->id,
@@ -369,7 +363,7 @@ class RRHardeningTest extends TestCase
 
         $this->actingAs($user)->postJson(
             route('backend.draw.save-groups', $draw),
-            ['groups' => [['group_id' => $group->id, 'registration_ids' => []]]]
+            ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()), 'groups' => [['group_id' => $group->id, 'registration_ids' => []]]]
         );
 
         $this->assertDatabaseHas('draw_audit_logs', [
@@ -432,25 +426,23 @@ class RRHardeningTest extends TestCase
         $user = $this->adminUser($draw);
 
         $this->actingAs($user)->postJson(
-            route('backend.roundrobin.score.store', $fixture),
-            ['sets' => ['6-4-1', '-1-4', 'not-a-score']]
-        )->assertStatus(422);
+            route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-4-1', '-1-4', 'not-a-score']]))->assertStatus(422);
 
         $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
     }
 
-    public function test_score_entry_rejects_tied_set_or_match(): void
+    public function test_round_robin_score_entry_accepts_a_valid_draw_without_a_winner(): void
     {
         $draw = $this->makeDraw();
         $fixture = $this->makeRRFixture($draw);
         $user = $this->adminUser($draw);
 
         $this->actingAs($user)->postJson(
-            route('backend.roundrobin.score.store', $fixture),
-            ['sets' => ['6-6']]
-        )->assertStatus(422);
+            route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-6']]))->assertOk();
 
-        $this->assertDatabaseMissing('fixture_results', ['fixture_id' => $fixture->id]);
+        $this->assertDatabaseHas('fixture_results', ['fixture_id' => $fixture->id, 'registration1_score' => 6, 'registration2_score' => 6]);
+        $this->assertNull($fixture->fresh()->winner_registration);
+        $this->assertTrue(app(\App\Services\IndividualMatchOutcomeService::class)->isDraw($fixture->fresh()));
     }
 
     public function test_api_schedule_save_rejects_duplicate_court_slots(): void
@@ -515,7 +507,7 @@ class RRHardeningTest extends TestCase
 
         $response = $this->actingAs($user)->deleteJson(
             route('backend.roundrobin.score.delete', $fixture)
-        );
+        , ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertOk()
             ->assertJsonPath('success', true);
@@ -535,7 +527,7 @@ class RRHardeningTest extends TestCase
         // returns success without performing real rollback logic).
         $response = $this->actingAs($user)->deleteJson(
             route('backend.roundrobin.score.delete', $fixture)
-        );
+        , ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertOk()
             ->assertJsonPath('success', true);

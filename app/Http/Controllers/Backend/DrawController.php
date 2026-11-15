@@ -866,7 +866,9 @@ class DrawController extends Controller
       ->with('players')->get();
 
     DB::transaction(function () use ($activeRegistrations, $draw, $existingRegistrationIds, &$attached) {
-      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
+      app(\App\Services\Draw\GroupAssignmentService::class)->lockAssignmentScope($draw);
+      Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      $this->assertNoRepeatedPlayers($draw, $activeRegistrations->pluck('id')->all());
       foreach ($activeRegistrations as $registration) {
         if (in_array($registration->id, $existingRegistrationIds, true)) {
           continue;
@@ -899,7 +901,9 @@ class DrawController extends Controller
     $skipped = 0;
 
     DB::transaction(function () use ($request, $draw, &$added, &$skipped) {
-      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
+      app(\App\Services\Draw\GroupAssignmentService::class)->lockAssignmentScope($draw);
+      Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      $this->assertNoRepeatedPlayers($draw, $request->player_ids);
       foreach ($request->player_ids as $playerId) {
         $this->assertRegistrationBelongsToDraw($draw, (int) $playerId);
 
@@ -1435,7 +1439,9 @@ public function json(Draw $draw)
   private function attachRegistrations(Draw $draw, array $registrationIds, bool $replace = false): void
   {
     DB::transaction(function () use ($draw, $registrationIds, $replace) {
-      CategoryEvent::query()->whereKey($draw->category_event_id)->lockForUpdate()->first();
+      app(\App\Services\Draw\GroupAssignmentService::class)->lockAssignmentScope($draw);
+      Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+      $this->assertNoRepeatedPlayers($draw, $registrationIds, $replace);
       foreach ($registrationIds as $registrationId) {
         $this->assertRegistrationBelongsToDraw($draw, (int) $registrationId);
         $this->assertNotAssignedToOtherDraw($draw, (int) $registrationId);
@@ -1484,18 +1490,28 @@ public function json(Draw $draw)
 
   private function assertNotAssignedToOtherDraw(Draw $draw, int $registrationId): void
   {
-    $assignedElsewhere = DB::table('draw_registrations as assigned')
-      ->join('draws as other_draw', 'other_draw.id', '=', 'assigned.draw_id')
-      ->where('assigned.registration_id', $registrationId)
-      ->where('other_draw.event_id', $draw->event_id)
-      ->where('other_draw.category_event_id', $draw->category_event_id)
-      ->where('other_draw.id', '!=', $draw->id)
-      ->exists();
+    $assignedElsewhere = $draw->isTeamDraw()
+      ? DB::table('draw_registrations as assigned')->join('draws as other_draw', 'other_draw.id', '=', 'assigned.draw_id')
+        ->where('assigned.registration_id', $registrationId)->where('other_draw.event_id', $draw->event_id)
+        ->where('other_draw.category_event_id', $draw->category_event_id)->where('other_draw.id', '!=', $draw->id)->exists()
+      : app(\App\Services\Draw\GroupAssignmentService::class)->assignedElsewhere($draw)->contains($registrationId);
 
     if ($assignedElsewhere) {
       throw ValidationException::withMessages([
         'player_ids' => "Registration {$registrationId} is already assigned to another draw in this category.",
       ]);
+    }
+  }
+
+  private function assertNoRepeatedPlayers(Draw $draw, array $registrationIds, bool $replace = false): void
+  {
+    if ($draw->isTeamDraw()) return;
+    $ids = collect($registrationIds);
+    if (!$replace) $ids = $ids->merge($draw->registrations()->reorder()->pluck('registrations.id'));
+    $ids = $ids->merge(DB::table('draw_group_registrations')->whereIn('draw_group_id',
+      $draw->groups()->where('round_robin_phase', 1)->select('id'))->pluck('registration_id'));
+    if (app(\App\Services\Draw\GroupAssignmentService::class)->hasRepeatedPlayers($ids)) {
+      throw ValidationException::withMessages(['player_ids' => 'A player can only appear once in this draw, including through different registrations.']);
     }
   }
 

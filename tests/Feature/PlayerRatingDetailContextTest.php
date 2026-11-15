@@ -39,6 +39,7 @@ class PlayerRatingDetailContextTest extends TestCase
             $row = ['id' => 42, 'name' => 'Example Player', 'position' => 1, 'rating' => $data['selectedRating'],
                 'awaiting_calibration' => false, 'age_group' => 'U9', 'gender' => 'Boys', 'ratings' => [$data['selectedRating']]];
             $html = view('backend.player-performance.partials.ctr-directory-row', ['player' => $row, 'ballType' => $stage,
+                'ratingStage' => $stage, 'ratingLabel' => $stage === 'overall' ? 'Recorded combined CTR' : \App\Services\Performance\PlayerRatingProfileDirectory::RATING_LABELS[$stage],
                 'ballLevel' => $stage !== 'overall', 'snapshot' => ['reason' => null], 'unified' => true,
                 'diagnosticOrder' => false, 'ageOrder' => false])->render();
             $this->assertStringContainsString('ball_type='.$stage, $html);

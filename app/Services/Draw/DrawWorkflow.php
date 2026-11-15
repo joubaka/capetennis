@@ -17,7 +17,7 @@ final class DrawWorkflow
         $resultsUrl = route('backend.draw.roundrobin.show', [$draw] + $context + ['view' => 'results']).'#matrix';
         $flexible = $draw->usesFlexibleMonrad();
         $record = $flexible ? $draw->flexibleMonrad : null;
-        $fixtures = $draw->drawFixtures()->with('orderOfPlay')->withCount('fixtureResults')->get();
+        $fixtures = $draw->drawFixtures()->with(['orderOfPlay', 'fixtureResults'])->withCount('fixtureResults')->get();
         $playable = $fixtures->reject(fn ($fixture) => $fixture->winner_registration && (!$fixture->registration1_id || !$fixture->registration2_id));
         $generated = $playable->isNotEmpty();
         $results = $fixtures->sum('fixture_results_count');
@@ -35,8 +35,15 @@ final class DrawWorkflow
             $groups = $draw->groups()->where('round_robin_phase', 1)->with('groupRegistrations')->get();
             $eligible = app(GroupAssignmentService::class)->eligible($draw)->pluck('registration_id')->unique()->sort()->values()->all();
             $assigned = $groups->flatMap(fn ($group) => $group->groupRegistrations->pluck('registration_id'));
+            // Explicit rosters and a current, explicitly saved group selection may
+            // choose part of a category. Unsaved/legacy partial drafts stay incomplete.
+            $roster = $draw->registrations()->reorder()->pluck('registrations.id')->unique()->sort()->values()->all();
+            $expected = $roster ?: (app(GroupAssignmentService::class)->savedSelection($draw) ?? $eligible);
             $playersReady = $groups->isNotEmpty() && $groups->every(fn ($group) => $group->groupRegistrations->count() >= 2)
-                && $assigned->count() === $assigned->unique()->count() && $assigned->unique()->sort()->values()->all() === $eligible;
+                && !array_diff($expected, $eligible)
+                && !array_intersect($expected, app(GroupAssignmentService::class)->assignedElsewhere($draw)->all())
+                && !app(GroupAssignmentService::class)->hasRepeatedPlayers($assigned)
+                && $assigned->count() === $assigned->unique()->count() && $assigned->unique()->sort()->values()->all() === $expected;
             if (app(GroupAssignmentService::class)->fixturesNeedRegeneration($draw)) $generated = false;
         }
         if ($flexible) {
@@ -65,17 +72,33 @@ final class DrawWorkflow
         $rulesReady = $flexible ? $format : ($format && filled($draw->settings?->score_format));
         $scheduleReady = $generated && $scheduled === $playable->count();
         $publicationReady = $scheduleReady && $draw->published && $draw->oop_published && app(DrawSetupGuide::class)->snapshotCurrent($draw);
+        $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
+        foreach ($fixtures as $fixture) $fixture->setRelation('draw', $draw);
         $resultsComplete = $generated && ($flexible ? ($progression['positions_complete'] ?? false)
-            : $playable->every(fn ($fixture) => (bool) $fixture->winner_registration));
-        if ($draw->isTwoStageRoundRobin() && !$draw->hasConfirmedSecondRoundRobin()) $resultsComplete = false;
-        if ($draw->settings?->workflow === 'round_robin_playoffs') $resultsComplete = false; // Qualification can have optional, not-yet-created branches.
+            : $playable->every(fn ($fixture) => $outcomes->winner($fixture) !== null || $outcomes->isDraw($fixture)));
+        if (!$flexible && ($draw->isTwoStageRoundRobin() || $draw->settings?->workflow === 'round_robin_playoffs')) {
+            $placements = app(DrawFinalPlacementService::class)->forDraw($draw);
+            $resultsComplete = $resultsComplete && $placements->isNotEmpty()
+                && $placements->every(fn ($row) => in_array($row['status'], ['resolved', 'bye'], true));
+            if ($draw->isTwoStageRoundRobin()) $resultsComplete = $resultsComplete && $draw->hasConfirmedSecondRoundRobin();
+            else {
+                $enabled = collect($draw->settings?->playoff_config ?? [])->where('enabled', true);
+                $resultsComplete = $resultsComplete && $enabled->isNotEmpty() && $enabled->every(fn ($branch) =>
+                    $fixtures->contains(fn ($fixture) => strtoupper((string) $fixture->stage) === strtoupper((string) ($branch['slug'] ?? 'MAIN'))));
+            }
+        }
+        $scheduleDetail = $scheduled.' / '.$playable->count().' generated matches have saved times. Later stages may still need preparation.';
+        $publicationDetail = !$draw->published ? 'Draw is private.' : (!$draw->oop_published ? 'Draw is visible; match times are private.'
+            : ($publicationReady ? 'Draw is visible and all saved generated match times are published and current.'
+                : 'Draw is visible; review partial or changed published times.'));
+        $setupDetail = $rulesReady ? 'Format and scoring configured.' : 'Confirm format and scoring; legacy scoring is not explicit setup.';
         // Publication remains a separate, explicit review, including saved/public differences.
         $steps = [
-            'setup' => ['label' => 'Setup', 'url' => $format ? $workspace.'#settings' : route('draw.setup.show', $draw), 'complete' => $rulesReady],
+            'setup' => ['label' => 'Setup', 'url' => $format ? $workspace.'#settings' : route('draw.setup.show', $draw), 'complete' => $rulesReady, 'detail' => $setupDetail],
             'players' => ['label' => 'Players', 'url' => $workspace.'#groups', 'complete' => $playersReady],
             'matches' => ['label' => 'Matches', 'url' => $workspace.'#matrix', 'complete' => $generated],
-            'schedule' => ['label' => 'Schedule', 'url' => $workspace.'#schedule', 'complete' => $scheduleReady],
-            'review' => ['label' => 'Review & publish', 'url' => $publicationUrl, 'complete' => $publicationReady],
+            'schedule' => ['label' => 'Schedule', 'url' => $workspace.'#schedule', 'complete' => $scheduleReady, 'detail' => $scheduleDetail],
+            'review' => ['label' => 'Review & publish', 'url' => $publicationUrl, 'complete' => $publicationReady, 'detail' => $publicationDetail],
             'results' => ['label' => 'Results', 'url' => $resultsUrl, 'complete' => $resultsComplete],
         ];
         $next = !$rulesReady ? 'setup' : (!$playersReady ? 'players' : (!$generated ? 'matches' : (!$scheduleReady ? 'schedule' : (!$publicationReady ? 'review' : 'results'))));

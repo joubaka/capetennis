@@ -138,3 +138,9 @@ verified with the active coefficient and current policy/source fingerprints.
 The history builder checked convergence for every monthly comparison component.
 Focused verification passed 31 unit tests / 180 assertions and 12 isolated
 SQLite feature tests / 103 assertions. The event-cap implementation has no diff.
+
+These are historical results for the policy and data used by that run. They do
+not validate subsequent format-policy changes in `AllAgeRatingModel` version 6,
+nor establish Wilson/TSA competition-level thresholds. A new chronological
+validation must identify the exact current policy and source fingerprints before
+its metrics are used to support present-day accuracy claims.

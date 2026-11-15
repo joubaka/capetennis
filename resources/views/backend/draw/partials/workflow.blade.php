@@ -7,11 +7,12 @@
   <div class="d-flex flex-wrap justify-content-between gap-2 mb-2"><strong>{{ $workflow['format'] }}</strong><span class="small text-muted">Save privately · review before publishing</span></div>
   <nav class="draw-journey-steps" aria-label="Draw workflow">
     @foreach($workflow['steps'] as $key => $step)
-      <a href="{{ $step['url'] }}" data-journey-step="{{ $key }}"><span>{{ $loop->iteration }}. {{ $step['label'] }}</span><small>{{ $step['complete'] ? 'Saved' : ($key === 'results' ? 'During play' : 'To do') }}</small></a>
+      <a href="{{ $step['url'] }}" data-journey-step="{{ $key }}"><span>{{ $loop->iteration }}. {{ $step['label'] }}</span><small>{{ $step['complete'] ? ($key === 'results' ? 'Complete' : ($key === 'review' ? 'Published & current' : 'Saved')) : ($key === 'results' ? 'Awaiting results' : 'To do') }}</small></a>
     @endforeach
   </nav>
   <div class="d-flex flex-wrap align-items-center gap-2 mt-3"><a class="btn btn-primary" data-journey-next href="{{ $workflow['steps'][$workflow['next']]['url'] }}">{{ $workflow['resultsComplete'] && $workflow['next'] === 'results' ? 'Results complete · Review final positions' : 'Next required step: '.strtolower($workflow['steps'][$workflow['next']]['label']) }}</a><a href="{{ route('draw.setup.show', [$draw] + $workflow['context']) }}">Change format</a><a href="{{ $workflow['workspace'] }}#notes">Rules &amp; notes</a><span class="small text-muted">{{ $workflow['matches'] }} matches · {{ $workflow['scheduled'] }} with saved times</span></div>
   @if($draw->isTwoStageRoundRobin() || $draw->settings?->workflow === 'round_robin_playoffs')<p class="small mt-2 mb-0">Later matches become available after confirmed results. Review qualification in Results; opening-stage readiness is not final completion.</p>@endif
+  <p class="small text-muted mt-2 mb-0">{{ $workflow['steps']['setup']['detail'] }} {{ $workflow['steps']['schedule']['detail'] }} {{ $workflow['steps']['review']['detail'] }}</p>
   <details class="mt-2"><summary>Edit this draw</summary><div class="mt-2">
     <p class="small mb-2">Open a step to review or edit it. Going back does not reset saved work. Player swaps, changing format, rebuilding matches and moving times are separate operations.</p>
     @foreach($workflow['blockers'] as $blocker)<p class="small mb-1">{{ $blocker }}</p>@endforeach

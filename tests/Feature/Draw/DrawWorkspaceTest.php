@@ -18,16 +18,20 @@ class DrawWorkspaceTest extends TestCase
         foreach (['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'] as $format) {
             [$draw, $category] = $this->workspace();
             $draw->settings()->create(['workflow'=>$format, 'score_format'=>'best_of_3_full']);
-            $players = collect(range(1, 3))->map(fn () => $this->entrant($category));
+            $staged = $format === 'round_robin_round_robin';
+            $players = collect(range(1, $staged ? 4 : 3))->map(fn () => $this->entrant($category));
             $group = $draw->groups()->create(['name'=>'A']);
-            $group->registrations()->sync($players->take(2)->pluck('id')->all());
+            $group->registrations()->sync($players->take($staged ? 1 : 2)->pluck('id')->all());
+            if ($staged) {
+                $draw->groups()->create(['name'=>'B'])->registrations()->sync($players->slice(2)->pluck('id')->all());
+            }
             $presenter = app(\App\Services\Draw\DrawWorkflow::class);
             $this->assertFalse($presenter->forDraw($draw->fresh())['playersReady']);
-            $group->registrations()->sync($players->pluck('id')->all());
+            $group->registrations()->sync(($staged ? $players->take(2) : $players)->pluck('id')->all());
             $this->assertSame('matches', $presenter->forDraw($draw->fresh())['next']);
             app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
             $this->assertSame('schedule', $presenter->forDraw($draw->fresh())['next']);
-            $group->registrations()->detach($players->last()->id);
+            $group->registrations()->detach($players->first()->id);
             $this->assertFalse($presenter->forDraw($draw->fresh())['generated']);
         }
     }
@@ -106,7 +110,7 @@ class DrawWorkspaceTest extends TestCase
         $this->assertFalse($service->fixturesNeedRegeneration($draw));
         if (getenv('DRAW_GUIDE_SNAPSHOT_DIR')) file_put_contents(getenv('DRAW_GUIDE_SNAPSHOT_DIR').'/rr-populated.html', $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->getContent());
         $before = $draw->drawFixtures()->get()->map(fn ($fixture) => $fixture->getAttributes())->all();
-        $service->save($draw, ['groups' => [['group_id' => $group->id, 'registration_ids' => [$players[2]->id, $players[0]->id]]]]);
+        $service->save($draw, ['revision' => $service->revision($draw->fresh()), 'groups' => [['group_id' => $group->id, 'registration_ids' => [$players[2]->id, $players[0]->id]]]]);
         $url = route('draw.guide.show', [$draw->event_id, $draw]);
         $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches')->assertSee('2. Players');
         $this->get($url)->assertOk()->assertSee('Saved groups differ from the generated matches');
@@ -158,10 +162,10 @@ class DrawWorkspaceTest extends TestCase
         $group->registrations()->attach($player->id);
         $foreign = Draw::factory()->create()->groups()->create(['name' => 'A']);
         foreach (['backend.draw.save-groups', 'api.draws.groups.save'] as $route) {
-            $this->postJson(route($route, $draw), ['groups' => [
+            $this->postJson(route($route, $draw), ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + (['groups' => [
                 ['group_id' => $group->id, 'registration_ids' => []],
                 ['group_id' => $foreign->id, 'registration_ids' => [$player->id]],
-            ]])->assertUnprocessable();
+            ]]))->assertUnprocessable();
             $this->assertSame([$player->id], $group->registrations()->pluck('registrations.id')->all());
             $this->assertSame(0, $foreign->registrations()->count());
         }
@@ -179,9 +183,9 @@ class DrawWorkspaceTest extends TestCase
             $this->entrant(CategoryEvent::factory()->create()),
         ];
         foreach ($invalid as $registration) {
-            $this->postJson(route('backend.draw.save-groups', $draw), ['groups' => [
+            $this->postJson(route('backend.draw.save-groups', $draw), ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + (['groups' => [
                 ['group_id' => $group->id, 'registration_ids' => [$registration->id]],
-            ]])->assertUnprocessable();
+            ]]))->assertUnprocessable();
         }
         $this->assertSame(0, $group->registrations()->count());
         $this->getJson(route('backend.draw.available-players', $draw))->assertOk()->assertJsonPath('categories', []);
@@ -193,10 +197,10 @@ class DrawWorkspaceTest extends TestCase
         $a = $draw->groups()->create(['name' => 'A']);
         $b = $draw->groups()->create(['name' => 'B']);
         $id = $this->entrant($category)->id;
-        $this->postJson(route('backend.draw.save-groups', $draw), ['groups' => [
+        $this->postJson(route('backend.draw.save-groups', $draw), ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + (['groups' => [
             ['group_id' => $a->id, 'registration_ids' => [$id]],
             ['group_id' => $b->id, 'registration_ids' => [$id]],
-        ]])->assertUnprocessable();
+        ]]))->assertUnprocessable();
         $this->assertDatabaseCount('draw_group_registrations', 0);
     }
 
@@ -209,13 +213,13 @@ class DrawWorkspaceTest extends TestCase
         $two = $this->entrant($category)->id;
         $payload = ['groups' => [['group_id' => $a->id, 'registration_ids' => [$two, $one]], ['group_id' => $b->id, 'registration_ids' => []]]];
         $url = route('backend.draw.save-groups', $draw);
-        $this->postJson($url, $payload)->assertOk();
-        $this->postJson($url, $payload)->assertOk();
+        $this->postJson($url, ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + ($payload))->assertOk();
+        $this->postJson($url, ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + ($payload))->assertOk();
         $this->assertSame([$two, $one], $a->groupRegistrations()->pluck('registration_id')->all());
         $this->assertDatabaseCount('draw_group_registrations', 2);
         $payload['groups'][0]['registration_ids'] = [];
         $payload['groups'][1]['registration_ids'] = [$one];
-        $this->postJson($url, $payload)->assertOk();
+        $this->postJson($url, ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + ($payload))->assertOk();
         $this->assertDatabaseCount('draw_group_registrations', 1);
         $this->assertSame([$one], $b->groupRegistrations()->pluck('registration_id')->all());
         $this->assertSame(2, CategoryEventRegistration::where('category_event_id', $category->id)->where('payment_status_id', 1)->where('status', 'active')->count());
@@ -241,9 +245,9 @@ class DrawWorkspaceTest extends TestCase
         $group->registrations()->attach($this->entrant($category)->id);
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'draw_group_id' => $group->id]);
         $result = FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
-        $this->postJson(route('backend.draw.save-groups', $draw), ['groups' => [
+        $this->postJson(route('backend.draw.save-groups', $draw), ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())] + (['groups' => [
             ['group_id' => $group->id, 'registration_ids' => []],
-        ]])->assertUnprocessable();
+        ]]))->assertUnprocessable();
         $this->assertSame(1, $group->registrations()->count());
         $this->assertDatabaseHas('fixture_results', ['id' => $result->id]);
     }

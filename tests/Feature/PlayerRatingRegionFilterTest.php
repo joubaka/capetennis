@@ -13,6 +13,7 @@ use Tests\TestCase;
 class PlayerRatingRegionFilterTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\DirectoryCtrSnapshot;
 
     public function test_region_filters_exact_affiliations_before_rank_and_preserves_combined_age_pagination(): void
     {
@@ -61,9 +62,9 @@ class PlayerRatingRegionFilterTest extends TestCase
         $roster($outside, $hostile);
         $components = [];
         foreach ($members as $component => $ids) $components[$component] = ['members' => $ids];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => null, 'built_at' => '2026-11-01', 'snapshot_stale' => false,
-            'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot(['reason' => null, 'built_at' => '2026-11-01', 'snapshot_stale' => false,
+            'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn($ratings);
         $query = '?age_group=u9&age_scope=younger&region='.urlencode($label);
         $first = $this->get($url.$query)->assertOk()->assertDontSee('OutsideBoy Synthetic')->assertDontSee('UnlinkedGirl Synthetic')
             ->assertSee('Recorded team affiliations, including past seasons.')->assertDontSee('Hidden Unrated Region')->assertDontSee('Hidden Orphan Region')

@@ -32,6 +32,12 @@
             }
             directory.replaceWith(next);
             directory = next;
+            // Keep shared/reloaded links in the state the server actually rendered.
+            for (const [parameter, attribute] of [['ball_type', 'ctrBallType'], ['age_group', 'ctrAgeGroup'], ['age_scope', 'ctrAgeScope'], ['sort', 'ctrSort']]) {
+                const value = next.dataset[attribute];
+                if (value) url.searchParams.set(parameter, value);
+                else url.searchParams.delete(parameter);
+            }
             if (push && url.href !== location.href) history.pushState(null, '', url);
             renderedUrl = url;
             status.textContent = 'Player results updated.';

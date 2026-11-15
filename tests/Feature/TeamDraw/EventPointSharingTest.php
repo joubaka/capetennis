@@ -31,7 +31,7 @@ class EventPointSharingTest extends TestCase
                 'round_nr' => 1, 'tie_nr' => 1, 'published_at' => now(), 'status' => TeamTie::STATUS_PUBLISHED]);
             $rubber = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'fixture_type' => 1,
                 'rubber_code' => 'singles', 'rubber_sequence' => 1, 'round_nr' => 1, 'match_nr' => 1]);
-            app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+            app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]));
             $teams->push($source);
         }
         Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);

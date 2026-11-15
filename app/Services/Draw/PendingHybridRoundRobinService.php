@@ -57,6 +57,7 @@ final class PendingHybridRoundRobinService
 
     public function prepare(Draw $draw): Collection
     {
+        HybridRoundRobinService::assertFixtureSchema();
         return DB::transaction(function () use ($draw) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             abort_if($draw->locked, 409, 'Unlock the draw before preparing its hybrid stage.');

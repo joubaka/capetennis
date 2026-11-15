@@ -1,3 +1,4 @@
+@include('backend.team-fixtures.partials.participant-revision-script')
 <?php
 
 use App\Helpers\Fixtures;
@@ -239,7 +240,7 @@ use App\Helpers\Fixtures;
                         </span>
                     @else
 
-                    <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->team1->count() > 1 ? $fixture->team1[0]->getFullNameAttribute().'/'.$fixture->team1[1]->getFullNameAttribute():$fixture->team1[0]->getFullNameAttribute()}} " data-reg2="{{$fixture->team2->count() > 1 ? $fixture->team2[0]->getFullNameAttribute().'/'.$fixture->team2[1]->getFullNameAttribute():$fixture->team2[0]->getFullNameAttribute()}} " class="btn btn-sm btn-secondary insertResult" data-bs-toggle="modal" data-bs-target="#tennisResultModal">Insert Score</button><!-- Modal Trigger -->
+                    <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->team1->count() > 1 ? $fixture->team1[0]->getFullNameAttribute().'/'.$fixture->team1[1]->getFullNameAttribute():$fixture->team1[0]->getFullNameAttribute()}} " data-reg2="{{$fixture->team2->count() > 1 ? $fixture->team2[0]->getFullNameAttribute().'/'.$fixture->team2[1]->getFullNameAttribute():$fixture->team2[0]->getFullNameAttribute()}} " class="btn btn-sm btn-secondary insertResult" data-score-revision="{{ $fixture instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) : app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture) }}" data-bs-toggle="modal" data-bs-target="#tennisResultModal">Insert Score</button><!-- Modal Trigger -->
 
 
                     @endif
@@ -254,6 +255,7 @@ use App\Helpers\Fixtures;
                         <div class="dropdown-menu">
 
                             <form action="{{route('draw.delete.result',$fixture->id)}}" method="post">
+<input type="hidden" name="score_revision" value="{{ app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) }}">
                                 @csrf
                                 <button type="submit" class="dropdown-item" href="javascript:void(0);"><i class="ti ti-trash me-1"></i>Delete</button>
 

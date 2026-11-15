@@ -43,6 +43,23 @@ fields do not substitute for post-move match evidence.
 
 ## Directory-to-detail navigation
 
+The Super Admin directory offers Red CTR, Orange CTR, CTR and Overall (all
+ages). CTR means the saved Green/Yellow `standard` ball graph. Overall is the
+same graph and the same scores across all ages in one list; it clears any
+retained age filter and age-based ordering. Red CTR and Orange CTR each retain
+their separate, age-independent graph. Overall player links use `standard`
+so opening a profile cannot switch the displayed score to the combined model.
+Explicit historical `overall` comparison-group links remain a separately
+labelled recorded combined-graph review. This display policy does not change
+the combined model used elsewhere or recalculate saved evidence.
+
+Region choices remain stable across ball-level changes and represent recorded
+affiliations of valid rated players. Selecting a region without players at the
+new level returns an empty list. Arbitrary and unrated-only region values remain
+invalid. Name and evidence filters preserve existing list positions; age, gender
+and region select the comparison population before ranking. New filter
+submissions reset pagination, while pagination preserves the active filters.
+
 The Super Admin rating directory must carry its resolved `ball_type` when
 opening a player detail. Red, Orange and Green/Yellow details use the selected
 saved ball rating; a missing rating must not fall back to Overall. Explicit

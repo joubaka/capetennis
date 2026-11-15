@@ -483,7 +483,7 @@
               <div class="match-actions">
                 @unless($hasScore)
                 <button type="button" class="btn btn-sm {{ $isPlaying ? 'btn-outline-secondary' : 'btn-outline-warning' }} score-action js-toggle-match"
-                        data-playing-url="{{ $playingUrl }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}"
+                        data-playing-url="{{ $playingUrl }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}" data-score-revision="{{ $engine === 'team' ? app(\App\Services\TeamFixtureScoreService::class)->revision($match) : '' }}"
                         data-playing="{{ $isPlaying ? 'false' : 'true' }}"
                         aria-label="Mark {{ $home }} versus {{ $away }} as {{ $isPlaying ? 'off' : 'on' }} court">
                   {{ $isPlaying ? 'Mark off court' : 'Mark as on court' }}
@@ -663,6 +663,7 @@ document.addEventListener('DOMContentLoaded', function () {
     walkoverWinner.disabled = !walkover;
     walkoverWinner.required = walkover;
     const grid = modalElement.querySelector('[data-set-score-grid]');
+    CTSetScoreGrid.setCompletionEnabled(grid, !walkover && !retired);
     grid.hidden = walkover;
     grid.querySelectorAll('[data-score-row]').forEach(row => {
       row.querySelectorAll('input').forEach(input => { input.disabled = walkover || row.hidden; });
@@ -813,7 +814,8 @@ document.addEventListener('DOMContentLoaded', function () {
       scoreGuidance.dataset.played = scoreGuidance.textContent;
       const scores = JSON.parse(active.scores || '[]');
       CTSetScoreGrid.populate(modalElement.querySelector('[data-set-score-grid]'), {
-        names: [active.home, active.away], maxSets: active.scoreFormat === 'timed' ? 1 : (active.numSets || 3), scores: scores
+        names: [active.home, active.away], maxSets: active.scoreFormat === 'timed' ? 1 : (active.numSets || 3), scores: scores,
+        setTypes: JSON.parse(active.setTypes || '[]')
       });
       modalElement.querySelectorAll('[data-score-row]').forEach(function (row, index) {
         row.querySelector('span').textContent = active.scoreFormat === 'timed' ? 'Games' : 'Set ' + (index + 1);
@@ -930,14 +932,14 @@ document.addEventListener('DOMContentLoaded', function () {
           await request(active.store, 'PUT', {...scorePayload, revision: Number(active.revision), reset_dependents: true});
         }
       } else if (active.engine === 'team') {
-        const teamPayload = {participant_revision: active.participantRevision};
+        const teamPayload = {participant_revision: active.participantRevision, score_revision: active.scoreRevision};
         sets.forEach(function (set, index) {
           teamPayload['set' + (index + 1) + '_home'] = set[0];
           teamPayload['set' + (index + 1) + '_away'] = set[1];
         });
         await request(active.store, 'POST', teamPayload);
       } else {
-        await request(active.store, 'POST', walkover ? scorePayload : {...scorePayload, sets: sets.map(set => set[0] + '-' + set[1])});
+        await request(active.store, 'POST', walkover ? {...scorePayload, score_revision: active.scoreRevision} : {...scorePayload, score_revision: active.scoreRevision, sets: sets.map(set => set[0] + '-' + set[1])});
       }
       scoreSaved = true;
       const modalHidden = modalElement.classList.contains('show')
@@ -967,7 +969,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (active.engine === 'flexible') {
         await request(active.delete, 'PUT', {sets: null, revision: Number(active.revision)});
       } else {
-        await request(active.delete, 'DELETE');
+        await request(active.delete, 'DELETE', {score_revision: active.scoreRevision});
       }
       modal.hide();
       active = null;

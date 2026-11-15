@@ -11,7 +11,7 @@ An older, unhanded checkout below R5.00 cannot start a new PayFast handoff. Its 
 - Saved Cape Tennis Rating (CTR), with provisional and unavailable states preserved.
 - Twelve-month progress history and the recorded evidence behind eligible estimates.
 - Eligible published-series comparisons and CTR Top 10 lists, including available comparable ratings for eligible opponents from published fixtures or saved meetings. This does not grant access to the opponent's private history or guarantee a match outcome.
-- Tennis pathway guidance for primary-school and beginner players, from Red through Orange, Green and Yellow ball to exploring TSA events: ball-level progress, configured benchmarks and suggested next steps when suitable evidence exists. Guidance does not promote players or guarantee selection; development decisions remain a discussion with a coach.
+- Tennis pathway guidance for primary-school and beginner players, from Red through Orange, Green and Yellow ball to exploring TSA events: ball-level progress, Red/Orange benchmarks and event options to discuss with a coach. CTR does not establish a Wilson division or TSA readiness; personalized competition recommendations remain withheld until externally validated thresholds have a reviewed policy. Guidance does not promote players or guarantee selection.
 
 Marketing should lead with the player's questions: “What is my next tournament?”, “How am I progressing?”, “What is my rating?” and “How strong is my next opponent?”. The tournament question describes help choosing a suitable type or level of event, not a personalised calendar or a guaranteed next dated fixture. Event dates, availability and entry requirements must still be checked with the organiser. These are offer-positioning decisions; they do not expand rating access or eligibility.
 
@@ -49,7 +49,7 @@ Reconciliation alerts use the configured `admin_notification_email` only if vali
 
 `--order=NUMERIC_ID` selects a single existing order for reviewed notification repair; supply the numeric ID without the `P` prefix. Check managed-mail evidence before any repair. A corrected invalid contact may be repaired. An explicit order repair can also regenerate changed content only when every prior attempt for that term/evidence set is marked skipped before transport, with no sent or accepted evidence. Sent, actively sending, queued, failed and ambiguous attempts are never blindly recreated. Failed or ambiguous transport outcomes require the existing reviewed mail-log procedure and provider evidence. New receipt sets remain separate alert campaigns.
 
-The schedule declares a daily `08:30 Africa/Johannesburg` notifications pass. Source configuration is not evidence that production cron or queue workers are running. Do not run the general scheduler locally against real application data as a test of this change.
+The schedule declares a daily `08:32 Africa/Johannesburg` notifications pass, aligned with the documented host cron cadence at `:02, :07, ...`. Source configuration is not evidence that production cron or queue workers are running. Do not run the general scheduler locally against real application data as a test of this change.
 
 ## Payment reconciliation procedure
 
@@ -76,7 +76,7 @@ Local implementation does not authorise deployment, production migration executi
 - [ ] Synthetic browser journey verified at narrow phone, wide phone, tablet and desktop widths, including empty, unavailable-data, paused-sales, covered and pending-payment states.
 - [ ] Exact Plus migrations `database/migrations/2026_11_01_140000_create_player_plus_memberships.php` and `database/migrations/2026_11_01_180000_add_player_plus_monthly_subscriptions.php` are allowlisted and their target-environment states are independently verified before exposing the applicable plans. Monthly offers remain off until the subscription migration and PayFast recurring-account capability are verified. Optional pathway/data features use their separately reviewed migration requirements.
 - [ ] Target environment has a usable current rating snapshot and saved twelve-month history, with representative data coverage reviewed. A purchase must not be offered as guaranteeing a rating.
-- [ ] Production cron, midnight/pending ability refresh, `03:00 SAST` history refresh, `08:30 SAST` membership notifications, queue health and refresh failures are independently verified.
+- [ ] Production cron and the ordered `03:02 SAST` Plus calculation pipeline, overnight continuation/completion, `08:32 SAST` membership notifications, queue health and refresh failures are independently verified. See `docs/player-plus-nightly-refresh.md`; the nightly pipeline replaces independent midnight/daytime automatic ability fits.
 - [ ] PayFast merchant/callback configuration and a controlled end-to-end payment/expiry/reconciliation smoke test are separately authorised and verified. Tests use synthetic callbacks and establish no live-provider evidence.
 - [ ] Valid monitored operator contact, reconciliation ownership, managed-mail review/retry procedure and financial remedy process are confirmed by the launch owner.
 - [ ] Customer purchase disclosures and support response process are approved; annual price and sales availability are consciously selected by a super-user.

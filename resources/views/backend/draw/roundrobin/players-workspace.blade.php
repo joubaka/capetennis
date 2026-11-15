@@ -1,6 +1,6 @@
 <div class="tab-pane fade" id="groups-pane" role="tabpanel" aria-labelledby="groups-tab">
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-    <span class="small text-muted">Step 2 of 5 · Players &amp; Positions · {{ $draw->roundRobinLabel() }}</span>
+    <span class="small text-muted">Step 2 of 6 · Players &amp; Positions · {{ $draw->roundRobinLabel() }}</span>
     <a href="{{ route('draw.setup.show', $draw) }}" class="btn btn-sm btn-outline-secondary">Draw format</a>
   </div>
   <p class="mb-3" id="rr-category-scope"><strong>Player category:</strong> <span id="rr-category-name">{{ $draw->categoryEvent?->category?->name ?? 'All event categories' }}</span></p>
@@ -8,9 +8,9 @@
     @csrf
     <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || ($draw->isTwoStageRoundRobin() && $draw->groups->contains('round_robin_phase', 2)) || $draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'))>
       <legend class="h6">How should these groups compete?</legend>
-      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_playoffs" @checked(!$draw->isRoundRobinOnly())><span class="form-check-label">One category competition — groups feed shared playoffs for one overall winner.</span></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_playoffs" @checked(!$draw->isRoundRobinOnly() && !$draw->isTwoStageRoundRobin())><span class="form-check-label">One category competition — groups feed shared playoffs for one overall winner.</span></label>
       <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin" @checked($draw->settings?->workflow === 'round_robin')><span class="form-check-label">Separate group competitions — each group has its own winner in this category, with no cross-group playoffs.</span></label>
-      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_round_robin" @checked($draw->isTwoStageRoundRobin())><span class="form-check-label">Round robin → round robin — equal finishing positions enter new groups for final positions.</span></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_round_robin" @checked($draw->isTwoStageRoundRobin())><span class="form-check-label">@if($draw->hasHybridRoundRobin())Round robin → top-four playoffs &amp; lower round robin — top two from each group enter semifinals; the remaining players enter one round robin with carried results.@else Round robin → round robin — equal finishing positions enter new groups for final positions.@endif</span></label>
       <p class="small text-muted">These options keep the same event, category and entries. Complete the group matches and resolve tied qualifying positions before progressing.</p>
       <button class="btn btn-sm btn-outline-primary" type="submit">Save competition option</button>
     </fieldset>
@@ -28,7 +28,7 @@
       <label for="groups-tab-boxes" class="mb-0">Number of groups</label>
       <div class="d-flex gap-2">
       <select id="groups-tab-boxes" class="form-select" aria-label="Number of groups">
-        @foreach(range(1, max(8, $groups->count())) as $n)
+        @foreach($draw->hasHybridRoundRobin() ? [2] : range($draw->isTwoStageRoundRobin() ? 2 : 1, max(8, $groups->count())) as $n)
           <option value="{{ $n }}" @selected($n === $currentBoxes)>{{ $n }}</option>
         @endforeach
       </select>
@@ -44,6 +44,8 @@
   <div class="alert alert-warning rr-locked-overlay {{ ($draw->locked || $draw->published) ? '' : 'd-none' }}">Assignments are read-only while the draw is published or locked.</div>
   <h5 class="mt-4 mb-1">2. Add players</h5>
   <p class="text-muted mb-3" id="rr-placement-next-step">{{ $groups->isEmpty() ? 'Create your groups first. Then choose players and add them to a group.' : 'Choose players, add them to a group, then save assignments.' }}</p>
+  <p class="small text-muted">Saving assignments selects this draw's players. Other category entrants remain available for separate draws.</p>
+  <p class="small text-muted">Players already assigned to another draw in this category are unavailable here. Remove their saved assignment there before moving them.</p>
   @if(\App\Services\Performance\PlayerRatingBadgeService::visible())
     <p class="small text-muted mb-3">Available ratings appear beside player names to help with seeding.</p>
   @endif

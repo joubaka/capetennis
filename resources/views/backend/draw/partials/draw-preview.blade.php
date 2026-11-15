@@ -1,3 +1,4 @@
+@include('backend.team-fixtures.partials.participant-revision-script')
     @php
         $bracketColors = [
             1 => 'table-primary',
@@ -87,7 +88,7 @@
                                     @else
                                         <span class="text-muted">
 
-                                            <button class="btn btn-sm btn-outline-primary set-result-btn"
+                                            <button class="btn btn-sm btn-outline-primary set-result-btn" data-score-revision="{{ app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($match) }}"
                                                 data-bs-toggle="modal" data-bs-target="#tennisResultModal"
                                                 data-fixture-id="{{ $match->id }}"
                                                 data-player1="{{ $player1 }}" data-player2="{{ $player2 }}">

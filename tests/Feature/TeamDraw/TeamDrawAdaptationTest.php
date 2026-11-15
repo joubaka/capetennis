@@ -359,8 +359,8 @@ class TeamDrawAdaptationTest extends TestCase
         $service->adaptDraw($draw, null, true, true);
         $tie = $draw->teamTies()->firstOrFail();
         $fixture = $tie->rubbers()->firstOrFail();
-        app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3,
-            'participant_revision' => app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture)]);
+        app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3,
+            'participant_revision' => app(\App\Services\TeamParticipantHistoryService::class)->revision($fixture)]));
         $before = app(\App\Services\TeamStandingsService::class)->forDraw($draw->fresh());
         $resultCount = $fixture->teamResults()->count();
         $this->assertTrue(app(\App\Services\TeamStandingsService::class)->tieOutcome($tie->fresh())['complete']);

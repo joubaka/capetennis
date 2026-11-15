@@ -402,6 +402,21 @@ class RoundRobinController extends Controller
   // ============================================================
     public function saveScore(Request $request, $id)
     {
+      $fixture = Fixture::findOrFail($id);
+      return app(\App\Services\Draw\IndividualScoreRevision::class)->locked($fixture->draw, $fixture,
+        fn ($draw) => $this->withScoreRevisions($this->saveScoreLocked($request, $id), $draw, $id));
+    }
+
+    private function withScoreRevisions($response, Draw $draw, $id)
+    {
+      if ($response->isSuccessful()) $response->setData($response->getData(true) + [
+        'scoreRevisions' => [$id => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(Fixture::findOrFail($id))],
+      ]);
+      return $response;
+    }
+
+    private function saveScoreLocked(Request $request, $id)
+    {
       $fixture = Fixture::with(['registration1', 'registration2'])
         ->findOrFail($id);
 
@@ -424,6 +439,8 @@ class RoundRobinController extends Controller
       if ((int) $fixture->draw_id !== (int) $draw->id) {
         return response()->json(['success' => false, 'message' => 'Fixture does not belong to this draw.'], 422);
       }
+
+      app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixture, $request->input('score_revision'));
 
       // ------------------------
       // PARSE SETS
@@ -511,7 +528,14 @@ class RoundRobinController extends Controller
   // ============================================================
   // DELETE SCORE
   // ============================================================
-  public function deleteScore($id)
+  public function deleteScore(Request $request, $id)
+  {
+    $fixture = Fixture::findOrFail($id);
+    return app(\App\Services\Draw\IndividualScoreRevision::class)->locked($fixture->draw, $fixture,
+      fn ($draw) => $this->withScoreRevisions($this->deleteScoreLocked($request, $id), $draw, $id));
+  }
+
+  private function deleteScoreLocked(Request $request, $id)
   {
     $fixture = Fixture::with(['fixtureResults'])->findOrFail($id);
 
@@ -533,6 +557,8 @@ class RoundRobinController extends Controller
       $venueId = $fixture->orderOfPlay?->venue_id;
       abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
     }
+
+    app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixture, $request->input('score_revision'));
 
     app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($fixture);
 
@@ -1877,7 +1903,7 @@ class RoundRobinController extends Controller
 
       try {
         $draw = app(\App\Services\Draw\RoundRobinRebuildService::class)->rebuild(
-          $draw, $request->filled('revision') ? $request->string('revision')->toString() : null
+          $draw, $request->input('revision'), $request->input('rebuild_revision')
         );
 
         // Reload to get count
@@ -1893,6 +1919,7 @@ class RoundRobinController extends Controller
             'success' => true,
             'message' => 'Round robin fixtures regenerated successfully.',
             'fixture_count' => $draw->drawFixtures->count(),
+            'rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw),
           ]);
         }
 
@@ -1908,7 +1935,7 @@ class RoundRobinController extends Controller
           return response()->json([
             'success' => false,
             'message' => $e->getMessage(),
-          ], 422);
+          ], $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $e->getStatusCode() : 422);
         }
 
         return back()->with('error', 'Failed to regenerate fixtures: ' . $e->getMessage());
@@ -1941,7 +1968,10 @@ class RoundRobinController extends Controller
         ])->values(),
       ]);
 
-    return response()->json(['groups' => $groups, 'revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw)]);
+    $assignments = app(\App\Services\Draw\GroupAssignmentService::class);
+    return response()->json(['groups' => $groups, 'revision' => $assignments->revision($draw),
+      'needs_selection_confirmation' => $assignments->selectionNeedsConfirmation($draw),
+      'rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw)]);
   }
 
   /**
@@ -1957,7 +1987,7 @@ class RoundRobinController extends Controller
       ->flatMap(fn($g) => $g->registrations->pluck('id'))
       ->unique();
 
-    $eligible = app(\App\Services\Draw\GroupAssignmentService::class)->eligible($draw)
+    $eligible = app(\App\Services\Draw\GroupAssignmentService::class)->assignable($draw)
       ->with(['categoryEvent.category', 'registration.players'])->get();
     $result = $eligible->groupBy('category_event_id')->map(function ($rows, $categoryId) use ($assignedRegIds) {
       $players = $rows->whereNotIn('registration_id', $assignedRegIds)->unique('registration_id')->map(fn ($row) => [

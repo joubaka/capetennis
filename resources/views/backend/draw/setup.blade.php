@@ -72,10 +72,11 @@
                 <small class="d-block mt-2">
                   @if($value === 'round_robin') Best when every player should meet everyone in their group.
                   @elseif($value === 'round_robin_playoffs') Best for a full tournament with group play and a championship finish.
+                  @elseif($value === 'round_robin_round_robin') Best for a second group stage, or top-four playoffs with a lower round robin.
                   @elseif($value === 'playoffs') Fastest format, but eliminated players do not continue.
                   @elseif($value === 'monrad') Best when finishing positions and additional matches matter.
                   @elseif($value === 'feed_in_monrad') Use crossed feed-in paths and placement matches, as in the Interpro trials draws.
-                  @else Use when seeded players must enter in different rounds.
+                  @elseif($value === 'custom_monrad') Use when seeded players must enter in different rounds.
                   @endif
                 </small>
               </span>
@@ -150,6 +151,8 @@
     const staged = workflow === 'round_robin_round_robin';
     secondStage.hidden = !staged;
     secondFormat.disabled = !staged || groups.hidden;
+    [...count.options].forEach(option => { option.disabled = staged && Number(option.value) < 2; });
+    if (staged && Number(count.value) < 2) count.value = '2';
     if (staged && secondFormat.value === 'top_two_playoffs_remainder_rr') count.value = '2';
     const n = Number(count.value);
     document.getElementById('format-playoff-suggestion').textContent = workflow === 'round_robin_playoffs'

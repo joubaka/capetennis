@@ -119,10 +119,10 @@ class TeamFixtureIntegrityRegressionTest extends TestCase
 
         $this->actingAs($this->superUser)
             ->withHeader('X-Requested-With', 'XMLHttpRequest')
-            ->postJson(route('backend.team-fixtures.insertScore', $fixture), [
+            ->postJson(route('backend.team-fixtures.insertScore', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ([
                 'set1_home' => 6,
                 'set1_away' => 3,
-            ])->assertOk();
+            ]))->assertOk();
 
         $this->assertSame(1, DB::table('team_fixture_results')
             ->where('team_fixture_id', $fixture->id)->where('set_nr', 1)->count());
@@ -158,8 +158,8 @@ class TeamFixtureIntegrityRegressionTest extends TestCase
         $this->assertDatabaseMissing('team_fixture_results', [
             'team_fixture_id' => $fixture->id,
         ]);
-        $this->postJson(route('draw.insert.result'), $payload)->assertOk();
-        $this->postJson(route('draw.insert.result'), $payload)->assertOk();
+        $this->postJson(route('draw.insert.result'), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($payload))->assertOk();
+        $this->postJson(route('draw.insert.result'), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($payload))->assertOk();
 
         $this->assertSame(2, DB::table('team_fixture_results')
             ->where('team_fixture_id', $fixture->id)->count());
@@ -177,9 +177,9 @@ class TeamFixtureIntegrityRegressionTest extends TestCase
         ]);
 
         $this->actingAs($this->superUser)
-            ->postJson(route('backend.team-fixtures.insertScore', $fixture), [
+            ->postJson(route('backend.team-fixtures.insertScore', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ([
                 'set1_home' => 6,
-            ])->assertUnprocessable();
+            ]))->assertUnprocessable();
 
         $this->assertDatabaseMissing('team_fixture_results', [
             'team_fixture_id' => $fixture->id,

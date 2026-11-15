@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Services\Performance\{PlayerAbilityRefreshState, PlayerRatingRefreshDiagnostics};
+use App\Services\Performance\{PlayerAbilityRefreshState, PlayerPlusDerivedRefreshState, PlayerRatingRefreshDiagnostics};
 use Illuminate\Support\Facades\{Artisan, Cache};
 
 /** Runs the canonical, independently locked snapshot builder outside page rendering. */
@@ -35,13 +35,18 @@ class RefreshPlayerRatings
             PlayerRatingRefreshDiagnostics::write($reference, 'job', 'starting');
             $requested->release();
             set_time_limit(0);
-            $exitCode = Artisan::call('player-ability:refresh', ['--reference' => $reference]);
+            $exitCode = Artisan::call('player-plus:refresh-derived', ['--reference' => $reference]);
             PlayerRatingRefreshDiagnostics::write($reference, 'job', 'command_exited', null, $exitCode);
+            $derived = app(PlayerPlusDerivedRefreshState::class)->read();
+            $sameDay = ($derived['cycle_date'] ?? null) === now('Africa/Johannesburg')->toDateString();
             if ($exitCode !== 0) {
+                if ($sameDay && $derived['status'] === 'complete_with_errors') {
+                    PlayerRatingRefreshDiagnostics::write($reference, 'job', 'base_completed_with_artifact_errors'); return 1;
+                }
                 app(PlayerAbilityRefreshState::class)->failed();
                 return 1;
             }
-            PlayerRatingRefreshDiagnostics::write($reference, 'job', 'completed');
+            PlayerRatingRefreshDiagnostics::write($reference, 'job', $sameDay && $derived['status'] === 'pending' ? 'pipeline_pending' : 'completed');
             return 0;
         } catch (\Throwable $error) {
             PlayerRatingRefreshDiagnostics::write($reference, 'job', 'failed', $error);

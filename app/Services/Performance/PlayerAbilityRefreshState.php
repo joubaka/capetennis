@@ -41,7 +41,7 @@ class PlayerAbilityRefreshState
             if ($query->connection->transactionLevel() > 0) { $query->connection->afterCommit($mark); }
             else { $mark(); }
         } catch (\Throwable $error) {
-            // The minute refresh also fingerprints sources, so marker failures
+            // Nightly and explicit manual refreshes also fingerprint sources, so marker failures
             // cannot prevent score entry or silently lose the eventual refresh.
             Log::warning('Ability refresh marker unavailable.', ['exception_type' => get_class($error)]);
         }

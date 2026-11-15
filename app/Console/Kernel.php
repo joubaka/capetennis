@@ -14,14 +14,13 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('assistant:prune --apply --limit=1000')->hourly()->withoutOverlapping();
         // Hostking invokes schedule:run at :02, :07, :12, and every five minutes thereafter.
-        $schedule->command('player-ability:refresh')->dailyAt('00:02')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
-        $schedule->command('player-rating-history:refresh')->dailyAt('03:02')->timezone('Africa/Johannesburg')->withoutOverlapping(120)->runInBackground();
-        $schedule->command('player-plus:notifications --apply')->dailyAt('08:30')->timezone('Africa/Johannesburg')->withoutOverlapping();
+        $schedule->command('player-plus:refresh-derived --scheduled')->dailyAt('03:02')->timezone('Africa/Johannesburg')->withoutOverlapping(480)->runInBackground();
+        $schedule->command('player-plus:refresh-derived --resume --scheduled')->everyMinute()->between('03:07', '06:57')->timezone('Africa/Johannesburg')->withoutOverlapping(480)->runInBackground();
+        $schedule->command('player-plus:notifications --apply')->dailyAt('08:32')->timezone('Africa/Johannesburg')->withoutOverlapping();
         $schedule->command('player-plus:publication-notifications')->everyMinute()->withoutOverlapping();
         $schedule->command('teamsheet:sync-tennis')->hourly()->withoutOverlapping(30)->runInBackground()
             ->when(fn () => app(\App\Services\Performance\TeamSheetTennisImportService::class)->origin() !== null
                 && app(\App\Services\Performance\TeamSheetTennisImportService::class)->ready());
-        $schedule->command('player-ability:refresh --pending')->everyMinute()->withoutOverlapping(120)->runInBackground();
 
         $schedule->command('mail:record-event-issues')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('registrations:expire-checkouts --apply')->everyMinute()->withoutOverlapping();

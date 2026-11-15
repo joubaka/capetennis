@@ -4,6 +4,52 @@
   else root.CTSetScoreGrid = api;
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
+  const bindings = new WeakMap();
+  function opponentScore(type, value) {
+    if (!/^\d+$/.test(String(value))) return null;
+    const score = Number(value);
+    if (!Number.isSafeInteger(score)) return null;
+    if (/^target[3-6]$/.test(type)) {
+      const target = Number(type.slice(6));
+      return score < target ? target : null;
+    }
+    if (type === 'match_tiebreak') return score <= 8 ? 10 : (score === 9 ? 11 : null);
+    const target = type === 'full' ? 6 : (type === 'pro8' ? 8 : null);
+    return target === null ? null : (score <= target - 2 ? target : (score === target - 1 ? target + 1 : null));
+  }
+  function bind(root, options = {}) {
+    const previous = bindings.get(root);
+    if (previous) root.removeEventListener('input', previous.listener);
+    const state = {enabled: true, generated: new WeakMap()};
+    state.listener = event => {
+      const rows = [...root.querySelectorAll(options.rowSelector || '[data-score-row]')];
+      const row = rows.find(row => [...row.querySelectorAll('input')].includes(event.target));
+      if (!row || row.hidden || event.target.disabled) return;
+      const inputs = [...row.querySelectorAll('input')];
+      if (inputs.length !== 2) return;
+      const source = event.target;
+      const other = inputs.find(input => input !== source);
+      // Touching a suggestion makes it a manual score, even if its value is unchanged.
+      state.generated.delete(source);
+      const generated = state.generated.get(other);
+      if (generated && String(other.value) !== generated) state.generated.delete(other);
+      if (!state.enabled || other.disabled || (String(other.value) !== '' && !state.generated.has(other))) return;
+      const suggestion = opponentScore(options.setTypes?.[rows.indexOf(row)], source.value);
+      if (suggestion === null) {
+        if (state.generated.has(other)) other.value = '';
+        state.generated.delete(other);
+      } else {
+        other.value = String(suggestion);
+        state.generated.set(other, String(suggestion));
+      }
+    };
+    root.addEventListener('input', state.listener);
+    bindings.set(root, state);
+  }
+  function setCompletionEnabled(root, enabled) {
+    const state = bindings.get(root);
+    if (state) state.enabled = enabled;
+  }
   function populate(root, options) {
     const maximum = Math.max(1, Math.min(5, Number(options.maxSets) || 1));
     root.querySelector('[data-score-home-label]').textContent = options.names[0];
@@ -15,6 +61,7 @@
         input.value = !row.hidden && options.scores?.[index]?.[side] !== undefined ? options.scores[index][side] : '';
       });
     });
+    bind(root, options);
   }
   function read(root) {
     const sets = [];
@@ -35,5 +82,5 @@
     if (!sets.length) throw Error('Enter at least one completed set.');
     return sets;
   }
-  return {populate, read};
+  return {populate, read, bind, setCompletionEnabled, opponentScore};
 });

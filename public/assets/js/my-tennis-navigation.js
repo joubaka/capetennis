@@ -293,6 +293,13 @@
     if (renderedUrl !== pageKey(url) || pending) open(url, {back: true});
   });
 
+  // A rating fragment changes the current workspace URL without replacing it.
+  // Keep Back/Forward and the warmed tab cache aligned with that rendered state.
+  document.addEventListener('my-tennis:rating-navigated', () => {
+    renderedUrl = pageKey(new URL(window.location.href));
+    clearCache();
+  });
+
   function disableCache() {
     warmDisabled = true;
     clearCache();

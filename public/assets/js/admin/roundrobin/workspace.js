@@ -60,9 +60,23 @@
   }
   async function refreshHub() {
     const hub = await AdminApi.get(AdminRoutes.get('hub'));
+    if (Array.isArray(hub.groups)) {
+      root.RR_GROUPS = hub.groups;
+      AdminState.setGroups(hub.groups);
+    }
+    root.RR_SCORE_REVISIONS = hub.scoreRevisions || {};
     AdminState.setFixtures(hub.rrFixtures || {});
     AdminState.setOop(hub.oops || []);
     AdminState.setStandings(hub.standings || {});
+    if (typeof hub.can_assign === 'boolean') {
+      root.RR_CAN_ASSIGN = hub.can_assign;
+    }
+    if (typeof hub.can_generate === 'boolean') root.RR_CAN_GENERATE = hub.can_generate;
+    root.RRGroups?.applyLockUI();
+    if (typeof hub.progression_html === 'string') {
+      const current = document.querySelector('[data-rr-progression]');
+      if (current) current.outerHTML = hub.progression_html;
+    }
     updateSummary();
     return hub;
   }

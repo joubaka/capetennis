@@ -12,6 +12,26 @@ use PDOException;
 
 class TeamFixtureScoreService
 {
+    public function revision(TeamFixture $fixture): string
+    {
+        $fixture->loadMissing('draw', 'teamResults', 'teamTie');
+        if (!array_key_exists('team_scoring_rules', $fixture->draw->getAttributes())) $fixture->load('draw');
+        return hash('sha256', json_encode([
+            (int) $fixture->draw->event_id,
+            $fixture->only(['id', 'draw_id', 'team_tie_id', 'match_status', 'rubber_code', 'rubber_sequence', 'fixture_type', 'numSets']),
+            app(TeamParticipantHistoryService::class)->revision($fixture),
+            $fixture->teamTie?->only(['draw_id', 'home_team_id', 'away_team_id']),
+            $fixture->draw->team_scoring_rules, $fixture->draw->team_format_snapshot,
+            $fixture->teamResults->sortBy('id')->map(fn ($result) => $result->only(['id', 'set_nr', 'team1_score', 'team2_score', 'match_winner_id', 'match_loser_id']))->values()->all(),
+        ]));
+    }
+
+    private function assertScoreRevision(TeamFixture $fixture, mixed $revision): void
+    {
+        abort_unless(is_string($revision) && strlen($revision) === 64 && hash_equals($this->revision($fixture), $revision),
+            409, 'This match or its scoring rules changed. Reload the scores before saving or clearing this result.');
+    }
+
     /**
      * Persist the three supported score sets while repairing legacy duplicates.
      * The fixture row lock serializes every score writer that uses this service.
@@ -26,13 +46,17 @@ class TeamFixtureScoreService
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
             $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
+            $current->setRelation('draw', $draw);
             app(TeamParticipantHistoryService::class)->assertRevision($current, (int) $draw->event_id, $scores['participant_revision'] ?? null);
+            $this->assertScoreRevision($current, $scores['score_revision'] ?? null);
             abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and playoff qualifiers before play; round-robin results are frozen after playoff qualification.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
 
             abort_if(app(TeamDrawScoringPublicationService::class)->blocksScoring($draw, $tie, locked: true),
                 409, 'Validate and publish the tie before entering scores.');
+
+            if (auth()->check()) \Illuminate\Support\Facades\Gate::authorize('team-fixture.saveScore', $current);
 
             if ($canonical) {
                 $validated = app(TeamRubberResultService::class)->validate($current, $scores);
@@ -96,16 +120,21 @@ class TeamFixtureScoreService
         }
     }
 
-    public function delete(TeamFixture $fixture): void
+    public function delete(TeamFixture $fixture, mixed $scoreRevision = null): void
     {
-        DB::transaction(function () use ($fixture): void {
+        DB::transaction(function () use ($fixture, $scoreRevision): void {
+            $event = \App\Models\Event::whereKey($fixture->draw->event_id)->lockForUpdate()->firstOrFail();
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
+            abort_if((int) $draw->event_id !== (int) $event->id, 409, 'Fixture event changed.');
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
             $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
+            $current->setRelation('draw', $draw);
+            $this->assertScoreRevision($current, $scoreRevision);
             abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and qualifiers before play; qualified round-robin results are frozen.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;
             abort_if($draw->locked || (!$canonical && $tie?->isCompleted()), 409, 'Scores are locked for this fixture.');
+            if (auth()->check()) \Illuminate\Support\Facades\Gate::authorize('team-fixture.saveScore', $current);
             $removedScores = TeamFixtureResult::where('team_fixture_id', $fixture->id)->delete();
             if ($removedScores > 0 || (int) $current->match_status !== FixtureState::STATUS_PENDING) {
                 \App\Models\DrawAuditLog::record($draw->id, 'team_scores_cleared', $current->id, [

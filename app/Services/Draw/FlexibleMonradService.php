@@ -577,6 +577,10 @@ final class FlexibleMonradService
             'base_positions' => $progression['base_positions'] ?? [],
             'positions_complete' => $progression['positions_complete'] ?? false,
             'best_of' => (int) ($draw->settings?->num_sets ?: 3),
+            'score_set_types' => $draw->settings?->score_format
+                ? \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format)['set_types']
+                : ($draw->settings?->requiresFullSets() === false ? [] : ((int) ($draw->settings?->num_sets ?: 3) === 3
+                    ? ['full', 'full', 'match_tiebreak'] : array_fill(0, (int) ($draw->settings?->num_sets ?: 3), 'full'))),
             'score_max_sets' => $draw->settings?->score_format
                 ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($draw->settings->score_format) : (int) ($draw->settings?->num_sets ?: 3),
             'score_guidance' => $draw->settings?->score_format

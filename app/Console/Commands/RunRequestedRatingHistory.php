@@ -21,8 +21,8 @@ class RunRequestedRatingHistory extends Command
         if (!$lease->isOwnedByCurrentProcess()) return self::FAILURE;
         try {
             set_time_limit(0);
-            // The canonical builder owns the manual/nightly execution lock and status transitions.
-            return Artisan::call('player-rating-history:refresh') === 0 ? self::SUCCESS : self::FAILURE;
+            // Explicit admin requests use the same dependency order as the nightly pipeline.
+            return Artisan::call('player-plus:refresh-derived') === 0 ? self::SUCCESS : self::FAILURE;
         } catch (\Throwable $error) {
             $refresh->failed();
             Log::warning('Requested rating history update failed.', ['exception_type' => get_class($error)]);

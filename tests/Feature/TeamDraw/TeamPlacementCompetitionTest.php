@@ -128,7 +128,7 @@ class TeamPlacementCompetitionTest extends TestCase
         $this->actingAs($this->admin)->postJson(route('team-draw.competition.playoffs', $draw))->assertUnprocessable();
         try { app(TeamDrawScoringPublicationService::class)->enableLocked($draw); $this->fail('Publication should be blocked.'); }
         catch (\RuntimeException $exception) { $this->assertStringContainsString('Scoring is to be decided', $exception->getMessage()); }
-        try { app(TeamFixtureScoreService::class)->save($draw->fixtures()->first(), []); $this->fail('Scoring should be blocked.'); }
+        try { app(TeamFixtureScoreService::class)->save($draw->fixtures()->first(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($draw->fixtures()->first())->fresh())] + ([])); $this->fail('Scoring should be blocked.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
         $this->assertDatabaseCount('team_fixture_results', 0);
     }
@@ -145,7 +145,7 @@ class TeamPlacementCompetitionTest extends TestCase
             $tie->update(['status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now()]);
             foreach ($tie->rubbers as $rubber) {
                 $homeWins = $tie->home_team_id < $tie->away_team_id;
-                app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => $homeWins ? 6 : 0, 'set1_away' => $homeWins ? 0 : 6]);
+                app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => $homeWins ? 6 : 0, 'set1_away' => $homeWins ? 0 : 6]));
             }
         }
         $before = app(TeamStandingsService::class)->forDraw($draw);
@@ -174,7 +174,7 @@ class TeamPlacementCompetitionTest extends TestCase
         app(TeamDrawAdaptationService::class)->adaptDraw($playoff);
         $this->assertSame(2, $playoff->teamTies()->count());
         $this->assertSame($before, app(TeamStandingsService::class)->forDraw($draw->fresh()));
-        try { app(TeamFixtureScoreService::class)->delete($draw->fixtures()->first()); $this->fail('Qualified results must be frozen.'); }
+        try { app(TeamFixtureScoreService::class)->delete($draw->fixtures()->first(), app(\App\Services\TeamFixtureScoreService::class)->revision(($draw->fixtures()->first())->fresh())); $this->fail('Qualified results must be frozen.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
         try { app(TeamDrawGenerationService::class)->generate($playoff, app(\App\Services\TeamDrawSideResolver::class)->teams($playoff)); $this->fail('Playoffs must not become round robin.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
@@ -235,7 +235,7 @@ class TeamPlacementCompetitionTest extends TestCase
         $this->actingAs($this->admin)->postJson(route('team-draw.competition.playoffs', $draw))->assertUnprocessable()->assertSee('Complete every round-robin tie');
         foreach ($draw->teamTies()->with('rubbers')->get() as $tie) {
             $tie->update(['status' => TeamTie::STATUS_PUBLISHED, 'published_at' => now()]);
-            foreach ($tie->rubbers as $rubber) app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 0]);
+            foreach ($tie->rubbers as $rubber) app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 0]));
         }
         $this->actingAs($this->admin)->postJson(route('team-draw.competition.playoffs', $draw))->assertUnprocessable()->assertSee('Resolve tied standings');
         $readiness = app(\App\Services\TeamPlayoffReadinessService::class)->forDraw($draw->fresh());

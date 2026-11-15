@@ -51,6 +51,13 @@ class PlayerAbilitySnapshotStore
             ->where('model_version', PlayerSharedAbilityService::VERSION)->where('policy_hash', $this->policyHash())->exists();
     }
 
+    /** Explicit writer revalidation; the request-scoped reader may hold an earlier baseline. */
+    public function freshCurrent(): array
+    {
+        $this->loaded = null;
+        return $this->current();
+    }
+
     public function current(): array
     {
         if ($this->loaded !== null) { return $this->loaded; }

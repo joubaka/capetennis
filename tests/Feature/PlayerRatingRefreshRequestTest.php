@@ -71,7 +71,7 @@ class PlayerRatingRefreshRequestTest extends TestCase
             $this->assertTrue($refresh->running());
             // Deliberately no --pending: a user retry bypasses the scheduler's
             // five-minute failure cooldown, while retaining the builder lock.
-            Artisan::shouldReceive('call')->once()->with('player-ability:refresh', \Mockery::type('array'))->andReturn(1);
+            Artisan::shouldReceive('call')->once()->with('player-plus:refresh-derived', \Mockery::type('array'))->andReturn(1);
             (new RefreshPlayerRatings($lock->owner()))->handle();
             $this->assertFalse($refresh->running());
         } finally { $lock->release(); }
@@ -159,7 +159,7 @@ class PlayerRatingRefreshRequestTest extends TestCase
         Log::spy();
         $reference = (string) \Illuminate\Support\Str::uuid();
         $lock = Cache::store('file')->lock('player-ability:requested-refresh', 60);$this->assertTrue($lock->get());
-        Artisan::shouldReceive('call')->once()->with('player-ability:refresh', ['--reference'=>$reference])->andReturn(1);
+        Artisan::shouldReceive('call')->once()->with('player-plus:refresh-derived', ['--reference'=>$reference])->andReturn(1);
         (new RefreshPlayerRatings($lock->owner(), $reference))->handle();
         $this->assertFalse((new PlayerRatingRefreshRequest)->running());
         $this->assertNotNull(\Illuminate\Support\Facades\DB::table('player_ability_refresh_state')->where('id',1)->value('last_failed_at'));
@@ -174,6 +174,19 @@ class PlayerRatingRefreshRequestTest extends TestCase
         Artisan::shouldReceive('call')->once()->andReturn(0);
         (new RefreshPlayerRatings($lock->owner()))->handle();
         $this->assertFalse((new PlayerRatingRefreshRequest)->running());
+    }
+
+    public function test_artifact_only_pipeline_errors_do_not_mark_valid_base_ability_as_failed(): void
+    {
+        Log::spy(); $reference = (string) \Illuminate\Support\Str::uuid();
+        $lock = Cache::store('file')->lock('player-ability:requested-refresh', 60); $this->assertTrue($lock->get());
+        $this->mock(\App\Services\Performance\PlayerPlusDerivedRefreshState::class)->shouldReceive('read')->once()
+            ->andReturn(['cycle_date' => now('Africa/Johannesburg')->toDateString(), 'status' => 'complete_with_errors']);
+        $this->mock(\App\Services\Performance\PlayerAbilityRefreshState::class)->shouldNotReceive('failed');
+        Artisan::shouldReceive('call')->once()->with('player-plus:refresh-derived', ['--reference' => $reference])->andReturn(1);
+        $this->assertSame(1, (new RefreshPlayerRatings($lock->owner(), $reference))->handle());
+        $this->assertFalse((new PlayerRatingRefreshRequest)->running());
+        Log::shouldHaveReceived('log')->with('info', 'Player ratings refresh diagnostic.', ['reference_id' => $reference, 'phase' => 'job', 'reason' => 'base_completed_with_artifact_errors'])->once();
     }
 
     public function test_missing_snapshot_table_logs_only_actionable_reason_and_reference(): void

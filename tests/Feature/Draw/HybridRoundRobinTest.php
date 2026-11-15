@@ -130,19 +130,19 @@ class HybridRoundRobinTest extends TestCase
         $this->assertEqualsCanonicalizing($semis->pluck('id')->all(), collect($brackets[0]['rounds'][1])->pluck('fx.id')->all());
         $this->assertSame($draw->drawFixtures()->where('stage', 'MAIN')->where('position', 1)->value('id'), $brackets[0]['rounds'][2][0]['fx']->id);
         $this->assertSame($draw->drawFixtures()->where('stage', 'MAIN')->where('position', 3)->value('id'), $brackets[0]['positionPlayoffs'][0]['fx']->id);
-        $this->postJson(route('backend.roundrobin.score.store', $plan['carried_fixture_ids'][0]), ['sets' => ['7-0']])->assertConflict();
-        foreach ($semis as $semi) $this->postJson(route('backend.roundrobin.score.store', $semi), ['sets' => ['10-5']])->assertOk();
+        $this->postJson(route('backend.roundrobin.score.store', $plan['carried_fixture_ids'][0]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture((\App\Models\Fixture::findOrFail($plan['carried_fixture_ids'][0]))->fresh())] + (['sets' => ['7-0']]))->assertConflict();
+        foreach ($semis as $semi) $this->postJson(route('backend.roundrobin.score.store', $semi), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($semi)->fresh())] + (['sets' => ['10-5']]))->assertOk();
         $final = $draw->drawFixtures()->where('stage', 'MAIN')->where('position', 1)->first();
         $bronze = $draw->drawFixtures()->where('stage', 'MAIN')->where('position', 3)->first();
         $this->assertEqualsCanonicalizing([$players['A1'], $players['B1']], [$final->registration1_id, $final->registration2_id]);
         $this->assertEqualsCanonicalizing([$players['B2'], $players['A2']], [$bronze->registration1_id, $bronze->registration2_id]);
-        $this->postJson(route('backend.roundrobin.score.store', $final), ['sets' => ['10-5']])->assertOk();
-        $this->postJson(route('backend.roundrobin.score.store', $bronze), ['sets' => ['10-5']])->assertOk();
+        $this->postJson(route('backend.roundrobin.score.store', $final), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($final)->fresh())] + (['sets' => ['10-5']]))->assertOk();
+        $this->postJson(route('backend.roundrobin.score.store', $bronze), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($bronze)->fresh())] + (['sets' => ['10-5']]))->assertOk();
         $placements = app(DrawFinalPlacementService::class)->forDraw($draw->fresh());
         $this->assertSame([1, 2, 3, 4], $placements->where('status', 'resolved')->pluck('position')->all());
         foreach ($draw->drawFixtures()->where('draw_group_id', $lower)->get() as $fixture) {
             $score = $fixture->registration1_id < $fixture->registration2_id ? '10-5' : '5-10';
-            $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => [$score]])->assertOk();
+            $this->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => [$score]]))->assertOk();
         }
         $placements = app(DrawFinalPlacementService::class)->forDraw($draw->fresh());
         $this->assertSame(range(1, 9), $placements->pluck('position')->all());

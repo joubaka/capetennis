@@ -27,7 +27,7 @@ class PlayerRatingHistoryService
     public function forPlayer(Player $player, array $filters = [], bool $summaryOnly = false): array
     {
         $saved = $this->store->read();
-        if ($saved === null) return ['series' => [], 'reason' => 'Rating history is awaiting its first saved calculation. Updates run nightly at 03:00 SAST.'];
+        if ($saved === null) return ['series' => [], 'reason' => 'Rating history is awaiting its first saved calculation. Updates run nightly at 03:02 SAST.'];
         if (isset($saved['publication_manifest']['teamsheet_context']) && !app(TeamSheetTennisEvidence::class)->published($saved['publication_manifest']['teamsheet_context'])) {
             return ['series' => [], 'reason' => 'Rating history is awaiting an update because its TeamSheet source is stale or changed.'];
         }

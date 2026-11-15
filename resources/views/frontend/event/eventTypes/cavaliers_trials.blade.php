@@ -8,6 +8,17 @@
       (int) $nomination->id,
   ];
 @endphp
+<style>
+    .cavaliers-registered-nominee {
+        background-color: #eaf6ed !important;
+        border-color: #15803d !important;
+        color: #14532d !important;
+    }
+    .cavaliers-registered-nominee .cavaliers-registered-badge {
+        background-color: #14532d;
+        color: #fff;
+    }
+</style>
 <div class="row">
 
     <div class="col-xl-8 col-lg-7 col-md-7 ">
@@ -22,12 +33,18 @@
 
                 <div class="card p-4 mt-4 ">
                     <h5 class="pb-1 mb-4">Nominations</h5>
-                    <p class="small text-muted">Alphabetical by first name.</p>
+                    <p class="small text-muted">Unregistered players first, then registered players. Each group is alphabetical by first name.</p>
                     <div class="row">
                         @foreach($event->eventCategories as $eventCategory)
                         @php
                             $nominations = $eventCategory->nominations->where('event_id', $event->id)
-                                ->sort(static fn ($left, $right) => $publicNominationKey($left) <=> $publicNominationKey($right));
+                                ->sort(static fn ($left, $right) => [
+                                    isset($nomRegisteredLookup[$left->player_id.'-'.$eventCategory->id]) ? 1 : 0,
+                                    ...$publicNominationKey($left),
+                                ] <=> [
+                                    isset($nomRegisteredLookup[$right->player_id.'-'.$eventCategory->id]) ? 1 : 0,
+                                    ...$publicNominationKey($right),
+                                ]);
                         @endphp
                         <div class="col-md-6 col-sm-12">
                             <div class="card shadow-none bg-transparent border border-primary m-1 p-2">
@@ -41,15 +58,15 @@
                                 <ul class="list-group list-group-flush">
                                     @if($eventCategory->nominations_published == 1)
                                     @foreach($nominations as $nomination)
-
-                                    <li class="list-group-item">{{$nomination->display_name}}
+                                    @php $nomineeRegistered = isset($nomRegisteredLookup[$nomination->player_id.'-'.$eventCategory->id]); @endphp
+                                    <li class="list-group-item{{ $nomineeRegistered ? ' cavaliers-registered-nominee' : '' }}">{{$nomination->display_name}}
                                     @if ($provenance = $nominationProvenance[$eventCategory->id][$nomination->id] ?? null)
                                         <small class="badge rounded-pill bg-label-primary text-wrap ms-1">({{ $provenance['region'] }} · {{ $provenance['source'] }})</small>
                                     @endif
 
 
-                                    @if(isset($nomRegisteredLookup[$nomination->player_id.'-'.$eventCategory->id]))
-                                        <span class="badge bg-label-success ms-1">Registered</span>
+                                    @if($nomineeRegistered)
+                                        <span class="badge cavaliers-registered-badge ms-1">Registered</span>
                                     @elseif (($cavaliersRegistrationOpen ?? false) && $nomination->player_id && !$eventCategory->isLocked())
                                         <div class="d-flex flex-wrap gap-2 mt-2">
                                             <a class="btn btn-sm btn-outline-primary" href="{{ route('register.register', ['id' => $event->id, 'nomination' => $nomination->id]) }}">Register</a>

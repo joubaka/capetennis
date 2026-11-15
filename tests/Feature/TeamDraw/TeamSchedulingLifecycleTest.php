@@ -149,8 +149,8 @@ class TeamSchedulingLifecycleTest extends TestCase
     {
         $fixture = $this->fixture();
         $this->draw->update(['locked' => true]);
-        $this->postJson(route('backend.team-fixtures.insertScore', $fixture), ['set1_home' => 6, 'set1_away' => 1])->assertStatus(409);
-        $this->deleteJson(route('backend.team-fixtures.destroyResult', $fixture))->assertStatus(409);
+        $this->postJson(route('backend.team-fixtures.insertScore', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + (['set1_home' => 6, 'set1_away' => 1]))->assertStatus(409);
+        $this->deleteJson(route('backend.team-fixtures.destroyResult', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())])->assertStatus(409);
         $this->assertDatabaseCount('team_fixture_results', 0);
     }
 

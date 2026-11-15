@@ -239,7 +239,7 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $privateBefore = $this->getJson($url)->assertOk()->json();
         $storedBefore = EventNomination::orderBy('id')->get()->map->getAttributes()->all();
         auth()->logout();
-        $page = $this->get(route('events.show', $event))->assertOk()->assertSee('Alphabetical by first name.')
+        $page = $this->get(route('events.show', $event))->assertOk()->assertSee('Each group is alphabetical by first name.')
             ->assertSeeInOrder(['Aaron Profileless', 'Adam Zebra', 'Alex Able', 'alex able', 'Alex Brown', 'Zoe Alpha'])
             ->assertDontSee('Private Reserve')->assertDontSee('AAA Foreign')->assertDontSee('AAA Hidden')
             ->assertDontSee('roster_position', false)->assertDontSee('data-roster-position', false);

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function workspace(groups = [], locked = false, {confirm = false, failRequest = false} = {}) {
+function workspace(groups = [], locked = false, {confirm = false, failRequest = false, needsSelectionConfirmation = false, hybrid = false, source = 'public/assets/js/admin/roundrobin/groups.js'} = {}) {
   const values = new Map([['#groups-tab-boxes', '2'], ['#rr-category-name:text', 'U19 Boys']]);
   const props = new Map(), handlers = new Map(), dialogs = [], requests = [];
   let sortables = 0;
@@ -24,18 +24,18 @@ function workspace(groups = [], locked = false, {confirm = false, failRequest = 
   const window = {
     RR_GROUPS: groups, RR_ROSTER: [{id: 1, name: 'Test Player', category_id: 3, category: 'U19 Boys'}],
     RR_CAN_ASSIGN: true, RR_CAN_GENERATE: true, RR_DRAW_LOCKED: locked, RR_DRAW_PUBLISHED: false,
-    RR_ASSIGNMENT_REVISION: 'revision', addEventListener() {}, confirm() { return true; },
+    RR_ASSIGNMENT_REVISION: 'revision', RR_NEEDS_SELECTION_CONFIRMATION: needsSelectionConfirmation, RR_PENDING_HYBRID: hybrid, addEventListener() {}, confirm() { return true; },
     Sortable: function () { sortables++; this.destroy = () => {}; },
     location: { reload() {} }
   };
   const context = { jQuery: $, window, document, Sortable: window.Sortable,
-    AdminState: {setGroups() {}, on() {}},
+    AdminState: {setGroups() {}, getOop() { return []; }, on() {}},
     AdminRoutes: {drawUrl: (id, path) => `/draw/${id}${path}`},
     AdminApi: {request: async request => { requests.push(request); if (failRequest) throw new Error('Resize rejected'); return {}; }},
     AdminToast: {warning() {}, error() {}},
     Swal: {fire: async options => { dialogs.push(options); return {isConfirmed: confirm}; }}
   };
-  vm.runInNewContext(fs.readFileSync('public/assets/js/admin/roundrobin/groups.js', 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(source, 'utf8'), context);
   window.RRGroups.init(7);
   return {window, values, props, handlers, dialogs, requests, sortables: () => sortables};
 }
@@ -54,6 +54,52 @@ test('zero groups shows explicit creation and blocks every placement action with
   assert.match(page.dialogs[0].html, /Create 2 empty groups for U19 Boys/);
   assert.equal(page.dialogs[0].confirmButtonText, 'Create groups');
   assert.equal(page.requests.length, 0, 'cancelled confirmation never creates groups');
+});
+
+test('unchanged legacy selection can be confirmed once while acknowledged saves remain a no-op in both assets', async () => {
+  for (const source of ['resources/js/admin/roundrobin/groups.js', 'public/assets/js/admin/roundrobin/groups.js']) {
+    const groups = [{id: 10, name: 'A', players: [{id: 1, name: 'Test Player'}]}];
+    const legacy = workspace(groups, false, {source, needsSelectionConfirmation: true});
+    assert.equal(legacy.window.RRGroups.isDirty(), false);
+    assert.equal(legacy.props.get('#btn-save-groups:disabled'), false);
+    assert.match(legacy.values.get('#rr-save-status:text'), /confirm this draw's players/);
+    assert.equal(await legacy.window.RRGroups.save(), true);
+    assert.equal(legacy.requests.length, 1);
+    assert.equal(legacy.requests[0].url, '/draw/7/save-groups');
+    assert.deepEqual(JSON.parse(JSON.stringify(legacy.requests[0].data.groups)), [{group_id: 10, registration_ids: [1]}]);
+    assert.equal(legacy.props.get('#btn-save-groups:disabled'), true);
+    assert.equal(await legacy.window.RRGroups.save(), true);
+    assert.equal(legacy.requests.length, 1, 'repeated acknowledged save does not issue another POST');
+    const saved = workspace(groups, false, {source});
+    assert.equal(await saved.window.RRGroups.save(), true);
+    assert.equal(saved.requests.length, 0);
+  }
+});
+
+test('failed confirmation remains retryable without losing unchanged assignments', async () => {
+  const page = workspace([{id: 10, name: 'A', players: [{id: 1, name: 'Test Player'}]}], false,
+    {needsSelectionConfirmation: true, failRequest: true});
+  assert.equal(await page.window.RRGroups.save(), false);
+  assert.equal(page.window.RRGroups.isDirty(), false);
+  assert.equal(page.props.get('#btn-save-groups:disabled'), false);
+  assert.equal(await page.window.RRGroups.save(), false);
+  assert.equal(page.requests.length, 2);
+});
+
+test('selected hybrid preview includes all saved phases and cancellation never generates fixtures', async () => {
+  const groups = [4, 5].map((size, index) => ({id: index + 1, name: index ? 'B' : 'A',
+    players: Array.from({length:size}, (_, seed) => ({id: index * 10 + seed + 1, name: 'Example ' + index + seed}))}));
+  for (const source of ['resources/js/admin/roundrobin/groups.js', 'public/assets/js/admin/roundrobin/groups.js']) {
+    const page = workspace(groups, false, {source, hybrid:true});
+    await page.handlers.get('click:#btn-regenerate-fixtures')();
+    assert.match(page.dialogs[0].html, /16 opening group matches \+ 10 later-stage placeholders = 26 matches in total/);
+    assert.doesNotMatch(page.dialogs[0].html, /plus any bye slots/);
+    assert.equal(page.requests.length,0);
+    const ordinary = workspace(groups, false, {source});
+    await ordinary.handlers.get('click:#btn-regenerate-fixtures')();
+    assert.match(ordinary.dialogs[0].html,/16 playable matches/);
+    assert.doesNotMatch(ordinary.dialogs[0].html,/26 matches in total/);
+  }
 });
 
 test('saved groups enable placement, while locked groups preserve read-only controls', () => {

@@ -9,6 +9,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '../..');
 const snapshot = fs.readFileSync(path.join(root, 'storage/app/testing/draw-workspace.html'), 'utf8');
 const initial = name => JSON.parse(snapshot.match(new RegExp('window\\.' + name + '\\s*=\\s*(.+);'))[1]);
@@ -19,10 +20,12 @@ let groups = initial('RR_GROUPS').map(g => ({
 }));
 const roster = initial('RR_ROSTER');
 let revision = initial('RR_ASSIGNMENT_REVISION'),
+  rebuildRevision = initial('RR_REBUILD_REVISION'),
   fixtures = [],
   assignedVenues = [],
   failSave = false;
 const calls = [];
+const scoreRevision = fixture => crypto.createHash('sha256').update(JSON.stringify([fixture.id, fixture.scoreVersion || 0])).digest('hex');
 const workflowMarkup = () => snapshot.match(/<section class="draw-journey[\s\S]*?<\/section>/)[0]
   .replace(/\d+ matches · \d+ with saved times/, `${fixtures.length} matches · 0 with saved times`);
 const json = (response, data, status = 200) => {
@@ -33,18 +36,19 @@ const hub = () => ({
   success: true,
   rrFixtures: Object.fromEntries(groups.map(g => [g.id, fixtures.filter(f => f.group_id === g.id)])),
   oops: fixtures,
+  scoreRevisions: Object.fromEntries(fixtures.map(fixture => [fixture.id, scoreRevision(fixture)])),
   standings: {}
 });
 const server = http.createServer(async (request, response) => {
   const requestUrl = new URL(request.url, 'http://localhost');
   const pathname = requestUrl.pathname;
-  if (request.method === 'POST') {
+  if (request.method === 'POST' || request.method === 'DELETE') {
     let raw = '';
     for await (const chunk of request) raw += chunk;
     const data = request.headers['content-type']?.includes('application/json')
       ? JSON.parse(raw)
       : Object.fromEntries(new URLSearchParams(raw));
-    calls.push({ path: pathname, data });
+    calls.push({ path: pathname, method: request.method, data });
     if (pathname.includes('/venue-schedule/venues')) {
       return json(response, {
         message: data.name + ' added with ' + data.courts + ' courts.',
@@ -59,9 +63,13 @@ const server = http.createServer(async (request, response) => {
         players: g.registration_ids.map(id => ({ id, name: roster.find(p => p.id === id).name }))
       }));
       revision = 'revision-' + calls.length;
-      return json(response, { success: true, revision });
+      rebuildRevision = crypto.createHash('sha256').update(revision).digest('hex');
+      return json(response, { success: true, revision, rebuild_revision: rebuildRevision });
     }
     if (pathname.endsWith('/regenerate-rr')) {
+      if (data.revision !== revision || data.rebuild_revision !== rebuildRevision) {
+        return json(response, {message: 'The matches or saved bookings changed. Reload and review the rebuild again.'}, 409);
+      }
       fixtures = [];
       groups.forEach(g =>
         g.players.forEach((a, index) =>
@@ -87,15 +95,20 @@ const server = http.createServer(async (request, response) => {
           )
         )
       );
-      return json(response, { success: true, fixture_count: fixtures.length });
+      rebuildRevision = crypto.createHash('sha256').update(rebuildRevision + ':generated').digest('hex');
+      return json(response, { success: true, fixture_count: fixtures.length, rebuild_revision: rebuildRevision });
     }
     if (pathname.includes('/roundrobin/score/')) {
       const id = Number(pathname.split('/').pop()),
         f = fixtures.find(f => f.id === id);
-      f.all_sets = Object.keys(data)
+      if (!f || data.score_revision !== scoreRevision(f)) {
+        return json(response, {message: 'Match changed. Reload scores before saving again.'}, 409);
+      }
+      f.all_sets = request.method === 'DELETE' ? [] : Object.keys(data)
         .filter(k => k.startsWith('sets'))
         .map(k => data[k]);
       f.score = f.all_sets.join(', ');
+      f.scoreVersion = (f.scoreVersion || 0) + 1;
       return json(response, { ...hub(), oop: fixtures, fixture: f, mode: 'RR' });
     }
     if (pathname.endsWith('/venues')) {
@@ -113,7 +126,7 @@ const server = http.createServer(async (request, response) => {
     const workflow = workflowMarkup().replaceAll('http://localhost', base).replaceAll('http:\/\/localhost', base);
     return json(response, { workflow_html: workflow, html: `<div data-draw-guide><h1>Continue test draw</h1>${workflow}</div>` });
   }
-  if (pathname.endsWith('/groups-data')) return json(response, { groups, revision });
+  if (pathname.endsWith('/groups-data')) return json(response, { groups, revision, rebuild_revision: rebuildRevision });
   if (pathname.endsWith('/available-players')) {
     const assigned = groups.flatMap(g => g.players.map(p => p.id));
     return json(response, {
@@ -199,6 +212,7 @@ async function run() {
       failures++;
       console.error('FAIL ' + name + '\n' + error.stack);
       console.error('Page errors:', errors);
+      console.error('Recent fixture requests:', calls.filter(call => call.path.includes('/roundrobin/score/')).slice(-3));
       await page.screenshot({
         path: path.join(root, 'storage/app/testing/draw-workspace-failure.png'),
         fullPage: true
@@ -214,6 +228,9 @@ async function run() {
       assert.equal(await page.locator('[data-journey-step="players"]').getAttribute('aria-current'), 'step');
       assert.equal(await page.locator('#groups-pane').evaluate(el => el.classList.contains('active')), true);
       assert.equal(await page.locator('.rr-group-card').count(), 2);
+      assert.equal(await page.locator('[data-journey-step="results"] small').innerText(), 'Awaiting results');
+      assert.match(await page.locator('[data-draw-journey]').innerText(), /Draw is private\./);
+      assert.match(await page.locator('[data-draw-journey]').innerText(), /generated matches have saved times/);
     });
     await check('AJAX setup modal mounts the same styled workflow without mutating', async () => {
       const before = calls.length;
@@ -286,12 +303,60 @@ async function run() {
       await cell.click();
       await page.locator('#rrScoreModal.show').waitFor();
       const fixture = fixtures.find(f => f.id === id);
+      const beforeRevision = scoreRevision(fixture);
       assert.match(await page.locator('#rrm-match-label').innerText(), new RegExp(fixture.home));
       await page.locator('#set1-p1').fill('6');
       await page.locator('#set1-p2').fill('2');
       await page.getByRole('button', { name: 'Save Score', exact: true }).click();
       await page.locator('#rrScoreModal').waitFor({ state: 'hidden' });
       assert.equal(calls.filter(c => c.path.includes('/roundrobin/score/')).length, 1);
+      assert.equal(calls.find(c => c.path.includes('/roundrobin/score/')).data.score_revision, beforeRevision);
+    });
+    await check('A stale score keeps the draft and its opening revision after a background refresh', async () => {
+      const cell = page.locator('.rr-score-cell').nth(1);
+      const id = Number(await cell.getAttribute('data-fixture-id'));
+      const fixture = fixtures.find(f => f.id === id);
+      const openingRevision = scoreRevision(fixture);
+      const savedScore = fixture.score;
+      await cell.click();
+      await page.locator('#rrScoreModal.show').waitFor();
+      await page.locator('#set1-p1').fill('6');
+      await page.locator('#set1-p2').fill('3');
+      fixture.scoreVersion = (fixture.scoreVersion || 0) + 1;
+      await page.evaluate(() => window.RRWorkspace.refreshHub());
+      const before = calls.filter(c => c.path.includes('/roundrobin/score/')).length;
+      await page.getByRole('button', {name: 'Save Score', exact: true}).click();
+      await page.getByText('Match changed. Reload scores before saving again.', {exact: true}).waitFor();
+      assert.equal(calls.filter(c => c.path.includes('/roundrobin/score/')).length, before + 1);
+      assert.equal(calls.findLast(c => c.path.includes('/roundrobin/score/')).data.score_revision, openingRevision);
+      assert.equal(await page.locator('#rrScoreModal.show').count(), 1);
+      assert.equal(await page.locator('#set1-p1').inputValue(), '6');
+      assert.equal(await page.locator('#set1-p2').inputValue(), '3');
+      assert.equal(fixture.score, savedScore);
+      await page.locator('#rrScoreModal [data-bs-dismiss="modal"]').first().click();
+      await page.locator('#rrScoreModal').waitFor({state: 'hidden'});
+    });
+    await check('Reopened edits and deletion send the latest successful score revision', async () => {
+      const cell = page.locator('.rr-score-cell').nth(1);
+      const id = Number(await cell.getAttribute('data-fixture-id'));
+      const fixture = fixtures.find(f => f.id === id);
+      const editRevision = scoreRevision(fixture);
+      await cell.click();
+      await page.locator('#rrScoreModal.show').waitFor();
+      await page.locator('#set1-p1').fill('6');
+      await page.locator('#set1-p2').fill('1');
+      await page.getByRole('button', {name: 'Save Score', exact: true}).click();
+      await page.locator('#rrScoreModal').waitFor({state: 'hidden'});
+      assert.equal(calls.findLast(c => c.path.includes('/roundrobin/score/')).data.score_revision, editRevision);
+      const deleteRevision = scoreRevision(fixture);
+      await page.locator('.rr-score-cell').nth(1).click();
+      await page.locator('#rrScoreModal.show').waitFor();
+      await page.locator('#rrm-delete-score').click();
+      await page.locator('#rrScoreModal').waitFor({state: 'hidden'});
+      const deletion = calls.findLast(c => c.path.includes('/roundrobin/score/'));
+      assert.equal(deletion.method, 'DELETE');
+      assert.equal(deletion.data.score_revision, deleteRevision);
+      assert.equal(fixture.score, '');
     });
     await check('Playoff preview recovers from a read failure without generating fixtures', async () => {
       const previewRoute = '**/main-bracket?force=0';

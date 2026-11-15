@@ -238,7 +238,7 @@ class VenueScoringWorkspaceTest extends TestCase
             ->assertForbidden();
 
         $this->actingAs($user)
-            ->postJson(route('backend.roundrobin.score.store', $otherFixture), ['sets' => ['6-2', '6-3']])
+            ->postJson(route('backend.roundrobin.score.store', $otherFixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($otherFixture->fresh()), 'sets' => ['6-2', '6-3']])
             ->assertForbidden();
         $this->actingAs($user)
             ->postJson(route('frontend.scoring.fixtures.playing', [$event, $otherFixture]), ['playing' => true])
@@ -377,7 +377,7 @@ class VenueScoringWorkspaceTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['venue_scoring.operator' => 'Court phone A'])
-            ->post(route('backend.roundrobin.score.store', $fixture), ['sets' => ['6-2', '6-3']])
+            ->post(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['6-2', '6-3']])
             ->assertOk();
 
         $audit = DrawAuditLog::where('draw_id', $draw->id)->where('fixture_id', $fixture->id)->latest()->firstOrFail();
@@ -440,7 +440,7 @@ class VenueScoringWorkspaceTest extends TestCase
             ->assertOk();
 
         $this->actingAs($user)
-            ->postJson(route('api.draws.fixtures.score.store', [$draw, $fixture]), ['sets' => ['6-2', '6-3']])
+            ->postJson(route('api.draws.fixtures.score.store', [$draw, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['6-2', '6-3']])
             ->assertOk();
 
         $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $fixture->fresh()->match_status);
@@ -625,6 +625,7 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->actingAs($user)
             ->withSession(['venue_scoring.operator' => 'Team phone'])
             ->postJson(route('frontend.fixtures.score.store', $fixture), [
+                'score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision($fixture->fresh()),
                 'set1_home' => 6,
                 'set1_away' => 3,
                 'set2_home' => 6,
@@ -815,7 +816,7 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertCount(0, $public->viewData('matches'));
         $this->postJson(route('frontend.scoring.fixtures.playing', [$event, $friday]))->assertOk();
         $this->assertSame(FixtureState::STATUS_PARTIAL, (int) $friday->fresh()->match_status);
-        $this->postJson(route('api.draws.fixtures.score.store', [$draw, $friday]), ['sets' => ['6-2', '6-3']])->assertOk();
+        $this->postJson(route('api.draws.fixtures.score.store', [$draw, $friday]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($friday->fresh()), 'sets' => ['6-2', '6-3']])->assertOk();
         $this->assertSame(FixtureState::STATUS_COMPLETED, (int) $friday->fresh()->match_status);
         $this->assertSame(2, $friday->fixtureResults()->count());
         $this->get(route('frontend.scoring.workspace', ['event' => $event, 'date' => '2026-10-09', 'venue' => $otherVenue->id]))->assertForbidden();

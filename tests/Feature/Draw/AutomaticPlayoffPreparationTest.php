@@ -50,7 +50,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
     public function test_rebuild_creates_all_configured_brackets_with_unresolved_qualifiers_and_no_bookings(): void
     {
         $draw = $this->scenario();
-        $response = $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
+        $response = $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())])->assertOk();
         $this->assertSame(4, $draw->drawFixtures()->where('stage', 'RR')->count());
         $playoffs = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->get();
         $this->assertSame(8, $playoffs->count());
@@ -75,7 +75,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
     public function test_configuration_saved_after_rr_generation_prepares_placeholders(): void
     {
         $draw = $this->scenario(false);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())])->assertOk();
         $this->assertSame(4, $draw->drawFixtures()->count());
         $this->postJson(route('backend.draw.update-playoff-config', $draw), ['playoff_config' => $this->config()])->assertOk();
         $this->assertSame(8, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
@@ -87,7 +87,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
         $config = $this->config();
         $config[1]['size'] = 8;
         $draw->settings()->update(['playoff_config' => $config]);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())])->assertOk();
         $this->assertSame(4, $draw->drawFixtures()->count());
         $this->assertSame(0, $draw->drawFixtures()->where('stage', '!=', 'RR')->count());
     }
@@ -110,7 +110,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
     public function test_config_edits_replace_only_unbooked_placeholder_graph_and_keep_rr(): void
     {
         $draw = $this->scenario();
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())])->assertOk();
         $rr = $draw->drawFixtures()->where('stage', 'RR')->orderBy('id')->pluck('id')->all();
         $old = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all();
         $config = $this->config();
@@ -131,7 +131,7 @@ class AutomaticPlayoffPreparationTest extends TestCase
     public function test_config_edit_with_saved_playoff_time_is_rejected_without_changing_graph_or_settings(): void
     {
         $draw = $this->scenario();
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertOk();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh())])->assertOk();
         $playoff = $draw->drawFixtures()->where('stage', 'MAIN')->firstOrFail();
         $venue = Venue::forceCreate(['name' => 'Placeholder guard court']);
         $booking = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $playoff->id, 'venue_id' => $venue->id,

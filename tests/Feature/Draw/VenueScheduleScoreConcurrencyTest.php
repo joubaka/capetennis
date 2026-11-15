@@ -56,7 +56,7 @@ class VenueScheduleScoreConcurrencyTest extends TestCase
             $submitted = true;
             DB::setDefaultConnection('concurrent_scorer');
             try {
-                app(TeamFixtureScoreService::class)->save($scored->fresh(), ['set1_home' => 6, 'set1_away' => 3]);
+                app(TeamFixtureScoreService::class)->save($scored->fresh(), ['set1_home' => 6, 'set1_away' => 3, 'score_revision' => app(TeamFixtureScoreService::class)->revision($scored->fresh())]);
             } finally {
                 DB::setDefaultConnection($primary);
             }

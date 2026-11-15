@@ -57,11 +57,12 @@ class MyTennisController extends Controller
         $data['overviewPathway'] = null;
         $data['ratingSnapshot'] = null;
         if ($ratingPlayer && $data['canViewRating']) {
+            $filters = $tab === 'rating' ? $this->ratingFilters($request) : [];
             $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)
-                ->forPlayer($ratingPlayer, summaryOnly: !in_array($tab, ['activity', 'rating'], true));
+                ->forPlayer($ratingPlayer, $filters, summaryOnly: !in_array($tab, ['activity', 'rating'], true));
             $data['ratingSnapshot'] = \App\Services\Performance\PlayerRatingHistoryDisplay::snapshot($history);
             if ($tab === 'rating') {
-                $data += $this->ratingViewData($request, $ratingPlayer, $history, []);
+                $data += $this->ratingViewData($request, $ratingPlayer, $history, $filters);
             }
             if ($data['selectedPlayer'] && $tab === 'activity') {
                 $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
@@ -85,14 +86,26 @@ class MyTennisController extends Controller
     public function rating(Request $request, \App\Models\Player $player)
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
-        $filters = $request->validate(['cohort' => 'nullable|string|max:255', 'month' => 'nullable|integer|min:0|max:11',
-            'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
-            'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
-            'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,overall,standard',
-            'rating_page' => 'nullable|integer|min:1|max:200', 'rating_per_page' => 'nullable|integer|in:25,50,100,500']);
+        $filters = $this->ratingFilters($request);
+        // Direct links and workspace navigation retain the complete authorized page.
+        // Only the rating panel's own AJAX requests receive the small fragment.
+        if (!$request->ajax() || $request->header('X-My-Tennis-Navigation') === '1') {
+            $request->query->add(['player' => $player->id, 'tab' => 'rating']);
+            return $this->index($request);
+        }
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player, $filters);
         return response()->view('frontend.my-tennis.rating', $this->ratingViewData($request, $player, $history, $filters))
             ->header('Cache-Control', 'private, no-store');
+    }
+
+    private function ratingFilters(Request $request): array
+    {
+        return $request->validate(['cohort' => 'nullable|string|max:255', 'month' => 'nullable|integer|min:0|max:11',
+            'scope' => 'nullable|in:new,all', 'page' => 'nullable|integer|min:1|max:2500', 'scale' => 'nullable|in:focused,full',
+            'rating_section' => 'nullable|in:history,method,overview',
+            'rating_age' => 'nullable|in:u7,u8,u9,u10,u11,u12,u13,u18,other,unknown',
+            'rating_gender' => 'nullable|in:boys,girls,unknown', 'rating_level' => 'nullable|in:red,orange,overall,standard',
+            'rating_page' => 'nullable|integer|min:1|max:200', 'rating_per_page' => 'nullable|integer|in:25,50,100,500']);
     }
 
     private function ratingViewData(Request $request, Player $player, array $history, array $filters): array
@@ -100,6 +113,7 @@ class MyTennisController extends Controller
         return [
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
+            'matchProgress' => app(\App\Services\Performance\PlayerMatchProgress::class)->forPlayer($request->user(), $player),
             'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
                 array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])))),
         ];

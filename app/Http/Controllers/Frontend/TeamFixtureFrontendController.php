@@ -133,6 +133,7 @@ class TeamFixtureFrontendController extends Controller
           $rules["set{$i}_away"] = "{$required}|required_with:set{$i}_home|integer|min:0";
       }
       $rules['participant_revision'] = 'nullable|string|size:64';
+    $rules['score_revision'] = 'nullable|string|size:64';
       $validated = $request->validate($rules);
 
       try {
@@ -191,7 +192,7 @@ class TeamFixtureFrontendController extends Controller
       $this->authorize('team-fixture.saveScore', $fixture);
       $previousSets = $fixture->fixtureResults()->orderBy('set_nr')->get()
           ->map(fn ($result) => [(int) $result->team1_score, (int) $result->team2_score])->values()->all();
-      app(TeamFixtureScoreService::class)->delete($fixture);
+      app(TeamFixtureScoreService::class)->delete($fixture, $request->input('score_revision'));
       DrawAuditLog::record($fixture->draw_id, 'score_deleted', $fixture->id, [
           'fixture_type' => 'team',
           'previous_sets' => $previousSets,

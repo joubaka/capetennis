@@ -39,7 +39,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
 
     private function save(array $scores): void
     {
-        app(TeamFixtureScoreService::class)->save($this->rubber->fresh(), $scores);
+        app(TeamFixtureScoreService::class)->save($this->rubber->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->rubber->fresh())->fresh())] + ($scores));
     }
 
     public function test_partial_scores_do_not_complete_tie_or_award_points(): void
@@ -64,7 +64,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $this->save(['set1_home' => 1, 'set1_away' => 6, 'set2_home' => 2, 'set2_away' => 6]);
         $this->assertSame($this->tie->away_team_id, $this->tie->fresh()->winner_team_id);
         $this->assertSame(2, $this->rubber->teamResults()->count());
-        app(TeamFixtureScoreService::class)->delete($this->rubber->fresh());
+        app(TeamFixtureScoreService::class)->delete($this->rubber->fresh(), app(\App\Services\TeamFixtureScoreService::class)->revision(($this->rubber->fresh())->fresh()));
         $this->assertSame(TeamTie::STATUS_PUBLISHED, $this->tie->fresh()->status);
         $this->assertNull($this->tie->fresh()->winner_team_id);
         $this->assertSame(0, $this->rubber->teamResults()->count());
@@ -103,7 +103,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $second = TeamFixture::create(['draw_id' => $this->draw->id, 'team_tie_id' => $this->tie->id,
             'match_nr' => 2, 'round_nr' => 1, 'rubber_sequence' => 2, 'rubber_code' => 'reverse_singles', 'fixture_type' => 4]);
         $this->save(['set1_home' => 10, 'set1_away' => 8]);
-        app(TeamFixtureScoreService::class)->save($second, ['set1_home' => 10, 'set1_away' => 11]);
+        app(TeamFixtureScoreService::class)->save($second, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($second)->fresh())] + (['set1_home' => 10, 'set1_away' => 11]));
 
         $standings = app(TeamStandingsService::class);
         $this->assertSame([0, 0], array_column($standings->forDraw($this->draw->fresh()), 'match_points'));
@@ -134,7 +134,7 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $this->save($scores);
         $this->assertSame(2, $this->rubber->teamResults()->count());
         $this->assertSame(TeamTie::STATUS_PUBLISHED, $this->tie->fresh()->status);
-        app(TeamFixtureScoreService::class)->save($second, ['set1_home' => 1, 'set1_away' => 6, 'set2_home' => 2, 'set2_away' => 6]);
+        app(TeamFixtureScoreService::class)->save($second, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($second)->fresh())] + (['set1_home' => 1, 'set1_away' => 6, 'set2_home' => 2, 'set2_away' => 6]));
         $rules = $this->draw->fresh()->team_scoring_rules;
         $rules['tie_draw'] = 2;
         $this->draw->update(['team_scoring_rules' => $rules]);
@@ -185,10 +185,10 @@ class TeamScoringRulesWorkflowTest extends TestCase
     {
         \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $this->actingAs(\App\Models\User::factory()->create()->assignRole('super-user'));
-        $this->post(route('frontend.fixtures.score.store', $this->rubber), ['set1_home' => 6, 'set1_away' => 3, 'set2_home' => 6, 'set2_away' => 3])->assertRedirect();
+        $this->post(route('frontend.fixtures.score.store', $this->rubber), ['score_revision' => app(TeamFixtureScoreService::class)->revision($this->rubber->fresh()), 'set1_home' => 6, 'set1_away' => 3, 'set2_home' => 6, 'set2_away' => 3])->assertRedirect();
         $this->assertSame($this->tie->home_team_id, $this->tie->fresh()->winner_team_id);
-        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['set1_home' => 3, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
-        $this->delete(route('frontend.fixtures.score.delete', $this->rubber))->assertRedirect();
+        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['score_revision' => app(TeamFixtureScoreService::class)->revision($this->rubber->fresh()), 'set1_home' => 3, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
+        $this->delete(route('frontend.fixtures.score.delete', $this->rubber), ['score_revision' => app(TeamFixtureScoreService::class)->revision($this->rubber->fresh())])->assertRedirect();
         $this->assertSame(0, $this->rubber->teamResults()->count());
     }
 
@@ -203,11 +203,11 @@ class TeamScoringRulesWorkflowTest extends TestCase
         $fixturePage = route('frontend.fixtures.venue', $venue);
         $saveUrl = route('frontend.fixtures.score.store', $this->rubber);
         $revision = str_repeat('a', 64);
-        $scores = ['set1_home' => 6, 'set1_away' => 0, 'participant_revision' => $revision];
+        $scores = ['set1_home' => 6, 'set1_away' => 0, 'participant_revision' => $revision, 'score_revision' => app(TeamFixtureScoreService::class)->revision($this->rubber->fresh())];
         $message = 'Scoring is temporarily busy. Your entries are still here. Try saving again in a moment.';
 
         $service = app(TeamFixtureScoreService::class);
-        $this->mock(TeamFixtureScoreService::class)->shouldReceive('save')->twice()
+        $this->partialMock(TeamFixtureScoreService::class)->shouldReceive('save')->twice()
             ->andThrow(new TeamScoreBusyException($this->lockWaitTimeout()));
 
         $this->postJson($saveUrl, $scores)->assertStatus(503)->assertExactJson(['message' => $message]);

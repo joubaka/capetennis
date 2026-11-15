@@ -120,6 +120,7 @@
         success: function (data) {
 
           logGroup('✅ SCORE RESPONSE', data);
+          if (data.score_revision) $('[data-id="'+fixtureId+'"]').attr('data-score-revision', data.score_revision);
 
           if (!data.success) {
             console.warn('Server returned success=false');
@@ -162,18 +163,18 @@
       if (!confirm('Delete the result for this fixture?')) return;
 
       const fixtureId = $(this).data('id');
-      const url = "{{ route('backend.team-fixtures.destroyResult', ':id') }}"
-        .replace(':id', fixtureId);
+      const url = $(this).attr('data-action');
 
       logGroup('🗑 DELETE RESULT', { fixtureId, url });
 
       $.ajax({
         url: url,
         type: 'POST',
-        data: { _method: 'DELETE', _token: '{{ csrf_token() }}' },
+        data: { _method: 'DELETE', _token: $('meta[name="csrf-token"]').attr('content'), score_revision: $(this).attr('data-score-revision') },
         success: function (data) {
 
           logGroup('✅ DELETE RESPONSE', data);
+          if (data.score_revision) $('[data-id="'+fixtureId+'"]').attr('data-score-revision', data.score_revision);
 
           if (!data.success) {
             console.warn('Delete returned success=false');
@@ -182,6 +183,7 @@
           }
 
           $(`#result-col-${fixtureId}`).html(data.html);
+          $(`[data-id="${fixtureId}"]`).removeData('set1_home set1_away set2_home set2_away set3_home set3_away').removeAttr('data-set1_home data-set1_away data-set2_home data-set2_away data-set3_home data-set3_away');
           $(`#row-${fixtureId}`)
             .find('.home-cell, .away-cell')
             .removeClass('winner-home loser-home draw-cell');

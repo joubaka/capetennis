@@ -59,8 +59,7 @@ class TeamRoundRobinMatrixTest extends TestCase
         $scores = $this->get($url.'?tie='.$this->tie->id)->assertOk()->assertViewIs('frontend.fixtures.enter-score');
         $this->assertSame([$this->rubber->id], $scores->viewData('fixtures')->pluck('id')->all());
         $originalRules = $this->draw->team_scoring_rules;
-        $this->postJson(route('frontend.fixtures.score.store', $this->rubber),
-            ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3])->assertOk()->assertJsonPath('success', true);
+        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]))->assertOk()->assertJsonPath('success', true);
         $updated = $this->get($url)->assertOk()->assertSee('Complete');
         $data = $updated->viewData('matrix');
         $this->assertSame(1, $data['cells'][$this->tie->home_team_id][$this->tie->away_team_id][0]['for']);
@@ -71,8 +70,8 @@ class TeamRoundRobinMatrixTest extends TestCase
         $this->assertDatabaseCount('team_ties', 2);
         $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $this->draw->id, 'action' => 'score_saved']);
         $correction = ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6];
-        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), $correction)->assertOk();
-        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), $correction)->assertOk();
+        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->rubber)->fresh())] + ($correction))->assertOk();
+        $this->postJson(route('frontend.fixtures.score.store', $this->rubber), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->rubber)->fresh())] + ($correction))->assertOk();
         $this->assertDatabaseCount('team_fixture_results', 2);
         $corrected = $this->get($url)->assertOk()->viewData('matrix');
         $this->assertSame(1, $corrected['cells'][$this->tie->away_team_id][$this->tie->home_team_id][0]['for']);
@@ -180,6 +179,8 @@ class TeamRoundRobinMatrixTest extends TestCase
         $this->assertSame([$this->rubber->id], $response->viewData('fixtures')->pluck('id')->all());
         $workspace = $this->get(route('frontend.scoring.workspace', ['event' => $this->draw->event_id, 'draw' => $this->draw->id]))
             ->assertOk()->assertDontSee('data-team-round-robin-matrix', false);
-        $this->assertSame([], $workspace->viewData('roundRobinMatrices'));
+        $this->assertSame([$this->rubber->id], $workspace->viewData('matches')->pluck('id')->all());
+        $this->assertTrue($workspace->viewData('venueRestricted'));
+        $this->assertSame($venue->id, $workspace->viewData('selectedVenue')->id);
     }
 }

@@ -46,6 +46,7 @@
       const away  = $(this).data('away');
 
       $('#rr-fixture-id').val(id);
+      $('#rr-fixture-id').data('score-revision', (window.RR_SCORE_REVISIONS || {})[id]);
       $('#rr-match-label').html(`<b>${home}</b> vs <b>${away}</b>`);
       $('.rr-p1-label').text(home);
       $('.rr-p2-label').text(away);
@@ -66,6 +67,7 @@
         });
       }
 
+      window.CTSetScoreGrid.bind(document.getElementById('rr-score-modal-form'), {setTypes: window.RR_SCORE_SET_TYPES || []});
       new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
     });
 
@@ -110,8 +112,9 @@
       const $btn = $('#rr-score-modal-form [type="submit"]');
       $btn.prop('disabled', true).text('Saving…');
 
-      $.post(url, { sets })
+      $.post(url, { sets, score_revision: $('#rr-fixture-id').data('score-revision') })
         .done(res => {
+          if (res.scoreRevisions) window.RR_SCORE_REVISIONS = Object.assign({}, window.RR_SCORE_REVISIONS || {}, res.scoreRevisions);
           toastr.success('Score saved');
 
           const tr = getRow(id);
@@ -151,8 +154,9 @@
       $btn.prop('disabled', true);
       const url = window.RR_DELETE_SCORE_URL.replace('FIXTURE_ID', id);
 
-      $.ajax({ url, method: 'DELETE' })
-        .done(function () {
+      $.ajax({ url, method: 'DELETE', data: {score_revision: (window.RR_SCORE_REVISIONS || {})[id]} })
+        .done(function (res) {
+          if (res.scoreRevisions) window.RR_SCORE_REVISIONS = Object.assign({}, window.RR_SCORE_REVISIONS || {}, res.scoreRevisions);
           toastr.success('Score deleted');
           tr.find('td').eq(5).text('');
           applyRowColours(tr, null);

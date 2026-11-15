@@ -63,6 +63,7 @@ class DrawLockHardeningTest extends TestCase
 
         $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.save-groups', $draw), [
+                'revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()),
                 'groups' => [['group_id' => $group->id, 'registration_ids' => []]],
             ])
             ->assertForbidden();
@@ -75,6 +76,7 @@ class DrawLockHardeningTest extends TestCase
 
         $this->actingAs($this->admin($draw))
             ->postJson(route('backend.draw.save-groups', $draw), [
+                'revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()),
                 'groups' => [['group_id' => $group->id, 'registration_ids' => []]],
             ])
             ->assertOk();
@@ -87,7 +89,7 @@ class DrawLockHardeningTest extends TestCase
         $draw = $this->lockedDraw();
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.draw.regenerate-rr', $draw))
+            ->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + (['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision(($draw)->fresh())]))
             ->assertForbidden();
     }
 
@@ -96,7 +98,7 @@ class DrawLockHardeningTest extends TestCase
         $draw = Draw::factory()->create(['locked' => 0, 'published' => 1]);
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.draw.regenerate-rr', $draw))
+            ->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + (['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision(($draw)->fresh())]))
             ->assertForbidden();
     }
 
@@ -110,7 +112,7 @@ class DrawLockHardeningTest extends TestCase
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.draw.regenerate-rr', $draw))
+            ->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + (['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision(($draw)->fresh())]))
             ->assertStatus(422)
             ->assertJsonPath('scored_fixtures', 1);
 
@@ -126,9 +128,9 @@ class DrawLockHardeningTest extends TestCase
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.roundrobin.score.store', $fixture), [
+            ->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ([
                 'sets' => ['6-3'],
-            ])
+            ]))
             ->assertForbidden();
     }
 
@@ -138,9 +140,9 @@ class DrawLockHardeningTest extends TestCase
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
         $this->actingAs($this->admin($draw))
-            ->postJson(route('backend.roundrobin.score.store', $fixture), [
+            ->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ([
                 'sets' => ['6-3'],
-            ])
+            ]))
             ->assertOk();
     }
 
@@ -152,7 +154,7 @@ class DrawLockHardeningTest extends TestCase
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
         $this->actingAs($this->admin($draw))
-            ->deleteJson(route('backend.roundrobin.score.delete', $fixture))
+            ->deleteJson(route('backend.roundrobin.score.delete', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])
             ->assertForbidden();
     }
 
@@ -162,7 +164,7 @@ class DrawLockHardeningTest extends TestCase
         $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
 
         $this->actingAs($this->admin($draw))
-            ->deleteJson(route('backend.roundrobin.score.delete', $fixture))
+            ->deleteJson(route('backend.roundrobin.score.delete', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])
             ->assertForbidden();
     }
 

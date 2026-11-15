@@ -17,6 +17,7 @@ class PlayerRatingHistoryRefreshTest extends TestCase
     {
         parent::setUp();
         config(['cache.stores.file' => ['driver' => 'array'], 'queue.default' => 'sync']);
+        $this->mock(\App\Services\Performance\PlayerPlusDerivedRefreshState::class)->shouldReceive('read')->byDefault()->andReturn(null);
     }
 
     protected function tearDown(): void
@@ -86,21 +87,44 @@ class PlayerRatingHistoryRefreshTest extends TestCase
     public function test_status_reads_execution_lock_without_acquiring_it(): void
     {
         $lock = Mockery::mock(\Illuminate\Contracts\Cache\Lock::class);
-        $lock->shouldReceive('isLocked')->once()->andReturn(false);
+        $lock->shouldReceive('isLocked')->twice()->andReturn(false);
         $lock->shouldNotReceive('get', 'release');
         $store = Mockery::mock();
         $store->shouldReceive('get')->once()->with(PlayerRatingHistoryRefresh::STATE, ['state' => 'idle'])->andReturn(['state' => 'idle']);
         $store->shouldReceive('lock')->once()->with(PlayerRatingHistoryRefresh::BUILDER, 1)->andReturn($lock);
+        $store->shouldReceive('lock')->once()->with(\App\Services\Performance\PlayerPlusDerivedRefresh::LOCK, 1)->andReturn($lock);
         Cache::shouldReceive('store')->with('file')->andReturn($store);
         $this->assertSame('idle', app(PlayerRatingHistoryRefresh::class)->status()['state']);
     }
 
-    public function test_worker_requires_owned_lease_and_calls_only_history_builder_once(): void
+    public function test_pipeline_base_phase_is_running_and_a_budget_pause_is_not_a_false_failure(): void
+    {
+        Cache::store('file')->put(PlayerRatingHistoryRefresh::STATE, ['state' => 'pending', 'submitted_at' => time() - 500], 86400);
+        $pipeline = $this->mock(\App\Services\Performance\PlayerPlusDerivedRefreshState::class);
+        $pipeline->shouldReceive('read')->andReturn(['cycle_date' => now('Africa/Johannesburg')->toDateString(), 'status' => 'pending', 'stage' => 'history']);
+        $lock = Cache::store('file')->lock(\App\Services\Performance\PlayerPlusDerivedRefresh::LOCK, 28800); $this->assertTrue($lock->get());
+        try { $this->assertSame('running', app(PlayerRatingHistoryRefresh::class)->status()['state']); } finally { $lock->release(); }
+        $status = app(PlayerRatingHistoryRefresh::class)->status(); $this->assertSame('idle', $status['state']); $this->assertStringContainsString('paused between overnight stages', $status['message']);
+    }
+
+    public function test_partial_and_artifact_error_completion_messages_never_claim_every_player_is_ready(): void
+    {
+        Cache::store('file')->put(PlayerRatingHistoryRefresh::STATE, ['state' => 'completed', 'completed_at' => time()], 86400);
+        $pipeline = $this->mock(\App\Services\Performance\PlayerPlusDerivedRefreshState::class);
+        $pipeline->shouldReceive('read')->twice()->andReturn(
+            ['cycle_date' => now('Africa/Johannesburg')->toDateString(), 'status' => 'pending', 'stage' => 'progress'],
+            ['cycle_date' => now('Africa/Johannesburg')->toDateString(), 'status' => 'complete_with_errors', 'stage' => 'done']
+        );
+        $partial = app(PlayerRatingHistoryRefresh::class)->status(); $this->assertSame('completed', $partial['state']); $this->assertStringContainsString('Remaining player reconstructions', $partial['message']);
+        $errors = app(PlayerRatingHistoryRefresh::class)->status(); $this->assertSame('completed', $errors['state']); $this->assertStringContainsString('operator review', $errors['message']);
+    }
+
+    public function test_worker_requires_owned_lease_and_calls_ordered_pipeline_once(): void
     {
         $lease = Cache::store('file')->lock(PlayerRatingHistoryRefresh::LEASE, 120);
         $lease->get();
         putenv('CT_HISTORY_REFRESH_OWNER='.$lease->owner());
-        Artisan::shouldReceive('call')->once()->with('player-rating-history:refresh')->andReturn(0);
+        Artisan::shouldReceive('call')->once()->with('player-plus:refresh-derived')->andReturn(0);
         $this->assertSame(0, (new RunRequestedRatingHistory)->handle(app(PlayerRatingHistoryRefresh::class)));
         $this->assertFalse(Cache::store('file')->lock(PlayerRatingHistoryRefresh::LEASE)->isLocked());
         $this->assertFalse(getenv('CT_HISTORY_REFRESH_OWNER'));

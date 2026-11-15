@@ -8,6 +8,7 @@
 @endsection
 
 @section('page-script')
+<script defer src="{{ asset('assets/js/player-match-explanation.js') }}?v={{ filemtime(public_path('assets/js/player-match-explanation.js')) }}"></script>
 <script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
 <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
 <script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
@@ -34,6 +35,12 @@ function mountMyTennisRating() {
   let loadingHandle = null;
   let controller = null;
   const lifetime = new AbortController();
+  const stopRatingReads = () => {
+    lifetime.abort();
+    controller?.abort();
+    loadingHandle?.close();
+  };
+  window.addEventListener('popstate', stopRatingReads, { signal: lifetime.signal });
   document.addEventListener('my-tennis:unmounting', () => {
     lifetime.abort();
     controller?.abort();
@@ -41,6 +48,16 @@ function mountMyTennisRating() {
     loadingHandle?.close();
   }, { once: true });
   let focusId = null;
+  const recordNavigation = (url) => {
+    const workspaceUrl = new URL(panel.dataset.ratingWorkspaceUrl || window.location.href, window.location.href);
+    const requested = new URL(url, window.location.href);
+    for (const key of ['month', 'scope', 'scale', 'page', 'rating_section', 'rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page']) {
+      if (requested.searchParams.has(key)) workspaceUrl.searchParams.set(key, requested.searchParams.get(key));
+      else workspaceUrl.searchParams.delete(key);
+    }
+    if (workspaceUrl.href !== window.location.href) window.history.pushState(null, '', workspaceUrl.href);
+    document.dispatchEvent(new CustomEvent('my-tennis:rating-navigated'));
+  };
   const syncAgeFilter = () => {
     const level = panel.querySelector('[name="rating_level"]:not([type="hidden"])');
     const age = panel.querySelector('[data-rating-age-filter]');
@@ -87,7 +104,9 @@ function mountMyTennisRating() {
       if (!response.ok || response.redirected) throw new Error('Unavailable');
       const html = await response.text();
       if (lifetime.signal.aborted || pendingUrl) return;
-      const activeSection = panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'compare';
+      const requestedSection = new URL(requestUrl, window.location.href).searchParams.get('rating_section');
+      const activeSection = {history: 'progress', method: 'understand', overview: 'compare'}[requestedSection]
+        || panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'compare';
       const adminToolsOpen = panel.querySelector('[data-rating-admin-tools]')?.open;
       panel.innerHTML = html;
       const adminTools = panel.querySelector('[data-rating-admin-tools]');
@@ -99,6 +118,7 @@ function mountMyTennisRating() {
       const sectionButton = panel.querySelector('[data-rating-section="' + activeSection + '"]');
       if (sectionButton) bootstrap.Tab.getOrCreateInstance(sectionButton).show();
       refreshUI.sync();
+      recordNavigation(requestUrl);
     } catch (error) {
       if (lifetime.signal.aborted || pendingUrl) return;
       status.textContent = 'Rating history could not be loaded. ';
@@ -123,6 +143,14 @@ function mountMyTennisRating() {
     if (link && (event.button === undefined || event.button === 0) && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) { event.preventDefault(); load(link.getAttribute('href')); }
     else if (event.target.closest('[data-rating-retry]')) load(lastUrl);
   });
+  panel.addEventListener('shown.bs.tab', event => {
+    const section = event.target.dataset.ratingSection;
+    if (!section || loading || lifetime.signal.aborted) return;
+    const url = new URL(lastUrl, window.location.href);
+    url.searchParams.set('rating_section', {compare: 'overview', progress: 'history', understand: 'method'}[section] || 'overview');
+    lastUrl = url.href;
+    recordNavigation(lastUrl);
+  });
   const filterUrl = (form, changedControl = null) => {
     const url = new URL(form.action);
     const params = new URLSearchParams(new FormData(form));
@@ -134,7 +162,8 @@ function mountMyTennisRating() {
         || (loading && changedControl && key !== changedControl.name);
       if (params.has(key) && preserve) params.set(key, value);
     });
-    if (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level', 'rating_per_page'].includes(changedControl?.name)) params.set('rating_page', '1');
+    const hasRatingList = ['rating_age', 'rating_gender', 'rating_level', 'rating_per_page'].some(key => params.has(key));
+    if (hasRatingList && (!params.has('rating_page') || ['rating_age', 'rating_gender', 'rating_level', 'rating_per_page'].includes(changedControl?.name))) params.set('rating_page', '1');
     url.search = params.toString();
     return url.toString();
   };

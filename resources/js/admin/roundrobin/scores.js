@@ -13,10 +13,72 @@
   var $matchLabel  = $('#rrm-match-label');
   var recoverySets = null;
   var recoveryPreview = null;
+  var recoveryFixtureId = null;
+  var activeSession = null;
+  var modalPhase = 'hidden';
+  var queuedOpen = null;
+  var pendingMutation = null;
+
+  function _modal() {
+    var element = document.getElementById('rrScoreModal');
+    var instance = bootstrap.Modal.getInstance(element);
+    return instance && typeof instance.show === 'function' ? instance : new bootstrap.Modal(element);
+  }
+
+  function _snapshot() {
+    var values = [];
+    for (var n = 1; n <= Number(root.RR_SCORE_MAX_SETS || 3); n++) {
+      values.push($('#set' + n + '-p1').val(), $('#set' + n + '-p2').val());
+    }
+    values.push($('#rrm-deciding-winner').val());
+    return JSON.stringify(values);
+  }
+
+  function _ownsForm(operation) {
+    return activeSession === operation.session && String($fixtureId.val()) === String(operation.fixtureId);
+  }
+
+  function _setAvailability() {
+    var ready = modalPhase === 'shown' && !!activeSession;
+    $form.find('.score-set-row').each(function () {
+      $(this).find(':input').prop('disabled', !ready || Number($(this).data('set-row')) > Number(root.RR_SCORE_MAX_SETS || 3));
+    });
+    $form.find('[type="submit"]').prop('disabled', !ready || !!pendingMutation);
+    $('#rrm-delete-score').prop('disabled', !ready || !!pendingMutation);
+    $('#rrm-open-recovery').prop('disabled', !ready || !!pendingMutation);
+  }
+
+  function _beginMutation(button, label) {
+    var operation = {session: activeSession, fixtureId: $fixtureId.val(), snapshot: _snapshot(),
+      restore: AdminLoading.button(button, label)};
+    pendingMutation = operation;
+    _setAvailability();
+    return operation;
+  }
+
+  function _finishMutation(operation) {
+    if (pendingMutation !== operation) return;
+    pendingMutation = null;
+    operation.restore();
+    _setAvailability();
+  }
+
+  function _clearModalFields() {
+    $form.find('.score-set-row :input').val('');
+    $fixtureId.val('');
+    $matchLabel.html('');
+    $('#rrm-open-recovery').addClass('d-none');
+  }
 
   // ─── Open modal ───────────────────────────────────────────────────
   function open(id, home, away) {
     if (!root.RR_CAN_SCORE || root.RR_DRAW_LOCKED) { AdminToast.warning('You cannot edit scores in this draw state.'); return; }
+    if (modalPhase === 'hiding') { queuedOpen = [id, home, away]; return; }
+    // Duplicate activation must not re-prefill an in-progress draft.
+    if (activeSession && String(activeSession.fixtureId) === String(id)) return;
+    activeSession = {fixtureId: id, revision: (root.RR_SCORE_REVISIONS || {})[id]};
+    recoverySets = recoveryPreview = recoveryFixtureId = null;
+    $('#rrm-open-recovery').addClass('d-none');
     var match = AdminState.getOop().find(function(f) { return f.id == id; });
     if (!match) {
       Object.values(AdminState.getFixtures()).some(function(rows) { match = rows.find(function(f) { return f.id == id; }); return !!match; });
@@ -36,8 +98,10 @@
 
     // Pre-fill existing score if available
     _prefillScore(id);
+    root.CTSetScoreGrid.bind($form[0], {rowSelector: '.score-set-row', setTypes: root.RR_SCORE_SET_TYPES || []});
 
-    new bootstrap.Modal(document.getElementById('rrScoreModal')).show();
+    _setAvailability();
+    if (modalPhase === 'hidden') { modalPhase = 'showing'; _modal().show(); }
   }
 
   function _prefillScore(id) {
@@ -88,6 +152,7 @@
   // ─── Save score ───────────────────────────────────────────────────
   function _save(e) {
     e.preventDefault();
+    if (pendingMutation || modalPhase !== 'shown') return;
 
     var fixtureId = $fixtureId.val();
     if (!fixtureId) { AdminToast.error('No fixture selected.'); return; }
@@ -96,53 +161,55 @@
     if (sets === null) return; // validation error already shown
     if (!sets.length) { AdminToast.error('Please enter at least one valid set.'); return; }
 
-    var $btn    = $form.find('[type="submit"]');
-    var restore = AdminLoading.button($btn, 'Saving…');
+    if (!activeSession) return;
+    var $btn = $form.find('[type="submit"]');
 
-    AdminApi.post(AdminRoutes.score(fixtureId), { sets: sets })
+    var operation = _beginMutation($btn, 'Saving…');
+    AdminApi.post(AdminRoutes.score(fixtureId), { sets: sets, score_revision: activeSession.revision })
       .then(function (res) {
-        AdminToast.success('Score saved');
+        AdminToast.success(_ownsForm(operation) ? 'Score saved' : 'Earlier match score saved');
         _handleScoreResponse(res, fixtureId);
-        _closeModal();
+        _closeModal(operation);
       })
       .catch(function (err) {
         AdminToast.error(err.message || 'Error saving score');
-        if (err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
+        if (_ownsForm(operation) && operation.snapshot === _snapshot() && err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
           recoverySets = sets.map(function (set) { return set.split('-').map(Number); });
           $('#rrm-open-recovery').removeClass('d-none');
         }
       })
-      .then(function () { restore(); });
+      .then(function () { _finishMutation(operation); });
   }
 
   // ─── Delete score ─────────────────────────────────────────────────
   function _delete() {
+    if (pendingMutation || !activeSession || modalPhase !== 'shown') return;
     var fixtureId = $fixtureId.val();
     if (!fixtureId) { AdminToast.warning('No fixture selected.'); return; }
 
     if (!window.confirm('Delete the score for this match?')) return;
 
-    var $btn    = $('#rrm-delete-score');
-    var restore = AdminLoading.button($btn, 'Deleting…');
+    var operation = _beginMutation($('#rrm-delete-score'), 'Deleting…');
 
-    AdminApi.delete(AdminRoutes.scoreDelete(fixtureId))
+    AdminApi.delete(AdminRoutes.scoreDelete(fixtureId), {score_revision: activeSession.revision})
       .then(function (res) {
-        AdminToast.success('Score deleted');
+        AdminToast.success(_ownsForm(operation) ? 'Score deleted' : 'Earlier match score deleted');
         _handleScoreResponse(res, fixtureId);
         AdminState.scoreDeleted(fixtureId);
-        _closeModal();
+        _closeModal(operation);
       })
       .catch(function (err) {
         AdminToast.error(err.message || 'Error deleting score');
-        if (err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
+        if (_ownsForm(operation) && err.status === 409 && /tournament recovery|generated playoff bracket/i.test(err.message || '')) {
           $('#rrm-open-recovery').removeClass('d-none');
         }
       })
-      .then(function () { restore(); });
+      .then(function () { _finishMutation(operation); });
   }
 
   // ─── Handle server response (sync state) ─────────────────────────
   function _handleScoreResponse(res, fixtureId) {
+    if (res.scoreRevisions) root.RR_SCORE_REVISIONS = Object.assign({}, root.RR_SCORE_REVISIONS || {}, res.scoreRevisions);
     if (res.rrFixtures)  AdminState.setFixtures(res.rrFixtures);
     if (res.standings)   AdminState.setStandings(res.standings);
     if (res.oop) {
@@ -179,14 +246,11 @@
   }
 
   // ─── Close modal ──────────────────────────────────────────────────
-  function _closeModal() {
+  function _closeModal(operation) {
+    if (!_ownsForm(operation) || operation.snapshot !== _snapshot()) return;
     var el  = document.getElementById('rrScoreModal');
     var bsm = el ? bootstrap.Modal.getInstance(el) : null;
     if (bsm) bsm.hide();
-    $('.score-set-row :input').val('');
-    $fixtureId.val('');
-    $matchLabel.html('');
-    $('#rrm-open-recovery').addClass('d-none');
   }
 
   function _escape(value) {
@@ -194,6 +258,7 @@
   }
 
   function _openRecovery() {
+    if (pendingMutation || !activeSession || modalPhase !== 'shown') return;
     var fixtureId = $fixtureId.val();
     var sets = _readSets();
     if (!fixtureId || sets === null || !sets.length) {
@@ -201,10 +266,12 @@
       return;
     }
     recoverySets = sets.map(function (set) { return set.split('-').map(Number); });
-    var restore = AdminLoading.button($('#rrm-open-recovery'), 'Checking…');
+    var operation = _beginMutation($('#rrm-open-recovery'), 'Checking…');
     AdminApi.postJson(root.RR_RECOVERY.preview, { fixture_id: Number(fixtureId) })
       .then(function (response) {
+        if (!_ownsForm(operation) || operation.snapshot !== _snapshot()) return;
         recoveryPreview = response;
+        recoveryFixtureId = fixtureId;
         var impact = response.impact;
         $('#rr-recovery-impact').html(
           '<p class="mb-2"><strong>' + _escape(impact.effect) + '</strong></p>' +
@@ -221,7 +288,7 @@
         new bootstrap.Modal(document.getElementById('rrRecoveryModal')).show();
       })
       .catch(function (err) { AdminToast.error(err.message || 'Could not preview recovery.'); })
-      .then(function () { restore(); });
+      .then(function () { _finishMutation(operation); });
   }
 
   function _applyRecovery(event) {
@@ -235,7 +302,7 @@
     }
     var restore = AdminLoading.button($('#rr-recovery-apply'), 'Applying recovery…');
     AdminApi.postJson(root.RR_RECOVERY.apply, {
-      fixture_id: Number($fixtureId.val()),
+      fixture_id: Number(recoveryFixtureId),
       sets: recoverySets,
       reason: reason,
       fingerprint: recoveryPreview.fingerprint,
@@ -281,6 +348,22 @@
   function bind() {
     if (bound) return;
     bound = true;
+    $('#rrScoreModal').on('show.bs.modal', function () { modalPhase = 'showing'; _setAvailability(); });
+    $('#rrScoreModal').on('shown.bs.modal', function () { modalPhase = 'shown'; _setAvailability(); });
+    $('#rrScoreModal').on('hide.bs.modal', function () {
+      modalPhase = 'hiding';
+      activeSession = null;
+      _setAvailability();
+    });
+    $('#rrScoreModal').on('hidden.bs.modal', function () {
+      if (modalPhase !== 'hiding') return;
+      modalPhase = 'hidden';
+      _clearModalFields();
+      _setAvailability();
+      var next = queuedOpen;
+      queuedOpen = null;
+      if (next) open.apply(null, next);
+    });
     // Matrix cell click
     $(document).on('click', '.rr-score-cell', function () {
       open($(this).data('fixture-id'), $(this).data('home'), $(this).data('away'));

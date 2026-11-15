@@ -29,7 +29,7 @@ class EventStandingsTest extends TestCase
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'drawName' => $categoryName.' singles', 'team_scoring_rules' => app(TeamEventRulesService::class)->defaults()]);
         $tie = TeamTie::create(['draw_id' => $draw->id, 'home_team_id' => $teams[0]->id, 'away_team_id' => $teams[1]->id, 'round_nr' => 1, 'tie_nr' => 1, 'status' => 'published', 'published_at' => now()]);
         $rubber = TeamFixture::create(['draw_id' => $draw->id, 'team_tie_id' => $tie->id, 'fixture_type' => 1, 'rubber_code' => 'singles', 'rubber_sequence' => 1, 'round_nr' => 1, 'match_nr' => 1]);
-        app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+        app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]));
         return compact('draw', 'tie', 'rubber', 'teams', 'regions');
     }
 
@@ -60,7 +60,7 @@ class EventStandingsTest extends TestCase
             'fixture_type' => 1, 'rubber_code' => 'singles', 'rubber_sequence' => 2, 'round_nr' => 1, 'match_nr' => 2]);
         // A completed rubber counts immediately; an incomplete tie earns no bonus.
         $assertBreakdown([3, 0], [0, 0], [3, 0]);
-        app(TeamFixtureScoreService::class)->save($second, ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]);
+        app(TeamFixtureScoreService::class)->save($second, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($second)->fresh())] + (['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]));
         $assertBreakdown([3, 3], [2, 2], [5, 5]);
 
         $admin = User::factory()->create();
@@ -119,7 +119,12 @@ class EventStandingsTest extends TestCase
         $this->assertSame(1, $response->viewData('stats')['rubbers']);
         $this->assertMatchesRegularExpression('/href="'.preg_quote(route('admin.events.standings', $event), '/').'"\s+aria-current="page"/', $response->getContent());
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
-        $this->get(route('backend.team-selection.index', $event))->assertRedirect(route('admin.events.teams', $event));
+        $selection = $this->get(route('backend.team-selection.index', $event))->assertOk()
+            ->assertViewIs('backend.adminPage.show')
+            ->assertViewHas('centralTeamMode', 'invitations')
+            ->assertViewHas('regionalScoped', true);
+        $this->assertSame([$region->id], $selection->viewData('eventRegions')->pluck('id')->all());
+        $this->assertSame([$region->region_id], $selection->viewData('event')->regions->pluck('id')->all());
         $this->get(route('admin.events.teams', $event))->assertOk();
         $this->get(route('admin.events.standings', $other))->assertForbidden();
         foreach (['event-draw.view', 'event.manage', 'event.settings.manage', 'event-finance.view', 'event-finance.manage',
@@ -236,9 +241,9 @@ class EventStandingsTest extends TestCase
         $data['tie']->delete();
         $data['draw']->update(['team_scoring_rules' => null]);
         $rubber = TeamFixture::create(['draw_id' => $data['draw']->id, 'region1' => $data['regions'][0]->id, 'region2' => $data['regions'][1]->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 2]);
-        app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2]);
+        app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
         $this->assertSame(0, app(EventStandingsService::class)->forEvent($event)['stats']['rubbers']);
-        app(TeamFixtureScoreService::class)->save($rubber->fresh(), ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+        app(TeamFixtureScoreService::class)->save($rubber->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber->fresh())->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]));
         $stats = app(EventStandingsService::class)->forEvent($event);
         $this->assertSame(1, $stats['stats']['rubbers']);
         $this->assertEquals(0, $stats['stats']['ties']);
@@ -263,15 +268,15 @@ class EventStandingsTest extends TestCase
         }
         $girls['rubber']->update(['rubber_code' => 'reverse_singles', 'fixture_type' => 4]);
         $mixed['rubber']->update(['rubber_code' => 'mixed_doubles', 'fixture_type' => 3]);
-        app(TeamFixtureScoreService::class)->save($mixed['rubber']->fresh(), ['set1_home' => 2, 'set1_away' => 6]);
+        app(TeamFixtureScoreService::class)->save($mixed['rubber']->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($mixed['rubber']->fresh())->fresh())] + (['set1_home' => 2, 'set1_away' => 6]));
         foreach (['doubles', 'reverse_doubles', 'reverse_mixed_doubles'] as $index => $code) {
             $rubber = TeamFixture::create(['draw_id' => $boys['draw']->id, 'team_tie_id' => $boys['tie']->id,
                 'fixture_type' => $code === 'reverse_mixed_doubles' ? 3 : 2, 'rubber_code' => $code,
                 'rubber_sequence' => $index + 2, 'round_nr' => 1, 'match_nr' => $index + 2]);
-            app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2]);
+            app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
         }
         $unfinished = $this->draw($event, 'U10 Girls unfinished');
-        app(TeamFixtureScoreService::class)->delete($unfinished['rubber']);
+        app(TeamFixtureScoreService::class)->delete($unfinished['rubber'], app(\App\Services\TeamFixtureScoreService::class)->revision(($unfinished['rubber'])->fresh()));
         foreach ([0, 1] as $side) { $unfinished['teams'][$side]->update(['region_id' => $boys['regions'][$side]->id]); }
         $this->draw($this->event(), 'U10 Foreign');
 
@@ -338,7 +343,7 @@ class EventStandingsTest extends TestCase
         $boys = $this->draw($event, 'U10 Boys');
         $girls = $this->draw($event, 'U10 Girls');
         foreach ([0, 1] as $side) { $girls['teams'][$side]->update(['region_id' => $boys['regions'][$side]->id]); }
-        app(TeamFixtureScoreService::class)->save($girls['rubber']->fresh(), ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]);
+        app(TeamFixtureScoreService::class)->save($girls['rubber']->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($girls['rubber']->fresh())->fresh())] + (['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]));
         $rows = app(EventStandingsService::class)->forEvent($event)['ageStandings']['U10'];
         $this->assertSame([3, 3], array_column($rows, 'points'));
         $this->assertSame([1, 1], array_column($rows, 'rank'));
@@ -346,7 +351,7 @@ class EventStandingsTest extends TestCase
         $rules = app(TeamEventRulesService::class)->defaults();
         $rules['standings_order'] = ['points', 'game_difference'];
         foreach ([$boys, $girls] as $data) { $data['draw']->update(['team_scoring_rules' => $rules]); }
-        app(TeamFixtureScoreService::class)->save($girls['rubber']->fresh(), ['set1_home' => 0, 'set1_away' => 6, 'set2_home' => 0, 'set2_away' => 6]);
+        app(TeamFixtureScoreService::class)->save($girls['rubber']->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($girls['rubber']->fresh())->fresh())] + (['set1_home' => 0, 'set1_away' => 6, 'set2_home' => 0, 'set2_away' => 6]));
         $data = app(EventStandingsService::class)->forEvent($event);
         $this->assertSame(['Pine Primary School', 'Oak Primary School'], array_column($data['ageStandings']['U10'], 'name'));
         $this->assertSame([1, 2], array_column($data['ageStandings']['U10'], 'rank'));

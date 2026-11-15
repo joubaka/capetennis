@@ -88,7 +88,7 @@
       $.ajax({
         url: actionUrl,
         type: 'DELETE',
-        data: { _token: $('meta[name="csrf-token"]').attr('content') },
+        data: { _token: $('meta[name="csrf-token"]').attr('content'), score_revision: $(this).attr('data-score-revision') },
         success: function (data) {
           if (!data.success) {
             window.AppFeedback?.error(data.message || 'Could not delete the result.');

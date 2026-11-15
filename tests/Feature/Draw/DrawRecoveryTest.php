@@ -57,7 +57,9 @@ class DrawRecoveryTest extends TestCase
         $this->recordResult($final, $players[0], $players[2], 6, 4);
 
         $this->actingAs($admin)
-            ->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $semi]))
+            ->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $semi]), [
+                'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($semi->fresh()),
+            ])
             ->assertStatus(409)
             ->assertJsonPath('message', 'This result feeds a later played match. Delete that downstream result first, or open tournament recovery to preview and reset the affected chain safely.');
 
@@ -89,7 +91,10 @@ class DrawRecoveryTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->postJson(route('backend.roundrobin.score.store', $rr), ['sets' => ['3-6']])
+            ->postJson(route('backend.roundrobin.score.store', $rr), [
+                'sets' => ['3-6'],
+                'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($rr->fresh()),
+            ])
             ->assertStatus(409)
             ->assertJsonPath('message', 'The round robin has a generated playoff bracket. Open tournament recovery so it can be snapshotted and rebuilt from corrected standings.');
 

@@ -74,11 +74,11 @@ class TwoStageRoundRobinTest extends TestCase
         $this->assertCount(0, app(TwoStageRoundRobinService::class)->prepare($draw));
         $this->assertFalse(app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw));
         $fixture = $second->first();
-        $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => ['6-0']])->assertConflict();
-        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['sets' => ['6-0']])->assertConflict();
+        $this->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-0']]))->assertConflict();
+        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-0']]))->assertConflict();
         $first = $draw->drawFixtures()->whereHas('drawGroup', fn ($query) => $query->where('round_robin_phase', 1))->get();
         foreach ($first as $fixture) {
-            $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => [$fixture->registration1_id < $fixture->registration2_id ? '6-0' : '0-6']])->assertOk();
+            $this->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => [$fixture->registration1_id < $fixture->registration2_id ? '6-0' : '0-6']]))->assertOk();
         }
         $this->assertTrue($second->every(fn ($fixture) => !$fixture->fresh()->registration1_id && !$fixture->fresh()->registration2_id));
         $this->assertSame(9, DB::table('fixture_results')->count());
@@ -229,7 +229,7 @@ class TwoStageRoundRobinTest extends TestCase
         foreach ($second as $index => $fixture) {
             $route = $index % 2 ? route('backend.roundrobin.score.store', $fixture)
                 : route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]);
-            $this->postJson($route, ['sets' => [$fixture->registration1_id < $fixture->registration2_id ? '6-0' : '0-6']])->assertOk();
+            $this->postJson($route, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => [$fixture->registration1_id < $fixture->registration2_id ? '6-0' : '0-6']]))->assertOk();
         }
         $placements = app(DrawFinalPlacementService::class)->forDraw($draw->fresh());
         $this->assertSame(range(1, 9), $placements->pluck('position')->all());
@@ -306,12 +306,12 @@ class TwoStageRoundRobinTest extends TestCase
         [$draw] = $this->scenario();
         $first = $draw->drawFixtures()->first();
         $this->progress($draw)->assertOk();
-        $this->postJson(route('backend.roundrobin.score.store', $first), ['sets' => ['6-1']])->assertConflict();
-        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $first]), ['sets' => ['6-1']])->assertConflict();
-        $this->deleteJson(route('backend.roundrobin.score.delete', $first))->assertConflict();
-        $this->deleteJson(route('api.draws.fixtures.score.delete', ['draw' => $draw, 'fixture' => $first]))->assertConflict();
+        $this->postJson(route('backend.roundrobin.score.store', $first), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($first)->fresh())] + (['sets' => ['6-1']]))->assertConflict();
+        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $first]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($first)->fresh())] + (['sets' => ['6-1']]))->assertConflict();
+        $this->deleteJson(route('backend.roundrobin.score.delete', $first), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($first)->fresh())])->assertConflict();
+        $this->deleteJson(route('api.draws.fixtures.score.delete', ['draw' => $draw, 'fixture' => $first]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($first)->fresh())])->assertConflict();
         $draw->update(['published' => false]);
-        $this->postJson(route('backend.draw.save-groups', $draw), ['groups' => []])->assertConflict();
+        $this->postJson(route('backend.draw.save-groups', $draw), ['revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()), 'groups' => []])->assertConflict();
         $this->assertSame(18, $draw->drawFixtures()->count());
         $this->assertSame(9, DB::table('fixture_results')->count());
     }
@@ -321,7 +321,7 @@ class TwoStageRoundRobinTest extends TestCase
         [$draw] = $this->scenario(true, true);
         $this->progress($draw)->assertOk();
         $group = $draw->groups()->where('round_robin_phase', 2)->first();
-        foreach ($group->fixtures as $fixture) $this->postJson(route('backend.roundrobin.score.store', $fixture), ['sets' => ['3-3']])->assertOk();
+        foreach ($group->fixtures as $fixture) $this->postJson(route('backend.roundrobin.score.store', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['3-3']]))->assertOk();
         $standings = app(StandingsService::class)->forDraw($draw->fresh())[$group->id];
         $this->assertSame([2, 2, 2], array_column($standings, 'points'));
         $this->assertSame([2, 2, 2], array_column($standings, 'draws'));

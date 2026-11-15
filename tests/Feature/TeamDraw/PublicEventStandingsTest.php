@@ -39,9 +39,9 @@ class PublicEventStandingsTest extends TestCase
 
     private function score(TeamFixture $fixture, bool $away = false): void
     {
-        app(TeamFixtureScoreService::class)->save($fixture->fresh(), $away
+        app(TeamFixtureScoreService::class)->save($fixture->fresh(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture->fresh())->fresh())] + ($away
             ? ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]
-            : ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+            : ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]));
     }
 
     public function test_public_breakdown_uses_published_event_scoped_round_robin_encounters_without_score_links(): void
@@ -256,7 +256,7 @@ class PublicEventStandingsTest extends TestCase
             if ($age === 11) {
                 $pending = $reverse['rubber']->replicate();
                 $pending->fill(['rubber_sequence' => 2, 'match_nr' => 2, 'match_status' => 0])->save();
-                app(TeamFixtureScoreService::class)->save($pending, ['set1_home' => 6, 'set1_away' => 2]);
+                app(TeamFixtureScoreService::class)->save($pending, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($pending)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
                 $bye = $reverse['rubber']->replicate();
                 $bye->fill(['rubber_sequence' => 3, 'match_nr' => 3, 'match_status' => FixtureState::STATUS_BYE])->save();
             }
@@ -455,7 +455,7 @@ class PublicEventStandingsTest extends TestCase
             $sequence = $data['tie']->rubbers()->count() + 1;
             $rubber->fill(['rubber_code' => $code, 'gender_rule' => $gender, 'fixture_type' => str_contains($code, 'mixed') ? 3 : 2,
                 'rubber_sequence' => $sequence, 'match_nr' => $sequence])->save();
-            app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2]);
+            app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
         }
         $url = route('frontend.events.standings', $event);
         $response = $this->get($url)->assertOk();
@@ -514,7 +514,7 @@ class PublicEventStandingsTest extends TestCase
         $this->assertSame([1, 1], array_column($rows, 'draws'));
         $this->assertSame([1, 1], array_column($rows, 'rubber_wins'));
         $this->assertSame([17, 17], array_column($rows, 'games_for'));
-        app(TeamFixtureScoreService::class)->delete($second->fresh());
+        app(TeamFixtureScoreService::class)->delete($second->fresh(), app(\App\Services\TeamFixtureScoreService::class)->revision(($second->fresh())->fresh()));
         $rows = $this->get(route('frontend.events.standings', $event))->assertOk()->viewData('overall');
         $this->assertSame([0, 0], array_column($rows, 'played'));
         $this->assertSame([12, 5], array_column($rows, 'games_for'));
@@ -536,12 +536,27 @@ class PublicEventStandingsTest extends TestCase
         $foreign['rubber']->update(['team_tie_id' => $local['tie']->id, 'rubber_sequence' => 2]);
         $orphan = $local['rubber']->replicate();
         $orphan->fill(['team_tie_id' => null, 'region1' => $local['regions'][0]->id, 'region2' => $local['regions'][1]->id, 'match_nr' => 9])->save();
-        $this->score($orphan);
+        $auditCount = DB::table('draw_audit_logs')->count();
+        try {
+            $this->score($orphan);
+            $this->fail('An unlinked canonical rubber cannot accept new scores.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+        $this->assertSame(0, $orphan->teamResults()->count());
+        $this->assertSame($auditCount, DB::table('draw_audit_logs')->count());
+        // Represent corrupt historical evidence without asking the canonical
+        // scorer to create a result for an unlinked canonical rubber.
+        foreach ($local['rubber']->teamResults()->get() as $result) {
+            $result->replicate()->fill(['team_fixture_id' => $orphan->id])->save();
+        }
+        $before = DB::table('team_fixture_results')->orderBy('id')->get()->toJson();
         $response = $this->get(route('frontend.events.standings', $event))->assertOk()->assertDontSee('Secret draw')->assertDontSee('Foreign event');
         $this->assertSame([], $response->viewData('overall'));
         $this->assertSame(0, $response->viewData('stats')['rubbers']);
         // Administrative standings still include private data within the same event.
         $this->assertGreaterThan(0, app(EventStandingsService::class)->forEvent($event)['stats']['rubbers']);
+        $this->assertSame($before, DB::table('team_fixture_results')->orderBy('id')->get()->toJson());
     }
 
     public function test_public_legacy_draw_includes_region_match_totals_without_fabricating_team_ties(): void
@@ -553,7 +568,7 @@ class PublicEventStandingsTest extends TestCase
         $data['draw']->update(['team_scoring_rules' => null]);
         $rubber = TeamFixture::create(['draw_id' => $data['draw']->id, 'region1' => $data['regions'][0]->id,
             'region2' => $data['regions'][1]->id, 'fixture_type' => 1, 'round_nr' => 1, 'match_nr' => 1]);
-        app(TeamFixtureScoreService::class)->save($rubber, ['set1_home' => 6, 'set1_away' => 2]);
+        app(TeamFixtureScoreService::class)->save($rubber, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
         $this->assertSame(0, $this->get(route('frontend.events.standings', $event))->assertOk()->viewData('stats')['rubbers']);
         $this->score($rubber);
         $rows = $this->get(route('frontend.team-draw.standings', $data['draw']))->assertOk()->assertSee('12–5')->viewData('rows');

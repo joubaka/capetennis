@@ -158,7 +158,7 @@ class ManageDrawController extends Controller
                 'Playoff settings are not available for a round-robin-only draw.'
             );
             if (isset($updateData['boxes'])) {
-                $this->resizeGroups($draw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
+                $this->resizeGroups($lockedDraw, (int) $updateData['boxes'], $data['move_to_group_id'] ?? null);
             }
             if ($drawData) $draw->update($drawData);
             $replacePlayoffs = array_key_exists('playoff_config', $updateData)
@@ -198,6 +198,16 @@ class ManageDrawController extends Controller
 
   private function resizeGroups(Draw $draw, int $count, ?int $moveTo = null)
   {
+    if ($draw->hasHybridRoundRobin() && $count !== 2) {
+      throw \Illuminate\Validation\ValidationException::withMessages([
+        'boxes' => 'The top-four playoffs and lower round robin format requires exactly two groups.',
+      ]);
+    }
+    if ($draw->isTwoStageRoundRobin() && $count < 2) {
+      throw \Illuminate\Validation\ValidationException::withMessages([
+        'boxes' => 'Round robin → round robin requires at least two first-stage groups.',
+      ]);
+    }
     abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
       'Group membership is fixed once second-stage matches are prepared. Preserve the planned qualification sources.');
     $groups = $draw->groups()->orderBy('name')->get();

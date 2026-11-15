@@ -218,18 +218,19 @@ class FixtureController extends Controller
       ? $this->authorize('team-fixture.saveScore', $fixtureForAuth)
       : $this->authorize('fixture.update', $drawForAuth);
 
-    if ($request->type !== 'team') {
-      app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $drawForAuth->event_id, true, (int) $drawForAuth->category_event_id);
-    }
-
-    return DB::transaction(function () use ($request, $fixtureForAuth, $drawForAuth) {
-      if ($request->type !== 'team') {
-        $lockedDraw = Draw::whereKey($drawForAuth->id)->lockForUpdate()->firstOrFail();
-        $fixtureForAuth->setRelation('draw', $lockedDraw);
-        if ($lockedDraw->isTwoStageRoundRobin()) DrawGuard::requireScoreable($fixtureForAuth);
-      }
+    $response = DB::transaction(function () use ($request, $fixtureForAuth, $drawForAuth) {
+      \App\Models\Event::whereKey($drawForAuth->event_id)->lockForUpdate()->firstOrFail();
+      $lockedDraw = Draw::whereKey($drawForAuth->id)->lockForUpdate()->firstOrFail();
+      abort_unless((int) $lockedDraw->event_id === (int) $drawForAuth->event_id, 409, 'Fixture event changed.');
     $locked = $fixtureForAuth->newQuery()->lockForUpdate()->findOrFail($fixtureForAuth->id);
     abort_if((int) $locked->draw_id !== (int) $drawForAuth->id, 409, 'Fixture draw changed.');
+    $fixtureForAuth = $locked;
+    $fixtureForAuth->setRelation('draw', $lockedDraw);
+    if ($request->type !== 'team') {
+      $this->authorize('fixture.update', $lockedDraw);
+      DrawGuard::requireScoreable($fixtureForAuth);
+      app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixtureForAuth, $request->input('score_revision'));
+    }
     $responce = null;
 
     if ($request->type == 'team') {
@@ -240,8 +241,9 @@ class FixtureController extends Controller
         'set_player2.*' => 'nullable|integer|min:0',
       ]);
       $scores = $this->normalizeLegacyScores($validated['set_player1'], $validated['set_player2']);
-      $revision = $request->validate(['participant_revision' => 'nullable|string|size:64']);
+      $revision = $request->validate(['participant_revision' => 'nullable|string|size:64', 'score_revision' => 'nullable|string|size:64']);
       $scores['participant_revision'] = $revision['participant_revision'] ?? null;
+      $scores['score_revision'] = $revision['score_revision'] ?? null;
       app(TeamFixtureScoreService::class)->save($fixtureForAuth, $scores);
 
       return $fixtureForAuth->fresh()->teamResults;
@@ -395,6 +397,8 @@ class FixtureController extends Controller
     if ($request->type === 'individualNew') app(\App\Services\MatchResultNotificationService::class)->record($fixture);
     return $responce;
     });
+    if ($request->type !== 'team') app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $drawForAuth->event_id, true, (int) $drawForAuth->category_event_id);
+    return $response;
   }
   protected function assignWinnerToParentSide(Fixture $childFixture): void
   {
@@ -594,7 +598,7 @@ class FixtureController extends Controller
     return $result;
   }
 
-  public function deleteResult($id)
+  public function deleteResult(Request $request, $id)
   {
     $this->authorize('team.admin');
 
@@ -607,10 +611,17 @@ class FixtureController extends Controller
     }
 
     abort_unless($tf, 404);
-    app(TeamFixtureScoreService::class)->delete($tf);
+    app(TeamFixtureScoreService::class)->delete($tf, $request->input('score_revision'));
     return redirect()->back();
   }
-  public function deleteIndResult($id)
+  public function deleteIndResult(Request $request, $id)
+  {
+    $fixture = Fixture::findOrFail($id);
+    return app(\App\Services\Draw\IndividualScoreRevision::class)->locked($fixture->draw, $fixture,
+      fn () => $this->deleteIndResultLocked($request, $id));
+  }
+
+  private function deleteIndResultLocked(Request $request, $id)
   {
     $this->authorize('team.admin');
 
@@ -622,7 +633,6 @@ class FixtureController extends Controller
       $draw = \App\Models\Draw::find($fixture->draw_id);
       if ($draw) {
         $this->authorize('fixture.update', $draw);
-        app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $draw->event_id, true, (int) $draw->category_event_id);
     }
 
     if ($draw && $draw->locked) {
@@ -633,6 +643,7 @@ class FixtureController extends Controller
       return response()->json(['message' => 'Draw is published.'], 403);
     }
 
+    app(\App\Services\Draw\IndividualScoreRevision::class)->assertCurrent($fixture, $request->input('score_revision'));
     $engine = app(EngineRouter::class);
 
     DB::transaction(function () use ($engine, $draw, $fixture) {
@@ -646,6 +657,7 @@ class FixtureController extends Controller
       );
     });
 
+    app(\App\Services\InterprovincialTrials\TrialRefreshQueue::class)->remember((int) $draw->event_id, true, (int) $draw->category_event_id);
     $response['fixture'] = Fixture::find($id);
     return $response;
   }

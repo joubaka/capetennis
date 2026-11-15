@@ -81,7 +81,16 @@
     };
   }
 
+  function pendingMatch(fx) {
+    return '<div class="card card-body p-3 mb-2 rr-pending-match" data-pending-fixture-id="' + fx.id + '">' +
+      '<div class="d-flex justify-content-between gap-2 mb-2"><strong>Match #' + escapeHtml(fx.match_nr || fx.id) + '</strong>' +
+      '<span class="badge bg-label-secondary">Qualification pending</span></div>' +
+      '<span>' + escapeHtml(fx.name1 || 'Qualifier to confirm') + ' <span class="text-muted">vs</span> ' +
+      escapeHtml(fx.name2 || 'Qualifier to confirm') + '</span></div>';
+  }
+
   function scoreButton(fx, rowPlayer, columnPlayer, mobile) {
+    if (!fx.r1_id || !fx.r2_id) return pendingMatch(fx);
     var scoreHtml = formatScoreCell(fx, rowPlayer.id);
     if (fx.carried) return '<span class="rr-cell-score">' + scoreHtml + '</span><span class="rr-cell-hint">Carried result</span>';
     var resultText = (fx.all_sets || []).join(', ');
@@ -149,12 +158,20 @@
       }).sort(function (a, b) { return a.seed - b.seed; });
 
       var completed = gFix.filter(function (fx) { return fx.all_sets && fx.all_sets.length; }).length;
+      var hasPending = gFix.some(function (fx) { return !fx.r1_id || !fx.r2_id; });
+      var pendingOnly = !players.length && hasPending;
       totalFixtures += gFix.length;
       completedFixtures += completed;
 
       var html = '<section class="rr-group-section" aria-labelledby="rr-group-' + gid + '">' +
         '<div class="rr-group-heading"><h6 id="rr-group-' + gid + '" class="fw-bold">Box ' + escapeHtml(group.name) + '</h6>' +
-        '<span class="rr-group-meta">' + players.length + ' players · ' + gFix.length + ' matches · ' + completed + ' completed</span></div>' +
+        '<span class="rr-group-meta">' + (pendingOnly ? 'Qualifiers pending' : players.length + ' players') + ' · ' + gFix.length + ' matches · ' + completed + ' completed</span></div>';
+      if (hasPending) html += '<p class="small text-muted">Group positions refer to first-stage finishing places, not seeds. Players are filled after review and confirmation. These matches cannot be scored yet.</p>';
+      if (pendingOnly) {
+        $wrapper.append(html + '<div class="rr-pending-match-list">' + gFix.map(pendingMatch).join('') + '</div></section>');
+        return;
+      }
+      html +=
         '<div class="rr-matrix-scroll rr-matrix-table-shell"><table class="table table-bordered table-sm rr-matrix-table" aria-describedby="rr-matrix-help">' +
         '<caption class="visually-hidden">Round robin results for Box ' + escapeHtml(group.name) + '</caption>' +
         '<thead><tr><th scope="col" aria-label="Player"></th>' +

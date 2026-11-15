@@ -54,7 +54,7 @@ class EventOperationsService
         }
         $this->warning($warnings, 'warning', 'withdrawals', 'Withdrawals', $withdrawalCount, route('admin.events.overview', $event));
         $this->warning($warnings, 'warning', 'pending_refunds', 'Pending refunds', $pendingRefundCount, route('admin.registration.refunds.bank.index'));
-        $this->warning($warnings, 'warning', 'draw_readiness', 'Draws not ready to publish', $readiness->filter(fn (array $state) => ! $state['ready_to_publish'])->count(), route('event.tab.draws', $event->id));
+        $this->warning($warnings, 'warning', 'draw_readiness', 'Draws not ready to display', $readiness->filter(fn (array $state) => ! $state['ready_to_publish'])->count(), route('event.tab.draws', $event->id));
 
         $ledger = $this->ledger->buildForEvent($event);
         $totals = $ledger['totals'];

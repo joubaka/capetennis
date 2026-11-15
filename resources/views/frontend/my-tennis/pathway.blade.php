@@ -36,19 +36,8 @@
         <p class="small mb-3">Play eligible published singles at {{ \App\Services\Performance\BallRatingModel::LABELS[$pendingMove['to']] }} level to establish the next CTR.</p>
       @else
       @if($pathway['current_stage'] === 'standard' && !$pathway['suggestedCompetition'])
-        <p class="small mb-1" role="status"><strong>Competition recommendation uncertain</strong></p>
-        @php($standardRating = $pathway['metrics']['stage_ratings']['standard'] ?? [])
-        <p class="small text-muted mb-2">
-          @if($standardRating['local'] ?? false)
-            We only know how you've played against a small group. We need more results to suggest which tournaments would suit you.
-          @elseif(!($standardRating['comparable'] ?? false))
-            We don't have enough recent results to tell which tournaments would suit you.
-          @elseif(!$pathway['assessment_available'])
-            The saved rating needs an update before we can suggest a competition level.
-          @else
-            A competition benchmark is unavailable.
-          @endif
-        </p>
+        <p class="small mb-1" role="status"><strong>Competition level needs coach review</strong></p>
+        <p class="small text-muted mb-2">CTR compares your recorded results. It does not establish a Wilson division or TSA readiness; the competition-level thresholds have not been validated.</p>
       @else
         <p class="small text-muted mb-2" role="status">{{ $pathway['assessment_status'] }}</p>
       @endif
@@ -73,7 +62,7 @@
       <h3 class="h6">Ball level: {{ $pathway['current_stage'] === 'standard' ? 'Green/yellow ball' : $pathway['current_stage_label'] }}</h3>
       <div class="pathway-score" data-pathway-top-badge><x-ctr-badge :stage="$pathway['badge']['stage']" :label="$pathway['badge']['stage'] === 'standard' ? 'Green/yellow ball' : null" :score="$pathway['badge']['score']" :local="$pathway['badge']['local']" /></div>
       <p class="small text-muted mt-2 mb-0">@if($pathway['metrics']['date'] ?? null) Latest saved ball-level rating · {{ $pathway['metrics']['date'] }} @else No saved ball-level rating available. @endif</p>
-      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
+      @if($pathway['metrics']['stale'] ?? false)<p class="small text-muted mt-2 mb-0">@if($pathway['current_stage'] === 'standard') Latest saved rating shown while the nightly update is due. @elseif($pathway['assessment_available'] ?? false) Assessment uses the latest saved rating shown above while the nightly update is due. @else Saved rating awaiting an update; progress is not assessed. @endif</p>@endif
       @endif
     </div>
   </div>
@@ -112,16 +101,15 @@
       </li>
     @endforeach
     @foreach(['Wilson B' => ['#12765a', 3], 'Wilson A' => ['#145c8d', 4], 'TSA tournaments' => ['#6654a3', 5]] as $competition => [$ink, $step])
-      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}" @if(!$pendingMove && ($pathway['currentCompetition'] ?? null) === $competition) aria-current="step" @endif>
+      <li style="--stage-ink:{{ $ink }}" data-pathway-competition="{{ $competition }}">
         <span class="pathway-step-number" aria-hidden="true">{{ $step }}</span>
         <strong>{{ $competition === 'TSA tournaments' ? 'TSA' : $competition }}</strong>
-        @if(!$pendingMove && ($pathway['currentCompetition'] ?? null) === $competition)<small class="fw-semibold">You are here · latest saved badge</small>@endif
         @if($competition === 'Wilson B')
-          <small>After Orange</small><small>@if($pathway['wilsonCutoff'] !== null) CTR {{ number_format($pathway['wilsonCutoff'], 0) }} or below @else Recommendation awaiting configuration @endif</small>
+          <small>After Orange · discuss event suitability with your coach</small>
         @elseif($competition === 'Wilson A')
-          <small>@if($pathway['wilsonCutoff'] !== null) CTR above {{ number_format($pathway['wilsonCutoff'], 0) }}@if($pathway['tsaCutoff'] !== null) through {{ number_format($pathway['tsaCutoff'], 0) }}@endif @else Recommendation awaiting configuration @endif</small>
+          <small>Discuss division suitability with your coach and organiser</small>
         @else
-          <small>@if($pathway['tsaCutoff'] !== null) CTR above {{ number_format($pathway['tsaCutoff'], 0) }} @else Recommendation awaiting configuration @endif</small>
+          <small>Explore event formats, age groups and entry requirements</small>
           <a class="small d-inline-flex align-items-center" style="min-height:44px" href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
         @endif
         @include('frontend.my-tennis.pathway-info-button', ['infoStage' => ['Wilson B' => 'wilson-b', 'Wilson A' => 'wilson-a', 'TSA tournaments' => 'tsa'][$competition], 'infoLabel' => $competition])

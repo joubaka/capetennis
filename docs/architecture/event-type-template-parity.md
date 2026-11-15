@@ -63,9 +63,11 @@ Staff can record or undo a decline in the private draft. Saving a draft
 preserves the last public list. Publishing from the roster requires reviewing
 the differences against the current nominations and applies the saved order.
 Unpublishing hides the list and retains its nominations.
-The registration-facing public Cavaliers nomination list displays Name Surname
-alphabetically by first name, then surname (case-insensitive), with nomination ID
-as the final stable tie-break. It is an unnumbered presentation only: retain saved
+The registration-facing public Cavaliers nomination list displays unregistered
+nominees first, followed by registered nominees highlighted in green. Within each
+group, names sort by first name, then surname (case-insensitive), with nomination
+ID as the final stable tie-break. Registered status uses the canonical paid active
+entry lookup for that exact player and category. It is an unnumbered presentation only: retain saved
 `roster_position`, private nomination/reserve order and backend publication-review
 order. Keep the existing event-isolation and category-publication gates.
 For configured Trials252, small public region/source badges use only the exact

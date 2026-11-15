@@ -44,8 +44,8 @@ class MatchResultNotificationTest extends TestCase
 
     private function save(TeamFixture $fixture, bool $reverse = false): void
     {
-        app(TeamFixtureScoreService::class)->save($fixture, ['set1_home' => $reverse ? 2 : 6, 'set1_away' => $reverse ? 6 : 2,
-            'set2_home' => $reverse ? 3 : 6, 'set2_away' => $reverse ? 6 : 3]);
+        app(TeamFixtureScoreService::class)->save($fixture, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + (['set1_home' => $reverse ? 2 : 6, 'set1_away' => $reverse ? 6 : 2,
+            'set2_home' => $reverse ? 3 : 6, 'set2_away' => $reverse ? 6 : 3]));
     }
 
     public function test_completed_result_queues_each_contact_once_and_corrections_have_new_revisions(): void
@@ -163,7 +163,7 @@ class MatchResultNotificationTest extends TestCase
     public function test_partial_and_unpublished_results_never_queue(): void
     {
         $fixture = $this->fixture();
-        app(TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2]);
+        app(TeamFixtureScoreService::class)->save($fixture, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
         $this->assertDatabaseCount('match_result_notifications', 0);
         $fixture->draw->update(['published' => false]);
         $this->save($fixture);
@@ -187,7 +187,7 @@ class MatchResultNotificationTest extends TestCase
         DB::table('user_players')->where('user_id', User::where('email', 'parent@example.test')->value('id'))->delete();
         (new SendMatchResultNotification($parent->id))->handle(app(MatchResultNotificationService::class));
         $this->assertSame('superseded', $parent->fresh()->status);
-        app(TeamFixtureScoreService::class)->delete($fixture);
+        app(TeamFixtureScoreService::class)->delete($fixture, app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh()));
         $latest = MatchResultNotification::where('revision', 2)->where('status', 'pending')->first();
         (new SendMatchResultNotification($latest->id))->handle(app(MatchResultNotificationService::class));
         $this->assertSame('superseded', $latest->fresh()->status);
@@ -345,7 +345,7 @@ class MatchResultNotificationTest extends TestCase
         $fixture = $this->fixture();
         $this->save($fixture);
         $old = MatchResultNotification::first();
-        app(TeamFixtureScoreService::class)->delete($fixture);
+        app(TeamFixtureScoreService::class)->delete($fixture, app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh()));
         $this->save($fixture);
         $this->assertNotNull($old->fresh()->invalidated_at);
         $this->assertFalse(app(MatchResultNotificationService::class)->current($old->fresh()));
@@ -414,10 +414,10 @@ class MatchResultNotificationTest extends TestCase
         foreach (['individual', 'individualNew'] as $index => $type) {
             $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR', 'registration1_id' => $registrations[0]->id, 'registration2_id' => $registrations[1]->id]);
             $scores = $type === 'individual' ? ['set_player1' => [6], 'set_player2' => [2]] : ['sets' => [1 => ['player1' => 6, 'player2' => 2]]];
-            $this->postJson(route('draw.insert.result'), ['type' => $type, 'fixture_id' => $fixture->id] + $scores)->assertOk()->assertJsonPath('winner', null);
+            $this->postJson(route('draw.insert.result'), ['type' => $type, 'fixture_id' => $fixture->id, 'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())] + $scores)->assertOk()->assertJsonPath('winner', null);
             $this->assertSame($index * 2, MatchResultNotification::count());
             $scores = $type === 'individual' ? ['set_player1' => [6, 6], 'set_player2' => [2, 3]] : ['sets' => [1 => ['player1' => 6, 'player2' => 2], 2 => ['player1' => 6, 'player2' => 3]]];
-            $this->postJson(route('draw.insert.result'), ['type' => $type, 'fixture_id' => $fixture->id] + $scores)->assertOk()->assertJsonPath('winner', $registrations[0]->id);
+            $this->postJson(route('draw.insert.result'), ['type' => $type, 'fixture_id' => $fixture->id, 'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())] + $scores)->assertOk()->assertJsonPath('winner', $registrations[0]->id);
             $this->assertSame(($index + 1) * 2, MatchResultNotification::count());
         }
     }

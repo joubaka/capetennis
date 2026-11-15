@@ -37,7 +37,22 @@ class AgeGroupConvenerStandingsTest extends TestCase
 
     private function score(TeamFixture $fixture): void
     {
-        app(TeamFixtureScoreService::class)->save($fixture->fresh(), ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]);
+        // Seed the result as an event administrator, then continue the read-access
+        // scenario as its original actor; a standings reader cannot enter scores.
+        $actor = auth()->user();
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $scorer = User::factory()->create()->assignRole('admin');
+        DB::table('event_admins')->insert(['event_id' => $fixture->draw->event_id, 'user_id' => $scorer->id]);
+        $this->actingAs($scorer);
+        try {
+            app(TeamFixtureScoreService::class)->save($fixture->fresh(), [
+                'score_revision' => app(TeamFixtureScoreService::class)->revision($fixture->fresh()),
+                'set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3,
+            ]);
+        } finally {
+            if ($actor) $this->actingAs($actor);
+            else auth()->logout();
+        }
     }
 
     private function assign(Event $event, User $actor, string $age = 'U10'): void

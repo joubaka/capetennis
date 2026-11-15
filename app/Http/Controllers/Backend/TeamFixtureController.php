@@ -312,6 +312,7 @@ class TeamFixtureController extends Controller
       $rules["set{$i}_away"] = "nullable|required_with:set{$i}_home|integer|min:0";
     }
     $rules['participant_revision'] = 'nullable|string|size:64';
+    $rules['score_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     app(TeamFixtureScoreService::class)->save($team_fixture, $validated);
@@ -320,6 +321,7 @@ class TeamFixtureController extends Controller
       $team_fixture->load('fixtureResults', 'teamResults');
       return response()->json([
         'success' => true,
+        'score_revision' => app(TeamFixtureScoreService::class)->revision($team_fixture->fresh()),
         'html' => view('backend.team-fixtures.partials.result-col', compact('team_fixture'))->render(),
       ]);
     }
@@ -375,6 +377,7 @@ class TeamFixtureController extends Controller
     }
 
     $rules['participant_revision'] = 'nullable|string|size:64';
+    $rules['score_revision'] = 'nullable|string|size:64';
     $validated = $request->validate($rules);
 
     DB::transaction(function () use ($team_fixture, $validated) {
@@ -396,6 +399,7 @@ class TeamFixtureController extends Controller
 
       return response()->json([
         'success' => true,
+        'score_revision' => app(TeamFixtureScoreService::class)->revision($team_fixture->fresh()),
         'html' => view('backend.team-fixtures.partials.result-col', compact('team_fixture'))->render(),
         'winner' => $winner,
         'scores' => $team_fixture->fixtureResults->mapWithKeys(function ($r) {
@@ -429,15 +433,16 @@ class TeamFixtureController extends Controller
       ->with('success', 'Fixture deleted successfully.');
   }
 
-  public function destroyResult(TeamFixture $team_fixture)
+  public function destroyResult(Request $request, TeamFixture $team_fixture)
   {
     $this->authorize('team-fixture.saveScore', $team_fixture);
 
-    app(TeamFixtureScoreService::class)->delete($team_fixture);
+    app(TeamFixtureScoreService::class)->delete($team_fixture, $request->input('score_revision'));
 
     if (request()->ajax()) {
       return response()->json([
         'success' => true,
+        'score_revision' => app(TeamFixtureScoreService::class)->revision($team_fixture->fresh()),
         'html' => '<span class="text-muted">No result</span>',
         'winner' => null,
         'scores' => [],

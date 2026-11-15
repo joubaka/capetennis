@@ -51,13 +51,13 @@ class PlayerRatingHistoryTest extends TestCase
         } finally { \Illuminate\Support\Facades\File::delete($path); }
     }
 
-    public function test_nightly_history_schedule_uses_three_am_sast_background_and_overlap_protection(): void
+    public function test_nightly_pipeline_schedule_uses_0302_sast_background_and_overlap_protection(): void
     {
         $events = collect(app(\Illuminate\Console\Scheduling\Schedule::class)->events())
-            ->filter(fn ($event) => str_contains($event->command ?? '', 'player-rating-history:refresh'));
+            ->filter(fn ($event) => str_contains($event->command ?? '', 'player-plus:refresh-derived --scheduled'));
         $this->assertCount(1, $events);
         $event = $events->first();
-        $this->assertSame('0 3 * * *', $event->expression);
+        $this->assertSame('2 3 * * *', $event->expression);
         $this->assertSame('Africa/Johannesburg', $event->timezone);
         $this->assertTrue($event->withoutOverlapping);
         $this->assertTrue($event->runInBackground);
@@ -144,7 +144,7 @@ class PlayerRatingHistoryTest extends TestCase
         $store->shouldReceive('read')->once()->andReturn(null);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer(new Player);
         $this->assertSame([], $history['series']);
-        $this->assertStringContainsString('03:00 SAST', $history['reason']);
+        $this->assertStringContainsString('03:02 SAST', $history['reason']);
     }
 
     public function test_failed_background_calculation_does_not_replace_saved_history(): void
@@ -199,6 +199,7 @@ class PlayerRatingHistoryTest extends TestCase
         $access->shouldReceive('allows')->once()->andReturn(false);
         $this->app->instance(PlayerRatingAccess::class, $access);
         $history = Mockery::mock(PlayerRatingHistoryService::class);
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldNotReceive('forPlayer', 'build');
         $history->shouldNotReceive('forPlayer');
         $this->app->instance(PlayerRatingHistoryService::class, $history);
         $request = \Illuminate\Http\Request::create('/');
@@ -214,7 +215,7 @@ class PlayerRatingHistoryTest extends TestCase
         $user->shouldReceive('hasRole')->with('super-user')->andReturn(true);
         $user->shouldReceive('hasAnyRole')->andReturn(false);
         $this->actingAs($user);
-        $request = \Illuminate\Http\Request::create('/');
+        $request = \Illuminate\Http\Request::create('/', server: ['HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
         $request->setUserResolver(fn () => $user);
         $player = new Player; $player->id = 42; $player->name = 'Rating'; $player->surname = 'Preview';
         $access = Mockery::mock(PlayerRatingAccess::class);
@@ -222,6 +223,15 @@ class PlayerRatingHistoryTest extends TestCase
         $access->shouldReceive('allowsDiscovery')->twice()->andReturn(false);
         $this->app->instance(PlayerRatingAccess::class, $access);
         $history = Mockery::mock(PlayerRatingHistoryService::class);
+        $progressRows = [];
+        foreach ([2.0, -1.0, 0.0, null] as $index => $delta) $progressRows[] = ['date' => '2026-10-20', 'time' => '2026-10-20 09:00:00', 'opponent' => 'Visible peer '.$index.' <script>private()</script>',
+            'score' => '6-4', 'won' => $index !== 1, 'delta' => $delta, 'before_score' => $delta === null ? null : 50.0, 'after_score' => $delta === null ? null : 50.0 + $delta,
+            'reason' => $delta === null ? 'A stable comparison scale is unavailable.' : null,
+            'explanation' => $delta === null ? null : ['network_before' => 10, 'network_after' => 11, 'own_before' => 6, 'own_after' => 7, 'opponents_before' => 2, 'opponents_after' => 2],
+            'used_matches' => [['date' => '2024-11-01', 'opponent' => 'Historical <peer>', 'score' => '1-6', 'won' => false, 'before' => true, 'after' => true, 'opponent_before' => 0.0, 'opponent_after' => 0.1],
+                ['date' => '2026-10-20', 'opponent' => 'Target peer', 'score' => '6-4', 'won' => true, 'before' => false, 'after' => true]], 'hidden_matches' => 1];
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldReceive('forPlayer')->twice()
+            ->andReturn(['reason' => null, 'as_of' => '2026-10-29', 'restricted' => 0, 'rows' => $progressRows]);
         $points = [
             ['date' => '2026-06-30', 'index' => 7, 'score' => 48, 'component' => 'a', 'group' => 'same'],
             ['date' => '2026-08-31', 'index' => 9, 'score' => 50, 'component' => 'a', 'group' => 'same'],
@@ -242,13 +252,36 @@ class PlayerRatingHistoryTest extends TestCase
         $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
         $this->assertStringContainsString('<svg', $response->getContent());
         $this->assertStringContainsString('+2.0', $response->getContent());
-        $this->assertSame(2, substr_count($response->getContent(), 'stroke-width="3"'));
+        preg_match('/<svg viewBox="0 0 660 270".*?<\/svg>/s', $response->getContent(), $historyChart);
+        $this->assertSame(2, substr_count($historyChart[0], 'stroke-width="3"'));
         $this->assertSame(1, substr_count($response->getContent(), 'stroke-dasharray="6 5"'));
         $this->assertStringContainsString('Cape Tennis Rating', $response->getContent());
         $this->assertStringNotContainsString('+10.0', $response->getContent());
         $this->assertStringContainsString('Rating Preview', $response->getContent());
         $this->assertMatchesRegularExpression('/x="45" y="250"[^>]*>Nov<\/text>/', $response->getContent());
         $this->assertStringContainsString('Saved through 2026-10-29', $response->getContent());
+        $this->assertStringContainsString('data-rating-progress-explanation', $response->getContent());
+        $this->assertStringContainsString('score margins, opponents’ playing strength', $response->getContent());
+        $this->assertStringContainsString('There is no fixed number of CTR points for a win or loss.', $response->getContent());
+        foreach (['Reconstructed CTR before/after match', 'Reconstructed using scheduled match order.', '+2.0 CTR', '-1.0 CTR', '+0.0 CTR', 'Reconstruction unavailable', 'No measurable change at this precision.', 'not archived ratings or verified match completion times', 'Gaps between matches are not connected'] as $copy) $this->assertStringContainsString($copy, $response->getContent());
+        $this->assertStringNotContainsString('<script>private()</script>', $response->getContent());
+        $dom = new \DOMDocument; @$dom->loadHTML($response->getContent()); $xpath = new \DOMXPath($dom);
+        $this->assertSame(1, $xpath->query('//*[@data-match-progress-chart]//svg')->length);
+        $this->assertSame(0, $xpath->query('//*[@data-match-progress-row]')->length, 'Match details belong in the shared grid only');
+        $segments = $xpath->query('//*[@data-match-progress-segment]'); $this->assertSame(3, $segments->length);
+        $this->assertSame('50', $segments->item(0)->getAttribute('data-before')); $this->assertSame('50', $segments->item(0)->getAttribute('data-after'));
+        $this->assertSame(3, $xpath->query('//*[@data-match-progress-chart]/div/svg/line')->length, 'One common axis has only 0/50/100 grid lines; no cross-match connectors');
+        $this->assertSame(4, $xpath->query('//*[@data-match-progress-chart]//*[@data-match-chart-opponent]')->length);
+        $this->assertSame(4, $xpath->query('//*[@data-match-progress-chart]//*[@data-match-chart-result]')->length);
+        $this->assertSame(4, $xpath->query('//button[@data-match-explanation-target and @aria-expanded="false"]')->length);
+        $this->assertSame(4, $xpath->query('//*[@data-match-explanation and @hidden]')->length);
+        foreach (['Eligible network matches', 'Your eligible matches', 'Your distinct opponents', '52.0 after', '50.0 before = +2.0 CTR', 'refit recalculates event budgets', 'not additive'] as $copy) $this->assertStringContainsString($copy, $response->getContent());
+        foreach (['Your match evidence', 'Wider network matches', 'Historical &lt;peer&gt;', 'Lost 1-6', 'This match', 'Not included', 'own match details are not shown'] as $copy) $this->assertStringContainsString($copy, $response->getContent());
+        foreach (['Opponent CTR before → after', '0.0 → 0.1', 'not at each listed result', 'current public comparison rules'] as $copy) $this->assertStringContainsString($copy, $response->getContent());
+        $this->assertStringContainsString('Lost', $xpath->query('//*[@data-match-chart-result]')->item(2)->textContent);
+        $this->assertStringContainsString('6-4', $xpath->query('//*[@data-match-chart-result]')->item(2)->textContent);
+        foreach (['#087f5b', '#c2410c', '#004177'] as $color) $this->assertSame(1, $xpath->query('//*[@data-match-progress-segment]/line[@stroke="'.$color.'"]')->length);
+        $this->assertSame('Visible peer 3 <script>private()</script>', $xpath->query('//*[@data-match-chart-opponent]')->item(0)->getAttribute('title'));
         foreach (['progress', 'compare', 'understand'] as $section) {
             $this->assertStringContainsString('id="ctr-tab-'.$section.'"', $response->getContent());
             $this->assertStringContainsString('id="ctr-panel-'.$section.'"', $response->getContent());

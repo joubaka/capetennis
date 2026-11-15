@@ -102,7 +102,7 @@ class TeamDraftPlacementPlayoffsTest extends TestCase
         $this->assertTrue(app(TeamPlayoffReadinessService::class)->forDraw($source->fresh())['can_create']);
         try { app(TeamTieValidationService::class)->assertTieComplete($draft->teamTies()->first()); $this->fail('Draft lineups cannot validate.'); } catch (\InvalidArgumentException $e) { $this->assertStringContainsString('qualified teams', $e->getMessage()); }
         try { app(TeamDrawScoringPublicationService::class)->enableLocked($draft); $this->fail('Draft cannot enable scoring.'); } catch (\RuntimeException $e) { $this->assertStringContainsString('qualifiers', $e->getMessage()); }
-        try { app(TeamFixtureScoreService::class)->save($draft->fixtures()->first(), ['set1_home' => 6, 'set1_away' => 1]); $this->fail('Draft cannot score.'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(409, $e->getStatusCode()); }
+        try { app(TeamFixtureScoreService::class)->save($draft->fixtures()->first(), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($draft->fixtures()->first())->fresh())] + (['set1_home' => 6, 'set1_away' => 1])); $this->fail('Draft cannot score.'); } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { $this->assertSame(409, $e->getStatusCode()); }
         try { app(\App\Domain\Draws\Services\DrawPublicationService::class)->publish($draft); $this->fail('Draft cannot publish.'); } catch (\RuntimeException $e) { $this->assertStringContainsString('qualifiers', $e->getMessage()); }
         $this->assertFalse($source->fresh()->team_draw_selection['competition']['playoff_draw_id'] ?? false);
     }
@@ -146,11 +146,22 @@ class TeamDraftPlacementPlayoffsTest extends TestCase
         $otherTie = $draft->teamTies()->where('tie_nr', 2)->first()->rubbers()->first();
         $this->assertNull($calendar->manualError($source->event, $otherTie, array_replace($data, ['court' => '2'])));
         $sourceFixture = $source->fixtures()->reorder()->orderByDesc('round_nr')->first();
-        $this->assertStringContainsString('playoff programme', $calendar->manualError($source->event, $sourceFixture,
-            array_replace($data, ['scheduled_at' => '2026-10-24 10:00:00'])));
-        $this->assertStringContainsString('playoff programme', $calendar->removalError($source->event, [$sourceFixture->id]));
+        $move = array_replace($data, ['scheduled_at' => '2026-10-24 10:00:00']);
+        // The broader discipline dependency is checked first. The dedicated
+        // successor guard still independently protects the saved playoff start.
+        $this->assertStringContainsString('later discipline', $calendar->manualError($source->event, $sourceFixture, $move));
+        $this->assertStringContainsString('playoff programme', $calendar->successorError($sourceFixture->draw, \Carbon\Carbon::parse($move['scheduled_at']), $move['duration']));
+        $this->assertStringContainsString('later discipline', $calendar->removalError($source->event, [$sourceFixture->id]));
+        $before = $sourceFixture->fresh()->only(['scheduled_at', 'venue_id', 'court_label', 'duration_min']);
+        try {
+            $calendar->assign($source->event, ['fixture_id' => $sourceFixture->id] + $move);
+            $this->fail('A source match cannot move beyond its scheduled dependent discipline.');
+        } catch (\InvalidArgumentException $exception) {
+            $this->assertStringContainsString('later discipline', $exception->getMessage());
+        }
+        $this->assertEquals($before, $sourceFixture->fresh()->only(array_keys($before)));
         $sourceFixture->update(['scheduled_at' => null]);
-        $this->assertStringContainsString('preceding team tie', $calendar->manualError($source->event, $samePosition, array_replace($data, ['scheduled_at' => '2026-10-24 11:00:00'])));
+        $this->assertStringContainsString('earlier disciplines', $calendar->manualError($source->event, $samePosition, array_replace($data, ['scheduled_at' => '2026-10-24 11:00:00'])));
     }
 
     public function test_auto_preview_schedules_all_placeholder_rubbers_and_protects_publication(): void

@@ -113,6 +113,35 @@ class PlayerRatingTopTenTest extends TestCase
         foreach (['Explore ratings', 'rating_per_page', 'name="rating_age"', 'name="rating_gender"', 'Next players'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
     }
 
+    public function test_plus_confidence_labels_are_visible_without_changing_scores_positions_or_scope(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
+        foreach (range(1, 3) as $id) {
+            $this->player($id, 'Confidence peer '.$id);
+            DB::table('players')->where('id', $id)->update(['dateOfBirth' => '2015-01-01', 'gender' => '1']);
+        }
+        $selected = \App\Models\Player::find(2);
+        $user = \Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allowsDiscovery')->once()->andReturnTrue();
+        $access->shouldReceive('allows')->once()->with($user, $selected)->andReturnTrue();
+        $snapshot = $this->snapshot([1 => 90, 2 => 80, 3 => 70]);
+        foreach ([1 => 'Low', 2 => 'Medium', 3 => 'High'] as $id => $label) $snapshot['all_age']['ratings'][$id]['confidence_label'] = $label;
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
+        $result = app(PlayerRatingTopTen::class)->build($user, $selected);
+        $this->assertFalse($result['can_browse']);
+        $this->assertSame([1, 2, 3], array_column($result['lists']['overall']['players'], 'position'));
+        $this->assertSame([90.0, 80.0, 70.0], array_column($result['lists']['overall']['players'], 'score'));
+        $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $dom = new \DOMDocument; @$dom->loadHTML($html); $xpath = new \DOMXPath($dom);
+        $labels = $xpath->query('//*[@data-plus-age-top-ten]//*[@data-rating-confidence]');
+        $this->assertSame(['Low confidence', 'Medium confidence', 'High confidence'], array_map(fn ($node) => trim($node->textContent), iterator_to_array($labels)));
+        $this->assertSame('Medium confidence', trim($xpath->query('//*[@data-rating-position-confidence]')->item(0)->textContent));
+        $this->assertStringContainsString('Rating position #2 of 3', strip_tags($html));
+        foreach (['Explore ratings', 'name="rating_age"', 'name="rating_gender"', 'Next players'] as $hidden) $this->assertStringNotContainsString($hidden, $html);
+    }
+
     public function test_discovery_entitlement_cannot_read_an_unlinked_players_position(): void
     {
         $user = \Mockery::mock(User::class)->makePartial();

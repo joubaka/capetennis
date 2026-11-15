@@ -109,7 +109,7 @@ class PendingHybridProgressionTest extends TestCase
         $this->assertFalse(app(RoundRobinProgressReadiness::class)->forDraw($draw)['pending']);
         $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->assertJsonPath('review.pending', false);
         $this->get(route('backend.draw.roundrobin.show', $draw))->assertOk()->assertDontSee('class="btn btn-primary align-self-start progress-draw"', false);
-        $this->postJson(route('backend.roundrobin.score.store', Fixture::findOrFail($sourceIds[0])), ['sets' => ['6-1']])->assertConflict();
+        $this->postJson(route('backend.roundrobin.score.store', Fixture::findOrFail($sourceIds[0])), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture((Fixture::findOrFail($sourceIds[0]))->fresh())] + (['sets' => ['6-1']]))->assertConflict();
         $this->assertSame($before, $this->protectedRows($draw));
     }
 
@@ -169,8 +169,8 @@ class PendingHybridProgressionTest extends TestCase
         [$draw] = $this->scenario(); $state = $draw->settings->playoff_config['_second_round_robin'];
         $semi = Fixture::findOrFail($state['semi_fixture_ids'][0]);
         $before = $this->protectedRows($draw);
-        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$semi]), ['sets'=>['6-0']])->assertConflict();
-        $this->postJson(route('backend.roundrobin.score.store',$semi), ['sets'=>['6-0']])->assertConflict();
+        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$semi]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($semi)->fresh())] + (['sets'=>['6-0']]))->assertConflict();
+        $this->postJson(route('backend.roundrobin.score.store',$semi), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($semi)->fresh())] + (['sets'=>['6-0']]))->assertConflict();
         try { app(DrawService::class)->saveBracketScore($semi,[[6,0]]); $this->fail('Pending playoff accepted a score.'); }
         catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) { $this->assertSame(409,$exception->getStatusCode()); }
         $this->assertSame($before,$this->protectedRows($draw));

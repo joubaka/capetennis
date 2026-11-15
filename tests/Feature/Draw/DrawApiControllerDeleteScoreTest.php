@@ -68,7 +68,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         $fixture = $this->makeFixture($draw);
 
         $response = $this->actingAs($this->adminUser($draw))
-            ->deleteJson($this->deleteScoreRoute($draw, $fixture));
+            ->deleteJson($this->deleteScoreRoute($draw, $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertOk()
             ->assertJsonPath('success', true);
@@ -84,7 +84,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         $fixture = $this->makeFixture($draw);
 
         $response = $this->actingAs($this->adminUser($draw))
-            ->deleteJson($this->deleteScoreRoute($draw, $fixture));
+            ->deleteJson($this->deleteScoreRoute($draw, $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertForbidden();
     }
@@ -109,7 +109,7 @@ class DrawApiControllerDeleteScoreTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->adminUser($draw))
-            ->deleteJson($this->deleteScoreRoute($draw, $fixture));
+            ->deleteJson($this->deleteScoreRoute($draw, $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())]);
 
         $response->assertOk()
             ->assertJsonPath('success', true);

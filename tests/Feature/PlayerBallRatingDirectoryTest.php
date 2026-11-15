@@ -76,7 +76,8 @@ class PlayerBallRatingDirectoryTest extends TestCase
         $this->assertSame('standard', $default->viewData('ballType'));
         $this->assertEqualsCanonicalizing($green->pluck('id')->all(), $default->viewData('players')->getCollection()->pluck('id')->all());
         $overall = $this->get($url.'?ball_type=overall')->assertOk();
-        $this->assertSame(0, $overall->viewData('players')->total());
+        $this->assertSame(3, $overall->viewData('players')->total());
+        $this->assertEqualsCanonicalizing($green->pluck('id')->all(), $overall->viewData('players')->pluck('id')->all());
         $this->assertSame(0, DB::table('user_players')->count());
         $this->assertDatabaseCount('players', 15);
         if ($path = getenv('CT_BALL_DIRECTORY_HTML')) file_put_contents($path, $default->getContent());
@@ -97,7 +98,7 @@ class PlayerBallRatingDirectoryTest extends TestCase
         foreach (['red', 'orange'] as $ball) {
             foreach (['grouped', 'shared', 'age', 'score'] as $sort) {
                 $response = $this->get($url.'?ball_type='.$ball.'&age_group=u9&age_scope=younger&sort='.$sort)
-                    ->assertOk()->assertSee(ucfirst($ball).' ball CTR · all ages')
+                    ->assertOk()->assertSee(ucfirst($ball).' CTR · all ages')
                     ->assertDontSee('name="age_group"', false)->assertDontSee('name="age_scope"', false)
                     ->assertDontSee('data-ctr-age-section=', false)->assertDontSee('value="age"', false)
                     ->assertDontSee('value="grouped"', false);

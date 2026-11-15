@@ -8,11 +8,38 @@ exactly two source groups, each with at least three entrants. Equal-position
 groups remain the default. Changing this choice after later-stage preparation
 is rejected; the choice never resets an existing programme or its bookings.
 
+Before generation, the canonical RR generator and pending hybrid preparation
+check the shared fixture-schema prerequisite. This includes
+`fixtures.loser_feeder_slot`, provided by
+`database/migrations/2026_11_14_100000_add_loser_feeder_slot_to_fixtures.php`.
+Missing prerequisites must be reported before deleting or creating competition
+records. Transaction rollback alone is insufficient on legacy installations
+whose group tables still use a nontransactional engine. After an interrupted
+attempt, inspect actual fixtures, groups and marker state; do not blindly retry
+or use a broad format reset to remove a partial shell. Migration allowlisting
+does not authorize running it on another environment.
+
 `PendingHybridRoundRobinService` prepares stable crossed semifinal, final,
 third-place and lower cross-group qualification fixtures. Their group-position
 sources can be scheduled before results. Actual players remain unqualified.
 Only cross-group lower pairings are created; mutual lower-player results later
 remain read-only references to their first-stage fixture records.
+
+For groups of four and five, generation creates 26 distinct fixtures: 16 opening
+RR matches, six lower cross-group placeholders and four championship fixtures.
+Every later participant remains unresolved. The two semifinals use A1–B2 and
+B1–A2 sources; both winners feed the final and both losers feed the third-place
+match. Qualifier labels and feeder paths are placeholders, not dummy player or
+registration records. Separate single-group RR draws with four and five players
+create six and ten matches respectively and have no additional phase fixtures.
+
+The generation preview separates opening matches from later placeholders. After
+generation, the authorized read-only hub refreshes all phase groups and the
+progression summary together. An unqualified lower group shows its actual saved
+fixture numbers and source-position pairings as noninteractive cards at every
+width. The positions mean first-stage finishing places, not starting seeds.
+Playoff feeder labels refer to the saved semifinal match numbers. Do not create
+fake roster entries or enable score entry just to display the placeholders.
 
 The last completed first-stage result offers the normal authorized standings
 review on both admin and venue scoring screens. Partial sets do not count as
@@ -97,3 +124,17 @@ payloads, workflow readiness and final placements consume the hybrid state.
 against an isolated disposable database, then the existing two-stage and relevant
 playoff regressions. Report executed checks separately from coverage references.
 This guide does not authorize another production conversion or deployment.
+
+`HybridGenerationPrerequisiteTest` additionally exercises the normal HTTP
+generation route with engine fallback enabled. Its missing-column case asserts
+zero competition mutation queries, not merely a successful SQLite rollback;
+its success case verifies all 26 fixtures and preserved unresolved sources.
+
+Local verification on 15 November 2026: two HTTP generation tests passed with 75
+assertions, and 17 frontend checks passed. Browser and read-only database checks
+verified the 26-fixture hybrid and six/ten independent programmes, all ten
+unqualified later fixtures, preserved opening membership, zero scores and zero
+schedule/publication records. The broader 28-test hybrid bundle had 26 passes
+and two failures in a preexisting dirty venue score-button Blade expression;
+that unrelated view was not changed by this repair. Later-phase qualification
+was not executed in the local rehearsal.

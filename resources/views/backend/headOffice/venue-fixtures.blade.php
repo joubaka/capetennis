@@ -118,49 +118,7 @@
     });
 
 </script>
-<script>
-    // Delete result handler for venue fixtures (AJAX)
-    (function () {
-        document.addEventListener('click', function (e) {
-            const el = e.target.closest('.delete-result-btn');
-            if (!el) return;
 
-            if (!confirm('Delete the result for this fixture?')) return;
-
-            const fixtureId = el.getAttribute('data-id');
-            const url = "{{ route('backend.team-fixtures.destroyResult', ':id') }}".replace(':id', fixtureId);
-
-            el.disabled = true;
-            fetch(url, {
-                method: 'POST',
-                headers: {
-                    'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({ _method: 'DELETE' })
-            }).then(res => res.json()).then(data => {
-                if (!data || !data.success) {
-                    AppFeedback.error(data?.message || 'Could not delete the result.');
-                    return;
-                }
-
-                const resultCol = document.getElementById(`result-col-${fixtureId}`);
-                const row = document.getElementById(`row-${fixtureId}`);
-                if (resultCol) resultCol.innerHTML = data.html ?? '<span class="text-muted">No result</span>';
-                if (row) {
-                    row.querySelectorAll('.home-cell, .away-cell').forEach(function (c) {
-                        c.classList.remove('winner-home', 'loser-home', 'draw-cell');
-                    });
-                }
-                AppFeedback.success(data.message || 'Result deleted.');
-            }).catch(err => {
-                console.error('Error deleting result', err);
-                AppFeedback.error('Could not delete the result. Please try again.');
-            }).finally(() => { el.disabled = false; });
-        });
-    })();
-</script>
 @endsection
 
 @section('content')
@@ -292,7 +250,7 @@
                         <td class="text-end d-print-none">
                             @unless($scoringPrint ?? false)
                             <button id="edit-btn-{{ $fx->id }}" class="btn btn-sm btn-icon btn-label-primary edit-score-btn"
-                                data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}"
+                                data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}" data-score-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fx) : '' }}"
                                 data-action="{{ route('backend.team-fixtures.update', $fx->id) }}"
                                 data-home="{{ $homeLabel }}"
                                 data-away="{{ $awayLabel }}"
@@ -305,8 +263,8 @@
                             </button>
 
                             @if($fx->fixtureResults->count())
-                                <button type="button" class="btn btn-sm btn-icon btn-label-danger delete-result-btn ms-1"
-                                    data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}">
+                                <button type="button" class="btn btn-sm btn-icon btn-label-danger delete-result-btn ms-1" data-action="{{ route('backend.team-fixtures.destroyResult', $fx->id) }}"
+                                    data-id="{{ $fx->id }}" data-participant-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) : '' }}" data-score-revision="{{ $fx instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fx) : '' }}">
                                     <i class="ti ti-trash"></i>
                                 </button>
                             @endif

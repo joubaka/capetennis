@@ -17,11 +17,11 @@ function scoreEditor(stage, format = 'timed', savedWinner = null) {
     };
     return chain;
   }
-  const context = {window: {RR_SCORE_FORMAT: format, RR_SCORE_MAX_SETS: 1, RR_CAN_SCORE: true}, jQuery: $, document: {getElementById() { return {}; }},
+  const context = {window: {RR_SCORE_FORMAT: format, RR_SCORE_MAX_SETS: 1, RR_CAN_SCORE: true, CTSetScoreGrid: {bind() {}}}, jQuery: $, document: {getElementById() { return {}; }},
     AdminState: {getOop: () => [fixture], getFixtures: () => ({}), scoreSaved() {}},
     AdminToast: {warning: message => errors.push(message), error: message => errors.push(message), success() {}},
     AdminApi: {post: (url, payload) => { requests.push(payload); return Promise.resolve({}); }},
-    AdminLoading: {button: () => () => {}}, AdminRoutes: {score: () => '/score'}, bootstrap: {Modal: class {show() {} static getInstance() { return {hide() {}}; }}}
+    AdminLoading: {button: () => () => {}}, AdminRoutes: {score: () => '/score'}, bootstrap: {Modal: class {show() { handlers.get('#rrScoreModal:shown.bs.modal')?.(); } static getInstance() { return {hide() {}}; }}}
   };
   vm.runInNewContext(fs.readFileSync('public/assets/js/admin/roundrobin/scores.js', 'utf8'), context);
   context.window.RRScores.open(7, 'Home', 'Away');

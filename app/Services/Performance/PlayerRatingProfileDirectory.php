@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 /** Current profile filters do not change the scope of saved rating evidence. */
 class PlayerRatingProfileDirectory
 {
+    public const RATING_LABELS = ['red' => 'Red CTR', 'orange' => 'Orange CTR', 'standard' => 'CTR', 'overall' => 'Overall · all ages'];
     public const AGE_GROUPS = ['u7' => 'U7 (7 and younger)', 'u8' => 'U8 (8)', 'u9' => 'U9 (9)', 'u10' => 'U10 (10)', 'u11' => 'U11 (11)', 'u12' => 'U12 (12)', 'u13' => 'U13 (13)', 'u18' => 'U18 (14–18)', 'unknown' => 'Missing / invalid birth date', 'other' => 'Over 18'];
     private const AGE_ORDER = ['u7' => 0, 'u8' => 1, 'u9' => 2, 'u10' => 3, 'u11' => 4, 'u12' => 5, 'u13' => 6, 'u18' => 7, 'unknown' => 8, 'other' => 9];
     public const GENDERS = ['boys' => 'Boys', 'girls' => 'Girls', 'unknown' => 'Missing / unrecognised gender'];
@@ -37,11 +38,16 @@ class PlayerRatingProfileDirectory
         }
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         // Existing comparison-group links name the overall graph.
-        if ($ballType === 'auto') $ballType = $comparisonGroup === '' && array_key_exists('ball_ratings', $snapshot) ? 'standard' : 'overall';
+        if ($ballType === 'auto') $ballType = $comparisonGroup === '' ? 'standard' : 'overall';
         if (!in_array($ballType, ['overall', ...array_keys(BallRatingModel::LABELS)], true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['ball_type' => 'Choose a supported ball level.']);
         }
-        $allAgesBall = in_array($ballType, ['red', 'orange'], true);
+        // Old explicit comparison-group links still refer to the combined graph.
+        // Ordinary Overall is only an all-age view of the Green/Yellow CTR graph.
+        $legacyOverall = $ballType === 'overall' && $comparisonGroup !== '';
+        $ratingStage = $ballType === 'overall' && !$legacyOverall ? 'standard' : $ballType;
+        $overallList = $ballType === 'overall' && !$legacyOverall;
+        $allAgesBall = in_array($ballType, ['red', 'orange'], true) || $overallList;
         if ($allAgesBall) {
             // Ball level is the age-independent umbrella, including old filtered links.
             $ageGroup = '';
@@ -73,9 +79,9 @@ class PlayerRatingProfileDirectory
         } elseif ($gender !== '') {
             $query->whereIn(DB::raw('LOWER(TRIM(gender))'), $gender === 'boys' ? $boys : $girls);
         }
-        $ballLevel = $ballType !== 'overall';
-        $ratingLabel = $ballLevel ? BallRatingModel::LABELS[$ballType].' CTR' : 'Overall CTR';
-        $selectedGraph = $ballLevel ? ($snapshot['ball_ratings'][$ballType] ?? []) : ($snapshot['all_age'] ?? []);
+        $ballLevel = $ratingStage !== 'overall';
+        $ratingLabel = $legacyOverall ? 'Recorded combined CTR' : self::RATING_LABELS[$ratingStage];
+        $selectedGraph = $ballLevel ? ($snapshot['ball_ratings'][$ratingStage] ?? []) : ($snapshot['all_age'] ?? []);
         $unified = $ballLevel || array_key_exists('all_age', $snapshot);
         // Explicit group pages always retain their within-group positions.
         $sort = $comparisonGroup === '' ? $sort : 'shared';
@@ -100,14 +106,14 @@ class PlayerRatingProfileDirectory
         $sharedCoverage = $unified ? ['eligible' => count($selectedGraph['ratings'] ?? []),
             'connected' => count(array_filter($selectedGraph['ratings'] ?? [], fn ($rating) => !empty($rating['comparable'])))] : null;
         $ratings = $snapshot['reason'] ? [] : ($ballLevel
-            ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->ballBadgeSnapshot($ballType))
+            ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->ballBadgeSnapshot($ratingStage))
             : ($unified ? array_map(fn ($rating) => [$rating], app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot())
             : app(PlayerSharedAbilityService::class)->badgeSnapshot()));
         if ($withinGroup) {
             foreach (app(PlayerRatingGroupProjection::class)->project(array_replace($snapshot, ['all_age' => $selectedGraph]), $comparisonGroup) as $id => $projection) {
                 if ($ballLevel) {
                     $projection += array_intersect_key($selectedGraph['ratings'][$id] ?? [], array_flip(['evidence_basis', 'finish_events', 'inferred']));
-                    $projection['ball_type'] = $ballType;
+                    $projection['ball_type'] = $ratingStage;
                 }
                 $ratings[$id] = [$projection];
             }
@@ -127,7 +133,19 @@ class PlayerRatingProfileDirectory
         unset($savedRatings);
         $query->whereIn('id', array_keys($ratings));
         $affiliations = app(PlayerRatingRegionAffiliations::class);
-        $regionOptions = $affiliations->options(array_keys($ratings));
+        // Region choices remain stable when switching levels. A region with no
+        // players at the selected level gives an empty list, not a rejected form.
+        $regionPlayerIds = array_keys($ratings);
+        if (!$snapshot['reason']) {
+            foreach ($snapshot['ball_ratings'] ?? [] as $graph) {
+                foreach ($graph['ratings'] ?? [] as $id => $rating) {
+                    if (in_array((int) $id, $graph['components'][$rating['component'] ?? '']['members'] ?? [], true)) {
+                        $regionPlayerIds[] = (int) $id;
+                    }
+                }
+            }
+        }
+        $regionOptions = $affiliations->options(array_values(array_unique($regionPlayerIds)));
         $region = trim($region);
         if ($region !== '') {
             $canonicalRegion = collect($regionOptions)->first(fn ($option) => mb_strtolower($option) === mb_strtolower($region));
@@ -224,6 +242,7 @@ class PlayerRatingProfileDirectory
                 'rating_reason' => $saved[0]['reason'] ?? null];
         };
         $sections = [];
+        $resolvedFilters = ['ball_type' => $ballType, 'age_group' => $ageGroup, 'age_scope' => $ageScope, 'sort' => $sort];
         if ($groupedOrder) {
             $visible = collect(); $total = 0;
             foreach (self::AGE_ORDER as $key => $ageIndex) {
@@ -233,7 +252,7 @@ class PlayerRatingProfileDirectory
                     if ($gender !== '' && $gender !== $genderKey) continue;
                     $columnQuery = (clone $ordered)->where('gender_order', $genderIndex);
                     if (!$includeYounger) $columnQuery->where('age_order', $ageIndex);
-                    $column = $columnQuery->paginate($perPage, ['*'], $key.'_'.$genderKey.'_page')->withQueryString();
+                    $column = $columnQuery->paginate($perPage, ['*'], $key.'_'.$genderKey.'_page')->withQueryString()->appends($resolvedFilters);
                     $column->through($mapPlayer);
                     $total += $column->total();
                     $visible = $visible->concat($column->items());
@@ -245,7 +264,7 @@ class PlayerRatingProfileDirectory
             }
             $players = new \Illuminate\Pagination\LengthAwarePaginator($visible, $total, max(1, $visible->count()));
         } else {
-            $players = $ordered->paginate($perPage)->withQueryString();
+            $players = $ordered->paginate($perPage)->withQueryString()->appends($resolvedFilters);
             $players->through($mapPlayer);
         }
         $regions = app(PlayerRatingRegionAffiliations::class)->forPlayers($players->getCollection()->pluck('id')->all());
@@ -255,6 +274,6 @@ class PlayerRatingProfileDirectory
             foreach ($section['columns'] as $column) $column->through($withRegions);
         }
         unset($section);
-        return compact('allAgesBall', 'ballType', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup', 'supportedOnly');
+        return compact('allAgesBall', 'ballType', 'ratingStage', 'overallList', 'legacyOverall', 'ballLevel', 'ratingLabel', 'region', 'regionOptions', 'ageScope', 'includeYounger', 'ageScopeLabel', 'perPage', 'sections', 'groupedOrder', 'players', 'snapshot', 'year', 'ageGroup', 'gender', 'search', 'unified', 'combined', 'sort', 'scoreOrder', 'diagnosticOrder', 'ageOrder', 'sharedCoverage', 'connectionPlan', 'comparisonGroup', 'withinGroup', 'supportedOnly');
     }
 }

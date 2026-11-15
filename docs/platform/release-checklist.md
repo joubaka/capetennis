@@ -38,6 +38,7 @@ Use this checklist only after the named phase changes are reviewed and committed
 
 ## Operations and rollback
 
+- [ ] Inspect the deployment shell's `umask`. Use a process-scoped `(umask 022; deploy-ct main ... )` for an approved deployment: a retained `0077` mask can make Git-created public files `0600`, and `scripts/deployment-assets.php` preserves their source permissions. Verify changed assets with fresh HTTP requests as well as content hashes; matching hashes do not establish web readability. If an asset returns 403, inspect its exact source and served file modes and restore only the affected public files to the reviewed web-readable mode (normally `0644`). This check does not authorize a deployment or unrelated permission changes.
 - [ ] Investigate untracked production assets before clearing a dirty checkout: an uploaded logo can be referenced by a live event even though Git does not track it. Preserve its public URL in the configured web root as well as any private backup; moving the only copy out of the deployment source before asset sync can produce a live 404. Verify the exact referenced asset with an uncached HTTP request after deployment, rather than relying on a desktop's cached image.
 - [ ] Run `php artisan platform:preflight --strict` in the release environment.
 - [ ] Run `php artisan platform:health-check` after queue/scheduler startup.

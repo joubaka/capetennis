@@ -24,14 +24,15 @@ final class DrawReadinessService
         ], true);
 
         $checks = [
-            'format' => ['ok' => $formatConfigured, 'label' => $formatConfigured ? 'Draw format selected' : 'Select a draw format before publishing'],
-            'fixtures' => ['ok' => $fixtures->isNotEmpty(), 'label' => $fixtures->isNotEmpty() ? 'Fixtures generated' : 'Fixtures still need to be generated'],
+            'format' => ['ok' => $formatConfigured, 'label' => $formatConfigured ? 'Draw format selected for display' : 'Select a draw format before showing the draw'],
+            'fixtures' => ['ok' => $fixtures->isNotEmpty(), 'label' => $fixtures->isNotEmpty() ? 'Fixtures generated' : 'Generate fixtures before showing the draw'],
             'participants' => ['ok' => $participantCount > 0, 'label' => $participantCount > 0 ? $participantCount . ' participants assigned' : 'No participants assigned'],
             'venues' => ['ok' => $draw->venues->isNotEmpty(), 'label' => $draw->venues->isNotEmpty() ? 'Venues available' : 'Assign at least one venue before scheduling'],
             'scores' => ['ok' => true, 'label' => $scored . ' fixture' . ($scored === 1 ? '' : 's') . ' scored'],
         ];
 
         return [
+            // Draw visibility is independent of complete or published match times.
             'ready_to_publish' => $checks['format']['ok'] && $checks['fixtures']['ok'] && $checks['participants']['ok'],
             'checks' => $checks,
             'fixture_count' => $fixtures->count(),

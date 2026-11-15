@@ -925,6 +925,7 @@
     $('fm-retired-panel').hidden = $('fm-result-type').value !== 'retired';
     $('fm-walkover-panel').hidden = !walkover;
     const grid = $('fm-score-dialog').querySelector('[data-set-score-grid]');
+    CTSetScoreGrid.setCompletionEnabled(grid, $('fm-result-type').value === 'played');
     grid.hidden = walkover;
     grid.querySelectorAll('input').forEach(input => { input.disabled = walkover || input.closest('[data-score-row]')?.hidden; });
   }
@@ -936,7 +937,8 @@
     $('fm-score-players').textContent = match.players.map(name).join(' vs ');
     $('fm-score-format').textContent = state.score_guidance || `Best of ${state.best_of || 1}: enter completed sets.`;
     CTSetScoreGrid.populate($('fm-score-dialog').querySelector('[data-set-score-grid]'), {
-      names: match.players.map(name), maxSets: state.score_max_sets || state.best_of || 1, scores: match.sets
+      names: match.players.map(name), maxSets: state.score_max_sets || state.best_of || 1, scores: match.sets,
+      setTypes: state.score_set_types || []
     });
     $('fm-result-type').value = match.retired_registration_id ? 'retired' : (match.walkover ? 'walkover' : 'played');
     $('fm-walkover-winner').replaceChildren(new Option('Choose the winner', ''), ...match.players.map(id => new Option(name(id), id)));

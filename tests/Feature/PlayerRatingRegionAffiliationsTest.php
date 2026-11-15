@@ -13,6 +13,7 @@ use Tests\TestCase;
 class PlayerRatingRegionAffiliationsTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\DirectoryCtrSnapshot;
 
     private function roster(Player $player, string $regionName, bool $imported = false, bool $linked = true): Team
     {
@@ -73,9 +74,9 @@ class PlayerRatingRegionAffiliationsTest extends TestCase
         $ratings = [];
         foreach ([$boy, $girl, $none] as $index => $player) $ratings[$player->id] = ['score' => 80.0 - $index, 'component' => 'reference', 'comparable' => true,
             'cohort' => AllAgeRatingModel::COHORT, 'last_played' => '2026-10-01', 'confidence_label' => 'Low', 'confidence_index' => 25];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-11-01',
-            'all_age' => ['ratings' => $ratings, 'components' => ['reference' => ['members' => array_keys($ratings)]], 'reference_component' => 'reference']]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot(['reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-11-01',
+            'all_age' => ['ratings' => $ratings, 'components' => ['reference' => ['members' => array_keys($ratings)]], 'reference_component' => 'reference']]));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn($ratings);
         $url = route('backend.player-performance.ratings');
         foreach (['grouped', 'shared', 'score', 'age'] as $sort) {
             $response = $this->get($url.'?age_group=u9&age_scope=younger&sort='.$sort)->assertOk()

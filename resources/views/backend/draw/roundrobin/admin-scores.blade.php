@@ -104,7 +104,7 @@
 
         <!-- SETS -->
         @for($i = 1; $i <= 3; $i++)
-          <div class="row g-2 mb-2">
+          <div class="row g-2 mb-2" data-score-row>
             <div class="col-12 fw-bold">Set {{ $i }}</div>
             <div class="col-6">
               <label class="form-label">
@@ -137,6 +137,8 @@
 @section('page-script')
 
 <script>
+  window.RR_SCORE_REVISIONS = @json(app(\App\Services\Draw\IndividualScoreRevision::class)->forDraw($draw));
+  window.RR_SCORE_SET_TYPES = @json($draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format)['set_types'] : []);
   window.RR_SAVE_SCORE_URL =
     "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
   window.RR_DELETE_SCORE_URL =
@@ -150,7 +152,8 @@
   });
   </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
-<script src="{{ asset('assets/js/roundrobin-admin-scores.js') }}"></script>
+<script src="{{ asset('js/set-score-grid.js') }}?v={{ filemtime(public_path('js/set-score-grid.js')) }}"></script>
+<script src="{{ asset('assets/js/roundrobin-admin-scores.js') }}?v={{ filemtime(public_path('assets/js/roundrobin-admin-scores.js')) }}"></script>
 
 @endsection
 

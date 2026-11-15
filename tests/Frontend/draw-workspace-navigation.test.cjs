@@ -3,12 +3,13 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function workspace(hash = '', stored = null, search = '') {
+function workspace(hash = '', stored = null, search = '', hub = null) {
   const listeners = {}, shown = [], pushes = [], replaces = [];
   const storage = new Map(stored ? [['rr-view-42', stored]] : []);
   const location = {hash, search};
   const review = {active: false, attrs: {}, classList: {toggle(_, value) {review.active = value;}}, setAttribute(name, value) {this.attrs[name] = value;}};
   const nextSchedule = {hidden: true};
+  const progression = {outerHTML:'Old first-stage count'};
   const stateListeners = {}, fixtureState = {fixtures: {}, oop: []};
   const buttons = ['players', 'results', 'schedule', 'setup', 'rules'].map(area => ({
     dataset: {workspace: area}, active: false,
@@ -18,6 +19,7 @@ function workspace(hash = '', stored = null, search = '') {
   const tabs = ['groups','matrix','standings','main-bracket','oop','schedule','settings','notes','print'].map(id => ({id: id + '-tab', hidden: false}));
   const document = {
     getElementById(id) { return tabs.find(tab => tab.id === id); },
+    querySelector(selector) { return selector === '[data-rr-progression]' ? progression : null; },
     querySelectorAll(selector) { return selector === '[data-workspace]' ? buttons : selector === '[data-draw-next-schedule]' ? [nextSchedule] : selector === '[data-workspace-review]' ? [review] : []; }
   };
   const events = new Map();
@@ -47,11 +49,28 @@ function workspace(hash = '', stored = null, search = '') {
     AdminState: {
       on(event, callback) { stateListeners[event] = callback; },
       getFixtures() { return fixtureState.fixtures; },
-      getOop() { return fixtureState.oop; }
-    }
+      getOop() { return fixtureState.oop; },
+      setGroups(value) { fixtureState.groups = value; }, setFixtures(value) { fixtureState.fixtures = value; },
+      setOop(value) { fixtureState.oop = value; }, setStandings(value) { fixtureState.standings = value; }
+    }, AdminApi:{get:async()=>hub}, AdminRoutes:{get:()=>'/hub'}
   });
-  return {window, shown, buttons, tabs, listeners, location, storage, pushes, replaces, nextSchedule, fixtureState, stateListeners, review, events};
+  return {window, shown, buttons, tabs, listeners, location, storage, pushes, replaces, nextSchedule, fixtureState, stateListeners, review, events, progression};
 }
+
+test('generation refresh installs new phase groups and canonical progress without qualifying anyone', async () => {
+  const groups = [{id:1,round_robin_phase:1,registrations:[{id:4}]},{id:2,round_robin_phase:2,registrations:[]}];
+  const hub = {groups,rrFixtures:{2:[{id:100,r1_id:null,r2_id:null}]},oops:[{id:100}],standings:{},
+    can_assign:false,can_generate:false,progression_html:'<section data-rr-progression>0 of 16 first-stage results recorded.</section>'};
+  const page = workspace('#matrix',null,'',hub);
+  await page.window.RRWorkspace.refreshHub();
+  assert.deepEqual(page.fixtureState.groups,groups);
+  assert.deepEqual(page.window.RR_GROUPS,groups);
+  assert.deepEqual(page.fixtureState.fixtures,hub.rrFixtures);
+  assert.equal(page.progression.outerHTML,hub.progression_html);
+  assert.equal(page.window.RR_CAN_ASSIGN,false);
+  assert.equal(page.window.RR_CAN_GENERATE,false);
+  assert.deepEqual(page.fixtureState.groups[1].registrations,[]);
+});
 
 test('settings and notes deep links and stored views activate separate top-level destinations', () => {
   for (const [hash, stored, area, tab] of [

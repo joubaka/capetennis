@@ -131,7 +131,7 @@ class TeamEventAcceptanceWorkflowTest extends TestCase
         $outsider = User::factory()->create()->assignRole('admin');
         $foreign = Event::factory()->create(['eventType' => 3]);
         DB::table('event_admins')->insert(['event_id' => $foreign->id, 'user_id' => $outsider->id]);
-        $this->actingAs($outsider)->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 6, 'set1_away' => 2])->assertForbidden();
+        $this->actingAs($outsider)->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]))->assertForbidden();
         $this->putJson(route('backend.team-rules.update', $event), ['rules' => $rules])->assertForbidden();
         $this->actingAs($admin);
         foreach ($fixtures as $fixture) {
@@ -139,16 +139,16 @@ class TeamEventAcceptanceWorkflowTest extends TestCase
             if (!$fixture->isDoubles()) {
                 $scores += ['set2_home' => 6, 'set2_away' => 3];
             }
-            $this->postJson(route('frontend.fixtures.score.store', $fixture), $scores)->assertOk()->assertJsonPath('winner', 'home');
+            $this->postJson(route('frontend.fixtures.score.store', $fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + ($scores))->assertOk()->assertJsonPath('winner', 'home');
         }
         $this->assertSame(3, $draw->teamTies()->where('status', 'completed')->count());
         $this->assertEquals(54, array_sum(array_column(app(TeamStandingsService::class)->forDraw($draw->fresh()), 'points')));
-        $this->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
+        $this->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 2, 'set1_away' => 6, 'set2_home' => 3, 'set2_away' => 6]))->assertOk()->assertJsonPath('winner', 'away');
         $this->assertSame(2, $first->teamResults()->count());
-        $this->delete(route('frontend.fixtures.score.delete', $first))->assertRedirect();
+        $this->delete(route('frontend.fixtures.score.delete', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())])->assertRedirect();
         $this->assertSame(0, $first->teamResults()->count());
         $this->assertSame('published', $first->teamTie()->first()->status);
-        $this->postJson(route('frontend.fixtures.score.store', $first), ['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3])->assertOk();
+        $this->postJson(route('frontend.fixtures.score.store', $first), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($first)->fresh())] + (['set1_home' => 6, 'set1_away' => 2, 'set2_home' => 6, 'set2_away' => 3]))->assertOk();
         $this->get(route('backend.team-draw.standings', $draw))->assertOk();
         $draw->update(['published' => true]);
         $draw->event->forceFill(['standings_published' => true])->save();
@@ -201,12 +201,12 @@ class TeamEventAcceptanceWorkflowTest extends TestCase
         $this->get(route('frontend.fixtures.venue', $allowedVenue))->assertOk()->assertSee('Allowed court');
         $this->get(route('frontend.fixtures.venue', $otherVenue))->assertForbidden();
         $scores = ['set1_home' => 6, 'set1_away' => 2];
-        $save = $this->postJson(route('frontend.fixtures.score.store', $allowed), $scores)->assertOk();
+        $save = $this->postJson(route('frontend.fixtures.score.store', $allowed), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($allowed)->fresh())] + ($scores))->assertOk();
         $this->assertStringContainsString('Profile Home', $save->json('actionsHtml'));
         $this->assertStringContainsString('Imported Away', $save->json('actionsHtml'));
-        $this->postJson(route('frontend.fixtures.score.store', $other), $scores)->assertForbidden();
-        $this->postJson(route('frontend.fixtures.score.store', $unscheduled), $scores)->assertForbidden();
-        $delete = $this->deleteJson(route('frontend.fixtures.score.delete', $allowed))->assertOk();
+        $this->postJson(route('frontend.fixtures.score.store', $other), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($other)->fresh())] + ($scores))->assertForbidden();
+        $this->postJson(route('frontend.fixtures.score.store', $unscheduled), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($unscheduled)->fresh())] + ($scores))->assertForbidden();
+        $delete = $this->deleteJson(route('frontend.fixtures.score.delete', $allowed), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($allowed)->fresh())])->assertOk();
         $this->assertStringContainsString('Profile Home', $delete->json('actionsHtml'));
         $this->assertStringContainsString('Imported Away', $delete->json('actionsHtml'));
         $this->assertStringNotContainsString('data-set1_home', $delete->json('actionsHtml'));
@@ -216,7 +216,7 @@ class TeamEventAcceptanceWorkflowTest extends TestCase
         $assignment->update(['expires_at' => now()->subDay()]);
         $this->get(route('frontend.fixtures.enter-scores', $draw))->assertForbidden();
         $this->get(route('frontend.fixtures.venue', $allowedVenue))->assertForbidden();
-        $this->postJson(route('frontend.fixtures.score.store', $allowed), $scores)->assertForbidden();
+        $this->postJson(route('frontend.fixtures.score.store', $allowed), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($allowed)->fresh())] + ($scores))->assertForbidden();
         $this->assertDatabaseCount('team_fixture_results', 0);
         $assignment->update(['expires_at' => null, 'starts_at' => now()->addDay()]);
         $this->get(route('frontend.fixtures.venue', $allowedVenue))->assertForbidden();

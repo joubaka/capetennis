@@ -134,7 +134,7 @@
                   <a href="{{ route('backend.team-fixtures.edit', $fx->id) }}" class="btn btn-sm btn-outline-info">Edit</a>
                   <button type="button"
                           class="btn btn-sm btn-primary open-score-modal"
-                          data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}"
+                          data-id="{{ $fx->id }}" data-participant-revision="{{ app(\App\Services\TeamParticipantHistoryService::class)->revision($fx) }}" data-score-revision="{{ app(\App\Services\TeamFixtureScoreService::class)->revision($fx) }}"
                           data-home="{{ $fx->teamTie?->home_side_name ?? 'Home' }}"
                           data-away="{{ $fx->teamTie?->away_side_name ?? 'Away' }}"
                           data-bs-toggle="modal"

@@ -13,14 +13,20 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Consult `docs/performance/ball-level-classification.md` and verify
   `BallRatingModel` and `BallRatingContext`; classification changes invalidate
   saved calculations.
-- The user-facing rating choices are Red, Orange and Overall CTR. Age and gender
-  filter comparison populations; they must not create a different strength score
-  for the same selected rating. Red and Orange directories are age independent,
-  including the youngest players. Verify legacy `standard` aliases against
-  `PlayerRatingTopTen` and `PlayerRatingProfileDirectory` before changing links.
-- Distinguish playing-format evidence from a display label: Overall is not
-  permission to blend modified-ball matches into the shared standard-format fit.
-  Consult `docs/performance/all-age-rating.md`, the current model and its tests.
+- The Super Admin directory choices are Red CTR, Orange CTR, CTR and Overall
+  (all ages). CTR and ordinary Overall read the same saved Green/Yellow
+  (`standard`) graph; Overall clears age restrictions and uses one all-age list.
+  Red CTR and Orange CTR remain independent, age-independent lists. Filters
+  change membership, never strength. Explicit historical `overall` comparison
+  groups retain their recorded combined graph and are labelled separately.
+  This directory policy does not replace the combined model used by other
+  consumers. See `docs/performance/ball-level-classification.md` and
+  `PlayerRatingProfileDirectory` before changing directory/detail links.
+- Overall model version 6 accepts otherwise eligible played singles across ball
+  and court formats without format or age offsets. Red and Orange retain their
+  separate projections. Verify `AllAgeRatingModel::format`,
+  `AllAgeRatingModelTest` and `docs/performance/all-age-rating.md`; historical
+  format exclusions and validation metrics do not establish the current policy.
 - Missing, disconnected, invalidated, unpublished or non-comparable evidence must
   remain unavailable or explicitly qualified. Never invent calibration, replace
   a missing shared score with a local component score, or call confidence a
@@ -31,6 +37,41 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Pathway assessments must use the relevant ball-level score and current
   comparability/freshness policy; do not infer strength from age or badge color.
   Find the current pathway service and focused tests before adjusting thresholds.
+- A comparable CTR is not externally calibrated Wilson/TSA readiness. Keep
+  named competition recommendations withheld and offer coach-discussion options
+  until a reviewed calibration policy exists. Preserve Red/Orange targets,
+  ball-level evidence and saved participation metadata; no arbitrary new
+  opponent-count or confidence threshold substitutes for that validation.
+- The separate match-influence tool is an offline sensitivity estimate on saved Overall CTR:
+  baseline minus a canonical refit omitting one exact eligible match at the same
+  date. Preserve component, reference, backbone and connection comparability;
+  withhold invalid refits. These values are non-additive, are not points awarded
+  per match or historical monthly gains, and must not substitute for ball-level
+  badges. Page reads only project a current private artifact behind the existing
+  rating-access gate. See `docs/performance/match-influence.md`.
+- Before/after match CTR in Plus is a retrospective scheduled-order
+  reconstruction, not an archived actual rating. Use each target day's full
+  historical evidence window and strict chronological before/after pools;
+  withhold ambiguous order and changed comparison scales. Never substitute
+  today's leave-one-out rating or fixture-ID order. Keep the proxy basis visible
+  and calculations offline. Interactive match explanations must project saved
+  accepted-evidence aggregates, distinguish network counts from the player's
+  own evidence, and never refit on click. Individual evidence tables must use
+  exact accepted own-match membership and target-day validated metadata; apply
+  restricted-source access rules to each nested result, and label missing or
+  capped details honestly. Opponent CTR must also pass the canonical public
+  match-comparison gate and use the selected comparison's saved fitted values;
+  a current-score permission lookup must never replace historical reconstruction
+  values. See
+  `docs/performance/match-ctr-timeline.md`.
+- Automatic Plus materialization uses one ordered overnight pipeline: current
+  ability, monthly history, then each active Plus player's match and event
+  reconstructions. Keep its saved cursor, context guards, bounded continuations
+  and prerequisite retries; do not restore daytime pending fits or calculate on
+  GET. Base completion and partial/failed player reconstructions are distinct
+  outcomes. Verify current host ticks before changing the 03:02 SAST start;
+  local schedule tests never establish production cron execution. See
+  `docs/player-plus-nightly-refresh.md` and `PlayerPlusDerivedRefreshTest`.
 
 ## Player Plus, identity and offers
 
@@ -74,6 +115,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   returns and separate draw visibility from published times. See
   `docs/draw-workflow.md`, DK-14 and `DrawWorkflow`; team and advanced operations
   retain their canonical services and safeguards.
+- Draw workflow completion/readiness and stale-edit contracts are detailed in
+  `docs/draw-workflow.md`, DK-14/DK-33 and repair guides RK-054/RK-055. Consult
+  `DrawPhaseOneReadinessTest` and `DrawScoreRevisionTest` before changing these
+  boundaries; score-content, participant, assignment and rebuild-state revisions
+  have different scopes and must not be substituted for each other.
 - Public draw cards, headers and fixture empty states share filtered published
   schedule availability, dates and venues. Configured fallback venues are planned;
   the earliest visible match is not necessarily the historical draw start.
@@ -100,6 +146,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Reuse established loading helpers and consistent blue modal/loading feedback
   for slow requests. Handle success, failure and session expiry so a spinner
   cannot remain indefinitely. A loading indicator is not evidence of performance.
+- Set-score completion uses the selected format's per-set types, including a
+  deciding match tiebreak where configured. Preserve loaded and manually entered
+  scores; only generated suggestions may follow source edits. Ambiguous, timed,
+  custom and retirement scores stay manual. See `public/js/set-score-grid.js`,
+  `TennisScoreFormat` and `tests/Frontend/set-score-grid.test.cjs`. Legacy Flexible
+  Monrad full best-of-three uses a third-set match tiebreak, as enforced by
+  `FlexibleMonradScoreValidator`; do not infer three full sets from the set count.
 - Show the latest saved rating update when relevant; distinguish saved evidence
   from a refresh in progress. Verify timestamps against the application timezone.
 - The shared My Tennis tab header shows the selected player's authorized saved
@@ -116,6 +169,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   transient rating and pathway reads when leaving a view.
   Render the initial authorized Rating panel with its tab response. Use the
   rating fragment endpoint for subsequent filters and refreshes.
+- Rating history month, evidence scope, chart scale and section must survive
+  reload, shared links and browser Back/Forward. Validate the same filters for
+  workspace and fragment reads; ordinary rating deep links render the full
+  authorized workspace. Commit URL changes only after a successful fragment
+  response and invalidate warmed workspace caches when rating state changes.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.

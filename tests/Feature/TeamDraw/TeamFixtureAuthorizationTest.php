@@ -110,30 +110,30 @@ class TeamFixtureAuthorizationTest extends TestCase
 
     public function test_guest_cannot_insert_score(): void
     {
-        $this->postJson(route('backend.team-fixtures.insertScore', $this->fixture))
+        $this->postJson(route('backend.team-fixtures.insertScore', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertUnauthorized();
     }
 
     public function test_ordinary_user_cannot_insert_score(): void
     {
         $this->actingAs($this->ordinaryUser)
-            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture))
+            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertForbidden();
     }
 
     public function test_admin_of_other_event_cannot_insert_score(): void
     {
         $this->actingAs($this->adminOther)
-            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture))
+            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertForbidden();
     }
 
     public function test_event_admin_can_insert_score(): void
     {
         $response = $this->actingAs($this->admin)
-            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), [
+            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())] + ([
                 'set1_home' => 6, 'set1_away' => 3,
-            ]);
+            ]));
 
         $this->assertNotEquals(401, $response->status());
         $this->assertNotEquals(403, $response->status());
@@ -142,9 +142,9 @@ class TeamFixtureAuthorizationTest extends TestCase
     public function test_super_user_can_insert_score(): void
     {
         $response = $this->actingAs($this->superUser)
-            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), [
+            ->postJson(route('backend.team-fixtures.insertScore', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())] + ([
                 'set1_home' => 6, 'set1_away' => 3,
-            ]);
+            ]));
 
         $this->assertNotEquals(401, $response->status());
         $this->assertNotEquals(403, $response->status());
@@ -156,28 +156,28 @@ class TeamFixtureAuthorizationTest extends TestCase
 
     public function test_guest_cannot_destroy_result(): void
     {
-        $this->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture))
+        $this->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertUnauthorized();
     }
 
     public function test_ordinary_user_cannot_destroy_result(): void
     {
         $this->actingAs($this->ordinaryUser)
-            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture))
+            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertForbidden();
     }
 
     public function test_admin_of_other_event_cannot_destroy_result(): void
     {
         $this->actingAs($this->adminOther)
-            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture))
+            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())])
             ->assertForbidden();
     }
 
     public function test_event_admin_can_destroy_result(): void
     {
         $response = $this->actingAs($this->admin)
-            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture));
+            ->deleteJson(route('backend.team-fixtures.destroyResult', $this->fixture), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($this->fixture)->fresh())]);
 
         $this->assertNotEquals(401, $response->status());
         $this->assertNotEquals(403, $response->status());

@@ -13,6 +13,7 @@ use Tests\TestCase;
 class PlayerRatingYoungerDirectoryTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\DirectoryCtrSnapshot;
 
     public function test_younger_selection_combines_age_groups_and_ranks_with_stable_search_pages(): void
     {
@@ -39,9 +40,9 @@ class PlayerRatingYoungerDirectoryTest extends TestCase
         $add('UnknownBirth', null, 1, 95);
         $add('FutureBirth', '2027-01-01', 1, 95);
         $add('Adult', '2000-01-01', 1, 95);
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturnUsing(function () use (&$ratings, &$components) { return ['reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-11-01',
-            'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]; });
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturnUsing(function () use (&$ratings, &$components) { return $this->ctrSnapshot(['reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-11-01',
+            'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]); });
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url.'?age_group=u9&age_scope=younger&per_page=500')->assertOk()->assertSee('U9 and younger · born 2017 or later')
             ->assertDontSee('TooOld Synthetic')->assertDontSee('UnknownBirth Synthetic')->assertDontSee('FutureBirth Synthetic')->assertDontSee('Adult Synthetic');
@@ -54,7 +55,7 @@ class PlayerRatingYoungerDirectoryTest extends TestCase
         $this->assertStringContainsString('age_scope=younger', $columns['boys']->url(2));
         $searched = $this->get($url.'?age_group=u9&age_scope=younger&search=NineJanuary')->assertOk();
         $this->assertSame(3, $searched->viewData('sections')['u9']['columns']['boys']->first()['position']);
-        $exact = $this->get($url.'?age_group=u9')->assertOk();
+        $exact = $this->get($url.'?age_group=u9&age_scope=group')->assertOk();
         $this->assertSame(['NineJanuary Synthetic', 'NineDecember Synthetic'], $exact->viewData('sections')['u9']['columns']['boys']->getCollection()->pluck('name')->all());
         $age = $this->get($url.'?age_group=u9&age_scope=younger&sort=age&gender=boys')->assertOk();
         $this->assertSame([1, 2, 3, 4], $age->viewData('players')->getCollection()->pluck('position')->all());
@@ -70,12 +71,12 @@ class PlayerRatingYoungerDirectoryTest extends TestCase
         $this->assertSame(1, $paged->viewData('sections')['u9']['columns']['girls']->first()['position']);
         foreach (['', 'unknown', 'other'] as $group) {
             $normal = $this->get($url.'?age_group='.$group.'&age_scope=younger')->assertOk();
-            $this->assertSame('group', $normal->viewData('ageScope'));
+            $this->assertSame($group === '' ? 'younger' : 'group', $normal->viewData('ageScope'));
         }
         $this->getJson($url.'?age_group=u9&age_scope=invalid')->assertUnprocessable();
         $this->assertDatabaseCount('user_players', 0);
         if ($path = getenv('CT_YOUNGER_DIRECTORY_HTML')) file_put_contents($path, $response->getContent());
-        // Legacy context scores have no shared calibration across age groups.
+        // Missing CTR graphs must never substitute legacy context scores.
         $legacy = ['reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-11-01', 'cohorts' => []];
         $legacyBadges = [];
         foreach ($ratings as $id => $rating) {
@@ -84,11 +85,11 @@ class PlayerRatingYoungerDirectoryTest extends TestCase
             $legacyBadges[$id] = [$rating];
             $legacy['cohorts'][$rating['cohort']] = ['ratings' => [$id => $rating], 'components' => [$rating['component'] => ['members' => [$id]]]];
         }
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($legacy);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('badgeSnapshot')->andReturn($legacyBadges);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot($legacy));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('ballBadgeSnapshot')->with('standard')->andReturn([]);
         $legacyResponse = $this->get($url.'?age_group=u9&age_scope=younger&per_page=500')->assertOk();
-        $this->assertSame([null, null, null], $legacyResponse->viewData('sections')['u9']['columns']['girls']->getCollection()->pluck('position')->all());
+        $this->assertSame(0, $legacyResponse->viewData('players')->total());
         $legacySingle = $this->get($url.'?age_group=u9&age_scope=younger&sort=shared&per_page=500')->assertOk();
-        $this->assertTrue($legacySingle->viewData('players')->getCollection()->every(fn ($player) => $player['position'] === null));
+        $this->assertSame(0, $legacySingle->viewData('players')->total());
     }
 }

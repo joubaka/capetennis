@@ -11,9 +11,27 @@ use Illuminate\Validation\ValidationException;
 /** Replace an unplayed draw and its working bookings as one audited operation. */
 final class RoundRobinRebuildService
 {
-    public function rebuild(Draw $draw, ?string $revision = null): Draw
+    public function revision(Draw $draw): string
     {
-        return DB::transaction(function () use ($draw, $revision) {
+        $draw = $draw->fresh('settings');
+        $fixtures = $draw->drawFixtures()->with('fixtureResults')->orderBy('id')->get();
+        $ids = $fixtures->modelKeys();
+        $bookings = [];
+        foreach (['order_of_plays', 'schedules'] as $table) {
+            $bookings[$table] = DB::table($table)->where(fn ($query) => $query->where('draw_id', $draw->id)->orWhereIn('fixture_id', $ids))->orderBy('id')->get()->all();
+        }
+        return hash('sha256', json_encode([
+            $draw->only(['id', 'event_id', 'locked', 'published', 'oop_published']), $draw->settings?->getAttributes(),
+            app(GroupAssignmentService::class)->revision($draw),
+            $fixtures->map(fn ($fixture) => [$fixture->getAttributes(), $fixture->fixtureResults->sortBy('id')->map->getAttributes()->all()])->all(),
+            $bookings,
+            DB::table('published_schedule_assignments')->where('event_id', $draw->event_id)->where('draw_id', $draw->id)->orderBy('fixture_kind')->orderBy('fixture_id')->get()->all(),
+        ]));
+    }
+
+    public function rebuild(Draw $draw, ?string $revision = null, ?string $rebuildRevision = null): Draw
+    {
+        return DB::transaction(function () use ($draw, $revision, $rebuildRevision) {
             $eventId = (int) $draw->event_id;
             Event::whereKey($eventId)->lockForUpdate()->firstOrFail();
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -25,9 +43,11 @@ final class RoundRobinRebuildService
                 throw ValidationException::withMessages(['draw' => 'Use this draw format’s own fixture preparation controls.']);
             }
             RoundRobinGenerationService::assertRegenerable($draw);
-            if ($revision !== null && !hash_equals(app(GroupAssignmentService::class)->revision($draw), $revision)) {
+            if (!is_string($revision) || !hash_equals(app(GroupAssignmentService::class)->revision($draw), $revision)) {
                 throw ValidationException::withMessages(['revision' => 'Assignments changed. Reload players before generating fixtures.']);
             }
+            abort_unless(is_string($rebuildRevision) && hash_equals($this->revision($draw), $rebuildRevision), 409,
+                'The matches, rules or saved bookings changed. Reload players and review the rebuild again.');
             $fixtures = $draw->drawFixtures()->orderBy('id')->lockForUpdate()->get();
             $fixtureIds = $fixtures->pluck('id');
             $before = [];

@@ -19,10 +19,25 @@ class PlayerRatingHistoryRefresh
         if ($busy && $state['state'] !== 'running') $state = ['state' => 'running', 'started_at' => $state['started_at'] ?? time()];
         elseif ($state['state'] === 'pending' && time() - ($state['submitted_at'] ?? 0) > 120) $state['state'] = 'failed';
         elseif ($state['state'] === 'running' && !$busy) $state['state'] = 'failed';
-        $messages = ['idle' => 'Saved history updates nightly at 03:00 SAST.', 'pending' => 'Background update requested. Starting shortly…',
+        $messages = ['idle' => 'Saved history updates nightly at 03:02 SAST.', 'pending' => 'Background update requested. Starting shortly…',
             'running' => 'Recalculating saved rating history for all players in the background…',
             'completed' => 'Saved rating history was updated.', 'failed' => 'The update could not complete. The last successful history was retained. You can try again.'];
-        return ['state' => $state['state'], 'message' => $messages[$state['state']], 'completed_at' => $state['completed_at'] ?? null];
+        $message = $messages[$state['state']];
+        if (!$busy) {
+            $pipeline = app(PlayerPlusDerivedRefreshState::class)->read();
+            if (($pipeline['cycle_date'] ?? null) === now('Africa/Johannesburg')->toDateString()) {
+                if (($pipeline['status'] ?? null) === 'pending' && in_array($pipeline['stage'], ['ability', 'history'], true)) {
+                    $state['state'] = 'idle'; $message = 'The refresh is paused between overnight stages. Saved outputs were retained; continuation is scheduled overnight.';
+                } elseif (($pipeline['status'] ?? null) === 'pending' && in_array($pipeline['stage'], ['progress', 'events'], true)) {
+                    $state['state'] = 'completed'; $message = 'Saved ratings and monthly history are ready. Remaining player reconstructions will continue overnight.';
+                } elseif (($pipeline['status'] ?? null) === 'complete_with_errors') {
+                    $state['state'] = 'completed'; $message = 'Saved ratings and monthly history are ready. Some player reconstructions were unavailable; operator review is needed.';
+                } elseif (in_array($pipeline['status'] ?? null, ['failed', 'context_changed'], true)) {
+                    $state['state'] = 'failed'; $message = 'The derived refresh could not finish. Saved outputs were retained; operator review or an overnight retry is needed.';
+                }
+            }
+        }
+        return ['state' => $state['state'], 'message' => $message, 'completed_at' => $state['completed_at'] ?? null];
     }
 
     public function request(): array
@@ -56,6 +71,7 @@ class PlayerRatingHistoryRefresh
 
     private function builderHeld(): bool
     {
-        return Cache::store('file')->lock(self::BUILDER, 1)->isLocked();
+        return Cache::store('file')->lock(self::BUILDER, 1)->isLocked()
+            || Cache::store('file')->lock(PlayerPlusDerivedRefresh::LOCK, 1)->isLocked();
     }
 }

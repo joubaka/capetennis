@@ -267,6 +267,7 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
                 return $registration;
             });
             app(\App\Services\Draw\GroupAssignmentService::class)->save($draw, [
+                'revision' => app(\App\Services\Draw\GroupAssignmentService::class)->revision($draw->fresh()),
                 'groups' => [['group_id' => $group->id, 'registration_ids' => $registrations->pluck('id')->all()]],
             ]);
             app(\App\Services\DrawService::class)->regenerateRoundRobinFixtures($draw->fresh());
@@ -434,8 +435,16 @@ class HeadOfficeDrawAuthorizationTest extends TestCase
 
         $notes = $response->json('draw.notes');
         $this->assertArrayNotHasKey('General rules', $notes);
-        $this->assertSame('Print this section.', $notes['Round Robin scoring rules']);
+        $this->assertStringContainsString('Standings award 2 points for a win, 1 for a draw and 0 for a loss', $notes['Round Robin scoring rules']);
+        $this->assertStringEndsWith("\n\nPrint this section.", $notes['Round Robin scoring rules']);
+        $this->assertSame(1, substr_count($notes['Round Robin scoring rules'], 'Print this section.'));
         $this->assertStringContainsString('Best of 3 sets', $notes['Configured match format']);
+
+        $draw->settings()->update(['notes_print' => ['general' => false, 'round_robin' => false]]);
+        $withoutNotes = $this->getJson($this->printDataUrl().'?draw_id='.$draw->id)->assertOk()->json('draw.notes');
+        $this->assertStringNotContainsString('Print this section.', $withoutNotes['Round Robin scoring rules']);
+        $this->assertStringContainsString('Standings award 2 points', $withoutNotes['Round Robin scoring rules']);
+        $this->assertStringContainsString('Best of 3 sets', $withoutNotes['Configured match format']);
     }
 
     public function test_convenor_can_access_print_draws_data(): void

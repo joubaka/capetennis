@@ -13,6 +13,7 @@ use Tests\TestCase;
 class PlayerRatingGroupedDirectoryTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\DirectoryCtrSnapshot;
 
     public function test_default_sections_have_independent_gender_pages_stable_positions_and_birth_years(): void
     {
@@ -56,9 +57,9 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
         foreach ($youngGroups as $profiles) foreach ($profiles as [$name, $birth]) $add($name, $birth, 1, 60);
         $components = [];
         foreach ($members as $key => $ids) $components[$key] = ['members' => $ids];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn(['reason' => null,
-            'built_at' => '2026-11-01', 'snapshot_stale' => false, 'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot(['reason' => null,
+            'built_at' => '2026-11-01', 'snapshot_stale' => false, 'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => 'reference']]));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn($ratings);
         $url = route('backend.player-performance.ratings');
         $first = $this->get($url)->assertOk()->assertSee('data-ctr-age-section="u10"', false)->assertSee('data-ctr-age-section="u13"', false)
             ->assertSee('data-ctr-gender-column="boys"', false)->assertSee('data-ctr-gender-column="girls"', false)
@@ -97,7 +98,7 @@ class PlayerRatingGroupedDirectoryTest extends TestCase
         $this->assertCount(28, $largeColumns['girls']);
         $this->assertNull($largeColumns['girls']->getCollection()->last()['position']);
         $this->assertStringContainsString('per_page=500', $largeColumns['boys']->url(2));
-        $hundredUrl = $url.'?ball_type=overall&age_scope=group&age_group=u13&per_page=100';
+        $hundredUrl = $url.'?ball_type=standard&age_scope=group&age_group=u13&per_page=100';
         $hundred = $this->get($hundredUrl)->assertOk();
         $this->assertSame(100, $hundred->viewData('sections')['u13']['columns']['boys']->perPage());
         $fragment = $this->get($hundredUrl, ['X-CTR-Directory' => '1'])->assertOk()

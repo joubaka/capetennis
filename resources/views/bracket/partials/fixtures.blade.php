@@ -1,3 +1,4 @@
+@include('backend.team-fixtures.partials.participant-revision-script')
 <div class="table-responsive">
   <table class="table table-sm">
     <thead>
@@ -59,7 +60,7 @@
           @if($fixture->fixtureResults->count() > 0)
             <span class="badge bg-label-primary">vs</span>
           @else
-            <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->registrations1 ? $fixture->registrations1->players[0]->full_name:''}} " data-reg2="{{$fixture->registrations2 ? $fixture->registrations2->players[0]->full_name:''}} " class="btn btn-sm btn-success insertResult" data-bs-toggle="modal" data-bs-target="#tennisResultModal" >vs</button></td>
+            <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->registrations1 ? $fixture->registrations1->players[0]->full_name:''}} " data-reg2="{{$fixture->registrations2 ? $fixture->registrations2->players[0]->full_name:''}} " class="btn btn-sm btn-success insertResult" data-score-revision="{{ $fixture instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) : app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture) }}" data-bs-toggle="modal" data-bs-target="#tennisResultModal" >vs</button></td>
         @endif
         <td class="p2 {{ \App\Support\ResultPresentation::classes($fixture)[1] }} registration2" data-id="{{$fixture->registrations2 ? $fixture->registrations2->id:''}}">
           @if($fixture->registration2_id > 0)
@@ -76,7 +77,7 @@
             {{$bracket->result($fixture->id)}}
           @else
 
-            <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->registrations1 ? $fixture->registrations1->players[0]->full_name:''}} " data-reg2="{{$fixture->registrations2 ? $fixture->registrations2->players[0]->full_name:''}} " class="btn btn-sm btn-success insertResult" data-bs-toggle="modal" data-bs-target="#tennisResultModal">Insert Score</button></td>
+            <button type="button" data-id="{{$fixture}}" data-reg1="{{$fixture->registrations1 ? $fixture->registrations1->players[0]->full_name:''}} " data-reg2="{{$fixture->registrations2 ? $fixture->registrations2->players[0]->full_name:''}} " class="btn btn-sm btn-success insertResult" data-score-revision="{{ $fixture instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) : app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture) }}" data-bs-toggle="modal" data-bs-target="#tennisResultModal">Insert Score</button></td>
 
         @endif
 

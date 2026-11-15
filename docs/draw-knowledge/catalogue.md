@@ -206,6 +206,19 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Solution:** `DrawWorkflow` derives the individual journey from saved state: Setup → Players → Matches → Schedule → Review & publish → Results. Saved player placements and generated matches complete independently; stale group fixtures and missing flexible graph records remain incomplete. The header, AJAX setup guide and single-draw scheduling/edit pages share this journey. Scheduler returns retain the draw and date; team operations retain their existing workflow. Refresh progress by the authorized, event-scoped, read-only `workflow_only` guide response after confirmed saves; never generate or publish while navigating. Format changes identify locking, draw publication, time publication and event-wide result restrictions separately. Reopening starting positions explains saved-time/result blockers before action. See `docs/draw-workflow.md` for preserved capabilities and acceptance coverage.
 
+An explicitly saved independent draw may select part of a category. Use its canonical roster or a current event/category/revision-bound `groups_saved` selection; do not infer intent merely from sibling draws or an old partial draft. Keep eligibility, exact group coverage and unique-player checks. Older unchanged assignments need an explicit confirmation path, not a cosmetic Saved label with a skipped save request.
+
+**Selected-roster regression:** `tests/Feature/Draw/IndividualDrawSelectionTest.php` covers current saved selections, incomplete/stale selections, sibling player exclusion and unchanged setup state.
+
+**Completion and readiness:** Keep draw visibility, saved generated-match times,
+current published snapshots and final results separate. Canonical outcomes include
+valid RR draws; stale winner metadata or one set in a longer match cannot complete
+Results. Configured playoffs and confirmed later stages must finish before a staged
+competition completes. See `docs/draw-workflow.md` and
+`tests/Feature/Draw/DrawPhaseOneReadinessTest.php`.
+
+**Local setup repair verification (15 November 2026):** The affected SQLite bundle passed 117 tests / 954 assertions; one independently verified preexisting print-note assertion mismatch was excluded. Independent frontend checks passed 13 tests. Browser retests covered one overall-winner setup and two disjoint independent RR selections, saved progress, initial/refreshed player exclusion, phase descriptions and group limits. No matches were generated during the browser retest. These checks do not establish later-phase progression or production acceptance.
+
 **Regression:** `DrawWorkspaceTest`, `DrawSetupGuideTest`, `DrawSetupTest`, `FlexibleMonradTest`, `OrganiserSetupJourneyTest`, `CanonicalDrawWorkspaceTest`, `tests/Frontend/draw-workflow.test.cjs`, and `tests/Browser/draw-workspace.cjs`. The local implementation/compatibility bundle passed 148 tests / 2,175 assertions on isolated SQLite. The focused navigation/publication scripts passed 29 tests, and the independent rendered-browser harness passed 17 checks, including AJAX guide mounting and widths from 320 to 1440 pixels. These checks and guidance do not authorize live changes or establish production acceptance.
 
 **History:** `01a18c08-6fee-7a60-bb27-b9fa567b04fd` (Preserve setup after draw changes); `01a1823a-d4cb-7821-b456-fc1fa1c05f1b` (Test match scheduling workflow).
@@ -278,15 +291,23 @@ Player Plus publication notices use a five-minute quiet period after the latest 
 
 **Rule and solution:** Category draw creation can create multiple independent empty draws. It must not populate players, merge winners or publish those draws. Validate the category belongs to the authorized event. This differs from DK-11's separate winners for groups within one draw.
 
+Independent round-robin draws in the same category require disjoint player identities across saved phase-one groups and canonical draw rosters. Check both registration IDs and their linked player IDs, including aliases, under the common selection locks. Apply the same rule to initial available-player data, refreshes, group saves and canonical roster attachment; a UI filter alone is insufficient. Saving a subset completes that draw's Players step when its current selection is valid; it does not claim every category entrant or mirror groups into the separate canonical roster.
+
 **Sources:** `app/Http/Controllers/Backend/EventAdminController.php`, `resources/views/backend/headOffice/individual-event-show.blade.php`.
 
 **Regression:** `tests/Feature/HeadOffice/HeadOfficeDrawAuthorizationTest.php` covers two-draw creation, names, counts and foreign category rejection.
+
+`tests/Feature/Draw/IndividualDrawSelectionTest.php` additionally covers disjoint saved rosters, alias player identities, canonical roster attachment and atomic rejection of overlap. `GroupAssignmentService` owns the shared assignment exclusion used by the RR roster projections and canonical attachment guard.
 
 **History:** Add multiple draws per category (`01a18965-eaa1-7241-8c14-70dc51bf8908`).
 
 ## DK-22 — Choosing a format must not silently destroy setup
 
 **Rule and solution:** Initial format choice is read-only until saved; RR asks for groups before placing players and suggests matching playoffs. Resets need explicit confirmation and preserve other draws and roster data; played results and published schedules remain protected.
+
+Both setup and group-edit endpoints reject fewer than two first-stage groups for round robin → round robin; the hybrid top-four/lower-group format requires exactly two. Ordinary one-group round robin remains supported. Setup hints and the selected Players competition label must describe the actual equal-position or hybrid phase structure, without borrowing the custom-Monrad seeded-entry hint.
+
+**Setup regression:** `tests/Feature/Draw/IndividualDrawSelectionTest.php` exercises staged group-count guards and the corrected phase labels alongside the existing `DrawSetupTest` coverage.
 
 **Sources:** Current draw setup controller/service flow; `tests/Feature/Draw/DrawSetupTest.php` first four tests specify read-only selection, groups-first setup, suggestions and safe confirmed resets.
 
@@ -414,6 +435,14 @@ and `DrawFinalPlacementService`.
 **Regression:** `tests/Feature/Draw/HybridRoundRobinTest.php`. Test execution,
 independent review and live evidence must be reported separately.
 
+New hybrid preparation uses the normal RR generation action and creates all
+later source placeholders before qualification. Preflight required fixture
+columns before any competition mutation, including through engine fallback;
+legacy nontransactional group tables cannot be protected by rollback alone.
+`tests/Feature/Draw/HybridGenerationPrerequisiteTest.php` verifies missing-schema
+zero-write rejection and the 16 + 6 + 4 programme through the HTTP route. See the
+same guide for all-phase placeholder and separate one-stage draw expectations.
+
 ## DK-32 — Detailed standings and blank-format one-set results
 
 Show canonical played/won/drawn/lost/remaining counts and points, set and game
@@ -442,6 +471,38 @@ standings and the shared `resources/js/roundrobin-standings.js` renderer.
 **Regression:** `tests/Feature/Draw/DetailedRoundRobinStandingsTest.php` and
 the renderer's focused frontend regressions. Browser checks, test execution and
 production application remain separately reportable.
+
+## DK-33 — Rapid score entry loses a draft or closes the wrong match
+
+The individual round-robin workspace reuses one score modal. Each opening must
+own a fixture and session; a save or delete response may update that fixture's
+state but may close the form only when the same session and submitted values
+remain current. Duplicate activation of the current fixture must not prefill
+over typed values. Serialize mutations, retain drafts on failure, and wait for
+the Bootstrap hidden event before opening a queued match. Recovery previews
+must retain their originating fixture and reject stale form sessions.
+Enable score inputs and mutation controls after the modal's `shown` event,
+when Bootstrap has completed focus setup; keep cancellation available. Do not
+replace lifecycle events with a fixed delay or disable the modal focus trap.
+
+The deferred-response regression reproduces the original failures and covers
+both `resources/js/admin/roundrobin/scores.js` and its served counterpart under
+`public/assets/js/admin/roundrobin/`. See
+`tests/Frontend/roundrobin-score-session.test.cjs`. This is a client lifecycle
+repair; server score validation, frozen source results, qualification and
+publication rules still apply. Test scores belong only in an explicitly
+authorized rehearsal environment.
+
+**Server stale-save boundary:** Ordinary individual and team score save/clear
+requests also carry the exact score revision displayed by the form. Compare the
+participants, effective rules and saved outcome under tournament locks before any
+mutation; missing and stale tokens must not write audit or progression records.
+An open form keeps its original token even if background data refreshes. Retain
+drafts on conflict rather than silently upgrading their revision and retrying.
+Team participant authorization remains independent. Assignment saves require their
+reviewed revision. RR rebuild requests additionally fingerprint fixture identities,
+results, settings and private/public bookings. See `DrawScoreRevisionTest` and the existing
+score, rebuild and browser regressions; execution evidence remains separate.
 
 ## Recommendations that remain separate from established rules
 

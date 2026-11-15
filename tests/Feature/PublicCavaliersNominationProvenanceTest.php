@@ -12,6 +12,54 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_registered_nominees_follow_unregistered_names_without_changing_saved_order_or_entry_state(): void
+    {
+        [$event, $division] = $this->events();
+        $otherDivision = $this->division($event, 'U12 Girls');
+        $players = [];
+        foreach (['Zoe', 'Amy', 'Beth', 'Cara', 'Dora', 'Eva', 'Faye'] as $name) {
+            [$players[$name]] = $this->nominee($event, $division, $name);
+        }
+        $entry = function ($player, $entryDivision, array $state = []) {
+            $registration = \App\Models\Registration::create([]);
+            $registration->players()->attach($player);
+            return \App\Models\CategoryEventRegistration::factory()->create([
+                'registration_id' => $registration->id, 'category_event_id' => $entryDivision->id,
+                'payment_status_id' => 1, 'status' => 'active', ...$state,
+            ]);
+        };
+        $entry($players['Zoe'], $division);
+        $entry($players['Amy'], $division);
+        $entry($players['Beth'], $division, ['payment_status_id' => null]);
+        $entry($players['Cara'], $division, ['withdrawn_at' => now()]);
+        $entry($players['Dora'], $division, ['status' => 'withdrawn']);
+        $entry($players['Eva'], $division, ['status' => 'cancelled']);
+        $entry($players['Faye'], $otherDivision);
+        $nominationsBefore = EventNomination::orderBy('id')->get()->map->getAttributes()->all();
+        $entriesBefore = \App\Models\CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all();
+        $page = $this->get(route('events.show', $event))->assertOk()
+            ->assertSee('Unregistered players first, then registered players. Each group is alphabetical by first name.');
+        // Restrict the assertion to nomination rows, excluding the separate registered-player section.
+        $document = new \DOMDocument();
+        @$document->loadHTML($page->getContent());
+        $xpath = new \DOMXPath($document);
+        $rows = $xpath->query('//ul[contains(@class,"list-group-flush")]/li');
+        $names = [];
+        foreach ($rows as $row) $names[] = preg_replace('/ Register$/', '', trim(preg_replace('/\s+/', ' ', $row->textContent)));
+        $this->assertSame(['Beth Example', 'Cara Example', 'Dora Example', 'Eva Example', 'Faye Example',
+            'Amy Example Registered', 'Zoe Example Registered'], $names);
+        $highlighted = $xpath->query('//ul[contains(@class,"list-group-flush")]/li[contains(@class,"cavaliers-registered-nominee")]');
+        $this->assertCount(2, $highlighted);
+        $this->assertStringContainsString('Amy Example', $highlighted->item(0)->textContent);
+        $this->assertStringContainsString('Zoe Example', $highlighted->item(1)->textContent);
+        $this->assertSame($nominationsBefore, EventNomination::orderBy('id')->get()->map->getAttributes()->all());
+        $this->assertSame($entriesBefore, \App\Models\CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all());
+        if ($output = getenv('CT_PUBLIC_NOMINATION_QA_OUTPUT')) {
+            if (! is_dir($output)) mkdir($output, 0777, true);
+            file_put_contents($output.'/registered-last.html', $page->getContent());
+        }
+    }
+
     public function test_nomination_heading_counts_are_visible_only_to_this_events_admins_even_after_registration_closes(): void
     {
         [$event, $division] = $this->events();

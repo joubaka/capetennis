@@ -1,3 +1,4 @@
+@include('backend.team-fixtures.partials.participant-revision-script')
 
 
    
@@ -346,7 +347,7 @@ $configData = Helper::appClasses();
                                                     <div class="dropdown">
                                                         <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown"><i class="ti ti-dots-vertical"></i></button>
                                                         <div class="dropdown-menu">
-                                                            <a data-id="{{$fixture->id}}" data-reg2="{{isset($fixture->registrations2) ? $fixture->registrations2->players[0]->getFullNameAttribute():''}}" data-reg1="{{isset($fixture->registrations1) ? $fixture->registrations1->players[0]->getFullNameAttribute():''}}" data-result="{{$fixture->fixtureResults}}" class="dropdown-item editResult" data-bs-target="#result-modal" data-bs-toggle="modal" href="javascript:void(0);"><i class="ti ti-pencil me-1"></i> Edit</a>
+                                                            <a data-id="{{$fixture->id}}" data-reg2="{{isset($fixture->registrations2) ? $fixture->registrations2->players[0]->getFullNameAttribute():''}}" data-reg1="{{isset($fixture->registrations1) ? $fixture->registrations1->players[0]->getFullNameAttribute():''}}" data-result="{{$fixture->fixtureResults}}" class="dropdown-item editResult" data-score-revision="{{ $fixture instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) : app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture) }}" data-bs-target="#result-modal" data-bs-toggle="modal" href="javascript:void(0);"><i class="ti ti-pencil me-1"></i> Edit</a>
                                                             <a data-id="{{$fixture->id}}" class="dropdown-item" href="javascript:void(0);"><i class="ti ti-trash me-1"></i> Delete</a>
                                                         </div>
                                                     </div>

@@ -63,6 +63,7 @@ final class RoundRobinGenerationService
 
     public static function assertRegenerable(Draw $draw): void
     {
+        if ($draw->hasHybridRoundRobin()) \App\Services\Draw\HybridRoundRobinService::assertFixtureSchema();
         abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
             'Both round-robin stages must be preserved once second-stage matches are prepared.');
         DrawGuard::requireMutable($draw, 'regenerate RR fixtures for');

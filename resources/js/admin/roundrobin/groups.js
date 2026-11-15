@@ -6,6 +6,8 @@
     roster = [],
     baseline = '',
     revision = '',
+    rebuildRevision = '',
+    needsSelectionConfirmation = false,
     busy = false,
     instances = [];
   const selected = new Set();
@@ -61,8 +63,9 @@
     $('#rr-assigned-count').text(count + ' assigned · ' + groups.length + ' groups');
     const assigned = new Set(groups.flatMap(g => g.players.map(p => p.id)));
     $('#rr-available-count').text(roster.filter(p => !assigned.has(p.id)).length);
-    if (!busy) status(dirty() ? 'Unsaved changes' : 'Saved');
-    $('#btn-save-groups, #rr-discard-groups').prop('disabled', busy || !editable() || !dirty());
+    if (!busy) status(dirty() ? 'Unsaved changes' : (needsSelectionConfirmation ? "Save assignments to confirm this draw's players." : 'Saved'));
+    $('#btn-save-groups').prop('disabled', busy || !editable() || (!dirty() && !needsSelectionConfirmation));
+    $('#rr-discard-groups').prop('disabled', busy || !editable() || !dirty());
     $('#btn-regenerate-fixtures').prop(
       'disabled',
       busy || !root.RR_CAN_GENERATE || root.RR_DRAW_LOCKED || root.RR_DRAW_PUBLISHED || !groups.length
@@ -227,7 +230,7 @@
   }
   async function save() {
     if (busy || !editable()) return false;
-    if (!dirty()) return true;
+    if (!dirty() && !needsSelectionConfirmation) return true;
     busy = true;
     render();
     status('Saving…');
@@ -240,6 +243,8 @@
         data: { groups: JSON.parse(snapshot()), revision: revision }
       });
       revision = result.revision;
+      rebuildRevision = result.rebuild_revision;
+      needsSelectionConfirmation = false;
       baseline = snapshot();
       syncState();
       announce(
@@ -278,6 +283,8 @@
       groups = next;
       roster = nextRoster;
       revision = results[0].revision;
+      rebuildRevision = results[0].rebuild_revision;
+      needsSelectionConfirmation = !!results[0].needs_selection_confirmation;
       baseline = snapshot();
       selected.clear();
       categories();
@@ -371,14 +378,17 @@
       return;
     }
     const existing = AdminState.getOop().length;
+    const later = root.RR_PENDING_HYBRID && groups.length === 2 && groups.every(g => g.players.length >= 3)
+      ? (groups[0].players.length - 2) * (groups[1].players.length - 2) + 4 : null;
+    const matchSummary = later === null
+      ? '<strong>' + matches + ' playable matches</strong>, plus any bye slots.'
+      : '<strong>' + matches + ' opening group matches + ' + later + ' later-stage placeholders = ' + (matches + later) + ' matches in total.</strong> Later matches keep group-position and winner/loser sources until qualification is confirmed.';
     const result = await Swal.fire({
       title: 'Preview round-robin fixtures',
       html:
         '<p>' +
         groups.map(g => 'Group ' + esc(g.name) + ': ' + g.players.length + ' players').join('<br>') +
-        '</p><p><strong>' +
-        matches +
-        ' playable matches</strong>, plus any bye slots.</p>' +
+        '</p><p>' + matchSummary + '</p>' +
         (existing
           ? '<p class="text-danger">This replaces ' +
             existing +
@@ -392,13 +402,14 @@
     update();
     status('Generating fixtures…');
     try {
-      await AdminApi.request({
+      const generated = await AdminApi.request({
         url: AdminRoutes.drawUrl(drawId, '/regenerate-rr'),
         method: 'POST',
         json: true,
         retries: 0,
-        data: { revision: revision }
+        data: { revision: revision, rebuild_revision: rebuildRevision }
       });
+      rebuildRevision = generated.rebuild_revision;
       await root.RRWorkspace.refreshHub();
       announce('Fixtures generated. Review the matrix, then schedule your matches.');
       root.RRWorkspace.open('results');
@@ -415,6 +426,8 @@
     groups = normalise(root.RR_GROUPS);
     roster = (root.RR_ROSTER || []).map(p => Object.assign({}, p, { id: Number(p.id) }));
     revision = root.RR_ASSIGNMENT_REVISION;
+    rebuildRevision = root.RR_REBUILD_REVISION;
+    needsSelectionConfirmation = !!root.RR_NEEDS_SELECTION_CONFIRMATION;
     baseline = snapshot();
     categories();
     render();

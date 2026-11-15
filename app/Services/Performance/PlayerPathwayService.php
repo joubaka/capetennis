@@ -49,13 +49,11 @@ class PlayerPathwayService
         $benchmark_division = null;
         $wilsonCutoff = $this->validScore(config('pathway.wilson_a_above'));
         $tsaCutoff = $this->validScore(config('pathway.tsa_above'));
-        // Locate the displayed saved badge without claiming a fresh progression assessment.
-        $savedComparable = $current_stage === 'standard' && $score !== null
-            && ($stageRating['comparable'] ?? false) === true && ($stageRating['local'] ?? false) !== true;
-        $currentCompetition = $savedComparable && $wilsonCutoff !== null
-            ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.($score > $wilsonCutoff ? 'A' : 'B')) : null;
-        $suggestedDivision = $current_stage === 'standard' && $eligible && $wilsonCutoff !== null ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
-        $suggestedCompetition = $suggestedDivision ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.$suggestedDivision) : null;
+        // Internal comparability does not calibrate CTR to external competition levels.
+        // Preserve the response keys without assigning a division from unvalidated cutoffs.
+        $currentCompetition = null;
+        $suggestedDivision = null;
+        $suggestedCompetition = null;
         $targetKey = $current_stage === 'standard' ? null : $current_stage;
         $target = $this->target($targetKey);
         $assessed = $target !== null && $eligible && $ownEvents !== null;
@@ -76,7 +74,7 @@ class PlayerPathwayService
         [$competition, $options] = match ($current_stage) {
             'red' => [implode(' · ', self::EVENT_OPTIONS['red']), ['Orange-ball events: U/9 B events, academy events, TSA Rainbow Kids events and school leagues, where age and event rules permit']],
             'orange' => [implode(' · ', self::EVENT_OPTIONS['orange']), ['Wilson B / Wilson A competitions']],
-            'standard' => [implode(' · ', self::EVENT_OPTIONS['standard']), $suggestedCompetition ? [$suggestedCompetition.', subject to their entry rules'] : ['Ask your coach to review Wilson B / Wilson A options while current comparable evidence is pending']],
+            'standard' => [implode(' · ', self::EVENT_OPTIONS['standard']), ['Discuss Wilson B, Wilson A and TSA event options with your coach; check each event’s age and entry requirements']],
             default => ['No rated ball level available yet', ['Play an eligible published event at your ball level']],
         };
         $stageProgress = [];
@@ -116,13 +114,12 @@ class PlayerPathwayService
         };
 
         if ($current_stage === 'standard') {
-            $assessed = $suggestedDivision !== null;
-            $assessment_status = $assessed ? $suggestedCompetition.' suggested' : 'Not assessed';
+            $assessed = false;
+            $assessment_status = 'Competition level needs coach review';
             $stageProgress['standard']['status'] = $assessment_status;
             $stageProgress['standard']['assessed'] = $assessed;
-            $reason = $assessed ? 'Your latest saved '.$ctr_label.' of '.number_format($score, 1).' points to a division to explore with your coach.'
-                : (!$assessmentAvailable ? 'The saved rating needs an update before a division can be suggested.' : 'This ball-level rating needs comparable evidence before a division can be suggested.');
-            $next_steps = [$assessed ? 'Chat with your coach about which '.$suggestedCompetition.' events would suit you. They can help you check the age, entry and nomination requirements.' : 'When your current comparable rating is ready, chat with your coach about the event options.'];
+            $reason = 'CTR compares recorded results; it does not establish Wilson division or TSA readiness. Competition-level thresholds have not been validated.';
+            $next_steps = ['Chat with your coach about Wilson B, Wilson A and TSA event options. Check the age, entry and nomination requirements with the organiser.'];
         }
         $movesAvailable = $available && Schema::hasTable('player_pathway_moves');
         $latestMove = $movesAvailable ? PlayerPathwayMove::where('player_id', $player->id)->latest('id')->first() : null;
@@ -214,7 +211,7 @@ class PlayerPathwayService
         return match ($stage) {
             'red' => 'Red-ball CTR',
             'orange' => 'Orange-ball CTR',
-            'standard' => 'Wilson pathway CTR',
+            'standard' => 'Green/Yellow CTR',
             default => 'Ball-level CTR',
         };
     }

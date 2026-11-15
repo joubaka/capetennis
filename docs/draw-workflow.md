@@ -16,6 +16,43 @@ The individual draw journey is **Setup → Players → Matches → Schedule → 
 
 Each step should identify the current draw, saved state and next action. Existing deep links and advanced operations remain available. Back and step navigation do not mutate state. A server safeguard takes precedence over a progress indicator.
 
+### Readiness and score revisions
+
+Draw visibility, saved times for generated matches, current published times and
+completed results are separate milestones. A visible draw can have private or
+partial times. Scheduling every generated match does not prove that unprepared
+later stages are scheduled. Explicit format/scoring readiness must not reinterpret
+historical blank scoring settings.
+
+Results completion uses canonical match outcomes, including valid round-robin
+draws, rather than a winner flag or the presence of a score row. Staged draws also
+require the configured finishing paths and confirmed progression; prepared
+placeholders do not establish completion. Progress refreshes remain read-only.
+
+Ordinary individual and team score forms submit a revision of the participants,
+effective scoring rules and saved result they displayed. Validate it again under
+the existing tournament locks before saving or clearing scores. Keep participant
+authorization and team participant revisions separate. Missing or stale score
+revisions must not write scores, progression or audit entries. Preserve the user's
+draft on rejection; never fetch a new revision and silently retry that draft.
+Player assignment saves require their reviewed assignment revision. Round-robin
+rebuilding additionally requires a separate fingerprint of fixture identities,
+results, settings and private/public bookings, so unchanged player groups cannot
+authorize destroying a newer saved schedule.
+
+Focused coverage: `DrawPhaseOneReadinessTest`, `DrawScoreRevisionTest`, the
+existing score/progression/rebuild regressions and
+`tests/Browser/draw-workspace.cjs`. A coverage reference does not establish a
+passing run or deployment; report execution evidence separately.
+
+### Selected players and independent category draws
+
+Saving group assignments explicitly selects the players for that draw; it need not include every entrant in the category. Readiness uses an existing canonical draw roster, or the current event/category-bound `groups_saved` selection and assignment revision. Legacy or unsaved partial groups are not assumed to be a deliberate subset. A stale selection, an ineligible player, duplicate player identity or incomplete placement stays incomplete. Readiness never creates a roster or matches. An unchanged older draft must still permit explicit confirmation of its selected players.
+
+For two independent round-robin draws in one category, select disjoint players for each draw. Both saved group assignments and canonical draw rosters reserve those player identities against the other draw; a second registration for the same player is not a different competitor. The available-player list and server save checks must agree. Separate events and explicitly different categories retain their own competition scope.
+
+Round robin → round robin requires at least two first-stage groups in both initial setup and later group editing. The top-four playoffs/lower-round-robin variant requires exactly two. Explain the selected variant consistently on Setup and Players; choosing the hybrid must not describe equal-position qualification.
+
 ## Editing contract
 
 | Intent | Existing operation to retain | Required explanation |

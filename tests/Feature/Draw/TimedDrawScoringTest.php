@@ -41,14 +41,14 @@ class TimedDrawScoringTest extends TestCase
             : route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]);
         $actor = auth()->user();
         $this->actingAs(User::factory()->create());
-        $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertForbidden();
         $this->actingAs($actor);
         if ($route === 'api') {
             $foreignDraw = Draw::factory()->create(['event_id' => $draw->event_id, 'published' => false, 'locked' => false]);
-            $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $foreignDraw, 'fixture' => $fixture]), ['sets' => ['0-1']])->assertUnprocessable();
+            $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $foreignDraw, 'fixture' => $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertUnprocessable();
         }
         $draw->update(['locked' => true]);
-        $this->postJson($url, ['sets' => ['0-1']])->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertForbidden();
         $draw->update(['locked' => false]);
         $secondRegistration = $fixture->registration2_id;
         $fixture->update(['registration2_id' => null]);
@@ -56,12 +56,12 @@ class TimedDrawScoringTest extends TestCase
         $this->assertSame(2, (int) $fixture->fresh()->match_status);
         $fixture->update(['registration2_id' => $secondRegistration]);
         DB::table('fixture_results')->where('id', $set->id)->update(['registration1_score' => null]);
-        $this->postJson($url, ['sets' => ['0-1']])->assertConflict();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertConflict();
         DB::table('fixture_results')->where('id', $set->id)->update(['registration1_score' => 0]);
-        $this->postJson($url, ['sets' => ['0-2']])->assertConflict();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-2']])->assertConflict();
         $this->assertSame(2, (int) $fixture->fresh()->match_status);
-        $this->postJson($url, ['sets' => ['0-1']])->assertOk()->assertJsonPath('metadata_only', true);
-        $this->postJson($url, ['sets' => ['0-1']])->assertOk()->assertJsonPath('already_completed', true);
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertOk()->assertJsonPath('metadata_only', true);
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['0-1']])->assertOk()->assertJsonPath('already_completed', true);
         $fixture->refresh();
         $this->assertSame(1, (int) $fixture->match_status);
         $this->assertSame((int) $fixture->registration2_id, (int) $fixture->winner_registration);
@@ -115,7 +115,7 @@ class TimedDrawScoringTest extends TestCase
             $fixture = $this->fixture($draw);
             foreach (['3-3', '5-5'] as $score) {
                 foreach ([route('rr.fixture.saveScore', $fixture), route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture])] as $url) {
-                    $this->postJson($url, ['sets' => [$score]])->assertOk();
+                    $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => [$score]])->assertOk();
                     $fixture->refresh();
                     $this->assertNull($fixture->winner_registration);
                     $this->assertSame(1, $fixture->fixtureResults()->count());
@@ -149,15 +149,15 @@ class TimedDrawScoringTest extends TestCase
         $this->assertSame([0, 0], array_column($rows, 'points'));
         $draw->settings->update(['score_format' => TennisScoreFormat::BEST_OF_3_FULL]);
         $url = route('rr.fixture.saveScore', $fixture);
-        $this->postJson($url, ['sets' => ['6-0', '3-3']])->assertUnprocessable();
-        $this->postJson($url, ['sets' => ['6-0', '0-6', '3-3']])->assertOk();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['6-0', '3-3']])->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['6-0', '0-6', '3-3']])->assertOk();
         $this->assertTrue(app(IndividualMatchOutcomeService::class)->isDraw($fixture->fresh()));
         $this->assertNull($fixture->fresh()->winner_registration);
         $rows = app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id];
         $this->assertSame([1, 1], array_column($rows, 'points'));
         $this->assertSame([1, 1], array_column($rows, 'sets_won'));
         $fixture->update(['stage' => 'MAIN']);
-        $this->postJson($url, ['sets' => ['3-3']])->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3']])->assertUnprocessable();
     }
 
     public function test_timed_settings_validate_bounds_and_preserve_values_when_switching_back(): void
@@ -179,8 +179,8 @@ class TimedDrawScoringTest extends TestCase
     {
         $draw = $this->draw();
         $fixture = $this->fixture($draw);
-        $this->postJson(route('rr.fixture.saveScore', $fixture), ['sets' => ['3-3']])->assertOk();
-        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['sets' => ['3-3']])->assertOk();
+        $this->postJson(route('rr.fixture.saveScore', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3']])->assertOk();
+        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3']])->assertOk();
         $fixture->refresh();
         $this->assertNull($fixture->winner_registration);
         $this->assertSame(1, (int) $fixture->match_status);
@@ -197,7 +197,7 @@ class TimedDrawScoringTest extends TestCase
             $this->assertSame(0, $row['sets_lost']);
             $this->assertSame(3, $row['games_won']);
         }
-        $this->postJson(route('rr.fixture.saveScore', $fixture), ['sets' => ['3-3'], 'deciding_point_winner_id' => $fixture->registration1_id])->assertUnprocessable();
+        $this->postJson(route('rr.fixture.saveScore', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3'], 'deciding_point_winner_id' => $fixture->registration1_id])->assertUnprocessable();
     }
 
     public function test_tied_timed_playoff_requires_a_current_deciding_winner_and_keeps_the_actual_game_score(): void
@@ -207,12 +207,12 @@ class TimedDrawScoringTest extends TestCase
             $fixture = $this->fixture($draw, 'MAIN');
             $url = $route === 'backend' ? route('rr.fixture.saveScore', $fixture)
                 : route('api.draws.fixtures.score.store', ['draw' => $draw, 'fixture' => $fixture]);
-            $this->postJson($url, ['sets' => ['4-4']])->assertUnprocessable();
-            $this->postJson($url, ['sets' => ['4-4'], 'deciding_point_winner_id' => Registration::factory()->create()->id])->assertUnprocessable();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['4-4']])->assertUnprocessable();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['4-4'], 'deciding_point_winner_id' => Registration::factory()->create()->id])->assertUnprocessable();
             $this->assertSame(0, $fixture->fixtureResults()->count());
             $payload = ['sets' => ['4-4'], 'deciding_point_winner_id' => $fixture->registration2_id];
-            $this->postJson($url, $payload)->assertOk();
-            $this->postJson($url, $payload)->assertOk();
+            $this->postJson($url, $payload + ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())])->assertOk();
+            $this->postJson($url, $payload + ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())])->assertOk();
             $fixture->refresh();
             $this->assertSame((int) $fixture->registration2_id, (int) $fixture->winner_registration);
             $this->assertSame((int) $fixture->registration2_id, app(IndividualMatchOutcomeService::class)->winner($fixture));
@@ -228,7 +228,7 @@ class TimedDrawScoringTest extends TestCase
     {
         $draw = $this->draw();
         $fixture = $this->fixture($draw);
-        $this->postJson(route('rr.fixture.saveScore', $fixture), ['sets' => ['5-3']])->assertOk();
+        $this->postJson(route('rr.fixture.saveScore', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['5-3']])->assertOk();
         $rows = app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id];
         $this->assertSame((int) $fixture->registration1_id, (int) $rows[0]['reg_id']);
         $this->assertSame([2, 0], array_column($rows, 'points'));
@@ -240,9 +240,9 @@ class TimedDrawScoringTest extends TestCase
         $draw = $this->draw();
         $fixture = $this->fixture($draw);
         $other = Draw::factory()->create();
-        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $other, 'fixture' => $fixture]), ['sets' => ['3-3']])->assertForbidden();
+        $this->postJson(route('api.draws.fixtures.score.store', ['draw' => $other, 'fixture' => $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3']])->assertForbidden();
         $this->actingAs(User::factory()->create());
-        $this->postJson(route('rr.fixture.saveScore', $fixture), ['sets' => ['3-3']])->assertForbidden();
+        $this->postJson(route('rr.fixture.saveScore', $fixture), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()), 'sets' => ['3-3']])->assertForbidden();
         $this->assertSame(0, $fixture->fixtureResults()->count());
     }
 
@@ -254,7 +254,7 @@ class TimedDrawScoringTest extends TestCase
             $url = route('rr.fixture.saveScore', $fixture);
             $payload = ['sets' => ['3-3']];
             if ($stage !== 'RR') $payload['deciding_point_winner_id'] = $fixture->registration1_id;
-            $this->postJson($url, $payload)->assertOk();
+            $this->postJson($url, $payload + ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())])->assertOk();
             $before = $fixture->fresh()->getAttributes();
             $result = $fixture->fixtureResults()->first()->getAttributes();
             $dependent = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'round' => 2]);
@@ -265,7 +265,7 @@ class TimedDrawScoringTest extends TestCase
             }
             $correction = $stage === 'RR' ? ['sets' => ['4-3']]
                 : ['sets' => ['3-3'], 'deciding_point_winner_id' => $fixture->registration2_id];
-            $this->postJson($url, $correction)->assertConflict();
+            $this->postJson($url, $correction + ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())])->assertConflict();
             $this->assertSame($before, $fixture->fresh()->getAttributes());
             $this->assertSame($result, $fixture->fixtureResults()->first()->getAttributes());
             $this->assertSame(1, $dependent->fixtureResults()->count());

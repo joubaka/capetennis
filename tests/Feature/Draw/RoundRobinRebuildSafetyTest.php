@@ -40,9 +40,9 @@ class RoundRobinRebuildSafetyTest extends TestCase
             'venue_id' => $booking->venue_id, 'court' => '2', 'time' => $booking->time]);
         DB::table('schedules')->insert(['fixture_id' => $fixture->id, 'draw_id' => $draw->id,
             'venue_id' => $booking->venue_id, 'time' => $booking->time]);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw), [
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ([
             'revision' => app(GroupAssignmentService::class)->revision($draw),
-        ])->assertOk();
+        ]))->assertOk();
         $this->assertDatabaseMissing('fixtures', ['id' => $fixture->id]);
         $this->assertDatabaseMissing('order_of_plays', ['id' => $booking->id]);
         $this->assertDatabaseMissing('schedules', ['fixture_id' => $fixture->id]);
@@ -59,9 +59,11 @@ class RoundRobinRebuildSafetyTest extends TestCase
     public function test_stale_revision_and_manual_walkover_cannot_destroy_booked_fixtures(): void
     {
         [$draw, $fixture, $booking] = $this->scenario();
-        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['revision' => 'stale'])->assertUnprocessable();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + (['revision' => 'stale']))->assertUnprocessable();
         $fixture->update(['match_status' => 3, 'winner_registration' => $fixture->registration1_id]);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertUnprocessable()->assertJsonPath('scored_fixtures', 1);
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ([
+                'revision' => app(GroupAssignmentService::class)->revision($draw->fresh()),
+            ]))->assertUnprocessable()->assertJsonPath('scored_fixtures', 1);
         $this->assertDatabaseHas('fixtures', ['id' => $fixture->id]);
         $this->assertDatabaseHas('order_of_plays', ['id' => $booking->id]);
         $this->assertDatabaseMissing('draw_audit_logs', ['draw_id' => $draw->id, 'action' => 'rr_regenerated']);
@@ -75,7 +77,9 @@ class RoundRobinRebuildSafetyTest extends TestCase
             if ($reject && $audit->action === 'rr_regenerated') throw new \RuntimeException('Synthetic audit failure');
         });
         try {
-            $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertUnprocessable();
+            $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ([
+                'revision' => app(GroupAssignmentService::class)->revision($draw->fresh()),
+            ]))->assertUnprocessable();
         } finally {
             $reject = false;
         }
@@ -90,12 +94,16 @@ class RoundRobinRebuildSafetyTest extends TestCase
         DB::table('published_schedule_assignments')->insert(['event_id' => $draw->event_id, 'draw_id' => $draw->id,
             'fixture_kind' => 'individual', 'fixture_id' => $fixture->id, 'scheduled_at' => '2026-10-31 08:00:00',
             'duration' => 20, 'published_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertUnprocessable();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ([
+                'revision' => app(GroupAssignmentService::class)->revision($draw->fresh()),
+            ]))->assertUnprocessable();
         $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixture->id]);
         $this->assertDatabaseHas('order_of_plays', ['id' => $booking->id]);
         DB::table('published_schedule_assignments')->where('fixture_id', $fixture->id)->delete();
         $fixture->update(['match_status' => 4]);
-        $this->postJson(route('backend.draw.regenerate-rr', $draw))->assertUnprocessable();
+        $this->postJson(route('backend.draw.regenerate-rr', $draw), ['rebuild_revision' => app(\App\Services\Draw\RoundRobinRebuildService::class)->revision($draw->fresh())] + ([
+                'revision' => app(GroupAssignmentService::class)->revision($draw->fresh()),
+            ]))->assertUnprocessable();
         $this->assertDatabaseHas('fixtures', ['id' => $fixture->id, 'match_status' => 4]);
         $this->assertDatabaseHas('order_of_plays', ['id' => $booking->id]);
     }

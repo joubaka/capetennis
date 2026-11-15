@@ -21,6 +21,7 @@
     .ctr-history .ct-workspace-header .badge { background:#f4f6f8;color:#172e45;border:1px solid #dce5ef; }
     .ctr-history h3.h5 { color:#172e45;font-weight:600; }
     .ctr-history a:focus-visible,.ctr-history button:focus-visible,.ctr-history select:focus-visible,.ctr-history summary:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
+    [data-match-progress-chart] button:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
     .ctr-history .btn-primary { background:#004177;border-color:#004177;color:#fff; }
     .ctr-history .btn-primary:hover { background:#172e45;border-color:#172e45; }
     .ctr-history .btn-outline-primary { color:#004177;border-color:#a5bcd5; }
@@ -125,6 +126,113 @@
     @endif
     @include('frontend.my-tennis.rating-top-ten')
     @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
+    <section class="mt-4" aria-labelledby="ctr-match-progress-heading" data-match-progress>
+      <h3 class="h5" id="ctr-match-progress-heading">Reconstructed CTR before/after match</h3>
+      <p class="small text-muted"><strong>Reconstructed using scheduled match order.</strong> These are Overall CTR estimates, not archived ratings or verified match completion times.</p>
+      @if(!isset($matchProgress) || $matchProgress['reason'] !== null)
+        <p class="small text-muted mb-0" role="status">{{ $matchProgress['reason'] ?? 'Before/after reconstruction is awaiting a saved update.' }}</p>
+      @else
+        <p class="small text-muted">Latest five eligible results in recorded scheduled order · reconstruction updated through {{ $matchProgress['as_of'] }}. Each pair uses eligible results before that match, then adds that match. Later results are excluded from both estimates.</p>
+        <p class="small text-muted">Change means after minus before. These are not fixed points awarded for a win or loss, and changes must not be assumed to sum to a monthly movement.</p>
+        @php
+          $matchProgressRows = array_reverse($matchProgress['rows']);
+        @endphp
+        @if(count($matchProgressRows))
+          <figure class="mb-3" data-match-progress-chart>
+            <div class="ctr-chart-scroll" tabindex="0" aria-label="Before and after match chart; scroll horizontally on a narrow screen">
+              <svg viewBox="0 0 620 420" width="100%" style="min-width:600px;max-width:60rem;display:block" role="group" aria-describedby="ctr-match-grid-description" aria-label="Reconstructed using scheduled match order: Overall CTR before and after the latest five eligible matches, oldest to newest, on a fixed 0 to 100 scale">
+                <title>Reconstructed using scheduled match order</title>
+                <desc id="ctr-match-grid-description">@foreach($matchProgressRows as $progress){{ $progress['date'] }} vs {{ $progress['opponent'] }}: {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}. @if($progress['delta'] !== null)Before {{ number_format($progress['before_score'], 1) }}, after {{ number_format($progress['after_score'], 1) }}, change {{ sprintf('%+.1f', $progress['delta']) }} CTR. @else Reconstruction unavailable: {{ $progress['reason'] }}. @endif @endforeach</desc>
+                <defs><marker id="ctr-progress-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker></defs>
+                @foreach([100 => 20, 50 => 110, 0 => 200] as $tick => $tickY)
+                  <line x1="40" y1="{{ $tickY }}" x2="600" y2="{{ $tickY }}" stroke="#dbe4ef" /><text x="32" y="{{ $tickY + 4 }}" text-anchor="end" font-size="12" fill="#52677b">{{ $tick }}</text>
+                @endforeach
+                @foreach($matchProgressRows as $chartIndex => $progress)
+                  @php
+                    $beforeX = 60 + $chartIndex * 110;
+                    $afterX = $beforeX + 60;
+                  @endphp
+                  <g data-match-explanation-target="ctr-match-explanation-{{ $chartIndex }}" style="cursor:pointer">
+                  <rect x="{{ $beforeX - 20 }}" y="0" width="100" height="410" fill="transparent" />
+                  @if($progress['delta'] !== null)
+                    @php
+                      $beforeY = 200 - 1.8 * $progress['before_score'];
+                      $afterY = 200 - 1.8 * $progress['after_score'];
+                      $slopeColor = $progress['delta'] > 0 ? '#087f5b' : ($progress['delta'] < 0 ? '#c2410c' : '#004177');
+                      $changeBackground = $progress['delta'] > 0 ? '#e7f5ed' : ($progress['delta'] < 0 ? '#fff0e5' : '#eef4fb');
+                    @endphp
+                    <g role="img" data-match-progress-segment data-before="{{ $progress['before_score'] }}" data-after="{{ $progress['after_score'] }}" aria-label="{{ $progress['date'] }} vs {{ $progress['opponent'] }}, {{ $progress['won'] ? 'won' : 'lost' }} {{ $progress['score'] }}: reconstructed before {{ number_format($progress['before_score'], 1) }}, after {{ number_format($progress['after_score'], 1) }}, change {{ sprintf('%+.1f', $progress['delta']) }}">
+                      <title>{{ $progress['opponent'] }} · reconstructed scheduled-order pair</title>
+                      <line x1="{{ $beforeX }}" y1="{{ $beforeY }}" x2="{{ $afterX }}" y2="{{ $afterY }}" stroke="{{ $slopeColor }}" stroke-width="4" marker-end="url(#ctr-progress-arrow)" />
+                      <circle cx="{{ $beforeX }}" cy="{{ $beforeY }}" r="4" fill="{{ $slopeColor }}" /><circle cx="{{ $afterX }}" cy="{{ $afterY }}" r="4" fill="{{ $slopeColor }}" />
+                      <text x="{{ $beforeX }}" y="{{ max(12, $beforeY - 10) }}" text-anchor="middle" font-size="12" fill="#172e45">{{ number_format($progress['before_score'], 1) }}</text>
+                      <text x="{{ $afterX }}" y="{{ max(12, $afterY - 10) }}" text-anchor="middle" font-size="12" fill="#172e45">{{ number_format($progress['after_score'], 1) }}</text>
+                      <rect x="{{ $beforeX - 9 }}" y="248" width="78" height="24" rx="10" fill="{{ $changeBackground }}" aria-hidden="true" />
+                      <text x="{{ $beforeX + 30 }}" y="265" text-anchor="middle" font-size="15" font-weight="700" fill="{{ $slopeColor }}"><title>{{ sprintf('%+.1f CTR', $progress['delta']) }}{{ (float) $progress['delta'] === 0.0 ? ' · No measurable change at this precision.' : '' }}</title>{{ $progress['delta'] > 0 ? '↑' : ($progress['delta'] < 0 ? '↓' : '→') }} {{ sprintf('%+.1f', $progress['delta']) }}</text>
+                    </g>
+                  @else
+                    <text x="{{ $beforeX + 30 }}" y="110" text-anchor="middle" font-size="11" fill="#52677b"><title>Reconstruction unavailable: {{ $progress['reason'] }}</title>Unavailable</text>
+                  @endif
+                  <text x="{{ $beforeX }}" y="222" text-anchor="middle" font-size="11" fill="#172e45">Before</text><text x="{{ $afterX }}" y="222" text-anchor="middle" font-size="11" fill="#172e45">After</text>
+                  <text x="{{ $beforeX + 30 }}" y="242" text-anchor="middle" font-size="12" fill="#172e45">{{ \Carbon\CarbonImmutable::parse($progress['date'])->format('d M') }}</text>
+                  <foreignObject x="{{ $beforeX - 20 }}" y="282" width="100" height="130">
+                    <div xmlns="http://www.w3.org/1999/xhtml" style="font:12px/16px sans-serif;color:#172e45;text-align:center;overflow-wrap:anywhere">
+                      <div data-match-chart-opponent title="{{ $progress['opponent'] }}" style="font-weight:600;max-height:48px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical">{{ $progress['opponent'] }}</div>
+                      <div data-match-chart-result style="margin-top:4px">{{ $progress['won'] ? 'Won' : 'Lost' }} · {{ $progress['score'] }}</div>
+                      <button type="button" class="btn btn-link p-0 mt-1" style="font-size:12px" data-match-explanation-target="ctr-match-explanation-{{ $chartIndex }}" aria-controls="ctr-match-explanation-{{ $chartIndex }}" aria-expanded="false" aria-label="How calculated: {{ $progress['date'] }} vs {{ $progress['opponent'] }}">How calculated</button>
+                    </div>
+                  </foreignObject>
+                  </g>
+                @endforeach
+              </svg>
+            </div>
+            <figcaption class="small text-muted mt-1">Oldest to newest · fixed 0–100 Overall CTR scale. Each arrow is one reconstructed before/after pair. Gaps between matches are not connected; changes between cutoffs are not attributed to a match.</figcaption>
+            @foreach($matchProgressRows as $chartIndex => $progress)
+              <section id="ctr-match-explanation-{{ $chartIndex }}" data-match-explanation hidden tabindex="-1" class="border rounded p-3 mt-3" aria-label="Match calculation explanation">
+                <h6>{{ $progress['date'] }} · {{ $progress['opponent'] }} · {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}</h6>
+                <button type="button" class="btn btn-sm btn-outline-secondary mb-2" data-match-explanation-close>Close explanation</button>
+                @if($progress['delta'] !== null && isset($progress['explanation']))
+                  @php
+                    $counts = $progress['explanation'];
+                  @endphp
+                  <p>Reconstructed using scheduled match order at {{ $progress['time'] }} SAST. These are retrospective estimates, not archived ratings or verified completion times.</p>
+                  <dl class="row small mb-2">
+                    <dt class="col-7">Eligible network matches</dt><dd class="col-5">{{ $counts['network_before'] }} before → {{ $counts['network_after'] }} after</dd>
+                    <dt class="col-7">Your eligible matches</dt><dd class="col-5">{{ $counts['own_before'] }} before → {{ $counts['own_after'] }} after</dd>
+                    <dt class="col-7">Your distinct opponents</dt><dd class="col-5">{{ $counts['opponents_before'] }} before → {{ $counts['opponents_after'] }} after</dd>
+                  </dl>
+                  <p>Before: fit the canonical Overall CTR model to eligible earlier evidence. After: add this match and refit on the same {{ $progress['date'] }} rating date. Later matches are excluded. Both fits must converge on the same comparison scale.</p>
+                  <p>The model uses score margins, opponent strength, recency and per-event evidence weights. The refit recalculates event budgets; this is not a fixed points-per-match formula, and changes are not additive.</p>
+                  <p class="mb-0"><strong>{{ number_format($progress['after_score'], 1) }} after − {{ number_format($progress['before_score'], 1) }} before = {{ sprintf('%+.1f', $progress['delta']) }} CTR</strong></p>
+                  <div class="table-responsive mt-3">
+                    <table class="table table-sm small" style="min-width:740px">
+                      <caption>Your match evidence used in this comparison. Opponent CTR values are reconstructed on this comparison's before/after cutoff, not at each listed result's date or today. Availability also follows current public comparison rules. Unavailable means permission or a stable comparable pair could not be established. Wider network matches are summarized by counts above. Scroll horizontally on a narrow screen.</caption>
+                      <thead><tr><th scope="col">Date</th><th scope="col">Opponent</th><th scope="col">Your result</th><th scope="col">Opponent CTR before → after</th><th scope="col">Before inclusion</th><th scope="col">After inclusion</th></tr></thead>
+                      <tbody>
+                        @foreach($progress['used_matches'] ?? [] as $used)
+                          <tr class="{{ !$used['before'] ? 'table-info' : '' }}">
+                            <td class="text-nowrap">{{ $used['date'] }}</td><td style="min-width:150px;overflow-wrap:anywhere">{{ $used['opponent'] }}</td><td class="text-nowrap">{{ $used['won'] ? 'Won' : 'Lost' }} {{ $used['score'] }}{{ !$used['before'] ? ' · This match' : '' }}</td>
+                            <td class="text-nowrap">@if(isset($used['opponent_before'], $used['opponent_after'])){{ number_format($used['opponent_before'], 1) }} → {{ number_format($used['opponent_after'], 1) }}@else Unavailable @endif</td>
+                            <td class="text-nowrap">{{ $used['before'] ? 'Included' : 'Not included' }}</td><td class="text-nowrap">{{ $used['after'] ? 'Included' : 'Not included' }}</td>
+                          </tr>
+                        @endforeach
+                      </tbody>
+                    </table>
+                  </div>
+                  @if(($progress['hidden_matches'] ?? 0) > 0)<p class="small text-muted">{{ $progress['hidden_matches'] }} own match details are not shown because metadata is unavailable, access is restricted, or the display limit was reached. The evidence counts above include them.</p>@endif
+                @else
+                  <p class="mb-0">{{ $progress['reason'] ?? 'Saved calculation details are awaiting the next nightly update.' }}</p>
+                @endif
+              </section>
+            @endforeach
+          </figure>
+        @else
+          <p class="small text-muted">No eligible included matches with available details.</p>
+        @endif
+        @if($matchProgress['restricted'])<p class="small text-muted mt-2">Some match details are restricted and are not shown here.</p>@endif
+        <p class="small text-muted mt-2 mb-0">Unknown or tied ordering, an overlapping event with uncertain match dates, or a changed comparison scale makes a pair unavailable. Current verified identity, publication and rating rules are used retrospectively.</p>
+      @endif
+    </section>
   </div>
   <div class="tab-pane {{ $activeRatingSection === 'progress' ? 'active show' : '' }}" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
   @if($ratingHistory['reason'])
@@ -142,7 +250,7 @@
       $selectedIsLatest = $point && $latest && $point['index'] === $latest['index'] && $point['date'] === $latest['date'];
       $axis = $ratingHistory['axis'];
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
-      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => $ratingHistory['scale'], 'rating_section' => 'history'] + $ratingBrowseFilters;
+      $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => request()->query('scale', $ratingHistory['scale']), 'rating_section' => 'history'] + $ratingBrowseFilters;
       if ($canBrowseRatings) {
           $query['rating_page'] = $ratingTopTen['lists'][$ratingBrowseFilters['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
       }
@@ -182,10 +290,12 @@
         @foreach($ratingHistory['months'] as $index => $month)<option value="{{ $index }}" @selected($ratingHistory['month'] === $index)>{{ \Carbon\CarbonImmutable::parse($month['date'])->format('M Y') }}</option>@endforeach
       </select></div>
       <input type="hidden" name="scope" value="{{ $ratingHistory['scope'] }}">
+      <input type="hidden" name="scale" value="{{ $query['scale'] }}">
       @if($ratingFragment)<noscript>@endif
       <button class="btn btn-primary" type="submit">Show selection</button>
       @if($ratingFragment)</noscript>@endif
     </form>
+    <p class="small text-muted mt-3" data-rating-progress-explanation>Your CTR is recalculated from eligible results, including score margins, opponents’ playing strength and how recent the evidence is. There is no fixed number of CTR points for a win or loss. Compare monthly changes within the same comparison group.</p>
     <div class="ctr-stats">
       <div class="ctr-stat" data-selected-month-summary><h3>Selected month · {{ \Carbon\CarbonImmutable::parse($ratingHistory['months'][$ratingHistory['month']]['date'])->format('M Y') }}</h3>
         <div>@if($selectedIsLatest)<p class="mb-0">Latest saved month</p>@elseif($point)<x-ctr-badge :stage="$ratingHistory['ball_stage'] ?? null" :overall="empty($ratingHistory['ball_stage'])" :score="$point['score']" :local="($point['connection_status'] ?? '') === 'disconnected'" />@else<span class="ctr-stat-value">Unrated</span>@endif</div>
@@ -261,7 +371,7 @@
     <x-rating-explanation class="mt-3" />
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
       <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age singles rating uses played results across ages; compare players connected to the same shared reference group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
-      <p>Ratings update nightly at 03:00 SAST. Opponents’ results and the age of your matches affect your estimate. Completed matches can count during an event. Finishing positions, where eligible, are considered after the event ends.</p>
+      <p>Ratings update nightly at 03:02 SAST. Opponents’ results and the age of your matches affect your estimate. Completed matches can count during an event. Finishing positions, where eligible, are considered after the event ends.</p>
       <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. All ball colours and court formats are included without category-based rating offsets. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
     </div></details>
   </div>

@@ -90,6 +90,12 @@ class DrawSetupController extends Controller
                 ? ($data['second_stage_format'] ?? ($draw->hasHybridRoundRobin() ? \App\Services\Draw\HybridRoundRobinService::FORMAT : 'equal_positions')) : null;
             $hybrid = $secondStageFormat === \App\Services\Draw\HybridRoundRobinService::FORMAT;
             $sameSecondStage = $draw->hasHybridRoundRobin() === $hybrid;
+            if ($data['workflow'] === 'round_robin_round_robin'
+                && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) < 2) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'groups' => 'Round robin → round robin requires at least two first-stage groups.',
+                ]);
+            }
             abort_if($hybrid && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) !== 2, 422,
                 'The top-four playoffs and lower round robin format requires exactly two groups.');
             if (!$sameSecondStage && $sameWorkflow) {

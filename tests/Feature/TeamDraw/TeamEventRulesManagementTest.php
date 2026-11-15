@@ -190,10 +190,10 @@ class TeamEventRulesManagementTest extends TestCase
         $this->postJson(route('team-draw.ties.validate', $tie))->assertOk();
         $this->postJson(route('team-draw.ties.publish', $tie))->assertOk();
         $scores = ['set1_home' => 6, 'set1_away' => 3, 'set2_home' => 6, 'set2_away' => 2];
-        $this->postJson(route('frontend.fixtures.score.store', $rubber), $scores)->assertOk()->assertJsonPath('winner', 'home');
+        $this->postJson(route('frontend.fixtures.score.store', $rubber), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + ($scores))->assertOk()->assertJsonPath('winner', 'home');
         $this->assertSame('completed', $tie->fresh()->status);
         $this->get(route('backend.team-draw.standings', $draw))->assertOk()->assertSee($teams[0]->name);
-        $this->postJson(route('frontend.fixtures.score.store', $rubber), ['set1_home' => 1, 'set1_away' => 6, 'set2_home' => 2, 'set2_away' => 6])->assertOk()->assertJsonPath('winner', 'away');
+        $this->postJson(route('frontend.fixtures.score.store', $rubber), ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($rubber)->fresh())] + (['set1_home' => 1, 'set1_away' => 6, 'set2_home' => 2, 'set2_away' => 6]))->assertOk()->assertJsonPath('winner', 'away');
         $this->assertDatabaseCount('team_fixture_results', 2);
         $this->assertSame($tie->away_team_id, $tie->fresh()->winner_team_id);
     }

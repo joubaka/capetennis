@@ -2,6 +2,45 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-053",
+      "title": "Overall rating changes CTR scores or keeps a previous age restriction",
+      "scope": "Super Admin ball-rating directory filters and directory-to-detail links; saved calculations are unchanged.",
+      "symptoms": "Switching CTR to Overall changes a player's score, retains an age restriction, or rejects a region valid at the previously selected level.",
+      "cause": "Overall selected the combined all_age graph while CTR selected ball_ratings.standard; only Red and Orange normalized age filters, and region choices were limited to the selected graph.",
+      "fix": "Resolve ordinary CTR and Overall to the same standard graph. Overall clears age restrictions and age-based ordering. Use Red CTR, Orange CTR and CTR labels; retain standard context in Overall player links. Keep valid rated-player region choices stable across levels and return an empty list for no matching players. Normalize successful fragment URLs and pagination to the rendered filters. Preserve explicitly labelled historical combined comparison-group review and withhold missing CTR instead of substituting a combined score. See docs/performance/ball-level-classification.md.",
+      "verification": "On 2026-11-15 seven isolated SQLite suites passed 26 tests and 872 assertions, covering score identity against a different combined graph, all-age membership, missing-graph withholding, age, gender, name, region, evidence, ordering, pagination and private access. Styled rendered-fixture Edge checks passed at 390 and 1440 pixels for switching, page links, search and Back. The repair library test passed independently. No production verification.",
+      "limits": "Guide only. No rating recalculation, canonical result change, player ownership change, access expansion, production action or deployment is authorized. Other consumers retain their existing combined-model policy.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/PlayerRatingProfileDirectory.php", "docs/performance/ball-level-classification.md"],
+      "tests": ["tests/Feature/PlayerRatingDirectoryFiltersTest.php", "tests/Feature/PlayerBallRatingDirectoryTest.php", "tests/Frontend/ctr-directory.browser.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
+      "id": "RK-052",
+      "title": "Rapid score entry clears a draft or closes another match",
+      "scope": "Individual round-robin workspace shared score modal, source and served modules.",
+      "symptoms": "Repeated activation resets typed values; delayed save/delete clears another match; duplicate submit sends repeated requests.",
+      "cause": "Prefill ran on every activation and response callbacks closed shared form contents without matching the originating fixture, session and submitted values. Modal transitions were not coordinated.",
+      "fix": "Keep one modal instance and fixture/session ownership. Preserve drafts on duplicate activation, failure, newer edits and stale callbacks. Serialize mutations and queue opens until hidden. Enable score controls only after shown, preserving Bootstrap focus handling. Bind recovery previews to their originating fixture. See DK-33.",
+      "verification": "The deferred-response regression reproduces the original failures and exercises both score assets, modal transitions and readiness. Run it with timed scoring and progression regressions; verify distinct scores reach only intended fixtures in an authorized local rehearsal.",
+      "limits": "Guide only. No score replay, fixture reset, qualification, publication or live mutation is authorized. Canonical server validation and frozen-source guards remain mandatory.",
+      "assistant_action": "guide_only",
+      "sources": ["docs/draw-knowledge/catalogue.md"],
+      "tests": ["tests/Frontend/roundrobin-score-session.test.cjs", "tests/Frontend/timed-draw-scoring.test.cjs", "tests/Frontend/roundrobin-progression-prompt.test.cjs"]
+    },
+    {
+      "id": "RK-051",
+      "title": "Player Plus history selection is lost on reload or opens an unstyled page",
+      "scope": "Authorized My Tennis rating history, chart points, month and evidence filters, and browser navigation; saved data reads only.",
+      "symptoms": "A selected history month disappears on reload, sharing loses evidence filters, or a direct player rating link opens a fragment without the My Tennis layout.",
+      "cause": "Workspace reads omitted history filters, ordinary deep links returned a bare fragment, and successful fragment navigation did not synchronize browser history or the warmed workspace cache.",
+      "fix": "Use shared bounded filter validation in workspace and fragment reads. Ordinary rating requests render the full authorized workspace for the route-bound player. Fragment responses retain private no-store headers. Commit only successful selections to a server-generated workspace URL, preserve month, scope, scale and section, invalidate warmed navigation caches, and abort stale reads on unmount or Back/Forward. Preserve entitlement and relationship gates; never recalculate ratings on a page read.",
+      "verification": "On 2026-11-15 authenticated local browser checks verified chart selection, reload, scope, month and scale preservation, Back/Forward, keyboard activation, full-layout direct links and phone-width filtering. Independent checks passed 15 frontend tests and 39 isolated PHP tests with 543 assertions across navigation, history, snapshots, Top 10 and templates. Repair-library tests passed 3 tests with 349 assertions. These are local checks, not deployment or production evidence.",
+      "limits": "Guide only. Shared URLs do not grant player access. Do not alter ratings, source results, subscriptions, entitlements or publication to repair navigation. Preserve unrelated worktree changes and independently verify the target environment after an explicitly authorized release.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Http/Controllers/Frontend/MyTennisController.php", "docs/player-plus-launch.md"],
+      "tests": ["tests/Feature/MyTennisRatingNavigationTest.php", "tests/Frontend/my-tennis-rating-navigation.test.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-050",
       "title": "Public draw cards disagree with schedules or lose mobile navigation",
       "scope": "Public event draw cards, round-robin and Flexible Monrad viewers, and fixture return navigation; read-only presentation only.",
@@ -18,14 +57,14 @@
       "id": "RK-045",
       "title": "Draw setup circles between format, players, matches and scheduling",
       "scope": "Individual draw workflow navigation and saved progress across all seven supported formats; existing team operations remain separate.",
-      "symptoms": "A fully placed draft appears unfinished until matches are generated; format is difficult to find; returning from scheduling opens another setup journey; a generic lock/publication warning conceals the actual blocker.",
-      "cause": "The guide and format-specific workspaces used different navigation models. Player placement and fixture generation shared a completion flag, and scoped scheduler return links led back to the guide.",
-      "fix": "Use the shared DrawWorkflow presentation and Setup, Players, Matches, Schedule, Review & publish, Results destinations. Derive saved player readiness separately from generated matches, reject stale or missing fixture projections, and refresh progress through the authorized read-only workflow endpoint. Preserve exact draw/day context on scheduler returns. Explain current format, publication, result and booking blockers without automatically unlocking, hiding, reopening or rebuilding. Keep canonical mutations, revisions and explicit reset/publication confirmation. See docs/draw-workflow.md and DK-14.",
-      "verification": "On 2026-11-13 the isolated SQLite draw/compatibility bundle passed 148 tests and 2,175 assertions; independent scheduling/publication preservation passed 53 tests and 523 assertions. Independent access checks passed 6 tests and 50 assertions; public metadata isolation passed 1 test and 32 assertions. JavaScript checks passed 29 tests; the rendered-fixture browser harness passed 17 checks across seven widths with isolated HTTP doubles. Precompiled-view compatibility passed 20 tests and 203 assertions. PHP syntax, draw routes and Blade compilation passed. No production verification is claimed.",
+      "symptoms": "A fully placed draft or intentional split-category selection remains unfinished; an unchanged selection cannot be confirmed; sibling-draw players remain available; two-stage setup permits an invalid group count or describes the wrong qualification format; scheduler returns lose setup context.",
+      "cause": "The guide and workspaces used different navigation models, conflated player placement with generated fixtures and required every category entrant in each independent draw. Unchanged saves skipped selection evidence. Group saves and initial roster projections did not share canonical sibling-player exclusion. Two-stage group minimums and format descriptions differed across screens.",
+      "fix": "Use shared DrawWorkflow destinations and read-only progress refresh. Keep saved selection separate from fixture generation. For an intentional RR subset, use the canonical roster or exact current event/category/revision-bound groups_saved evidence; legacy partial drafts remain incomplete until explicitly confirmed. Do not mirror group selections into canonical rosters. Preserve eligibility, stale-state and protected-result checks. For sibling RR draws, exclude overlapping registration and player identities from initial/refresh lists and reject them in group saves and canonical roster attachment under common locks. Require at least two first-stage groups for two-stage RR and exactly two for its hybrid, in setup and editing. Describe the actual selected phase structure. Preserve exact draw/day returns, explicit reset/publication confirmation and all booking/result blockers. See docs/draw-workflow.md and DK-14, DK-21 and DK-22.",
+      "verification": "On 2026-11-13 the isolated SQLite draw/compatibility bundle passed 148 tests and 2,175 assertions; independent scheduling/publication preservation passed 53 tests and 523 assertions. Independent access checks passed 6 tests and 50 assertions; public metadata isolation passed 1 test and 32 assertions. JavaScript checks passed 29 tests; the rendered-fixture browser harness passed 17 checks across seven widths. On 2026-11-15 the affected setup/selection bundle passed 117 tests and 954 assertions on isolated SQLite, excluding one independently proven preexisting print-note assertion mismatch. Independent frontend checks passed 13 tests, including source and served unchanged-selection confirmation. Local browser retests confirmed one-draw and disjoint two-draw readiness, sibling-player exclusion, corrected hybrid labels and group limits; negative local saves preserved assignments and created no matches. PHP syntax, draw routes, Blade compilation and repair-library validation passed. No production verification is claimed.",
       "limits": "Guide only. Navigation never authorizes mutation. Recorded results, saved bookings, event isolation and publication snapshots retain their canonical protections. Existing live draws are not reset or published by this procedure. Deployment and any live change require separate authorization.",
       "assistant_action": "guide_only",
-      "sources": ["app/Services/Draw/DrawWorkflow.php", "app/Services/Draw/DrawSetupGuide.php", "app/Http/Controllers/Backend/DrawSetupGuideController.php", "app/Services/Draw/FlexibleMonradService.php", "docs/draw-workflow.md", "docs/draw-knowledge/catalogue.md"],
-      "tests": ["tests/Feature/Draw/DrawSetupGuideTest.php", "tests/Feature/Draw/DrawWorkspaceTest.php", "tests/Feature/Draw/FlexibleMonradTest.php", "tests/Frontend/draw-workflow.test.cjs", "tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/Draw/DrawDayScheduleEditTest.php"]
+      "sources": ["app/Services/Draw/DrawWorkflow.php", "app/Services/Draw/DrawSetupGuide.php", "app/Http/Controllers/Backend/DrawSetupGuideController.php", "app/Services/Draw/FlexibleMonradService.php", "docs/draw-workflow.md", "docs/draw-knowledge/catalogue.md", "app/Services/Draw/GroupAssignmentService.php", "app/Http/Controllers/Backend/DrawSetupController.php", "app/Http/Controllers/Backend/ManageDrawController.php", "app/Http/Controllers/Backend/DrawController.php"],
+      "tests": ["tests/Feature/Draw/DrawSetupGuideTest.php", "tests/Feature/Draw/DrawWorkspaceTest.php", "tests/Feature/Draw/FlexibleMonradTest.php", "tests/Frontend/draw-workflow.test.cjs", "tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/Draw/DrawDayScheduleEditTest.php", "tests/Feature/Draw/DrawSetupTest.php", "tests/Feature/HeadOffice/HeadOfficeDrawAuthorizationTest.php", "tests/Feature/Draw/IndividualDrawSelectionTest.php"]
     },
     {
       "id": "RK-027",
@@ -522,15 +561,15 @@
     {
       "id": "RK-034",
       "title": "Nightly player ratings miss the host scheduler invocation",
-      "scope": "Scheduled current CTR snapshots and 12-month rating history builds.",
+      "scope": "Scheduled current CTR snapshots, 12-month rating history builds and Player Plus membership notifications.",
       "symptoms": "Saved rating timestamps stop advancing overnight while a manually requested refresh can still complete. Compare the host cron and Laravel due times in the same timezone.",
       "cause": "Laravel evaluates daily jobs on their exact scheduled minute. An offset five-minute host cron skipped the top-of-hour rating jobs.",
-      "fix": "Align the two daily entries in the console kernel to minutes the host cron reaches. Keep current CTR ahead of rating history and preserve the existing overlap protection.",
-      "verification": "On 2026-11-08 the local scheduler listed both adjusted jobs and the regression confirmed both were due on host cron ticks. The adjusted jobs await live verification.",
+      "fix": "Align daily entries in the console kernel to minutes the host cron reaches. The ordered Player Plus derived-data pipeline starts at 03:02 SAST, then resumes bounded batches between 03:07 and 06:57. It replaces independent midnight, history and daytime pending fits; current CTR precedes monthly history and active-Plus match/event reconstructions. Preserve timezone, overlap and private context checks. Notifications remain separate at 08:32 for the documented :02, :07 cadence. Inspect schedules without executing notification jobs. See docs/player-plus-nightly-refresh.md.",
+      "verification": "On 2026-11-15 independent pipeline, command-runner and history-refresh checks passed 26 tests with 161 assertions, covering order, canonical active entitlements, bounded retries, context changes, partial continuation, locks and honest status. A fictional isolated local run completed without changing match sources. Notification schedule verification dispatched no mail. Infrastructure, deployment and delivery remain unverified.",
       "limits": "Guide only. Verify the current host cron before choosing minutes. This record does not authorize deployment or a production refresh.",
       "assistant_action": "guide_only",
-      "sources": ["app/Console/Kernel.php"],
-      "tests": ["tests/Unit/PlayerRatingScheduleTest.php"]
+      "sources": ["app/Console/Kernel.php", "app/Services/Performance/PlayerPlusDerivedRefresh.php", "docs/player-plus-nightly-refresh.md"],
+      "tests": ["tests/Unit/PlayerRatingScheduleTest.php", "tests/Unit/PlayerPlusScheduleTest.php", "tests/Feature/PlayerPlusDerivedRefreshTest.php", "tests/Feature/PlayerPlusDerivedCommandRunnerTest.php", "tests/Feature/PlayerRatingHistoryRefreshTest.php"]
     },
     {
       "id": "RK-035",
@@ -705,14 +744,60 @@
       "id": "RK-049",
       "title": "Completed first stage does not offer progression review",
       "scope": "Individual ordinary playoff, equal-position two-stage and explicitly selected pending hybrid workspace/venue prompts; confirmed hybrids remain unchanged.",
-      "symptoms": "The last group score saves but no progression offer appears, the review button remains absent until reload, or a saved partial result is mistaken for a completed match.",
-      "cause": "The review action was rendered only at page load, without an admin score-save listener. Venue prompts required a previously empty score row and an exact recorded-row count transition. Recorded rows alone do not establish completed match outcomes.",
-      "fix": "Use shared canonical winner/draw readiness in review, admin and venue state. Staged draws count phase one only, ignoring prepared later matches. Offer the existing authorized review with its actual destination after a completed result; wait for score-modal closure and retain the manual action. Complete outcomes blocked by ties, eligibility or topology receive a warning and standings link, never automatic qualification. New hybrid draws must explicitly select their format before later-stage structures exist; PendingHybridRoundRobinService prepares stable placeholders and confirms current complete untied groups under a snapshot covering membership, settings, fixtures, scores and bookings. Preserve source records and read-only carried references. Suppress offers after confirmation, including historical hybrids. See DK-04, DK-10 and hybrid-round-robin.md.",
-      "verification": "Focused Node regressions cover both destinations, confirmation, cancellation, duplicate/modal races, blocker warnings and later resolution. PendingHybridProgressionTest covers 4/5-player stable preparation, in-place audited/idempotent confirmation, authorization/event scope, stale bookings, canonical partial/draw/walkover outcomes, malformed feeders, source freezing, metadata guards and historical confirmed suppression. Ordinary, two-stage and historical hybrid regression classes remain required. Rerun named tests against current owning code before any operation.",
+      "symptoms": "The last group score saves but no progression offer appears; generation fails with a later-stage preservation warning; new lower-group placeholders are absent until reload or invisible in an empty desktop matrix; partial scores are mistaken for completed matches.",
+      "cause": "The review action and phase counts were rendered only at page load. Venue prompts used recorded-row transitions rather than canonical outcomes. Generation could reach a missing progression column after creating a group; fixture rollback cannot undo legacy nontransactional group writes, and fallback masked the original error. Hub refresh omitted new groups and phase projections; the matrix required qualified player rows.",
+      "fix": "Use shared canonical readiness; count phase one only and offer authorized review after completed outcomes, never automatic qualification. Warn on ties, eligibility and topology blockers. Explicitly select pending hybrid format before later structures exist. Preflight required fixture columns before any RR mutation or pending preparation, including fallback paths; apply only the exact reviewed migration in an authorized environment. Inspect interrupted state rather than blindly retrying or resetting groups. Prepare all later fixtures with unresolved source slots. Refresh groups and authorized phase HTML through the read-only hub, and render pending lower pairings as escaped noninteractive source-label cards, not fake players. Review and confirm current complete untied groups against membership, settings, fixture, score and booking snapshots. Preserve source records and carried references; suppress further offers after confirmation. See DK-04, DK-10, DK-31 and hybrid-round-robin.md.",
+      "verification": "Focused Node regressions cover both destinations, confirmation, cancellation, duplicate/modal races, blocker warnings and later resolution. PendingHybridProgressionTest covers stable preparation, reviewed confirmation, scope, stale bookings, canonical outcomes, source freezing and historical suppression. On 2026-11-15 two normal-route generation tests passed with 75 assertions, including missing-schema zero-write rejection and all-phase placeholders. Seventeen frontend checks passed; the three pending-matrix checks were rechecked after the final presentation polish. Local browser/database checks verified 26 hybrid fixtures and independent six/ten programmes, unresolved later sources, no scores, no schedules and no publication. The broader 28-test hybrid bundle had 26 passes and two failures from a preexisting dirty venue score-button Blade parse error. Local qualification was not performed. Rerun named tests against current owning code before any operation.",
       "limits": "Guide only. No automatic qualification, historical conversion, regeneration, score replay, publication or scheduling. Existing protected structures cannot be converted by selecting a pending format. Current authorization and a current snapshot are required for any live progression.",
       "assistant_action": "guide_only",
-      "sources": ["app/Services/Draw/RoundRobinProgressReadiness.php", "app/Services/Draw/PendingHybridRoundRobinService.php", "app/Http/Controllers/Backend/RoundRobinController.php", "docs/draw-knowledge/catalogue.md", "docs/draw-knowledge/hybrid-round-robin.md"],
-      "tests": ["tests/Feature/Draw/RoundRobinProgressTest.php", "tests/Feature/Draw/PendingHybridProgressionTest.php", "tests/Feature/Draw/TwoStageRoundRobinTest.php", "tests/Feature/Draw/HybridRoundRobinTest.php", "tests/Frontend/roundrobin-progression-prompt.test.cjs", "tests/Browser/scoring-playoff-prompt.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+      "sources": ["app/Services/Draw/RoundRobinProgressReadiness.php", "app/Services/Draw/PendingHybridRoundRobinService.php", "app/Http/Controllers/Backend/RoundRobinController.php", "docs/draw-knowledge/catalogue.md", "docs/draw-knowledge/hybrid-round-robin.md", "app/Services/Draw/HybridRoundRobinService.php", "app/Domain/Draws/Services/RoundRobinGenerationService.php", "app/Http/Controllers/Api/DrawApiController.php", "app/Services/DrawService.php"],
+      "tests": ["tests/Feature/Draw/RoundRobinProgressTest.php", "tests/Feature/Draw/PendingHybridProgressionTest.php", "tests/Feature/Draw/TwoStageRoundRobinTest.php", "tests/Feature/Draw/HybridRoundRobinTest.php", "tests/Frontend/roundrobin-progression-prompt.test.cjs", "tests/Browser/scoring-playoff-prompt.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php", "tests/Feature/Draw/HybridGenerationPrerequisiteTest.php", "tests/Frontend/roundrobin-pending-fixtures.test.cjs", "tests/Frontend/draw-workspace-navigation.test.cjs"]
+    },
+    {
+      "id": "RK-054",
+      "title": "Draw workflow reports valid results as incomplete",
+      "scope": "Read-only individual draw completion and readiness, including valid round-robin draws and configured later stages.",
+      "symptoms": "A drawn round robin never completes, a stale winner flag completes a partial match, or a finished configured playoff remains permanently incomplete. Saved times and public visibility are confused with final completion.",
+      "cause": "Workflow completion used stored winner flags and an unconditional incomplete playoff branch instead of canonical outcomes and configured finishing paths.",
+      "fix": "Use canonical IndividualMatchOutcomeService outcomes and DrawFinalPlacementService with eager-loaded evidence. Require confirmed staged progression and completed configured playoff paths. Distinguish explicit scoring setup, generated-match scheduling coverage, draw visibility and current published times. Preserve historical blank scoring semantics and read-only navigation. See DK-14 and docs/draw-workflow.md.",
+      "verification": "Dedicated local PHP 8.5 isolated SQLite completion/revision tests passed 15 tests and 70 assertions. Independent completion/revision/rebuild review passed 18 tests and 94 assertions; 27 JavaScript lifecycle/navigation tests and 19 rendered-fixture browser checks also passed. Broader regression outcomes belong to the implementation handoff.",
+      "limits": "Guide only. Progress presentation never qualifies players, generates fixtures, publishes, changes historical scoring or authorizes production. Browser persistence uses local doubles; PHP integration tests cover writes.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Draw/DrawWorkflow.php",
+        "app/Services/IndividualMatchOutcomeService.php",
+        "app/Services/Draw/DrawFinalPlacementService.php",
+        "docs/draw-workflow.md"
+      ],
+      "tests": [
+        "tests/Feature/Draw/DrawPhaseOneReadinessTest.php",
+        "tests/Feature/Draw/DrawScoreRevisionTest.php",
+        "tests/Browser/draw-workspace.cjs"
+      ]
+    },
+    {
+      "id": "RK-055",
+      "title": "Stale score forms or rebuild reviews overwrite newer work",
+      "scope": "Ordinary individual/team score save and clear routes, RR player assignments and destructive RR rebuilding.",
+      "symptoms": "An old score form overwrites or clears a newer result; an omitted assignment revision bypasses checks; an old rebuild review removes newly saved fixtures or bookings.",
+      "cause": "Mutation paths lacked required score-content revisions or accepted omitted assignment revisions. Rebuilding checked membership without reviewing changed fixtures/bookings. Some clients refreshed tokens without refreshing displayed scores.",
+      "fix": "Compare the reviewed score fingerprint under existing event/draw/fixture locks on all supported writers; retain participant authorization independently. Require assignment revisions and a separate rebuild-state fingerprint covering fixture identities, results, settings and working/public bookings. Scope response tokens, update only visibly refreshed state and freeze each open draft token. Reject before scores, progression, refresh intent, audit or notifications. Retain drafts without silently upgrading tokens or retrying. Align served/resource clients. See DK-33 and docs/draw-workflow.md.",
+      "verification": "DrawScoreRevisionTest covers missing/stale tokens, same/different-winner corrections, clearing, participant/rule changes, draw isolation and unauthorized writes, published timed projections, team service/HTTP writes, changed rebuild bookings and omitted assignment revisions. Dedicated completion/revision tests passed 15 tests and 70 assertions on isolated SQLite; independent focused review passed 18 tests and 94 assertions. Browser revision/draft checks passed within 19 checks. Broader runs are reported separately.",
+      "limits": "Guide only. Revisions are concurrency checks, never access grants. Do not fabricate current tokens for unreviewed drafts, weaken protected history or replay rejected writes. Local evidence does not establish production deployment or actual MySQL concurrency.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Draw/IndividualScoreRevision.php",
+        "app/Services/TeamFixtureScoreService.php",
+        "app/Services/Draw/GroupAssignmentService.php",
+        "app/Services/Draw/RoundRobinRebuildService.php",
+        "docs/draw-workflow.md"
+      ],
+      "tests": [
+        "tests/Feature/Draw/DrawScoreRevisionTest.php",
+        "tests/Feature/Draw/RoundRobinRebuildSafetyTest.php",
+        "tests/Frontend/roundrobin-score-session.test.cjs",
+        "tests/Browser/draw-workspace.cjs"
+      ]
     }
   ]
 }

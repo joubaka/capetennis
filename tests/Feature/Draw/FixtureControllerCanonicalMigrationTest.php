@@ -57,12 +57,16 @@ class FixtureControllerCanonicalMigrationTest extends TestCase
 
     private function insertResult(array $p): \Illuminate\Testing\TestResponse
     {
-        return $this->postJson('/backend/fixture/insertResult', $p);
+        return $this->postJson('/backend/fixture/insertResult', $p + [
+            'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(Fixture::findOrFail($p['fixture_id'])),
+        ]);
     }
 
     private function deleteIndResult(int $id): \Illuminate\Testing\TestResponse
     {
-        return $this->postJson("/backend/fixture/deleteIndResult/{$id}");
+        return $this->postJson("/backend/fixture/deleteIndResult/{$id}", [
+            'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(Fixture::findOrFail($id)),
+        ]);
     }
     public function test_individualNew_advances_winner_to_parent(): void
     {

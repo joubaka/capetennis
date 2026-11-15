@@ -34,7 +34,7 @@ test('switching back to played scores restores only visible set inputs', () => {
     active: match, resultType, walkoverPanel, walkoverWinner, decidingPanel, decidingWinner, saveButton,
     retiredPanel: {}, retiredPlayer: {},
     scoreGuidance: {dataset: {played: 'Enter completed sets'}},
-    modalElement: {querySelector: () => grid}, syncTimedDecision() {}
+    modalElement: {querySelector: () => grid}, syncTimedDecision() {}, CTSetScoreGrid: {setCompletionEnabled() {}}
   });
   refresh();
   assert.equal(grid.hidden, true);

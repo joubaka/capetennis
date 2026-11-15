@@ -3,6 +3,7 @@
 namespace App\Services\Draw;
 
 use App\Models\CategoryEventRegistration;
+use App\Models\CategoryEvent;
 use App\Models\Draw;
 use App\Models\DrawAuditLog;
 use Illuminate\Database\Eloquent\Builder;
@@ -61,6 +62,39 @@ final class GroupAssignmentService
             ->whereHas('registration.players');
     }
 
+    /** Competition identities already selected by another draw in the same scope. */
+    public function assignedElsewhere(Draw $draw): \Illuminate\Support\Collection
+    {
+        $siblings = Draw::query()->where('event_id', $draw->event_id)->whereKeyNot($draw->id)
+            ->when($draw->category_event_id, fn ($query) => $query->where(fn ($scope) => $scope
+                ->where('category_event_id', $draw->category_event_id)->orWhereNull('category_event_id')))
+            ->select('id');
+        $registrationIds = DB::table('draw_registrations')->whereIn('draw_id', clone $siblings)->pluck('registration_id')
+            ->merge(DB::table('draw_group_registrations')->whereIn('draw_group_id',
+                DB::table('draw_groups')->whereIn('draw_id', clone $siblings)->where('round_robin_phase', 1)->select('id'))
+                ->pluck('registration_id'))->unique();
+        $playerIds = DB::table('player_registrations')->whereIn('registration_id', $registrationIds)->pluck('player_id');
+
+        return $registrationIds->merge(DB::table('player_registrations')->whereIn('player_id', $playerIds)
+            ->pluck('registration_id'))->unique()->values();
+    }
+
+    public function assignable(Draw $draw): Builder
+    {
+        return $this->eligible($draw)->whereNotIn('registration_id', $this->assignedElsewhere($draw));
+    }
+
+    public function lockAssignmentScope(Draw $draw): void
+    {
+        CategoryEvent::where('event_id', $draw->event_id)->orderBy('id')->lockForUpdate()->get(['id']);
+    }
+
+    public function hasRepeatedPlayers(iterable $registrationIds): bool
+    {
+        $playerIds = DB::table('player_registrations')->whereIn('registration_id', collect($registrationIds)->unique())->pluck('player_id');
+        return $playerIds->count() !== $playerIds->unique()->count();
+    }
+
     public function revision(Draw $draw): string
     {
         $groups = $draw->groups()->where('round_robin_phase', 1)->orderBy('id')->get()->map(fn ($group) => [
@@ -72,6 +106,26 @@ final class GroupAssignmentService
         return hash('sha256', json_encode($groups));
     }
 
+    /** A saved selection completes the Players step without claiming category-wide entries. */
+    public function savedSelection(Draw $draw): ?array
+    {
+        $saved = DrawAuditLog::where('draw_id', $draw->id)->where('action', 'groups_saved')->latest('id')->first()?->payload;
+        if (($saved['selection_version'] ?? null) !== 1
+            || (int) ($saved['event_id'] ?? 0) !== (int) $draw->event_id
+            || (int) ($saved['category_event_id'] ?? 0) !== (int) $draw->category_event_id
+            || !is_array($saved['selected_registration_ids'] ?? null)
+            || !hash_equals($this->revision($draw), (string) ($saved['assignment_revision'] ?? ''))) return null;
+
+        return $saved['selected_registration_ids'];
+    }
+
+    public function selectionNeedsConfirmation(Draw $draw): bool
+    {
+        return !$draw->registrations()->reorder()->exists()
+            && $draw->groups()->where('round_robin_phase', 1)->whereHas('groupRegistrations')->exists()
+            && $this->savedSelection($draw) === null;
+    }
+
     public function save(Draw $draw, array $input): array
     {
         $data = Validator::make($input, [
@@ -79,16 +133,19 @@ final class GroupAssignmentService
             'groups.*.group_id' => 'required|integer|distinct',
             'groups.*.registration_ids' => 'present|array',
             'groups.*.registration_ids.*' => 'required|integer',
-            'revision' => 'nullable|string',
+            'revision' => 'required|string',
         ])->validate();
 
         return DB::transaction(function () use ($draw, $data) {
+            // Includes every category when an event-wide draw can overlap this
+            // selection. Ordered locks also serialize simultaneous sibling saves.
+            $this->lockAssignmentScope($draw);
             $draw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
             abort_if($draw->isTwoStageRoundRobin() && $draw->groups()->where('round_robin_phase', 2)->exists(), 409,
                 'Group membership is fixed once second-stage matches are prepared. Preserve the planned qualification sources.');
             abort_if($draw->locked || $draw->published, 403, 'This draw cannot be rearranged.');
             $revision = $this->revision($draw);
-            abort_if(isset($data['revision']) && ! hash_equals($revision, $data['revision']), 409,
+            abort_if(! hash_equals($revision, $data['revision']), 409,
                 'Assignments changed in another session. Reload the roster before saving.');
 
             $groupIds = collect($data['groups'])->pluck('group_id')->map(fn ($id) => (int) $id);
@@ -104,6 +161,13 @@ final class GroupAssignmentService
             $eligible = $this->eligible($draw)->whereIn('registration_id', $ids)->pluck('registration_id')->unique();
             if ($ids->diff($eligible)->isNotEmpty()) {
                 throw ValidationException::withMessages(['groups' => 'Choose paid, active players from this draw’s event and category.']);
+            }
+            $selection = $ids->merge($untouched)->map(fn ($id) => (int) $id);
+            if ($selection->intersect($this->assignedElsewhere($draw))->isNotEmpty()) {
+                throw ValidationException::withMessages(['groups' => 'A player is already assigned to another draw in this category. Remove that assignment before moving the player.']);
+            }
+            if ($this->hasRepeatedPlayers($selection)) {
+                throw ValidationException::withMessages(['groups' => 'A player can only appear once in this draw, including through different registrations.']);
             }
 
             $changed = collect($data['groups'])->contains(function ($group) use ($draw) {
@@ -122,10 +186,20 @@ final class GroupAssignmentService
                     $draw->groups()->findOrFail($group['group_id'])->registrations()->sync($links);
                 }
             }
-            DrawAuditLog::record($draw->id, 'groups_saved', null, ['groups_processed' => $groupIds->count()]);
+            // Record the exact complete saved selection, including groups outside
+            // this request. This is presentation evidence, not a claim on the
+            // separate canonical draw roster or another draw's entrants.
+            $selection = DB::table('draw_group_registrations')->whereIn('draw_group_id',
+                $draw->groups()->where('round_robin_phase', 1)->select('id'))
+                ->pluck('registration_id')->map(fn ($id) => (int) $id)->unique()->sort()->values()->all();
+            DrawAuditLog::record($draw->id, 'groups_saved', null, [
+                'groups_processed' => $groupIds->count(), 'selection_version' => 1,
+                'event_id' => $draw->event_id, 'category_event_id' => $draw->category_event_id,
+                'selected_registration_ids' => $selection, 'assignment_revision' => $this->revision($draw),
+            ]);
 
             return ['success' => true, 'status' => 'ok', 'groups_processed' => $groupIds->count(),
-                'revision' => $this->revision($draw), 'fixtures_need_regeneration' => $changed && $draw->drawFixtures()->exists()];
+                'revision' => $this->revision($draw), 'rebuild_revision' => app(RoundRobinRebuildService::class)->revision($draw), 'fixtures_need_regeneration' => $changed && $draw->drawFixtures()->exists()];
         });
     }
 }

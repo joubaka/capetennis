@@ -80,7 +80,7 @@ class UnscheduledScoringPrerequisitesTest extends TestCase
         $this->assertSame('15',$button->getAttribute('data-match-minutes'));
         $booking=OrderOfPlay::where('fixture_id',$parent->id)->firstOrFail()->getAttributes();
         $originalScore=$completed->fixtureResults()->firstOrFail()->getAttributes();
-        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$preliminary]),['sets'=>['12-10']])->assertOk();
+        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$preliminary]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($preliminary)->fresh())] + (['sets'=>['12-10']]))->assertOk();
         $this->assertSame($preliminary->registration1_id,$parent->fresh()->registration1_id);
         $this->assertSame($booking,OrderOfPlay::where('fixture_id',$parent->id)->firstOrFail()->getAttributes());
         $this->assertSame($originalScore,$completed->fixtureResults()->firstOrFail()->getAttributes());
@@ -133,7 +133,7 @@ class UnscheduledScoringPrerequisitesTest extends TestCase
         EventConvenor::create(['event_id'=>$event->id,'user_id'=>$keeper->id,'role'=>'score-keeper','venue_id'=>$venue->id]);
         $this->actingAs($keeper)->get($this->url($event,$venue))->assertOk()->assertViewHas('unscheduledPrerequisites',fn($fixtures)=>$fixtures->isEmpty())
             ->assertDontSee('data-fixture="'.$preliminary->id.'"',false);
-        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$preliminary]),['sets'=>['12-10']])->assertForbidden();
+        $this->postJson(route('api.draws.fixtures.score.store',['draw'=>$draw,'fixture'=>$preliminary]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($preliminary)->fresh())] + (['sets'=>['12-10']]))->assertForbidden();
         $this->assertSame($before,$this->snapshot());
     }
 

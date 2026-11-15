@@ -107,6 +107,7 @@ class DrawService
       $rrFixtures[$gid][] = [
         'carried' => $fx->isDirty('draw_group_id'),
         'id' => $fx->id,
+        'match_nr' => $fx->match_nr,
         'group_id' => $gid,
         'r1_id' => $fx->registration1_id,
         'r2_id' => $fx->registration2_id,

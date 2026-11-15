@@ -116,7 +116,7 @@ class TeamDrawScoringPublicationTest extends TestCase
         $this->assertNull($draw->team_scoring_rules);
         $this->assertFalse($this->admin->can('team-fixture.saveScore', $fixture));
         try {
-            app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['set1_home' => 6, 'set1_away' => 2]);
+            app(\App\Services\TeamFixtureScoreService::class)->save($fixture, ['score_revision' => app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh())] + (['set1_home' => 6, 'set1_away' => 2]));
             $this->fail('A disabled tie accepted a score.');
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $error) {
             $this->assertSame(409, $error->getStatusCode());
@@ -162,7 +162,7 @@ class TeamDrawScoringPublicationTest extends TestCase
         $fixture = $draw->fixtures()->first();
         $fixture->fixtureResults()->create(['set_nr' => 1, 'team1_score' => 6, 'team2_score' => 2]);
 
-        app(\App\Services\TeamFixtureScoreService::class)->delete($fixture);
+        app(\App\Services\TeamFixtureScoreService::class)->delete($fixture, app(\App\Services\TeamFixtureScoreService::class)->revision(($fixture)->fresh()));
 
         $this->assertDatabaseCount('team_fixture_results', 0);
         $this->assertDatabaseHas('draw_audit_logs', ['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'action' => 'team_scores_cleared']);

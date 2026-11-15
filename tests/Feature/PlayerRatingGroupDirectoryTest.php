@@ -13,6 +13,7 @@ use Tests\TestCase;
 class PlayerRatingGroupDirectoryTest extends TestCase
 {
     use RefreshDatabase;
+    use \Tests\Support\DirectoryCtrSnapshot;
 
     public function test_birth_year_filter_includes_january_and_december_birthdays_and_rolls_over_on_new_year(): void
     {
@@ -66,7 +67,7 @@ class PlayerRatingGroupDirectoryTest extends TestCase
                 $season = (int) substr($date, 0, 4);
                 foreach (range(9, 13) as $age) {
                     foreach (['grouped', 'shared'] as $sort) {
-                        $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u'.$age, 'sort' => $sort, 'ball_type' => 'overall', 'per_page' => 100]))->assertOk();
+                        $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u'.$age, 'sort' => $sort, 'ball_type' => 'standard', 'per_page' => 100]))->assertOk();
                         $expected = array_keys(array_filter($births, fn ($year) => $year >= $season - $age));
                         $this->assertEqualsCanonicalizing($expected, $response->viewData('players')->getCollection()->pluck('id')->all());
                         $response->assertSee('U'.$age.' and younger · born '.($season - $age).' or later');
@@ -87,10 +88,10 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturnUsing(function () use (&$ratings, $reference) {
             $components = [];
             foreach ($ratings as $id => $rating) { $components[$rating['component']]['members'][] = (int) $id; }
-            return ['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
-                'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => $reference]];
+            return $this->ctrSnapshot(['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
+                'all_age' => ['ratings' => $ratings, 'components' => $components, 'reference_component' => $reference]]);
         });
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturnUsing(function () use (&$ratings) { return $ratings; });
     }
 
     public function test_directory_excludes_orphaned_and_mismatched_groups_in_every_list_mode(): void
@@ -106,8 +107,8 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $snapshot['all_age']['ratings'][$orphan->id] = array_replace($template, ['component' => 'missing-component']);
         $snapshot['all_age']['ratings'][$mismatch->id] = $template;
         // The component exists, but does not confirm this player's membership.
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($snapshot['all_age']['ratings']);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot($snapshot));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn($snapshot['all_age']['ratings']);
         $url = route('backend.player-performance.ratings');
         foreach (['shared', 'score', 'age'] as $sort) {
             $response = $this->get($url.'?sort='.$sort)->assertOk()->assertDontSee('Excluded');
@@ -134,8 +135,8 @@ class PlayerRatingGroupDirectoryTest extends TestCase
             'confidence_date' => '2026-10-01', 'confidence_date_basis' => 'scheduled match date', 'ball_type' => 'yellow'];
         $graph = (new AllAgeRatingModel)->fit([$match($players[0]->id, $players[1]->id), $match($players[1]->id, $players[2]->id), $match($players[3]->id, $players[4]->id)], CarbonImmutable::parse('2026-10-29'));
         $snapshot = ['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false, 'snapshot_as_of' => '2026-10-29', 'all_age' => $graph];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($graph['ratings']);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot($snapshot));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn($graph['ratings']);
         return [$players, $snapshot, $graph['ratings'][$players[3]->id]['component']];
     }
 
@@ -320,9 +321,9 @@ class PlayerRatingGroupDirectoryTest extends TestCase
     {
         Role::findOrCreate('super-user', 'web');
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot([
             'reason' => 'Source publication changed', 'all_age' => ['components' => ['girls' => ['members' => [1, 2], 'converged' => true]]],
-        ]);
+        ]));
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('allAgeBadgeSnapshot');
         $this->getJson(route('backend.player-performance.ratings', ['comparison_group' => 'girls']))->assertUnprocessable();
     }
@@ -339,13 +340,13 @@ class PlayerRatingGroupDirectoryTest extends TestCase
             'last_played' => '2026-10-01', 'confidence_label' => 'Low'];
         $snapshot = ['reason' => null, 'built_at' => '2026-10-29', 'snapshot_stale' => false,
             'all_age' => ['reference_component' => null, 'components' => ['local' => ['members' => [$player->id]]], 'ratings' => [$player->id => $rating]]];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn([$player->id => $rating]);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot($snapshot));
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot', 'ballBadgeSnapshot')->andReturn([$player->id => $rating]);
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url)->assertOk()->assertSee('Awaiting calibration')->assertDontSee('data-rating-position=', false);
         $this->assertNull($response->viewData('players')->getCollection()->first()['position']);
         $snapshot['reason'] = 'Source publication changed';
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot($snapshot));
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('allAgeBadgeSnapshot');
         $this->get($url)->assertOk()->assertSee('Ratings are currently unavailable')->assertDontSee('Local Only')->assertDontSee('90.0/100')->assertDontSee('data-rating-position=', false);
     }
@@ -364,10 +365,10 @@ class PlayerRatingGroupDirectoryTest extends TestCase
         $this->mock(PlayerSharedAbilityService::class)->shouldNotReceive('allAgeBadgeSnapshot')->shouldNotReceive('badgeSnapshot');
         foreach (['Ability update pending. A saved snapshot is not yet available.',
             'Saved ability estimates are withheld because their source publication or context changed.'] as $reason) {
-            $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
+            $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($this->ctrSnapshot([
                 'cohorts' => [], 'names' => [], 'reason' => $reason, 'built_at' => 'Not yet updated',
                 'snapshot_as_of' => null, 'snapshot_stale' => true,
-            ]);
+            ]));
             $response = $this->get(route('backend.player-performance.ratings', ['sort' => 'score']))->assertOk()
                 ->assertSee('players appear after a valid rating calculation.')
                 ->assertDontSee('Older Alpha')->assertDontSee('Unknown Middle')->assertDontSee('Young Zulu')

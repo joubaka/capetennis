@@ -33,6 +33,7 @@
             <p class="mb-0"><span class="visually-hidden">Rating position </span><strong class="ctr-position-value">#{{ $summary['player']['position'] }}</strong> <span class="small text-muted">of {{ $summary['total'] }}</span></p>
             <x-ctr-badge size="inline" :score="$summary['player']['score']" :overall="true" />
           </div>
+          @if(!empty($summary['player']['confidence']))<p class="small text-muted mt-1 mb-0" data-rating-position-confidence>{{ $summary['player']['confidence'] }} confidence</p>@endif
         @else
           <p class="small mb-0">Position unavailable.</p>
         @endif
@@ -53,12 +54,13 @@
       <ol class="list-group list-group-flush mb-0" aria-label="Your age-group Top 10 ratings" data-plus-age-top-ten>
         @forelse($ratingTopTen['lists']['overall']['players'] ?? [] as $member)
           <li class="list-group-item d-flex align-items-start gap-2" @if($member['id'] === (int) $ratingPlayer->id) aria-current="true" @endif>
-            <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif</span><span class="d-inline-flex flex-column align-items-center" style="width:4rem;flex-shrink:0"><x-ctr-badge size="inline" :score="$member['score']" :overall="true" /></span>
+            <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif<small class="d-block text-muted" data-rating-confidence>{{ $member['confidence'] }} confidence</small></span><span class="d-inline-flex flex-column align-items-center" style="width:4rem;flex-shrink:0"><x-ctr-badge size="inline" :score="$member['score']" :overall="true" /></span>
           </li>
       @empty
         <li class="list-group-item text-muted"><span role="status">{{ $ratingTopTen['reason'] ? 'Rating comparisons unavailable.' : 'No ratings for this age group.' }}</span></li>
       @endforelse
       </ol>
+      <p class="small text-muted mt-2 mb-0">Confidence describes the strength and freshness of recorded evidence, not a guarantee of rating accuracy.</p>
     @endif
     </section>
   @else

@@ -1,3 +1,4 @@
+@include('backend.team-fixtures.partials.participant-revision-script')
 @php $lastRound = null; $lastTieKey = null; @endphp
 
 <h3>
@@ -80,7 +81,7 @@
                       data-id="{{ $fixture }}"
                       data-reg1="{{ collect($fixture->lineup_display['home']['players'])->pluck('name')->implode(' + ') }}"
                       data-reg2="{{ collect($fixture->lineup_display['away']['players'])->pluck('name')->implode(' + ') }}"
-                      class="btn btn-sm btn-secondary insertResult"
+                      class="btn btn-sm btn-secondary insertResult" data-score-revision="{{ $fixture instanceof \App\Models\TeamFixture ? app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) : app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture) }}"
                       data-bs-toggle="modal"
                       data-bs-target="#tennisResultModal">Insert Score</button>
             @endif
@@ -94,6 +95,7 @@
               </button>
               <div class="dropdown-menu">
                 <form action="{{ route('draw.delete.result', $fixture->id) }}" method="post">
+<input type="hidden" name="score_revision" value="{{ app(\App\Services\TeamFixtureScoreService::class)->revision($fixture) }}">
                   @csrf
                   <button type="submit" class="dropdown-item"><i class="ti ti-trash me-1"></i>Delete</button>
                 </form>

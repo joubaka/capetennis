@@ -6,7 +6,10 @@ function fixture() {
   const input = () => ({value: '', disabled: false});
   const rows = Array.from({length: 5}, () => ({hidden: false, inputs: [input(), input()], querySelectorAll() { return this.inputs; }}));
   const labels = [{textContent: ''}, {textContent: ''}];
-  return {rows, labels, querySelectorAll() { return rows; }, querySelector(selector) { return labels[selector.includes('home') ? 0 : 1]; }};
+  return {rows, labels, listeners: {}, addEventListener(type, callback) { this.listeners[type] = callback; },
+    removeEventListener(type) { delete this.listeners[type]; },
+    type(row, side, value) { const target = rows[row].inputs[side]; target.value = value; this.listeners.input({target}); },
+    querySelectorAll() { return rows; }, querySelector(selector) { return labels[selector.includes('home') ? 0 : 1]; }};
 }
 
 test('prefill handles best-of-one, three and five and clears stale hidden set scores', () => {
@@ -23,6 +26,55 @@ test('prefill handles best-of-one, three and five and clears stale hidden set sc
   grid.populate(root, {names: ['A', 'B'], maxSets: 1, scores: [[6, 0]]});
   assert.deepEqual(grid.read(root), [[6, 0]]);
   assert.equal(root.rows.filter(row => !row.hidden).length, 1);
+});
+
+test('format completion only infers unambiguous losing scores', () => {
+  for (const type of ['full', 'pro8', 'target3', 'target4', 'target5', 'target6', 'match_tiebreak']) {
+    const target = type === 'full' ? 6 : type === 'pro8' ? 8 : type === 'match_tiebreak' ? 10 : Number(type.slice(6));
+    assert.equal(grid.opponentScore(type, '0'), target);
+    assert.equal(grid.opponentScore(type, String(target)), null);
+  }
+  assert.equal(grid.opponentScore('full', '4'), 6);
+  assert.equal(grid.opponentScore('full', '5'), 7);
+  assert.equal(grid.opponentScore('full', '7'), null);
+  assert.equal(grid.opponentScore('pro8', '7'), 9);
+  assert.equal(grid.opponentScore('match_tiebreak', '9'), 11);
+  for (const type of ['timed', 'custom', undefined]) assert.equal(grid.opponentScore(type, '3'), null);
+  for (const value of ['', '-1', '1.5', '1e2', 'NaN']) assert.equal(grid.opponentScore('full', value), null);
+});
+
+test('completion works from either side and preserves manual, loaded and manually cleared values', () => {
+  const root = fixture();
+  grid.populate(root, {names: ['A', 'B'], maxSets: 3, setTypes: ['full', 'full', 'match_tiebreak'], scores: [[6, 3]]});
+  root.type(0, 1, '5');
+  assert.equal(root.rows[0].inputs[0].value, 6);
+  root.type(1, 1, '4');
+  assert.equal(root.rows[1].inputs[0].value, '6');
+  root.type(1, 1, '5');
+  assert.equal(root.rows[1].inputs[0].value, '7');
+  root.type(1, 0, '6'); // override the suggestion
+  root.type(1, 1, '3');
+  assert.equal(root.rows[1].inputs[0].value, '6');
+  root.type(2, 0, '2');
+  assert.equal(root.rows[2].inputs[1].value, '10');
+  root.type(2, 0, '20'); // multi-digit input must remove stale suggestion
+  assert.equal(root.rows[2].inputs[1].value, '');
+  root.type(2, 0, '');
+  assert.equal(root.rows[2].inputs[1].value, '');
+});
+
+test('retirement disables completion and modal reuse resets format and suggestion provenance', () => {
+  const root = fixture();
+  grid.populate(root, {names: ['A', 'B'], maxSets: 1, setTypes: ['full']});
+  grid.setCompletionEnabled(root, false);
+  root.type(0, 0, '3');
+  assert.equal(root.rows[0].inputs[1].value, '');
+  grid.populate(root, {names: ['C', 'D'], maxSets: 1, setTypes: ['target4']});
+  root.type(0, 0, '2');
+  assert.equal(root.rows[0].inputs[1].value, '4');
+  grid.populate(root, {names: ['E', 'F'], maxSets: 1, setTypes: ['timed'], scores: [[2, 4]]});
+  root.type(0, 0, '3');
+  assert.equal(root.rows[0].inputs[1].value, 4);
 });
 
 test('blank trailing sets are ignored but one-sided sets and gaps need correction', () => {

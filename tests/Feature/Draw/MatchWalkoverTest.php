@@ -43,8 +43,8 @@ class MatchWalkoverTest extends TestCase
             $loserParent = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'CONS', 'match_status' => 0]);
             $fixture->update(['parent_fixture_id' => $parent->id, 'loser_parent_fixture_id' => $loserParent->id]);
             $payload = ['walkover_winner_id' => $fixture->registration2_id];
-            $this->postJson($url, $payload)->assertOk();
-            $this->postJson($url, $payload)->assertOk();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertOk();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + ($payload))->assertOk();
             $this->assertTrue($fixture->fresh()->isWalkover());
             $this->assertSame((int) $fixture->registration2_id, app(IndividualMatchOutcomeService::class)->winner($fixture->fresh()));
             $this->assertSame(0, $fixture->fixtureResults()->count());
@@ -57,14 +57,14 @@ class MatchWalkoverTest extends TestCase
     {
         foreach ([null, 'timed'] as $format) {
             [$draw, $fixture, $url] = $this->match('RR', $format);
-            $this->postJson($url, ['walkover_winner_id' => $fixture->registration2_id])->assertOk();
+            $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration2_id]))->assertOk();
             $rows = app(StandingsService::class)->forDraw($draw->fresh())[$fixture->draw_group_id];
             $winner = collect($rows)->firstWhere('reg_id', $fixture->registration2_id);
             $this->assertSame(1, $winner['wins']);
             $this->assertSame(0, $winner['sets_won']);
             $this->assertSame(0, $winner['games_won']);
             if ($format === 'timed') $this->assertSame(2, $winner['points']);
-            $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]))->assertOk();
+            $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])->assertOk();
             $this->assertFalse($fixture->fresh()->isWalkover());
             $this->assertNull($fixture->fresh()->winner_registration);
         }
@@ -73,16 +73,16 @@ class MatchWalkoverTest extends TestCase
     public function test_invalid_winner_scores_foreign_fixture_and_unauthorized_actor_are_rejected(): void
     {
         [$draw, $fixture, $url] = $this->match();
-        $this->postJson($url, ['walkover_winner_id' => Registration::factory()->create()->id])->assertUnprocessable();
-        $this->postJson($url, ['walkover_winner_id' => $fixture->registration1_id, 'sets' => ['6-0']])->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => Registration::factory()->create()->id]))->assertUnprocessable();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration1_id, 'sets' => ['6-0']]))->assertUnprocessable();
         $other = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
         DB::table('event_admins')->insert(['event_id' => $other->event_id, 'user_id' => auth()->id()]);
-        $this->postJson(route('api.draws.fixtures.score.store', [$other, $fixture]), ['walkover_winner_id' => $fixture->registration1_id])->assertUnprocessable();
+        $this->postJson(route('api.draws.fixtures.score.store', [$other, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration1_id]))->assertUnprocessable();
         $draw->update(['locked' => true]);
-        $this->postJson($url, ['walkover_winner_id' => $fixture->registration1_id])->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration1_id]))->assertForbidden();
         $draw->update(['locked' => false]);
         $this->actingAs(User::factory()->create());
-        $this->postJson($url, ['walkover_winner_id' => $fixture->registration1_id])->assertForbidden();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration1_id]))->assertForbidden();
         $this->assertNull($fixture->fresh()->winner_registration);
         $this->assertSame(0, $fixture->fixtureResults()->count());
     }
@@ -90,10 +90,10 @@ class MatchWalkoverTest extends TestCase
     public function test_round_robin_same_winner_conversion_preserves_generated_playoffs(): void
     {
         [$draw, $fixture, $url] = $this->match('RR');
-        $this->postJson($url, ['sets' => ['6-2']])->assertOk();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['sets' => ['6-2']]))->assertOk();
         Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'match_status' => 0,
             'registration1_source_group_id' => null, 'registration2_source_group_id' => null]);
-        $this->postJson($url, ['walkover_winner_id' => $fixture->registration1_id])->assertConflict();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration1_id]))->assertConflict();
         $this->assertSame(1, $fixture->fixtureResults()->count());
         $this->assertFalse($fixture->fresh()->isWalkover());
     }
@@ -105,7 +105,7 @@ class MatchWalkoverTest extends TestCase
             'registration1_id' => $fixture->registration1_id, 'registration2_id' => Registration::factory()->create()->id,
             'winner_registration' => $fixture->registration1_id]);
         $fixture->update(['parent_fixture_id' => $parent->id, 'winner_registration' => $fixture->registration1_id, 'match_status' => 3]);
-        $this->postJson($url, ['walkover_winner_id' => $fixture->registration2_id])->assertConflict();
-        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]))->assertConflict();
+        $this->postJson($url, ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())] + (['walkover_winner_id' => $fixture->registration2_id]))->assertConflict();
+        $this->deleteJson(route('api.draws.fixtures.score.delete', [$draw, $fixture]), ['score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture(($fixture)->fresh())])->assertConflict();
     }
 }
