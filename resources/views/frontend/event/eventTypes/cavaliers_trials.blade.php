@@ -1,4 +1,6 @@
 @php
+  $canViewNominationCounts = auth()->check()
+      && (auth()->user()->hasRole('super-user') || auth()->user()->is_event_admin($event->id));
   $publishedDayLabels = app(\App\Services\Scheduling\SchedulePublicationService::class)->publicDrawDayLabels($event);
   $publicNominationKey = static fn ($nomination) => [
       mb_strtolower(trim($nomination->player?->name ?? $nomination->nominee_name ?? '')),
@@ -31,7 +33,7 @@
                             <div class="card shadow-none bg-transparent border border-primary m-1 p-2">
                                 <div class="card-header">
                                     <h3>{{$eventCategory->category->name}}
-                                        @if($eventCategory->nominations_published == 1)
+                                        @if($eventCategory->nominations_published == 1 && $canViewNominationCounts)
                                         ({{$nominations->count()}})
                                         @endif
                                     </h3>

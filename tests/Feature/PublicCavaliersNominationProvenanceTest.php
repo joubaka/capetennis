@@ -12,6 +12,49 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_nomination_heading_counts_are_visible_only_to_this_events_admins_even_after_registration_closes(): void
+    {
+        [$event, $division] = $this->events();
+        $this->nominee($event, $division, 'Visible');
+        $hiddenDivision = $this->division($event, 'Hidden Girls');
+        $this->nominee($event, $hiddenDivision, 'Unpublished');
+        $hiddenDivision->update(['nominations_published' => false]);
+        $url = route('events.show', $event);
+        $headings = function ($page): array {
+            preg_match_all('/<h3>(.*?)<\/h3>/s', $page->getContent(), $matches);
+            return array_map(fn ($heading) => trim(preg_replace('/\s+/', ' ', strip_tags($heading))), $matches[1]);
+        };
+        $assertHeadings = function (bool $canCount) use ($url, $headings): void {
+            $page = $this->get($url)->assertOk()->assertSee('Visible Example')->assertDontSee('Unpublished Example');
+            $this->assertSame(['U11 Girls'.($canCount ? ' (1)' : ''), 'Hidden Girls'], $headings($page));
+        };
+        $assertHeadings(false);
+        $normal = User::factory()->create();
+        $this->actingAs($normal);
+        $assertHeadings(false);
+        $unrelatedAdmin = User::factory()->create();
+        $unrelatedAdmin->assignRole(Role::findOrCreate('admin', 'web'));
+        \App\Models\EventAdmin::create(['event_id' => Event::factory()->create()->id, 'user_id' => $unrelatedAdmin->id]);
+        $this->actingAs($unrelatedAdmin);
+        $assertHeadings(false);
+        $convenor = User::factory()->create();
+        \App\Models\EventConvenor::create(['event_id' => $event->id, 'user_id' => $convenor->id, 'role' => 'hoof']);
+        $this->actingAs($convenor);
+        $this->assertTrue($convenor->can('event.manage', $event));
+        $assertHeadings(false);
+        $manager = User::factory()->create();
+        $manager->assignRole(Role::findOrCreate('admin', 'web'));
+        \App\Models\EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
+        $this->actingAs($manager);
+        $assertHeadings(true);
+        $event->update(['signUp' => false]);
+        $assertHeadings(true);
+        $super = User::factory()->create();
+        $super->assignRole(Role::findOrCreate('super-user', 'web'));
+        $this->actingAs($super);
+        $assertHeadings(true);
+    }
+
     private function events(): array
     {
         // Public rendering must never impersonate a source manager to get private provenance.
