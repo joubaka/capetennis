@@ -13,7 +13,7 @@ class PlayerPathwayEvents
     public const CANDIDATE_LIMIT = 50;
     public const RESULT_LIMIT = 6;
     public const CATEGORY_LIMIT = 20;
-    public const CONTEXT_LIMIT = 50;
+    public const CONTEXT_LIMIT = 20;
 
     public function forPlayer(Player $player, array $pathway): array
     {
@@ -59,7 +59,7 @@ class PlayerPathwayEvents
             $result['events'][] = ['id' => (int) $event->id, 'name' => $event->name,
                 'url' => route('events.show', $event->id), 'date' => $event->start_date->format('d M Y'),
                 'venue' => $venues ?: 'Venue to be confirmed', 'categories' => array_values(array_unique($categories)),
-                'status' => $event->registrationIsOpen($now->toMutable()) ? 'Entries open' : 'Entries closed'];
+                'status' => $event->registrationIsOpen(\Illuminate\Support\Carbon::instance($now)) ? 'Entries open' : 'Entries closed'];
             if (count($result['events']) === self::RESULT_LIMIT) { $result['limited'] = true; break; }
         }
         return $result;

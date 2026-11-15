@@ -87,7 +87,7 @@ class PlayerPathwayEventsTest extends TestCase
     public function test_exact_categories_and_type_evidence_match_but_titles_and_ambiguous_divisions_do_not(): void
     {
         $red = $this->event('Red ball');
-        $orange = $this->event('U/9 Boys B');
+        $orange = $this->event('U/10 Boys B');
         $b = $this->event('Wilson B');
         $a = $this->event('U/13 Boys A', ['eventType' => 2]);
         $tsa = $this->event('U/13 Boys', ['eventType' => 3]);

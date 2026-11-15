@@ -117,9 +117,9 @@
         @if($competition === 'Wilson B')
           <small>After Orange</small><small>@if($pathway['competition_bands_available']) CTR {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['wilsonCutoff']) }} or below @else Recommendation awaiting configuration @endif</small>
         @elseif($competition === 'Wilson A')
-          <small>@if($pathway['wilsonCutoff'] !== null) CTR above {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['wilsonCutoff']) }}@if($pathway['competition_bands_available']) through {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['tsaCutoff']) }}@endif @else Recommendation awaiting configuration @endif</small>
+          <small>@if($pathway['competition_bands_available']) CTR above {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['wilsonCutoff']) }}@if($pathway['competition_bands_available']) through {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['tsaCutoff']) }}@endif @else Recommendation awaiting configuration @endif</small>
         @else
-          <small>@if($pathway['tsaCutoff'] !== null) CTR above {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['tsaCutoff']) }} @else Recommendation awaiting configuration @endif</small>
+          <small>@if($pathway['competition_bands_available']) CTR above {{ \App\Services\Performance\PlayerPathwayService::formatCutoff($pathway['tsaCutoff']) }} @else Recommendation awaiting configuration @endif</small>
           <a class="small d-inline-flex align-items-center" style="min-height:44px" href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
         @endif
         @include('frontend.my-tennis.pathway-info-button', ['infoStage' => ['Wilson B' => 'wilson-b', 'Wilson A' => 'wilson-a', 'TSA tournaments' => 'tsa'][$competition], 'infoLabel' => $competition])
