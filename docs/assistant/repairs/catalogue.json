@@ -454,15 +454,15 @@
     {
       "id": "RK-013",
       "title": "Saved pathway badge has no highlighted competition while an update is pending",
-      "scope": "Player Plus personal pathway snapshot; saved comparable standard-ball rating positioning only.",
+      "scope": "Player Plus personal pathway stage, saved-rating state and bounded public upcoming-event discovery.",
       "symptoms": "A saved numeric badge is visible but none of Wilson B, Wilson A or TSA is highlighted when progression is not assessed.",
       "cause": "The visual current position used suggestedCompetition, which correctly becomes unavailable when the freshness assessment is pending; a later change also suppressed all configured competition guidance.",
       "fix": "Use PlayerPathwayService currentCompetition to position the latest saved comparable nonlocal standard-ball score against configured cutoffs. Show the stage prominently beside its latest saved CTR and render exactly one current card with aria-current and latest saved CTR wording. The Cape Tennis guide uses Wilson B at CTR 50 or below, Wilson A above 50 through 75, and TSA tournaments above 75, from config/pathway.php; these are not official entry or qualification rules. Keep suggestedCompetition, assessed and readiness subject to freshness. Retain matching player, publication validation, entitlement and comparability gates. Use the shared loading modal on pathway navigation with timeout and pageshow cleanup.",
-      "verification": "On 2026-11-15 restored configured rating-stage guidance and prominent saved-CTR stage display. PlayerPathwayTest and AssistantRepairLibraryTest passed 34 tests and 985 assertions in isolated SQLite. Coverage includes strict 50/75 boundaries, the 92.7 TSA case, exactly one highlighted stage matching the named summary, stale saved positioning, local/noncomparable estimates, player mismatch, revoked evidence, pending moves and unchanged participation records. PHP syntax checks passed. No production verification.",
-      "limits": "Saved position is not a fresh progression recommendation or event eligibility. No rating recalculation, publication, ownership change or production action is authorized by this guide.",
+      "verification": "On 2026-11-15 restored configured rating-stage guidance and prominent saved-CTR stage display. PlayerPathwayTest, PlayerPathwayEventsTest and AssistantRepairLibraryTest passed 44 tests and 1093 assertions in isolated SQLite; the final additional rendered cutoff/configuration test passed one test and 31 assertions. Coverage includes strict 50/75 boundaries, the 92.7 TSA case, exactly one highlighted stage matching the named summary, stale saved positioning, local/noncomparable estimates, player mismatch, revoked evidence, pending moves and unchanged participation records. PHP syntax checks passed. No production verification.",
+      "limits": "Saved position is not a fresh progression recommendation or event eligibility. Event matches require published upcoming individual events and explicit category/type evidence checked against canonical event-scoped ball context. Missing or ambiguous metadata yields no confirmed match. Event links never establish eligibility or authorize rating recalculation, publication, ownership changes or production actions.",
       "assistant_action": "guide_only",
       "sources": ["app/Services/Performance/PlayerPathwayService.php", "app/Services/Performance/PlayerPathwayEvidence.php"],
-      "tests": ["tests/Feature/PlayerPathwayTest.php", "tests/Browser/pathway-loading.cjs"]
+      "tests": ["tests/Feature/PlayerPathwayTest.php", "tests/Feature/PlayerPathwayEventsTest.php", "tests/Browser/pathway-loading.cjs"]
     },
     {
       "id": "RK-023",

@@ -139,6 +139,13 @@ class PlayerPathwayService
 
         $presentation = $this->presentation($current_stage, $score, $stageRating, $metrics, $move, $currentCompetition, $competitionBandsAvailable, $wilsonCutoff, $tsaCutoff);
 
+        if ($current_stage === 'standard' && in_array($presentation['state'], ['update_pending', 'configuration_unavailable'], true)) {
+            $reason = $presentation['why'].($presentation['state'] === 'update_pending' ? ' This is your latest saved stage while the rating update is pending.' : '');
+            $next_steps = [$presentation['state'] === 'update_pending'
+                ? 'Explore events for your latest saved '.$currentCompetition.' stage and check entry requirements. The next saved update may change this recommendation.'
+                : 'Ask Cape Tennis to review the tournament guide configuration. You can still browse events and check their requirements.'];
+        }
+
         return compact('available', 'stage', 'division', 'saved_division', 'current_stage', 'competition', 'options', 'score', 'events', 'target', 'ownEvents', 'eligible', 'ratingMet', 'eventsMet', 'ready', 'assessed', 'assessment_status', 'reason', 'stageProgress', 'badge', 'ctr_label', 'next_steps', 'wilsonProgress', 'benchmark_division', 'wilsonCutoff', 'tsaCutoff', 'suggestedDivision', 'suggestedCompetition', 'move', 'moveOptions') + [
             'presentation' => $presentation,
             'competition_bands_available' => $competitionBandsAvailable,

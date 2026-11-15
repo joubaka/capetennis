@@ -36,6 +36,7 @@ class PlayerPathwayEvents
             ->with(['eventTypeModel', 'categoryEvents' => fn ($q) => $q->with('category')->orderBy('id')->limit(self::CATEGORY_LIMIT + 1)])
             ->orderBy('start_date')->orderBy('id')->limit(self::CANDIDATE_LIMIT + 1)->get();
         $result['limited'] = $events->count() > self::CANDIDATE_LIMIT;
+        $hasDraws = Schema::hasTable('draws');
         $hasVenues = Schema::hasTable('venues') && Schema::hasTable('event_venues');
         $remainingContexts = self::CONTEXT_LIMIT;
         foreach ($events->take(self::CANDIDATE_LIMIT) as $event) {
@@ -51,7 +52,7 @@ class PlayerPathwayEvents
             foreach ($event->categoryEvents->take(self::CATEGORY_LIMIT) as $field) {
                 $field->setRelation('event', $event);
                 if ($remainingContexts === 0) { $result['limited'] = true; break; }
-                if (!$this->compatible($player, $event, (string) $field->category?->name) || $this->categoryStage($field, $type, $stage, $remainingContexts) !== $stage) continue;
+                if (!$this->compatible($player, $event, (string) $field->category?->name) || $this->categoryStage($field, $type, $stage, $hasDraws, $remainingContexts) !== $stage) continue;
                 $categories[] = (string) $field->category->name;
             }
             if (!$categories) continue;
@@ -74,7 +75,7 @@ class PlayerPathwayEvents
         };
     }
 
-    private function categoryStage(CategoryEvent $field, ?string $family, string $wanted, int &$remainingContexts): ?string
+    private function categoryStage(CategoryEvent $field, ?string $family, string $wanted, bool $hasDraws, int &$remainingContexts): ?string
     {
         $label = strtolower(trim((string) $field->category?->name));
         if ($label === '') return null;
@@ -92,7 +93,7 @@ class PlayerPathwayEvents
         if ($candidate !== $wanted) return null;
         $remainingContexts--;
         // Respect canonical, event-scoped court metadata, including mixed/unknown contexts.
-        $canonical = Schema::hasTable('draws') ? app(BallRatingContext::class)->stage($field)
+        $canonical = $hasDraws ? app(BallRatingContext::class)->stage($field)
             : BallRatingModel::forMatch(['category' => $label]);
         if ($canonical === null || ($explicitBall !== null && $canonical !== $explicitBall)) return null;
         if (in_array($canonical, ['red', 'orange'], true)) return $canonical;

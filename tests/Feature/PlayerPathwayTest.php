@@ -114,7 +114,7 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor());
         $response = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Ball level: Green/yellow ball');
         $this->assertMatchesRegularExpression('/data-pathway-top-badge>.*?aria-label="CTR 67\\.9 · Green\/yellow ball"/s', $response->getContent());
-        $response->assertDontSee('a starting stage must be recorded')->assertSee('Wilson A suggested')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
+        $response->assertDontSee('a starting stage must be recorded')->assertSee('Current rating stage')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
         $response->assertSee('Suggested next step')->assertSee('All levels and targets')
             ->assertSee('data-pathway-snapshot', false)->assertSee('Your rating stage · latest saved CTR')->assertSee('data-pathway-competition="Wilson A"', false);
         if (getenv('CT_PATHWAY_QA_HTML') === '1') {
@@ -313,7 +313,7 @@ class PlayerPathwayTest extends TestCase
         $history = ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Wilson A suggested')
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Latest saved stage · update pending')
             ->assertSee('Assessment uses the latest saved rating')->assertDontSee('progress is not assessed');
         foreach (['unavailable', 'local', 'not_comparable'] as $state) {
             $changed = $metrics;
@@ -404,7 +404,7 @@ class PlayerPathwayTest extends TestCase
             ->assertDontSee('points to the benchmark')
             ->assertSee('Wilson A')->assertSee(route('my.tennis.pathway', $player), false);
         $metrics['stale'] = true;
-        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('When your current comparable rating is ready')
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Explore events for your latest saved Wilson A stage')
             ->assertDontSee('2.1 points to the benchmark')->assertDontSee('Aim for');
         $metrics = $this->metrics(75, ['red' => 0, 'orange' => 0, 'standard' => 3]);
         $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
@@ -575,7 +575,7 @@ class PlayerPathwayTest extends TestCase
         $this->assertFalse($summary['ready']);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Competition recommendation uncertain')->assertSee('The saved rating needs an update')->getContent();
+        $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Latest saved stage · update pending')->assertSee('Saved rating awaiting an update')->getContent();
         $this->assertStringContainsString('data-pathway-competition="Wilson A"  aria-current="step"', $html);
         preg_match_all('/<li\b[^>]*aria-current="step"[^>]*>/', $html, $currentCards);
         $this->assertCount(1, $currentCards[0]);
@@ -615,6 +615,75 @@ class PlayerPathwayTest extends TestCase
         }
         $this->assertDatabaseCount('player_pathway_profiles', 0);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
+    }
+
+    public function test_hero_names_red_orange_no_rating_and_pending_move_and_shows_own_stage_progress(): void
+    {
+        $this->actingAs($this->actor());
+        $metrics = $this->metrics(48, ['red' => 1, 'orange' => 0, 'standard' => 0]);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturnUsing(function () use (&$metrics) {
+            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        });
+        foreach (['red' => ['Red ball', 50], 'orange' => ['Orange ball', 60]] as $ball => [$label, $target]) {
+            $metrics = $this->metrics(48, ['red' => 0, 'orange' => 0, 'standard' => 0]);
+            $metrics['stage_events'][$ball] = 1;
+            $metrics['stage_ratings'][$ball] = ['score' => 48, 'comparable' => true, 'local' => false];
+            $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('data-pathway-applicable-stage>'.$label.'</p>', false)
+                ->assertSee('Why this stage?')->assertSee('data-pathway-target-progress', false)
+                ->assertSee('48.0 / '.number_format($target, 1))->assertSee('1 / 3')->assertSee('View matching events');
+        }
+        $metrics['player_id'] = 2;
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Not rated yet')->assertSee('No saved rating yet')->assertDontSee('View matching events');
+        $metrics = $this->metrics(66, ['red' => 0, 'orange' => 3, 'standard' => 0]);
+        \App\Models\PlayerPathwayMove::create(['player_id' => 1, 'from_stage' => 'orange', 'to_stage' => 'standard', 'started_on' => '2026-11-01', 'recorded_by_user_id' => 99]);
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Green/Yellow ball · CTR pending')->assertSee('Recorded move · rating pending')->assertDontSee('View matching events');
+    }
+
+    public function test_stage_event_links_show_saved_update_state_and_remain_private(): void
+    {
+        $metrics = $this->metrics(92.7, ['red' => 0, 'orange' => 0, 'standard' => 5]);
+        $metrics['stale'] = true;
+        $metrics['stage_matches'] = ['red' => 0, 'orange' => 0, 'standard' => 32];
+        $metrics['stage_ratings']['standard']['confidence_label'] = 'Medium';
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn(['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []]);
+        $this->mock(\App\Services\Performance\PlayerPathwayEvents::class)->shouldReceive('forPlayer')->once()
+            ->with(\Mockery::on(fn ($player) => $player->id === 1), \Mockery::on(fn ($summary) => $summary['presentation']['event_stage'] === 'TSA tournaments'))
+            ->andReturn(['stage' => 'TSA tournaments', 'limited' => false, 'events' => [[
+                'id' => 999, 'name' => 'Fictional upcoming junior tournament', 'date' => '21 Nov 2026',
+                'venue' => 'Fictional Tennis Club', 'status' => 'Entries open', 'categories' => ['U/13 Boys'],
+                'url' => route('events.show', 999),
+            ]]]);
+        $this->actingAs($this->actor());
+        $response = $this->get(route('my.tennis.pathway', 1))->assertOk()
+            ->assertSee('TSA tournaments')->assertSee('Latest saved stage · update pending')
+            ->assertDontSee('Competition recommendation uncertain')->assertSee('href="#pathway-upcoming-events"', false)
+            ->assertSee('Fictional upcoming junior tournament')->assertSee('Check entry requirements')->assertSee('21 Nov 2026')
+            ->assertSee('Fictional Tennis Club')->assertSee('Entries open')->assertSee(route('events.show', 999), false);
+        $this->assertTrue($response->headers->hasCacheControlDirective('private'));
+        if (getenv('CT_PATHWAY_QA_HTML') === '1') file_put_contents(storage_path('framework/testing/pathway-events-qa.html'), $response->getContent());
+        $this->actingAs($this->actor(10, false));
+        $this->get(route('my.tennis.pathway', 2))->assertForbidden();
+        $this->assertDatabaseCount('player_pathway_profiles', 0);
+        $this->assertDatabaseCount('player_pathway_moves', 0);
+    }
+
+    public function test_map_and_info_share_validated_cutoff_pair_and_fractional_labels(): void
+    {
+        $this->actingAs($this->actor());
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn([
+            'reason' => null, 'pathway_metrics' => $this->metrics(60, ['red' => 0, 'orange' => 0, 'standard' => 1]), 'series' => [], 'points' => [],
+        ]);
+        foreach ([[75, 50], [50, 50], [50, null]] as [$wilson, $tsa]) {
+            config(['pathway.wilson_a_above' => $wilson, 'pathway.tsa_above' => $tsa]);
+            $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Tournament guide awaiting configuration')
+                ->assertDontSee('View matching events')->assertDontSee('CTR above')->assertDontSee('needs comparable evidence')->getContent();
+            $this->assertDoesNotMatchRegularExpression('/<li\\b[^>]*aria-current="step"/', $html);
+            $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'wilson-a']))->assertOk()
+                ->assertSee('Tournament rating bands are awaiting configuration')->assertDontSee('CTR above');
+        }
+        config(['pathway.wilson_a_above' => 50.5, 'pathway.tsa_above' => 75.5]);
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('above 50.5 through 75.5');
+        $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => 'wilson-a']))->assertOk()->assertSee('above 50.5 through 75.5');
     }
 
     public function test_manual_verification_is_gone_and_existing_audit_records_are_not_progress(): void
@@ -687,7 +756,7 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame('A', $summary['suggestedDivision']);
         $this->assertFalse($summary['ready']);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
-        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Wilson A suggested')->assertSee('Ball level: Green/yellow ball')
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Current rating stage')->assertSee('Ball level: Green/yellow ball')
             ->assertDontSee('data-pathway-form', false);
         $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => 'red', 'wilson_division' => 'B']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);

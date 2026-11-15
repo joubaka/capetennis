@@ -19,6 +19,16 @@ when Playwright is installed outside the repository. The 320px screenshot is
 written under `storage/app/testing`. These fixtures do not verify authenticated
 application journeys, persistence, or server operations.
 
+`node tests/Browser/pathway-recommendations.cjs` checks the actual fictional
+Tournament options route at 360, 390, 768 and 1440px. Generate its fixture with
+`CT_PATHWAY_QA_HTML=1` and the `PlayerPathwayTest` filter
+`test_stage_event_links_show_saved_update_state_and_remain_private`. The harness
+uses local assets, blocks external requests, and checks saved-stage messaging,
+the highlighted card, the matching-events anchor, public event action and
+horizontal containment. Screenshots are written under `storage/framework/testing`.
+Use Node 20+ and set `NODE_PATH` to the installed Playwright modules if needed.
+This verifies rendered fictional data, not live event availability or registration.
+
 These checks serve HTML rendered by Laravel's test suite together with the real public assets. Mutating endpoints are isolated in-memory HTTP doubles; no application database is changed by the browser harness. Backend persistence, eligibility, authorization and rollback are covered by the draw feature tests.
 
 Prerequisites: the application's configured testing database, PHP dependencies, Node.js 20 or newer, Playwright and its Chromium browser. If Playwright is installed outside this repository, set `NODE_PATH` to that installation's `node_modules` directory.

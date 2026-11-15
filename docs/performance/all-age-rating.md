@@ -74,6 +74,37 @@ evidence cannot assign a stage. Pending ball moves suppress destination placemen
 until qualifying saved evidence is available. Red/Orange progression targets
 remain separate. See `PlayerPathwayService` and `PlayerPathwayTest`.
 
+### Tournament stage and upcoming event links
+
+The hero, map and detail panel share an explicit presentation state: current,
+latest saved/update pending, insufficient comparable evidence, recorded move
+pending, no rating, or unavailable guide configuration. Red/Orange name the rated
+ball stage and show its own CTR and published-event targets. Orange CTR never
+selects a Green/Yellow division. Both competition cutoffs must be valid and TSA
+must be strictly above Wilson A before any of the three bands is shown.
+
+`PlayerPathwayEvents` discovers only published upcoming individual events,
+including ongoing events under the canonical date convention. Terminal,
+postponed, results-published and Masters/Trials invitation formats are excluded.
+It matches explicit category ball words or exact U9/U10 B Orange classification;
+Wilson needs an explicit Wilson A/B category or an exact Wilson type with one
+category division. TSA needs an exact TSA event type. Generic event titles and
+unclassified standard categories cannot manufacture a match. Conflicting family
+or ball metadata is withheld. Canonical `BallRatingContext` checks event-scoped
+court evidence before inclusion. Known exact category age/gender exclusions use
+the existing calendar-year convention; missing or ambiguous profile/category
+information remains an organiser review, not proof of admission.
+
+Reads are bounded to 50 candidate events, 20 categories per event, 20 canonical
+context checks in total and six cards. A cap gives an explicit more-events
+notice. Cards contain public event links, date, limited venue names, canonical
+entry-open/closed status and matching category labels. Latest-saved stage links
+remain visibly update-pending. Missing/insufficient stages and pending moves do
+not suggest events. An empty list means no confirmed match in this bounded local
+catalogue, not that no suitable tournament exists. Discovery never creates an
+entry, grants invitation access or performs registration eligibility mutations.
+Focused coverage: `PlayerPathwayEventsTest` and `PlayerPathwayTest`.
+
 ## Integration and saved data
 
 The additive `all_age` snapshot retains legacy `cohorts` for explicit historical

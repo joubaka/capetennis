@@ -154,6 +154,26 @@ class PlayerPathwayEventsTest extends TestCase
         }
     }
 
+    public function test_court_rejected_matches_stop_at_the_total_context_budget(): void
+    {
+        for ($i = 0; $i <= PlayerPathwayEvents::CONTEXT_LIMIT; $i++) {
+            $id = $this->event('Red ball');
+            $field = DB::table('category_events')->where('event_id', $id)->value('id');
+            $draw = DB::table('draws')->insertGetId(['event_id' => $id, 'category_event_id' => $field]);
+            DB::table('draw_venue_court_allocations')->insert(['draw_id' => $draw, 'venue_id' => 1, 'court_label' => '1']);
+            DB::table('event_venue_courts')->insert(['event_id' => $id, 'venue_id' => 1, 'label' => '1', 'ball_type' => 'orange']);
+        }
+        DB::enableQueryLog();
+        $result = app(PlayerPathwayEvents::class)->forPlayer($this->player(), $this->pathway('red'));
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $drawQueries = array_filter($queries, fn ($query) => str_starts_with($query['query'], 'select "id" from "draws"'));
+        $this->assertCount(PlayerPathwayEvents::CONTEXT_LIMIT, $drawQueries);
+        $this->assertLessThan(120, count($queries));
+        $this->assertSame([], $result['events']);
+        $this->assertTrue($result['limited']);
+    }
+
     public function test_presentation_unifies_saved_pending_local_and_missing_states_and_validates_the_whole_cutoff_pair(): void
     {
         $service = app(PlayerPathwayService::class);

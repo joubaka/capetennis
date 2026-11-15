@@ -45,6 +45,14 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   wording; fresh recommendations retain assessment freshness checks. Preserve
   Red/Orange targets, player/publication gates and pending-move handling. Verify
   `PlayerPathwayService`, `PlayerPathwayTest` and RK-013 before changing this map.
+- Tournament options use one named presentation state across the hero, map and
+  event suggestions, including Red/Orange, update-pending and recorded moves.
+  Upcoming suggestions use explicit published-only discovery (administrator
+  `visibleTo()` includes drafts), exact category/type evidence and canonical
+  event-scoped ball context; generic standard conditions never prove Wilson/TSA.
+  Discovery is bounded and read-only, and a stage match never establishes entry
+  eligibility. See `PlayerPathwayEvents`, `PlayerPathwayEventsTest` and
+  `docs/performance/all-age-rating.md` for matching limits and empty states.
 - The separate match-influence tool is an offline sensitivity estimate on saved Overall CTR:
   baseline minus a canonical refit omitting one exact eligible match at the same
   date. Preserve component, reference, backbone and connection comparability;
