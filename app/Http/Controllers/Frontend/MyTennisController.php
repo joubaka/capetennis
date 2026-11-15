@@ -123,10 +123,12 @@ class MyTennisController extends Controller
     {
         abort_unless(app(\App\Services\Performance\PlayerRatingAccess::class)->allows($request->user(), $player), 403);
         $history = app(\App\Services\Performance\PlayerRatingHistoryService::class)->forPlayer($player);
+        $pathway = app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history);
         return response()->view('frontend.my-tennis.pathway-page', [
             'workspace' => app(\App\Services\PlayerWorkspaceContext::class)->forPlayer($request->user(), $player, $history),
             'ratingPlayer' => $player,
-            'pathway' => app(\App\Services\Performance\PlayerPathwayService::class)->summary($player, $history),
+            'pathway' => $pathway,
+            'pathwayEvents' => app(\App\Services\Performance\PlayerPathwayEvents::class)->forPlayer($player, $pathway),
         ])->header('Cache-Control', 'private, no-store');
     }
 
