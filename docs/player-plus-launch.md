@@ -64,6 +64,24 @@ Super-users can open **Review Plus payment issues** from the Plus section of Sup
 
 The customer support address is `support@capetennis.co.za`. Support requests must include the `P` order reference. Wrong-player purchases, unavailable data and refund enquiries require payer verification and a reviewed decision; no automatic refund or transfer policy is invented here. Legal/commercial approval of launch copy and the remedy policy remains a launch-owner responsibility.
 
+## My Tennis Rating navigation
+
+Cache tabs only after a successful visit; do not launch speculative requests for
+all other tabs or make selected navigation wait for them. Keep the previous panel
+until a successful response, retain URL/history filters, cancel superseded reads
+and stop the spinner after the bounded foreground timeout. Failure offers an
+explicit retry and an ordinary full-page link through the same authorised route.
+
+The Rating panel uses `PlayerRatingTopTen::context()` for canonical access and
+filter metadata without discovering global participants or loading unused rating
+lists. Actual match comparison data still uses its existing public/entitlement
+projection. Page reads never fit ratings or request a derived-data refresh.
+
+`MyTennisRatingNavigationTest`, `PlayerRatingTopTenTest` and
+`tests/Browser/my-tennis-navigation.cjs` cover the boundary. A screenshot showing a
+spinner or retry message does not establish a production request's status or
+cause; inspect the actual target environment only with current authority.
+
 ## Verification and launch gates
 
 Saved ability and twelve-month history readers establish a 512 MiB request/process-local memory floor before fetching or decoding their private payloads. Larger and unlimited budgets are preserved. This does not alter `php.ini`, environment configuration or the global server limit. If PHP cannot provide that budget, readers withhold the data before loading it; the history file's existing 20 MiB cap and all policy/publication validation remain in place. Page reads still do not calculate ratings, enqueue a refresh or change source data. Verify normal web-process reads against representative saved data, as a successful CLI builder alone does not establish reader availability.

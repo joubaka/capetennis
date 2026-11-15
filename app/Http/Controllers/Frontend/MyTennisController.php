@@ -114,7 +114,7 @@ class MyTennisController extends Controller
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'matchProgress' => app(\App\Services\Performance\PlayerMatchProgress::class)->forPlayer($request->user(), $player),
-            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
+            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->context($request->user(), $player,
                 array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])))),
         ];
     }

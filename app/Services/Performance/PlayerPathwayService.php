@@ -49,11 +49,13 @@ class PlayerPathwayService
         $benchmark_division = null;
         $wilsonCutoff = $this->validScore(config('pathway.wilson_a_above'));
         $tsaCutoff = $this->validScore(config('pathway.tsa_above'));
-        // Internal comparability does not calibrate CTR to external competition levels.
-        // Preserve the response keys without assigning a division from unvalidated cutoffs.
-        $currentCompetition = null;
-        $suggestedDivision = null;
-        $suggestedCompetition = null;
+        // Locate the displayed saved badge without claiming a fresh progression assessment.
+        $savedComparable = $current_stage === 'standard' && $score !== null
+            && ($stageRating['comparable'] ?? false) === true && ($stageRating['local'] ?? false) !== true;
+        $currentCompetition = $savedComparable && $wilsonCutoff !== null
+            ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.($score > $wilsonCutoff ? 'A' : 'B')) : null;
+        $suggestedDivision = $current_stage === 'standard' && $eligible && $wilsonCutoff !== null ? ($score > $wilsonCutoff ? 'A' : 'B') : null;
+        $suggestedCompetition = $suggestedDivision ? ($tsaCutoff !== null && $tsaCutoff > $wilsonCutoff && $score > $tsaCutoff ? 'TSA tournaments' : 'Wilson '.$suggestedDivision) : null;
         $targetKey = $current_stage === 'standard' ? null : $current_stage;
         $target = $this->target($targetKey);
         $assessed = $target !== null && $eligible && $ownEvents !== null;
@@ -114,12 +116,13 @@ class PlayerPathwayService
         };
 
         if ($current_stage === 'standard') {
-            $assessed = false;
-            $assessment_status = 'Competition level needs coach review';
+            $assessed = $suggestedDivision !== null;
+            $assessment_status = $assessed ? $suggestedCompetition.' suggested' : 'Not assessed';
             $stageProgress['standard']['status'] = $assessment_status;
             $stageProgress['standard']['assessed'] = $assessed;
-            $reason = 'CTR compares recorded results; it does not establish Wilson division or TSA readiness. Competition-level thresholds have not been validated.';
-            $next_steps = ['Chat with your coach about Wilson B, Wilson A and TSA event options. Check the age, entry and nomination requirements with the organiser.'];
+            $reason = $assessed ? 'Your latest saved '.$ctr_label.' of '.number_format($score, 1).' points to '.$suggestedCompetition.' in the Cape Tennis tournament guide. Check event entry requirements with your coach and organiser.'
+                : (!$assessmentAvailable ? 'The saved rating needs an update before a division can be suggested.' : 'This ball-level rating needs comparable evidence before a division can be suggested.');
+            $next_steps = [$assessed ? 'Chat with your coach about which '.$suggestedCompetition.' events would suit you. They can help you check the age, entry and nomination requirements.' : 'When your current comparable rating is ready, chat with your coach about the event options.'];
         }
         $movesAvailable = $available && Schema::hasTable('player_pathway_moves');
         $latestMove = $movesAvailable ? PlayerPathwayMove::where('player_id', $player->id)->latest('id')->first() : null;

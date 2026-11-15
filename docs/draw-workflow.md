@@ -40,6 +40,16 @@ rebuilding additionally requires a separate fingerprint of fixture identities,
 results, settings and private/public bookings, so unchanged player groups cannot
 authorize destroying a newer saved schedule.
 
+On MySQL REPEATABLE READ, parent-row locks do not refresh an earlier consistent
+read view. Team score revision checks, per-set persistence and outcome reads use
+current locking reads of score/participant rows, including when the caller already
+has a transaction. `ScoreRevisionMySqlConcurrencyTest` exercises completed
+same-winner corrections and clears with actual child-process lock waits. Its
+CLI-only worker refuses application/shared databases; run only against its
+explicitly configured disposable local MySQL target. SQLite cannot establish this
+concurrency evidence. On Windows the harness polls unique runtime output files,
+because anonymous process pipes do not provide usable nonblocking reads.
+
 Focused coverage: `DrawPhaseOneReadinessTest`, `DrawScoreRevisionTest`, the
 existing score/progression/rebuild regressions and
 `tests/Browser/draw-workspace.cjs`. A coverage reference does not establish a

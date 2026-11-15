@@ -252,7 +252,7 @@
       $plotY = fn ($score) => 225 - (($score - $axis['min']) / ($axis['max'] - $axis['min'])) * 200;
       $query = ['month' => $ratingHistory['month'], 'scope' => $ratingHistory['scope'], 'scale' => request()->query('scale', $ratingHistory['scale']), 'rating_section' => 'history'] + $ratingBrowseFilters;
       if ($canBrowseRatings) {
-          $query['rating_page'] = $ratingTopTen['lists'][$ratingBrowseFilters['rating_level'] ?? 'overall']['pagination']['page'] ?? 1;
+          $query['rating_page'] = (int) request()->query('rating_page', 1);
       }
       $ratingUrl = fn ($changes = []) => route('my.tennis.rating', ['player' => $ratingPlayer->id] + array_replace($query, $changes));
     @endphp

@@ -3,7 +3,6 @@
 
   const workspaceSelector = '[data-my-tennis-workspace]';
   const cacheLifetime = 60000;
-  const warmConcurrency = 5;
   let pending = null;
   let renderedUrl = pageKey(new URL(window.location.href));
   let scope = null;
@@ -120,7 +119,7 @@
     }
   }
 
-  function warmTabs(workspace, page) {
+  function cacheTabs(workspace, page) {
     if (warmDisabled) return;
     const tabs = Array.from(workspace.querySelectorAll('#my-tennis-tabs [data-my-tennis-link]'), link => new URL(link.href))
       .filter(url => url.origin === window.location.origin);
@@ -129,38 +128,10 @@
     clearCache();
     if (!keys.size) return;
 
-    const target = {keys, ready: new Map(), inFlight: new Map(), controller: new AbortController()};
+    const target = {keys, ready: new Map(), controller: new AbortController()};
     scope = target;
     if (page) remember(target, renderedUrl, page);
-    const queue = tabs.filter(url => !target.ready.has(pageKey(url)));
-    async function warmNext() {
-      while (scope === target && queue.length) {
-        const url = queue.shift();
-        const key = pageKey(url);
-        if (target.ready.has(key) || pending?.key === key) continue;
-        const controller = new AbortController();
-        const cancel = () => controller.abort();
-        target.controller.signal.addEventListener('abort', cancel, {once: true});
-        const signal = controller.signal;
-        const timeout = window.setTimeout(() => controller.abort(), 15000);
-        const task = fetchWorkspace(url, signal, true)
-          .then(page => {
-            if (!page.redirected && !signal.aborted) remember(target, key, page);
-          })
-          .catch(() => {})
-          .finally(() => {
-            window.clearTimeout(timeout);
-            target.controller.signal.removeEventListener('abort', cancel);
-            target.inFlight.delete(key);
-          });
-        target.inFlight.set(key, task);
-        await task;
-      }
-    }
-    // A normal workspace has six tabs. Start the other five together so a
-    // slow Activity or Rating response cannot hold up Results or Opponents.
-    const workers = Math.min(warmConcurrency, queue.length);
-    for (let i = 0; i < workers; i++) warmNext();
+    // Cache visited tabs only: speculative reads compete with the selected tab.
   }
 
   function cachedPage(key) {
@@ -179,7 +150,7 @@
     workspace.replaceWith(next);
     next.dispatchEvent(new CustomEvent('my-tennis:mounted', {bubbles: true}));
     mountLiveResults(next, true);
-    warmTabs(next, page);
+    cacheTabs(next, page);
 
     const active = next.querySelector('[data-my-tennis-link][aria-current="page"]');
     if (focus) active?.focus({preventScroll: true});
@@ -235,8 +206,6 @@
     }, 180);
 
     try {
-      const warming = scope?.inFlight.get(key);
-      if (warming) await warming;
       if (pending !== request) return;
       const page = cachedPage(key) ?? await fetchWorkspace(url, request.signal);
       if (pending !== request) return;
@@ -256,12 +225,18 @@
       }
       status.classList.remove('visually-hidden');
       status.textContent = tab ? `${tab.textContent.trim()} could not be loaded. ` : 'This view could not be loaded. ';
+      if (request.signal.aborted) status.textContent += 'The request took too long. ';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'btn btn-sm btn-outline-secondary';
       retry.textContent = 'Try again';
       retry.addEventListener('click', () => open(url, {focus: true, tab}), {once: true});
       status.append(retry);
+      const fullPage = document.createElement('a');
+      fullPage.href = url.href;
+      fullPage.className = 'ms-2';
+      fullPage.textContent = 'Open full page';
+      status.append(fullPage);
       if (focus) retry.focus({preventScroll: true});
     } finally {
       spinner.remove();
@@ -329,9 +304,9 @@
   const initialPage = initialWorkspace && document.readyState === 'interactive'
     ? {title: document.title, workspace: initialWorkspace.cloneNode(true)}
     : null;
-  // Let the requested tab paint before the other authorized tabs start loading.
+  // Register the initial workspace for reuse without speculative server requests.
   window.requestAnimationFrame(() => window.setTimeout(() => {
     const workspace = document.querySelector(workspaceSelector);
-    if (workspace) warmTabs(workspace, workspace === initialWorkspace ? initialPage : null);
+    if (workspace) cacheTabs(workspace, workspace === initialWorkspace ? initialPage : null);
   }, 0));
 })();

@@ -63,10 +63,16 @@ calibrated to competition levels. `AllAgeRatingModelTest` covers the current
 format behavior. Confidence describes evidence sufficiency, not accuracy or
 Wilson/TSA readiness.
 
-Player Plus therefore offers coach-discussion event options rather than assigning
-a Wilson division or TSA recommendation from CTR cutoffs. Red/Orange progression
-targets remain separate. An externally validated competition-level policy is
-required before restoring personalized division recommendations.
+By explicit product decision, Player Plus shows a personalized Cape Tennis
+tournament stage from the saved comparable Green/Yellow CTR: Wilson B at 50 or
+below, Wilson A above 50 through 75, and TSA tournaments above 75 (configured in
+`config/pathway.php`). These are guidance bands, not externally validated
+readiness or official entry/selection rules. A pending nightly update may retain
+the labelled latest-saved stage; fresh suggestions remain subject to the saved
+assessment policy. Local/noncomparable, missing, mismatched-player and revoked
+evidence cannot assign a stage. Pending ball moves suppress destination placement
+until qualifying saved evidence is available. Red/Orange progression targets
+remain separate. See `PlayerPathwayService` and `PlayerPathwayTest`.
 
 ## Integration and saved data
 

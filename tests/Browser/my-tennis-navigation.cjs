@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const { chromium } = require('playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 
 const root = path.resolve(__dirname, '../..');
 const publicRoot = path.join(root, 'public');
@@ -19,14 +19,15 @@ async function run() {
       const warmRequests = [];
       const errors = [];
       let failActivity = true;
-      let finishActivityWarmup;
-      const activityWarmup = new Promise(resolve => { finishActivityWarmup = resolve; });
+      let delayRating = true;
+      await page.addInitScript(() => {
+        const original = window.setTimeout.bind(window);
+        window.setTimeout = (callback, delay, ...args) => original(callback, delay === 30000 ? 400 : delay, ...args);
+      });
       let finishFailedActivity;
       const failedActivity = new Promise(resolve => { finishFailedActivity = resolve; });
       let finishActivityRetry;
       const activityRetry = new Promise(resolve => { finishActivityRetry = resolve; });
-      let finishRatingWarmup;
-      const ratingWarmup = new Promise(resolve => { finishRatingWarmup = resolve; });
       let documentLoads = 0;
       let ratingFragmentLoads = 0;
       let liveScore = '6–2';
@@ -44,17 +45,12 @@ async function run() {
             record: 'record', opponents: 'opponents', pathway: 'pathway', 'event-ratings': 'events',
           })[url.pathname.split('/').pop()];
           assert.ok(tab, url.href);
-          if (request.headers().purpose === 'prefetch') {
-            warmRequests.push(tab);
-            if (tab === 'activity') {
-              await activityWarmup;
-              return route.fulfill({ status: 503 });
-            }
-            if (tab === 'rating') await ratingWarmup;
-            await route.fulfill({ contentType: 'text/html', body: fixture('ajax-' + tab) });
-            return;
-          }
+          if (request.headers().purpose === 'prefetch') warmRequests.push(tab);
           requests.push(tab);
+          if (tab === 'rating' && delayRating) {
+            delayRating = false;
+            await new Promise(resolve => setTimeout(resolve, 650));
+          }
           if (tab === 'activity' && failActivity) {
             failActivity = false;
             await failedActivity;
@@ -76,8 +72,6 @@ async function run() {
         if (!asset.startsWith(publicRoot + path.sep) || !fs.existsSync(asset) || !fs.statSync(asset).isFile()) return route.abort();
         return route.fulfill({ path: asset });
       });
-      const pathwayWarmup = page.waitForResponse(response => response.url().endsWith('/pathway')
-        && response.request().headers().purpose === 'prefetch', {timeout: 10000});
       await page.goto('http://localhost/my-tennis?player=1&tab=profile');
       const workspace = page.locator('[data-my-tennis-workspace]');
       const nav = workspace.getByRole('navigation', { name: 'My Tennis views' });
@@ -110,10 +104,17 @@ async function run() {
         navigationBounds = bounds;
       };
       await active('Profile');
-      await pathwayWarmup;
-      // Both earlier tabs are still waiting. Later tabs must already be able
-      // to load, without requiring either earlier tab to finish.
-      finishActivityWarmup();
+      assert.deepEqual(warmRequests, []);
+      await nav.getByRole('link', { name: 'Rating', exact: true }).click();
+      await workspace.getByText('The request took too long.', { exact: false }).waitFor();
+      assert.equal(await workspace.getAttribute('aria-busy'), null);
+      assert.equal(await workspace.locator('[data-my-tennis-tab-spinner]').count(), 0);
+      await workspace.getByRole('link', { name: 'Open full page' }).waitFor();
+      await active('Profile');
+      await workspace.getByRole('button', { name: 'Try again' }).click();
+      await active('Rating');
+      await nav.getByRole('link', { name: 'Profile', exact: true }).click();
+      await active('Profile');
       const activityTab = nav.getByRole('link', { name: 'Activity', exact: true });
       const activitySpinner = activityTab.locator('[data-my-tennis-tab-spinner]');
       await activityTab.click();
@@ -136,10 +137,6 @@ async function run() {
       await reminder.waitFor({ state: 'hidden' });
       for (const name of ['Rating', 'Results', 'Opponents', 'Tournament options']) {
         await nav.getByRole('link', { name, exact: true }).click();
-        if (name === 'Rating') {
-          assert.equal(await workspace.getAttribute('aria-busy'), 'true');
-          finishRatingWarmup();
-        }
         await active(name);
         if (name === 'Results') {
           const live = workspace.locator('[data-my-tennis-live-results]');
@@ -180,12 +177,12 @@ async function run() {
       await workspace.locator('#link-player-panel.show').waitFor();
       assert.equal(documentLoads, 1);
       assert.equal(ratingFragmentLoads, 0);
-      assert.deepEqual([...warmRequests].sort(), ['activity', 'opponents', 'pathway', 'rating', 'record']);
-      assert.deepEqual(requests, ['activity', 'activity', 'events', 'manage']);
+      assert.deepEqual(warmRequests, []);
+      assert.deepEqual(requests, ['rating', 'rating', 'activity', 'activity', 'events', 'record', 'opponents', 'pathway', 'manage']);
       await workspace.evaluate(element => element.dispatchEvent(new CustomEvent('my-tennis:invalidate', {bubbles: true})));
       await nav.getByRole('link', { name: 'Rating', exact: true }).click();
       await active('Rating');
-      assert.deepEqual(requests, ['activity', 'activity', 'events', 'manage', 'rating']);
+      assert.deepEqual(requests, ['rating', 'rating', 'activity', 'activity', 'events', 'record', 'opponents', 'pathway', 'manage', 'rating']);
       assert.deepEqual(errors, []);
       await page.close();
     }

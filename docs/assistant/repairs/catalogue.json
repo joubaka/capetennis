@@ -29,16 +29,26 @@
     },
     {
       "id": "RK-051",
-      "title": "Player Plus history selection is lost on reload or opens an unstyled page",
-      "scope": "Authorized My Tennis rating history, chart points, month and evidence filters, and browser navigation; saved data reads only.",
-      "symptoms": "A selected history month disappears on reload, sharing loses evidence filters, or a direct player rating link opens a fragment without the My Tennis layout.",
-      "cause": "Workspace reads omitted history filters, ordinary deep links returned a bare fragment, and successful fragment navigation did not synchronize browser history or the warmed workspace cache.",
-      "fix": "Use shared bounded filter validation in workspace and fragment reads. Ordinary rating requests render the full authorized workspace for the route-bound player. Fragment responses retain private no-store headers. Commit only successful selections to a server-generated workspace URL, preserve month, scope, scale and section, invalidate warmed navigation caches, and abort stale reads on unmount or Back/Forward. Preserve entitlement and relationship gates; never recalculate ratings on a page read.",
-      "verification": "On 2026-11-15 authenticated local browser checks verified chart selection, reload, scope, month and scale preservation, Back/Forward, keyboard activation, full-layout direct links and phone-width filtering. Independent checks passed 15 frontend tests and 39 isolated PHP tests with 543 assertions across navigation, history, snapshots, Top 10 and templates. Repair-library tests passed 3 tests with 349 assertions. These are local checks, not deployment or production evidence.",
+      "title": "My Tennis Rating tabs time out or lose history navigation",
+      "scope": "Authorized My Tennis tab loading, Rating history/filter navigation and saved-data reads only.",
+      "symptoms": "A selected history month disappears on reload, sharing loses evidence filters, or a direct player rating link opens a fragment without the My Tennis layout. Rating may also spin until a retry banner appears while the previous panel remains visible.",
+      "cause": "Workspace reads omitted history filters, ordinary deep links returned a bare fragment, and successful fragment navigation did not synchronize browser history or the warmed workspace cache. Eager five-tab prefetch competed with the selected request, which waited for speculative work; Rating also built unused global discovery lists.",
+      "fix": "Use shared bounded filter validation in workspace and fragment reads. Ordinary rating requests render the full authorized workspace for the route-bound player. Fragment responses retain private no-store headers. Commit only successful selections to a server-generated workspace URL, preserve month, scope, scale and section, invalidate visited-tab caches, and abort stale reads on unmount or Back/Forward. Preserve entitlement and relationship gates; never recalculate ratings on a page read. Cache successful visits without speculative all-tab reads. Selected navigation starts immediately with bounded timeout, explicit retry and a normal full-page fallback. Use canonical PlayerRatingTopTen::context metadata when discovery lists are not displayed; keep actual match comparison privacy projection unchanged.",
+      "verification": "On 2026-11-15 authenticated local browser checks verified chart selection, reload, scope, month and scale preservation, Back/Forward, keyboard activation, full-layout direct links and phone-width filtering. Independent checks passed 15 frontend tests and 39 isolated PHP tests with 543 assertions across navigation, history, snapshots, Top 10 and templates. Repair-library tests passed 3 tests with 349 assertions. These are local checks, not deployment or production evidence. The local loading follow-up independently passed 35 PHP tests and 572 assertions, with phone/desktop rendered browser checks for zero speculative requests, timeout cleanup, retry, full-page fallback, visited caching and retained history/live-results behavior. Screenshots alone did not establish the live failure cause.",
       "limits": "Guide only. Shared URLs do not grant player access. Do not alter ratings, source results, subscriptions, entitlements or publication to repair navigation. Preserve unrelated worktree changes and independently verify the target environment after an explicitly authorized release.",
       "assistant_action": "guide_only",
-      "sources": ["app/Http/Controllers/Frontend/MyTennisController.php", "docs/player-plus-launch.md"],
-      "tests": ["tests/Feature/MyTennisRatingNavigationTest.php", "tests/Frontend/my-tennis-rating-navigation.test.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+      "sources": [
+        "app/Http/Controllers/Frontend/MyTennisController.php",
+        "docs/player-plus-launch.md",
+        "app/Services/Performance/PlayerRatingTopTen.php"
+      ],
+      "tests": [
+        "tests/Feature/MyTennisRatingNavigationTest.php",
+        "tests/Frontend/my-tennis-rating-navigation.test.cjs",
+        "tests/Unit/Assistant/AssistantRepairLibraryTest.php",
+        "tests/Feature/PlayerRatingTopTenTest.php",
+        "tests/Browser/my-tennis-navigation.cjs"
+      ]
     },
     {
       "id": "RK-050",
@@ -446,9 +456,9 @@
       "title": "Saved pathway badge has no highlighted competition while an update is pending",
       "scope": "Player Plus personal pathway snapshot; saved comparable standard-ball rating positioning only.",
       "symptoms": "A saved numeric badge is visible but none of Wilson B, Wilson A or TSA is highlighted when progression is not assessed.",
-      "cause": "The visual current position used suggestedCompetition, which correctly becomes unavailable when the freshness assessment is pending.",
-      "fix": "Use PlayerPathwayService currentCompetition to position the latest saved comparable nonlocal standard-ball score against configured cutoffs. Render the current card with aria-current and latest saved badge wording. Keep suggestedCompetition, assessed and readiness subject to freshness. Retain matching player, publication validation, entitlement and comparability gates. Use the shared loading modal on pathway navigation with timeout and pageshow cleanup.",
-      "verification": "On 2026-11-03 local focused PHP checks passed 34 tests and 500 assertions; independent frontend checks passed seven tests. Coverage includes stale saved positioning, exactly one highlighted card, cutoff boundaries, invalid scores, local estimates, player mismatch and revoked evidence. Synthetic browser checks passed loading success/failure and navigation at 390/1440 pixels. No production verification.",
+      "cause": "The visual current position used suggestedCompetition, which correctly becomes unavailable when the freshness assessment is pending; a later change also suppressed all configured competition guidance.",
+      "fix": "Use PlayerPathwayService currentCompetition to position the latest saved comparable nonlocal standard-ball score against configured cutoffs. Show the stage prominently beside its latest saved CTR and render exactly one current card with aria-current and latest saved CTR wording. The Cape Tennis guide uses Wilson B at CTR 50 or below, Wilson A above 50 through 75, and TSA tournaments above 75, from config/pathway.php; these are not official entry or qualification rules. Keep suggestedCompetition, assessed and readiness subject to freshness. Retain matching player, publication validation, entitlement and comparability gates. Use the shared loading modal on pathway navigation with timeout and pageshow cleanup.",
+      "verification": "On 2026-11-15 restored configured rating-stage guidance and prominent saved-CTR stage display. PlayerPathwayTest and AssistantRepairLibraryTest passed 34 tests and 985 assertions in isolated SQLite. Coverage includes strict 50/75 boundaries, the 92.7 TSA case, exactly one highlighted stage matching the named summary, stale saved positioning, local/noncomparable estimates, player mismatch, revoked evidence, pending moves and unchanged participation records. PHP syntax checks passed. No production verification.",
       "limits": "Saved position is not a fresh progression recommendation or event eligibility. No rating recalculation, publication, ownership change or production action is authorized by this guide.",
       "assistant_action": "guide_only",
       "sources": ["app/Services/Performance/PlayerPathwayService.php", "app/Services/Performance/PlayerPathwayEvidence.php"],
@@ -780,10 +790,10 @@
       "title": "Stale score forms or rebuild reviews overwrite newer work",
       "scope": "Ordinary individual/team score save and clear routes, RR player assignments and destructive RR rebuilding.",
       "symptoms": "An old score form overwrites or clears a newer result; an omitted assignment revision bypasses checks; an old rebuild review removes newly saved fixtures or bookings.",
-      "cause": "Mutation paths lacked required score-content revisions or accepted omitted assignment revisions. Rebuilding checked membership without reviewing changed fixtures/bookings. Some clients refreshed tokens without refreshing displayed scores.",
-      "fix": "Compare the reviewed score fingerprint under existing event/draw/fixture locks on all supported writers; retain participant authorization independently. Require assignment revisions and a separate rebuild-state fingerprint covering fixture identities, results, settings and working/public bookings. Scope response tokens, update only visibly refreshed state and freeze each open draft token. Reject before scores, progression, refresh intent, audit or notifications. Retain drafts without silently upgrading tokens or retrying. Align served/resource clients. See DK-33 and docs/draw-workflow.md.",
-      "verification": "DrawScoreRevisionTest covers missing/stale tokens, same/different-winner corrections, clearing, participant/rule changes, draw isolation and unauthorized writes, published timed projections, team service/HTTP writes, changed rebuild bookings and omitted assignment revisions. Dedicated completion/revision tests passed 15 tests and 70 assertions on isolated SQLite; independent focused review passed 18 tests and 94 assertions. Browser revision/draft checks passed within 19 checks. Broader runs are reported separately.",
-      "limits": "Guide only. Revisions are concurrency checks, never access grants. Do not fabricate current tokens for unreviewed drafts, weaken protected history or replay rejected writes. Local evidence does not establish production deployment or actual MySQL concurrency.",
+      "cause": "Mutation paths lacked required score-content revisions or accepted omitted assignment revisions. Rebuilding checked membership without reviewing changed fixtures/bookings. Some clients refreshed tokens without refreshing displayed scores. On MySQL REPEATABLE READ, a lazy pre-lock relation read could preserve old score rows after waiting even when the current fixture row was locked.",
+      "fix": "Compare the reviewed score fingerprint under existing event/draw/fixture locks on all supported writers; retain participant authorization independently. Require assignment revisions and a separate rebuild-state fingerprint covering fixture identities, results, settings and working/public bookings. Scope response tokens, update only visibly refreshed state and freeze each open draft token. Reject before scores, progression, refresh intent, audit or notifications. Retain drafts without silently upgrading tokens or retrying. Align served/resource clients. See DK-33 and docs/draw-workflow.md. Resolve expected scope before the owned transaction and use current locking reads for compared result/participant relations, per-set persistence and final outcome reads. Parent-row locks alone do not refresh an earlier caller read view.",
+      "verification": "DrawScoreRevisionTest covers missing/stale tokens, same/different-winner corrections, clearing, participant/rule changes, draw isolation and unauthorized writes, published timed projections, team service/HTTP writes, changed rebuild bookings and omitted assignment revisions. Dedicated completion/revision tests passed 15 tests and 70 assertions on isolated SQLite; independent focused review passed 18 tests and 94 assertions. Browser revision/draft checks passed within 19 checks. Broader runs are reported separately. The MySQL follow-up reproduced an accepted stale same-winner direct-service correction before the fix. Ten actual lock-wait cases then passed on isolated MySQL 8.4.7 REPEATABLE READ, covering admin/API/team HTTP, lazy service and existing outer transactions for saves and clears; accepted score/audit state remained unchanged after rejection. The clean MySQL verification passed 29 tests and 458 assertions with no skipped tests, including all ten observed lock-contention cases.",
+      "limits": "Guide only. Revisions are concurrency checks, never access grants. Do not fabricate current tokens for unreviewed drafts, weaken protected history or replay rejected writes. Disposable local MySQL contention evidence does not establish production deployment or permit operations on application/shared databases.",
       "assistant_action": "guide_only",
       "sources": [
         "app/Services/Draw/IndividualScoreRevision.php",
@@ -796,7 +806,9 @@
         "tests/Feature/Draw/DrawScoreRevisionTest.php",
         "tests/Feature/Draw/RoundRobinRebuildSafetyTest.php",
         "tests/Frontend/roundrobin-score-session.test.cjs",
-        "tests/Browser/draw-workspace.cjs"
+        "tests/Browser/draw-workspace.cjs",
+        "tests/Feature/Draw/ScoreRevisionMySqlConcurrencyTest.php",
+        "tests/Support/score-revision-mysql-worker.php"
       ]
     }
   ]

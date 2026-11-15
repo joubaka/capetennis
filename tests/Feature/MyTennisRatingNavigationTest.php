@@ -17,6 +17,11 @@ class MyTennisRatingNavigationTest extends TestCase
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $this->mock(\App\Services\Performance\PlayerMatchInfluenceCalculator::class)->shouldNotReceive('calculate');
         $this->mock(\App\Services\Performance\PlayerMatchProgressCalculator::class)->shouldNotReceive('latest', 'pair');
+        $topTen = \Mockery::mock(\App\Services\Performance\PlayerRatingTopTen::class, [
+            app(\App\Services\Performance\PlayerRatingAccess::class), app(\App\Services\Performance\PlayerAbilitySnapshotStore::class),
+        ])->makePartial();
+        $topTen->shouldNotReceive('build');
+        $this->instance(\App\Services\Performance\PlayerRatingTopTen::class, $topTen);
     }
 
     private function member(): Player

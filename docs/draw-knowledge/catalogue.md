@@ -504,6 +504,12 @@ reviewed revision. RR rebuild requests additionally fingerprint fixture identiti
 results, settings and private/public bookings. See `DrawScoreRevisionTest` and the existing
 score, rebuild and browser regressions; execution evidence remains separate.
 
+MySQL REPEATABLE READ needs current locking result/participant reads, not just
+parent-row locks: a lazy relation can retain an old read view across a lock wait.
+`ScoreRevisionMySqlConcurrencyTest` covers same-winner stale saves and clears via
+HTTP and lazy/nested service callers using actual child-process lock waits in an
+explicitly isolated local database. See `docs/draw-workflow.md` and RK-055.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

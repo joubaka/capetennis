@@ -103,7 +103,7 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame(67.9, $summary['score']);
         $this->assertSame('standard', $summary['current_stage']);
         $this->assertSame(6, $summary['ownEvents']);
-        $this->assertSame('Competition level needs coach review', $summary['assessment_status']);
+        $this->assertSame('Wilson A suggested', $summary['assessment_status']);
         $this->assertNull($summary['target']);
         $this->assertFalse($summary['ready']);
         $this->assertFalse($summary['ratingMet']);
@@ -114,9 +114,9 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor());
         $response = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Ball level: Green/yellow ball');
         $this->assertMatchesRegularExpression('/data-pathway-top-badge>.*?aria-label="CTR 67\\.9 · Green\/yellow ball"/s', $response->getContent());
-        $response->assertDontSee('a starting stage must be recorded')->assertSee('Competition level needs coach review')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
+        $response->assertDontSee('a starting stage must be recorded')->assertSee('Wilson A suggested')->assertDontSee('Not completed')->assertDontSee('Current suitable competition');
         $response->assertSee('Suggested next step')->assertSee('All levels and targets')
-            ->assertSee('data-pathway-snapshot', false)->assertDontSee('latest saved badge')->assertSee('data-pathway-competition="Wilson A"', false);
+            ->assertSee('data-pathway-snapshot', false)->assertSee('Your rating stage · latest saved CTR')->assertSee('data-pathway-competition="Wilson A"', false);
         if (getenv('CT_PATHWAY_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/pathway-auto-qa.html'), $response->getContent());
         }
@@ -129,7 +129,7 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor());
         $history = ['reason' => null, 'pathway_metrics' => $this->metrics(40), 'series' => [], 'points' => []];
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
-        $overview = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('More info')->assertDontSee('through 75')->assertDontSee('through 85')->assertDontSee('data-pathway-stage-details=', false);
+        $overview = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('More info')->assertSee('through 75')->assertDontSee('through 85')->assertDontSee('data-pathway-stage-details=', false);
         $this->assertSame(5, substr_count($overview->getContent(), 'data-pathway-info="'));
         foreach (['red', 'orange', 'wilson-b', 'wilson-a', 'tsa'] as $stage) {
             $response = $this->get(route('my.tennis.pathway.info', ['player' => 1, 'stage' => $stage]))->assertOk()
@@ -141,9 +141,9 @@ class PlayerPathwayTest extends TestCase
                 foreach (PlayerPathwayService::EVENT_OPTIONS[$stage] as $option) $response->assertSee($option);
                 $response->assertSee($stage === 'red' ? '50 CTR and 3 published Red ball events' : '60 CTR and 3 published Orange ball events');
             } elseif ($stage === 'tsa') {
-                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('Competition-level thresholds have not been validated')->assertDontSee('A CTR of exactly 75');
+                $response->assertSee('https://www.satennis.co.za/', false)->assertSee('A CTR of exactly 75');
             } else {
-                $response->assertSee('CTR does not establish a division')->assertDontSee('Red ball · Fictional');
+                $response->assertSee('These bands are Cape Tennis guidance')->assertDontSee('Red ball · Fictional');
             }
         }
         $this->assertDatabaseCount('player_pathway_profiles', 0);
@@ -270,22 +270,22 @@ class PlayerPathwayTest extends TestCase
         }
     }
 
-    public function test_unvalidated_competition_cutoffs_never_assign_a_division_at_any_score_or_event_count(): void
+    public function test_competition_suggestions_use_strict_ctr_boundaries_without_an_event_count_gate(): void
     {
         $service = app(PlayerPathwayService::class);
         $player = Player::findOrFail(1);
-        foreach ([0, 49.9, 50.0, 50.1, 75.0, 75.1, 100] as $score) {
+        foreach ([0, 49.9, 50.0, 50.1, 75.0, 75.1, 92.7, 100] as $score) {
             foreach ([1, 3] as $count) {
                 $metrics = $this->metrics($score, ['red' => 0, 'orange' => 0, 'standard' => $count]);
                 $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
-                $this->assertNull($summary['suggestedDivision']);
-                $this->assertNull($summary['suggestedCompetition']);
-                $this->assertNull($summary['currentCompetition']);
+                $this->assertSame($score > 50 ? 'A' : 'B', $summary['suggestedDivision']);
+                $this->assertSame($score > 75 ? 'TSA tournaments' : ($score > 50 ? 'Wilson A' : 'Wilson B'), $summary['suggestedCompetition']);
+                $this->assertSame($summary['suggestedCompetition'], $summary['currentCompetition']);
                 $this->assertNull($summary['target']);
                 $this->assertNull($summary['benchmark_division']);
                 $this->assertSame('standard', $summary['current_stage']);
                 $this->assertNull($summary['division']);
-                $this->assertFalse($summary['assessed']);
+                $this->assertTrue($summary['assessed']);
                 $this->assertFalse($summary['ready']);
             }
         }
@@ -308,13 +308,13 @@ class PlayerPathwayTest extends TestCase
         $summary = app(PlayerPathwayService::class)->summary(Player::findOrFail(1), ['pathway_metrics' => $metrics]);
         $this->assertSame('standard', $summary['current_stage']);
         $this->assertSame(67.3, $summary['score']);
-        $this->assertNull($summary['suggestedCompetition']);
-        $this->assertStringContainsString('Competition-level thresholds have not been validated', $summary['reason']);
+        $this->assertSame('Wilson A', $summary['suggestedCompetition']);
+        $this->assertStringContainsString('Green/Yellow CTR of 67.3', $summary['reason']);
         $history = ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Competition level needs coach review')
-            ->assertSee('Latest saved rating shown while the nightly update is due')->assertDontSee('progress is not assessed');
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Wilson A suggested')
+            ->assertSee('Assessment uses the latest saved rating')->assertDontSee('progress is not assessed');
         foreach (['unavailable', 'local', 'not_comparable'] as $state) {
             $changed = $metrics;
             if ($state === 'unavailable') $changed['assessment_available'] = false;
@@ -404,10 +404,10 @@ class PlayerPathwayTest extends TestCase
             ->assertDontSee('points to the benchmark')
             ->assertSee('Wilson A')->assertSee(route('my.tennis.pathway', $player), false);
         $metrics['stale'] = true;
-        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Chat with your coach about Wilson B, Wilson A and TSA event options.')
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('When your current comparable rating is ready')
             ->assertDontSee('2.1 points to the benchmark')->assertDontSee('Aim for');
         $metrics = $this->metrics(75, ['red' => 0, 'orange' => 0, 'standard' => 3]);
-        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Chat with your coach about Wilson B, Wilson A and TSA event options.')
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'activity']))->assertOk()->assertSee('Chat with your coach about which Wilson A events would suit you.')
             ->assertDontSee('Benchmark achieved:')->assertDontSee('points to the benchmark');
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
             ->assertDontSee('data-overview-development-comment', false)->assertDontSee('Benchmark achieved:');
@@ -511,7 +511,7 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame('Wilson events · Academy events · Regional trial events · TSA Rainbow Kids events · School leagues', $summary['competition']);
         $this->assertNull($summary['division']);
         $this->assertNull($summary['target']);
-        $this->assertSame('Competition level needs coach review', $summary['assessment_status']);
+        $this->assertSame('Wilson A suggested', $summary['assessment_status']);
         $this->assertFalse($summary['ready']);
         $this->assertSame($before, PlayerPathwayProfile::firstOrFail()->getAttributes());
         $this->assertDatabaseCount('player_pathway_achievements', 0);
@@ -535,13 +535,13 @@ class PlayerPathwayTest extends TestCase
         $service->recordStage($player, $this->actor(), ['stage' => 'standard', 'wilson_division' => 'B']);
         $metrics = $this->metrics(67.9, ['red' => 0, 'orange' => 0, 'standard' => 6]);
         $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
-        $this->assertSame('Competition level needs coach review', $summary['assessment_status']);
-        $this->assertSame('Competition level needs coach review', $summary['stageProgress']['standard']['status']);
+        $this->assertSame('Wilson A suggested', $summary['assessment_status']);
+        $this->assertSame('Wilson A suggested', $summary['stageProgress']['standard']['status']);
         $this->assertSame('Not assessed', $summary['stageProgress']['red']['status']);
         $this->assertTrue($summary['eventsMet']);
         $this->assertFalse($summary['ratingMet']);
         $metrics['stage_ratings']['standard']['score'] = 70;
-        $this->assertNull($service->summary($player, ['pathway_metrics' => $metrics])['suggestedDivision']);
+        $this->assertSame('A', $service->summary($player, ['pathway_metrics' => $metrics])['suggestedDivision']);
         $this->assertNull($service->summary($player, ['pathway_metrics' => $metrics])['target']);
         foreach (['stale', 'local', 'disconnected'] as $state) {
             $pending = $metrics;
@@ -550,36 +550,36 @@ class PlayerPathwayTest extends TestCase
             if ($state === 'disconnected') $pending['stage_ratings']['standard']['comparable'] = false;
             $summary = $service->summary($player, ['pathway_metrics' => $pending]);
             $this->assertSame(70.0, $summary['badge']['score']);
-            $this->assertSame('Competition level needs coach review', $summary['assessment_status']);
-            $this->assertSame('Competition level needs coach review', $summary['stageProgress']['standard']['status']);
+            $this->assertSame('Not assessed', $summary['assessment_status']);
+            $this->assertSame('Not assessed', $summary['stageProgress']['standard']['status']);
             $this->assertFalse($summary['ready']);
         }
         $service->recordStage($player, $this->actor(), ['stage' => 'standard']);
         $summary = $service->summary($player, ['pathway_metrics' => $metrics]);
-        $this->assertSame('Competition level needs coach review', $summary['assessment_status']);
-        $this->assertNull($summary['suggestedDivision']);
+        $this->assertSame('Wilson A suggested', $summary['assessment_status']);
+        $this->assertSame('A', $summary['suggestedDivision']);
         $this->assertNull($summary['benchmark_division']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
     }
 
-    public function test_saved_badges_never_highlight_unvalidated_competition_levels(): void
+    public function test_stale_saved_badge_highlights_its_competition_without_assessing_progress(): void
     {
         $service = app(PlayerPathwayService::class); $player = Player::findOrFail(1);
         $metrics = $this->metrics(67.4, ['red' => 0, 'orange' => 0, 'standard' => 6]);
         $metrics['stale'] = true; $metrics['assessment_available'] = false;
         $history = ['reason' => null, 'pathway_metrics' => $metrics];
         $summary = $service->summary($player, $history);
-        $this->assertNull($summary['currentCompetition']);
+        $this->assertSame('Wilson A', $summary['currentCompetition']);
         $this->assertNull($summary['suggestedCompetition']);
         $this->assertFalse($summary['assessed']);
         $this->assertFalse($summary['ready']);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
-        $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Competition level needs coach review')->assertSee('competition-level thresholds have not been validated')->getContent();
-        $this->assertStringNotContainsString('data-pathway-competition="Wilson A"  aria-current="step"', $html);
+        $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Competition recommendation uncertain')->assertSee('The saved rating needs an update')->getContent();
+        $this->assertStringContainsString('data-pathway-competition="Wilson A"  aria-current="step"', $html);
         preg_match_all('/<li\b[^>]*aria-current="step"[^>]*>/', $html, $currentCards);
-        $this->assertCount(0, $currentCards[0]);
-        $this->assertStringNotContainsString('latest saved badge', $html);
+        $this->assertCount(1, $currentCards[0]);
+        $this->assertStringContainsString('Your rating stage · latest saved CTR', $html);
         foreach ([['local' => true], ['comparable' => false], ['score' => null]] as $change) {
             $invalid = $metrics;
             $invalid['stage_ratings']['standard'] = array_replace($invalid['stage_ratings']['standard'], $change);
@@ -589,12 +589,32 @@ class PlayerPathwayTest extends TestCase
         $this->assertNull($service->summary($player, ['pathway_metrics' => array_replace($metrics, ['player_id' => 2])])['currentCompetition']);
         foreach ([0 => 'Wilson B', 50 => 'Wilson B', 75 => 'Wilson A', 100 => 'TSA tournaments'] as $score => $competition) {
             $boundary = $metrics; $boundary['stage_ratings']['standard']['score'] = $score;
-            $this->assertNull($service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+            $this->assertSame($competition, $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
         }
         $boundary['stage_ratings']['standard']['score'] = 75.1;
-        $this->assertNull($service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+        $this->assertSame('TSA tournaments', $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
         $boundary['stage_ratings']['standard']['score'] = 50.1;
-        $this->assertNull($service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+        $this->assertSame('Wilson A', $service->summary($player, ['pathway_metrics' => $boundary])['currentCompetition']);
+    }
+
+    public function test_rating_stage_is_named_and_matches_the_single_highlighted_card(): void
+    {
+        $this->actingAs($this->actor());
+        $metrics = $this->metrics(50, ['red' => 0, 'orange' => 0, 'standard' => 1]);
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturnUsing(function () use (&$metrics) {
+            return ['reason' => null, 'pathway_metrics' => $metrics, 'series' => [], 'points' => []];
+        });
+        foreach ([[50, 'Wilson B'], [50.1, 'Wilson A'], [75, 'Wilson A'], [75.1, 'TSA tournaments'], [92.7, 'TSA tournaments']] as [$score, $stage]) {
+            $metrics['stage_ratings']['standard']['score'] = $score;
+            $html = $this->get(route('my.tennis.pathway', 1))->assertOk()
+                ->assertSee('Your tournament stage')->assertSee('Cape Tennis rating guide')->getContent();
+            $this->assertStringContainsString('data-pathway-applicable-stage>'.$stage.'</p>', $html);
+            $this->assertMatchesRegularExpression('/data-pathway-competition="'.preg_quote($stage, '/').'"[^>]*aria-current="step"/', $html);
+            preg_match_all('/<li\b[^>]*aria-current="step"[^>]*>/', $html, $cards);
+            $this->assertCount(1, $cards[0]);
+        }
+        $this->assertDatabaseCount('player_pathway_profiles', 0);
+        $this->assertDatabaseCount('player_pathway_achievements', 0);
     }
 
     public function test_manual_verification_is_gone_and_existing_audit_records_are_not_progress(): void
@@ -664,10 +684,10 @@ class PlayerPathwayTest extends TestCase
         $this->assertSame('standard', $summary['current_stage']);
         $this->assertSame('B', $summary['division']);
         $this->assertNull($summary['target']);
-        $this->assertNull($summary['suggestedDivision']);
+        $this->assertSame('A', $summary['suggestedDivision']);
         $this->assertFalse($summary['ready']);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
-        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Competition level needs coach review')->assertSee('Ball level: Green/yellow ball')
+        $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Wilson A suggested')->assertSee('Ball level: Green/yellow ball')
             ->assertDontSee('data-pathway-form', false);
         $this->assertDatabaseHas('player_pathway_profiles', ['player_id' => 1, 'stage' => 'red', 'wilson_division' => 'B']);
         $this->assertDatabaseCount('player_pathway_achievements', 0);
@@ -771,7 +791,7 @@ class PlayerPathwayTest extends TestCase
         $this->actingAs($this->actor(10, false));
         $page = $this->get(route('my.tennis.pathway', 1))->assertOk()
             ->assertSee('data-player-pathway-page', false)->assertSee('data-pathway-snapshot', false)
-            ->assertSee('Ball level: Green/yellow ball')->assertSee('Competition level needs coach review')->assertDontSee('latest saved badge')
+            ->assertSee('Ball level: Green/yellow ball')->assertSee('Your rating stage · latest saved CTR')
             ->assertSeeInOrder(['Red ball', 'Academy events', 'TSA Rainbow Kids events', 'School leagues', 'Orange ball', 'U/9 B events', 'Academy events', 'TSA Rainbow Kids events', 'School leagues', 'data-pathway-competition="Wilson B"', 'data-pathway-competition="Wilson A"', 'data-pathway-competition="TSA tournaments"'], false)
             ->assertSee(e(route('my.tennis', ['player' => 1, 'tab' => 'rating'])), false)
             ->assertDontSee('data-pathway-form', false);

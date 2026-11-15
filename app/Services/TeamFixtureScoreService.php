@@ -38,15 +38,21 @@ class TeamFixtureScoreService
      */
     public function save(TeamFixture $fixture, array $scores): void
     {
+        // Resolve the expected scope before starting our transaction. A lazy
+        // relation read before the event lock would pin an old InnoDB read view.
+        $eventId = (int) $fixture->draw->event_id;
         $readyToCommit = false;
-        $persist = function () use ($fixture, $scores, &$readyToCommit): void {
-            $event = \App\Models\Event::whereKey($fixture->draw->event_id)->lockForUpdate()->firstOrFail();
+        $persist = function () use ($fixture, $scores, $eventId, &$readyToCommit): void {
+            $event = \App\Models\Event::whereKey($eventId)->lockForUpdate()->firstOrFail();
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
             abort_if((int) $draw->event_id !== (int) $event->id, 409, 'Fixture event changed.');
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
-            $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            $current = TeamFixture::withoutEagerLoads()->whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
             $current->setRelation('draw', $draw);
+            $current->setRelation('teamTie', $tie);
+            $current->setRelation('teamResults', $current->teamResults()->orderBy('id')->lockForUpdate()->get());
+            $current->setRelation('fixturePlayers', $current->fixturePlayers()->orderBy('id')->lockForUpdate()->get());
             app(TeamParticipantHistoryService::class)->assertRevision($current, (int) $draw->event_id, $scores['participant_revision'] ?? null);
             $this->assertScoreRevision($current, $scores['score_revision'] ?? null);
             abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and playoff qualifiers before play; round-robin results are frozen after playoff qualification.');
@@ -73,6 +79,7 @@ class TeamFixtureScoreService
                 $results = TeamFixtureResult::where('team_fixture_id', $fixture->id)
                     ->where('set_nr', $setNumber)
                     ->orderBy('id')
+                    ->lockForUpdate()
                     ->get();
 
                 if ($home === null && $away === null) {
@@ -95,7 +102,7 @@ class TeamFixtureScoreService
                 }
             }
 
-            $current->load('teamResults');
+            $current->setRelation('teamResults', $current->teamResults()->orderBy('id')->lockForUpdate()->get());
             $outcome = $canonical ? app(TeamRubberResultService::class)->outcome($current) : null;
             $current->update(['match_status' => !$canonical || $outcome['complete'] ? FixtureState::STATUS_COMPLETED
                 : ($current->teamResults->isEmpty() ? FixtureState::STATUS_PENDING : FixtureState::STATUS_PARTIAL)]);
@@ -122,14 +129,18 @@ class TeamFixtureScoreService
 
     public function delete(TeamFixture $fixture, mixed $scoreRevision = null): void
     {
-        DB::transaction(function () use ($fixture, $scoreRevision): void {
-            $event = \App\Models\Event::whereKey($fixture->draw->event_id)->lockForUpdate()->firstOrFail();
+        $eventId = (int) $fixture->draw->event_id;
+        DB::transaction(function () use ($fixture, $scoreRevision, $eventId): void {
+            $event = \App\Models\Event::whereKey($eventId)->lockForUpdate()->firstOrFail();
             $draw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
             abort_if((int) $draw->event_id !== (int) $event->id, 409, 'Fixture event changed.');
             $tie = $fixture->team_tie_id ? \App\Models\TeamTie::whereKey($fixture->team_tie_id)->lockForUpdate()->firstOrFail() : null;
-            $current = TeamFixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
+            $current = TeamFixture::withoutEagerLoads()->whereKey($fixture->id)->lockForUpdate()->firstOrFail();
             abort_if($current->draw_id !== $draw->id || $current->team_tie_id !== $tie?->id || ($tie && $tie->draw_id !== $draw->id), 409, 'Fixture relationships changed.');
             $current->setRelation('draw', $draw);
+            $current->setRelation('teamTie', $tie);
+            $current->setRelation('teamResults', $current->teamResults()->orderBy('id')->lockForUpdate()->get());
+            $current->setRelation('fixturePlayers', $current->fixturePlayers()->orderBy('id')->lockForUpdate()->get());
             $this->assertScoreRevision($current, $scoreRevision);
             abort_if($draw->isPlacementDraft() || ($draw->team_scoring_rules['undecided'] ?? false) || !empty($draw->team_draw_selection['competition']['playoff_draw_id']), 409, 'Confirm scoring and qualifiers before play; qualified round-robin results are frozen.');
             $canonical = $draw->team_scoring_rules !== null && $tie !== null;

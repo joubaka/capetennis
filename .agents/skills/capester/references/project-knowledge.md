@@ -37,11 +37,14 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Pathway assessments must use the relevant ball-level score and current
   comparability/freshness policy; do not infer strength from age or badge color.
   Find the current pathway service and focused tests before adjusting thresholds.
-- A comparable CTR is not externally calibrated Wilson/TSA readiness. Keep
-  named competition recommendations withheld and offer coach-discussion options
-  until a reviewed calibration policy exists. Preserve Red/Orange targets,
-  ball-level evidence and saved participation metadata; no arbitrary new
-  opponent-count or confidence threshold substitutes for that validation.
+- By explicit product decision, Plus tournament options map a comparable,
+  nonlocal Green/Yellow CTR to Wilson B at 50 or below, Wilson A above 50
+  through 75, and TSA above 75, using configured cutoffs. These are Cape Tennis
+  guidance bands, not official qualification or externally calibrated readiness.
+  Saved-stage positioning may survive a pending refresh with explicit saved
+  wording; fresh recommendations retain assessment freshness checks. Preserve
+  Red/Orange targets, player/publication gates and pending-move handling. Verify
+  `PlayerPathwayService`, `PlayerPathwayTest` and RK-013 before changing this map.
 - The separate match-influence tool is an offline sensitivity estimate on saved Overall CTR:
   baseline minus a canonical refit omitting one exact eligible match at the same
   date. Preserve component, reference, backbone and connection comparability;
@@ -120,6 +123,8 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   `DrawPhaseOneReadinessTest` and `DrawScoreRevisionTest` before changing these
   boundaries; score-content, participant, assignment and rebuild-state revisions
   have different scopes and must not be substituted for each other.
+  MySQL current-read and real-contention regression details are in the same guide;
+  parent locks alone do not refresh an earlier REPEATABLE READ relationship snapshot.
 - Public draw cards, headers and fixture empty states share filtered published
   schedule availability, dates and venues. Configured fallback venues are planned;
   the earliest visible match is not necessarily the historical draw start.
@@ -169,11 +174,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   transient rating and pathway reads when leaving a view.
   Render the initial authorized Rating panel with its tab response. Use the
   rating fragment endpoint for subsequent filters and refreshes.
+  Cache visited tabs without speculative all-tab fetches; selected navigation must
+  not wait for a background Rating request. Rating uses lightweight canonical
+  `PlayerRatingTopTen::context()` when discovery lists are not displayed; retain
+  the separate match-player privacy projection. See repair RK-051 and
+  `docs/player-plus-launch.md` for timeout/retry and full-page fallback checks.
 - Rating history month, evidence scope, chart scale and section must survive
   reload, shared links and browser Back/Forward. Validate the same filters for
   workspace and fragment reads; ordinary rating deep links render the full
   authorized workspace. Commit URL changes only after a successful fragment
-  response and invalidate warmed workspace caches when rating state changes.
+  response and invalidate visited-tab caches when rating state changes.
 - For AJAX/search failures inspect the actual request, origin, response, session
   and authorization. Same-origin URLs address a failure mode, but do not prove
   the cause of a live screenshot. Test keyboard and phone interactions.

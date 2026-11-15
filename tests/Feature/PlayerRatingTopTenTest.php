@@ -10,6 +10,27 @@ use Tests\TestCase;
 
 class PlayerRatingTopTenTest extends TestCase
 {
+    public function test_context_preserves_member_scope_without_loading_snapshots_or_participants(): void
+    {
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allowsDiscovery')->once()->andReturnTrue();
+        $access->shouldReceive('allows')->once()->andReturnTrue();
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldNotReceive('current');
+        $user = \Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
+        $player = new \App\Models\Player(['dateOfBirth' => '2014-02-01', 'gender' => 'Male']);
+        DB::enableQueryLog();
+        $result = app(PlayerRatingTopTen::class)->context($user, $player,
+            ['rating_age' => 'u18', 'rating_gender' => 'female', 'rating_level' => 'red', 'rating_per_page' => 500]);
+        $this->assertTrue($result['visible']);
+        $this->assertFalse($result['can_browse']);
+        $this->assertSame($result['selected_age'], $result['filters']['rating_age']);
+        $this->assertSame('overall', $result['filters']['rating_level']);
+        $this->assertSame(10, $result['filters']['rating_per_page']);
+        $this->assertSame([], $result['lists']);
+        $this->assertSame([], DB::getQueryLog());
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

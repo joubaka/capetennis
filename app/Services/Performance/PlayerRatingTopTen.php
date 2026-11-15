@@ -28,7 +28,8 @@ class PlayerRatingTopTen
         return $this->project($user, $selected, [], $ids)['match_players'] ?? [];
     }
 
-    private function project(?User $user, ?Player $selected, array $filters, ?array $matchIds = null): array
+    /** Filter and entitlement context without loading ratings or discovering participants. */
+    public function context(?User $user, ?Player $selected = null, array $filters = []): array
     {
         $result = ['visible' => $this->access->allowsDiscovery($user), 'lists' => [], 'as_of' => null, 'stale' => false, 'reason' => null];
         $result['can_browse'] = $user?->hasRole('super-user') === true;
@@ -57,6 +58,15 @@ class PlayerRatingTopTen
         }
         $result += ['filters' => ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level, 'rating_per_page' => $perPage],
             'age_options' => $ageOptions, 'summary' => [], 'selected_age' => $selectedAge];
+        return $result;
+    }
+
+    private function project(?User $user, ?Player $selected, array $filters, ?array $matchIds = null): array
+    {
+        $result = $this->context($user, $selected, $filters);
+        $today = CarbonImmutable::today('Africa/Johannesburg');
+        $selectedAge = $result['selected_age'];
+        ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level, 'rating_per_page' => $perPage] = $result['filters'];
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
         foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $key => $label) {

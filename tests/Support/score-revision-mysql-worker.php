@@ -17,6 +17,9 @@ if (getenv('APP_ENV') !== 'testing' || getenv('DB_CONNECTION') !== 'mysql'
 require dirname(__DIR__, 2).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+$app->make(Illuminate\Contracts\Debug\ExceptionHandler::class)->reportable(function (Throwable $exception): void {
+    fwrite(STDERR, get_class($exception).': '.$exception->getMessage()."\n");
+});
 
 try {
     if (config('database.default') !== 'mysql'
@@ -30,6 +33,7 @@ try {
     }
     config(['mail.default' => 'array', 'cache.default' => 'array', 'session.driver' => 'array']);
     Illuminate\Support\Facades\DB::statement('SET SESSION innodb_lock_wait_timeout = 15');
+    Illuminate\Support\Facades\DB::statement('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ');
     $input = json_decode(stream_get_contents(STDIN), true, flags: JSON_THROW_ON_ERROR);
     $actor = App\Models\User::findOrFail($input['actor_id']);
     Illuminate\Support\Facades\Auth::guard()->setUser($actor);
@@ -37,13 +41,21 @@ try {
     echo json_encode(['connection_id' => $connectionId])."\n";
     flush();
 
-    if ($input['client'] === 'team_service') {
+    if (in_array($input['client'], ['team_service', 'team_outer'], true)) {
         // Exercise the service with no preloaded draw/result relations as well as HTTP clients.
-        $fixture = App\Models\TeamFixture::withoutEagerLoads()->findOrFail($input['fixture_id']);
-        $service = app(App\Services\TeamFixtureScoreService::class);
-        if ($input['operation'] === 'delete') $service->delete($fixture, $input['revision']);
-        else $service->save($fixture, ['set1_home' => 6, 'set1_away' => 3, 'score_revision' => $input['revision']]);
+        $outer = $input['client'] === 'team_outer';
+        if ($outer) Illuminate\Support\Facades\DB::beginTransaction();
+        try {
+            $fixture = App\Models\TeamFixture::withoutEagerLoads()->findOrFail($input['fixture_id']);
+            if ($outer) $fixture->teamResults()->get(); // Establish the caller's old consistent read view.
+            $service = app(App\Services\TeamFixtureScoreService::class);
+            if ($input['operation'] === 'delete') $service->delete($fixture, $input['revision']);
+            else $service->save($fixture, ['set1_home' => 6, 'set1_away' => 3, 'score_revision' => $input['revision']]);
+        } finally {
+            if ($outer) while (Illuminate\Support\Facades\DB::transactionLevel() > 0) Illuminate\Support\Facades\DB::rollBack();
+        }
         $status = 200;
+        $message = '';
     } else {
         $team = $input['client'] === 'team_http';
         $delete = $input['operation'] === 'delete';
@@ -60,9 +72,13 @@ try {
         $kernel = $app->make(Illuminate\Contracts\Http\Kernel::class);
         $response = $kernel->handle($request);
         $status = $response->getStatusCode();
+        $message = json_decode($response->getContent(), true)['message'] ?? '';
+        if ($status >= 500 && $response->exception) {
+            fwrite(STDERR, get_class($response->exception).': '.$response->exception->getMessage()."\n");
+        }
         $kernel->terminate($request, $response);
     }
-    echo json_encode(['status' => $status])."\n";
+    echo json_encode(['status' => $status, 'message' => $message])."\n";
 } catch (Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
     echo json_encode(['status' => $exception->getStatusCode(), 'message' => $exception->getMessage()])."\n";
 } catch (Throwable $exception) {

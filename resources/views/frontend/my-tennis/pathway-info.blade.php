@@ -17,7 +17,7 @@
     <p>These targets look at your latest {{ \App\Services\Performance\AllAgeRatingModel::WINDOW_DAYS }} days of results. Progress can change as that window moves, and playing at a higher level does not complete earlier stages.</p>
   @elseif($infoStage === 'tsa')
     <p>Thinking about TSA tournaments? Chat with your coach about which events would suit you, then check their age, entry and nomination requirements.</p>
-    <p>CTR alone does not establish readiness for a TSA event. Competition-level thresholds have not been validated; review suitability with your coach and the organiser.</p>
+    <p>The Cape Tennis guide suggests exploring TSA tournaments with a Green/Yellow CTR above {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }}. A CTR of exactly {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }} remains in the Wilson A band. Review suitability with your coach and the organiser.</p>
     <p>CTR is not a TSA entry minimum. Check each event’s current entry, ranking and selection requirements.</p>
     <h6 class="small fw-bold">Junior tournament guide</h6>
     <p class="small text-muted">Formats vary by event. Check the current TSA calendar and the event’s SportyHQ listing for formats, age groups, dates, sponsors, ranking points and entry requirements.</p>
@@ -41,8 +41,8 @@
     <p>Allow roughly 2–6 days, depending on the event and draw: around 2–3 days for a 16-player draw, 4–5 days for a 32-player draw, and 6 days for longer events with 32-, 64- or 128-player draws. Confirm the actual schedule before making travel plans.</p>
     <a href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">SA Tennis · TSA events <span class="visually-hidden">(opens in a new tab)</span></a>
   @else
-    <p>Wilson A and B use the same Green/Yellow rating and event history. Those results can inform a conversation with your coach, but CTR does not establish a division.</p>
-    <p>Competition-level thresholds have not been validated. Ask your coach and the organiser which division and event would suit your current play.</p>
+    <p>Wilson A and B use the same Green/Yellow rating and event history. The Cape Tennis guide uses CTR {{ number_format($pathway['wilsonCutoff'] ?? config('pathway.wilson_a_above'), 0) }} or below for Wilson B, above {{ number_format($pathway['wilsonCutoff'] ?? config('pathway.wilson_a_above'), 0) }} through {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }} for Wilson A, and above {{ number_format($pathway['tsaCutoff'] ?? config('pathway.tsa_above'), 0) }} for TSA tournaments.</p>
+    <p>These bands are Cape Tennis guidance, not official qualification or selection rules. Check division suitability with your coach and the organiser.</p>
     <h6 class="small fw-bold">Events to explore</h6>
     <ul class="ps-3">@foreach(\App\Services\Performance\PlayerPathwayService::EVENT_OPTIONS['standard'] as $option)<li>{{ $option }}</li>@endforeach</ul>
   @endif
