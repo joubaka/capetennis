@@ -76,7 +76,7 @@ class CavaliersRosterReportEvidenceTest extends TestCase
         $html = view('backend.nominations.cavaliers-report-pdf', compact('report'))->render();
         $this->assertSame(1, substr_count($html, 'Selected Only Name'));
         $this->assertStringContainsString('Next five outside the nomination list', $html);
-        $this->assertStringContainsString('Inter-Districts players outside top 32', $html);
+        $this->assertStringContainsString('Inter-Districts players outside the selected list', $html);
         $this->assertStringContainsString('Lost: Opponent Alpha (6–1, 6–2) · No. 3', $html);
         $this->assertStringContainsString('<td>3, 4</td>', $html);
         $this->assertStringNotContainsString('No. 99', $html);

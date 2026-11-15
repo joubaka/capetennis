@@ -59,7 +59,7 @@ tr { page-break-inside: avoid; }
 </tbody></table>
 @endforeach
 <div class="note muted">Review order follows the source band/results order, then the finalized Platteland additions. Selection credit is separate from played wins. Scores retain the source fixture's home-away order. Playing numbers come from match evidence; a roster place does not prove a match was played.</div>
-@foreach (['next_candidates' => 'Next five outside the nomination list', 'inter_districts' => 'Inter-Districts players outside top 32'] as $group => $heading)
+@foreach (['next_candidates' => 'Next five outside the nomination list', 'inter_districts' => 'Inter-Districts players outside the selected list'] as $group => $heading)
 <h3>{{ $heading }}</h3>
 @if ($group === 'inter_districts')<p class="muted">Additional eligible Inter-Districts candidates, including reserves and declines. Candidates explained above are not repeated.</p>
 @else<p class="muted">Next available candidates in review order, excluding selected players, saved reserves and declines.</p>@endif

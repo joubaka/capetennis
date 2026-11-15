@@ -27,6 +27,13 @@ class CavaliersTrialRosterController extends Controller
 
     public const RESERVE_LIMIT = 5;
 
+    public static function selectedLimit(CategoryEvent $division): int
+    {
+        // Approved additional nomination for this event's U/13 Girls division only.
+        return (int) $division->event_id === 252 && (int) $division->id === 2157
+            ? 33 : self::SELECTED_LIMIT;
+    }
+
     public function show(Request $request, Event $event, CategoryEvent $categoryEvent): JsonResponse
     {
         $this->authorizeDivision($request, $event, $categoryEvent);
@@ -135,7 +142,7 @@ class CavaliersTrialRosterController extends Controller
         $this->authorizeDivision($request, $event, $categoryEvent);
         $data = $request->validate([
             'revision' => 'present|nullable|uuid',
-            'selected' => 'present|array|list|max:'.self::SELECTED_LIMIT,
+            'selected' => 'present|array|list|max:'.self::selectedLimit($categoryEvent),
             'reserves' => 'present|array|list|max:'.self::RESERVE_LIMIT,
             'selected.*' => 'required|integer|min:1',
             'reserves.*' => 'required|integer|min:1',
@@ -213,6 +220,8 @@ class CavaliersTrialRosterController extends Controller
                 'The saved draft changed. Reload it before publishing.');
             $selected = json_decode($draft->selected, true, flags: JSON_THROW_ON_ERROR);
             abort_if($selected === [], 422, 'Select and save at least one player before publishing.');
+            abort_if(count($selected) > self::selectedLimit($division), 422,
+                'The saved draft exceeds this division\'s nomination limit.');
             abort_if($existing->contains(fn (EventNomination $nomination) => (int) $nomination->event_id !== (int) $event->id),
                 422, 'A nomination belongs to a different event. Review this division before publishing.');
 

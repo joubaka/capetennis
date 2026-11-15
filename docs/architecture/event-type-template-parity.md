@@ -21,7 +21,7 @@ can have a team base family and still requires its dedicated policy.
 | Interpro (legacy ID 13) | Region/team picker, mobile/desktop draws, venue and draw scoring, clothing orders, event documents, published fixture times | `EventPagePerformanceTest`, `InterproEventScoringControlsTest`, `InterproDrawGenerationPreservationTest` |
 | Interprovincial Trials | Exact published nomination scope, sponsorship without player linking, payer ownership, protected checkout restart, linked-account decline, programme, final squad participation and private EFT proof | `InterprovincialTrialInvitationWorkflowTest`, `InterprovincialTrialPaymentLifecycleTest`, `TrialParticipationPaymentsTest`, `InterprovincialTrialBackendParityTest`, `InterprovincialTrialDrawBackendSecurityTest` |
 | Masters | Qualification, ranking order, invitations/reserves, deadlines, payment ownership and results publication | `MastersQualificationReviewTest`, `MastersRegistrationBoundaryTest`, `MastersPaymentReconciliationTest`, `MastersEntriesAlignmentTest` |
-| Cavaliers Trials (legacy ID 5) | Published category nominations and existing registration/draw behavior. The private category roster draft holds up to 32 selected players and five ordered reserves independently of published nominations. | `PublicEventPresentationTest`, `EventTypeRenderedJourneyTest`, `CavaliersTrialRosterDraftTest` |
+| Cavaliers Trials (legacy ID 5) | Published category nominations and existing registration/draw behavior. The private category roster draft holds up to 32 selected players and five ordered reserves independently of published nominations. Event 252's U/13 Girls division (2157) has an approved limit of 33; other divisions retain 32. Both draft saving and publication enforce the division limit, and the editor receives the same server-defined limit. | `PublicEventPresentationTest`, `EventTypeRenderedJourneyTest`, `CavaliersTrialRosterDraftTest` |
 | Parent–Child Doubles (legacy ID 9) | Existing pairing/registration behavior, information, documents and results | `PublicEventPresentationTest`; extend paired registration coverage before migrating its specialized sections |
 | Camp / unknown type | Existing generic information, documents and published results; do not invent registration capabilities | `PublicEventPresentationTest`; explicit resolver matrix |
 | Overberg Trials view | Existing delegation to the default public template; do not assume a persisted workflow identity from the filename | Explicit template resolution/delegation coverage |
@@ -107,7 +107,7 @@ chosen existing accounts; it does not publish nominations or grant event access.
 Its combined PDF lists selected players and up to five ordered reserves, followed
 by brief explanations for the next five available candidates outside those
 lists, in the existing candidate merit order, excluding declines. It also explains
-all eligible Inter-Districts candidates outside the saved top 32, including
+all eligible Inter-Districts candidates outside the saved selected list, including
 reserves and declines, without repeating players already in the next five.
 This is the configured published regional-roster candidate pool, not proof of
 every player's match participation; missing/excluded singles remain unavailable.

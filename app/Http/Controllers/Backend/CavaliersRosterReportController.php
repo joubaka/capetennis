@@ -23,7 +23,7 @@ class CavaliersRosterReportController extends Controller
                 ->orderBy('name')->limit(20)->get()->filter(fn ($u) => filter_var($u->email, FILTER_VALIDATE_EMAIL))->values()])->header('Cache-Control', 'private, no-store');
         }
         $subject = 'Private nomination review: '.$event->name;
-        $message = "Please review the attached nomination report for {$event->name}.\n\nIt includes the selected players, up to five reserves, the next five candidates, and explanations for Inter-Districts players outside the saved top 32.\n\nPlease keep this review copy within the selected group.\n\nKind regards,\nCape Tennis";
+        $message = "Please review the attached nomination report for {$event->name}.\n\nIt includes the selected players, up to five reserves, the next five candidates, and explanations for Inter-Districts players outside the saved selected list.\n\nPlease keep this review copy within the selected group.\n\nKind regards,\nCape Tennis";
         $fromName = config('mail.from.name', 'Cape Tennis');
         $fromAddress = mb_strtolower(config('mail.from.address'));
         $replyTo = $fromAddress;

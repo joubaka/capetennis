@@ -19,7 +19,7 @@
 @section('content')
 <div class="card"><div class="card-body" data-roster-report data-url="{{ route('backend.cavaliers-report.index', $event) }}" data-preview-url="{{ route('backend.cavaliers-report.preview', $event) }}">
 <h3>Share nomination report</h3><p>{{ $event->name }} · All prepared divisions</p>
-<p>Choose up to 30 accounts, then preview the email and PDF. Each division includes its saved team, up to five reserves, the next five outside that list, and explanations for Inter-Districts players outside the top 32.</p>
+<p>Choose up to 30 accounts, then preview the email and PDF. Each division includes its saved team, up to five reserves, the next five outside that list, and explanations for Inter-Districts players outside the selected list.</p>
 <div class="mb-3">
 <label class="form-label" for="roster-recipients">Recipients</label>
 <select class="form-select" id="roster-recipients" data-recipients multiple aria-describedby="roster-recipient-help roster-recipient-status" style="width:100%"></select>

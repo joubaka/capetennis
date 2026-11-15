@@ -686,6 +686,7 @@
     render();
     setStatus('Loading draft…');
     try {
+      limits.selected = Number(division.selectedOptions[0].dataset.selectedLimit || root.dataset.selectedLimit);
       draft = await request(division.selectedOptions[0].dataset.draftUrl);
       draft.declined ??= [];
       loadPreview();

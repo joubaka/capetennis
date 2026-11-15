@@ -39,12 +39,12 @@ final class CavaliersRosterReport
                 : (($candidate['only_beat_winless'] ?? false) ? 'Only beat winless players' : 'Selector reason required');
             if (in_array($candidate['id'], $declined, true)) $badge = 'Declined';
             $reserve = array_search($candidate['id'], $reserves, true);
-            $status = in_array($candidate['id'], $declined, true) ? 'Recorded as declined.' : ($reserve !== false ? 'Saved reserve #'.($reserve + 1).'.' : 'Outside the saved top 32.');
+            $status = in_array($candidate['id'], $declined, true) ? 'Recorded as declined.' : ($reserve !== false ? 'Saved reserve #'.($reserve + 1).'.' : 'Outside the saved selected list.');
             $laterSelected = $selectedIndexes->filter(fn ($selectedIndex) => $selectedIndex > $index)->count();
             $note = $laterSelected ? 'Selection review needed: ahead of '.$laterSelected.' saved selected player(s) in review order. Selector reason required.' : '';
             return ['id' => $candidate['id'], 'name' => $candidate['name'], 'evidence' => $candidate,
                 'playing_numbers' => $numbers, 'badge' => $badge, 'source_order' => $index + 1, 'selection_status' => $status,
-                'review_note' => in_array($candidate['id'], $declined, true) ? 'The saved decline explains absence from the top 32.' : $note];
+                'review_note' => in_array($candidate['id'], $declined, true) ? 'The saved decline explains absence from the selected list.' : $note];
         });
         $next = $rows->whereNotIn('id', [...$selected, ...$reserves, ...$declined])->take(5)->values();
         $interDistricts = $rows->filter(fn ($row) => ($row['evidence']['source'] ?? null) === 'Inter-Districts')

@@ -7,7 +7,7 @@
     data-reserve-limit="{{ CavaliersTrialRosterController::RESERVE_LIMIT }}">
     <div class="card-body">
         <h4 class="card-title mb-1">Trials roster draft</h4>
-        <p class="text-muted">Private working list. Review 32 selected players and five ordered reserves in each division.</p>
+        <p class="text-muted">Private working list. Review selected players and five ordered reserves within each division's limit.</p>
         <div class="small fw-semibold mb-2" id="cavaliers-division-label">Division</div>
         <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-labelledby="cavaliers-division-label">
             @foreach ($event->eventCategories as $division)
@@ -19,6 +19,7 @@
         <select data-division hidden>
             @foreach ($event->eventCategories as $division)
                 <option value="{{ $division->id }}"
+                    data-selected-limit="{{ CavaliersTrialRosterController::selectedLimit($division) }}"
                     data-draft-url="{{ route('backend.cavaliers-roster.show', [$event, $division]) }}"
                     data-nominations-url="{{ route('backend.cavaliers-roster.nominations', [$event, $division]) }}"
                     data-search-url="{{ route('backend.cavaliers-roster.players', [$event, $division]) }}"

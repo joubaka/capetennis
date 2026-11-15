@@ -28,6 +28,53 @@ class CavaliersTrialRosterDraftTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_only_event_252_under_13_girls_can_save_and_publish_33_selected_players(): void
+    {
+        Mail::fake();
+        Queue::fake();
+        [$event, $division] = $this->division(Event::factory()->create(['id' => 252, 'eventType' => 5]), 'U13 Girls');
+        $division->id = 2157;
+        $division->save();
+        $otherDivision = $this->division($event, 'U13 Boys')[1];
+        [$otherEvent, $foreignDivision] = $this->division(null, 'U13 Girls');
+        $this->actingAs($this->administrator($event));
+        $ids = Player::factory()->count(34)->create()->modelKeys();
+        $payload = ['revision' => null, 'selected' => array_slice($ids, 0, 33), 'reserves' => []];
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $this->putJson(route('backend.cavaliers-roster.update', [$event, $otherDivision]), $payload)
+            ->assertUnprocessable()->assertJsonValidationErrors('selected');
+        $this->putJson(route('backend.cavaliers-roster.update', [$event, $foreignDivision]), $payload)->assertNotFound();
+        $this->assertSame(32, \App\Http\Controllers\Backend\CavaliersTrialRosterController::selectedLimit($foreignDivision));
+        $this->assertSame(32, \App\Http\Controllers\Backend\CavaliersTrialRosterController::selectedLimit(
+            new CategoryEvent(['id' => 2157, 'event_id' => $otherEvent->id])
+        ));
+        $this->putJson($url, [...$payload, 'selected' => $ids])->assertUnprocessable()->assertJsonValidationErrors('selected');
+        $revision = $this->putJson($url, $payload)->assertOk()->json('revision');
+        $this->getJson($url)->assertJsonCount(33, 'selected')->assertJsonPath('selected.32.id', $ids[32]);
+        $publication = $this->getJson($url)->json('publication');
+        $publish = ['publish' => true, 'revision' => $revision, 'fingerprint' => $publication['fingerprint']];
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $division]), $publish)
+            ->assertOk()->assertJsonCount(33, 'players')->assertJsonPath('players.32.id', $ids[32]);
+        $this->assertDatabaseHas('event_nominations', [
+            'event_id' => 252, 'category_event_id' => 2157, 'player_id' => $ids[32], 'roster_position' => 33,
+        ]);
+        $this->assertDatabaseCount('event_nominations', 33);
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $division]), $publish)->assertConflict();
+        $this->assertDatabaseCount('event_nominations', 33);
+        // Revalidate at publication, even if a draft was written outside the editor.
+        \Illuminate\Support\Facades\DB::table('cavaliers_trial_roster_drafts')
+            ->where('category_event_id', 2157)->update(['selected' => json_encode($ids)]);
+        $publish['fingerprint'] = $this->getJson($url)->json('publication.fingerprint');
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $division]), $publish)->assertUnprocessable();
+        $this->assertDatabaseCount('event_nominations', 33);
+        $event->load('eventCategories.category');
+        $html = view('backend.nominations.cavaliers-roster', compact('event'))->render();
+        $this->assertStringContainsString('data-selected-limit="33"', $html);
+        $this->assertStringContainsString('data-selected-limit="32"', $html);
+        Mail::assertNothingSent();
+        Queue::assertNothingPushed();
+    }
+
     public function test_roster_edits_persist_in_order_without_touching_public_nominations_or_entries(): void
     {
         Mail::fake();
