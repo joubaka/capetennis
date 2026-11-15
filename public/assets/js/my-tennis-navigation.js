@@ -46,11 +46,16 @@
         if (!response.ok) return;
         const page = new DOMParser().parseFromString(await response.text(), 'text/html');
         const next = page.querySelector(liveResultsSelector);
+        const currentMore = panel.querySelector('[data-recent-results-more]');
+        const nextMore = next?.querySelector('[data-recent-results-more]');
+        if (currentMore && nextMore) nextMore.open = currentMore.open;
         if (!stopped && !signal.aborted && next && !panel.isEqualNode(next)) {
           const focused = panel.contains(document.activeElement);
+          const focusedMore = currentMore?.querySelector('summary') === document.activeElement;
           panel.replaceWith(next);
           panel = next;
-          if (focused) panel.querySelector('h2, h3')?.focus({preventScroll: true});
+          if (focusedMore && nextMore) nextMore.querySelector('summary')?.focus({preventScroll: true});
+          else if (focused) panel.querySelector('h2, h3')?.focus({preventScroll: true});
         }
       } catch {
         // Keep the last successful response during a transient network failure.

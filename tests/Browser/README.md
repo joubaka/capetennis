@@ -31,6 +31,16 @@ This verifies rendered fictional data, not live event availability or registrati
 
 These checks serve HTML rendered by Laravel's test suite together with the real public assets. Mutating endpoints are isolated in-memory HTTP doubles; no application database is changed by the browser harness. Backend persistence, eligibility, authorization and rollback are covered by the draw feature tests.
 
+`node tests/Browser/results-overview.cjs` checks the Results overview with actual
+fictional Blade fixtures and local styles at 360, 390, 768 and 1440px. Generate the
+five `results-overview-*-qa.html` fixtures with `CT_RESULTS_QA_HTML=1` and
+`PlayerPlusRecordTest`. It checks exact season statistics, chart placement, month
+filter URLs, native keyboard disclosure, zero/unavailable/100% states and the
+real navigation script's polling preservation of open state and focus. External
+requests are blocked. Screenshots are under `storage/framework/testing`; these
+are rendered-fixture checks, not a live player or registration journey. Use
+Node 20+ and set `NODE_PATH` to installed Playwright modules when necessary.
+
 Prerequisites: the application's configured testing database, PHP dependencies, Node.js 20 or newer, Playwright and its Chromium browser. If Playwright is installed outside this repository, set `NODE_PATH` to that installation's `node_modules` directory.
 
 From the repository root in PowerShell:

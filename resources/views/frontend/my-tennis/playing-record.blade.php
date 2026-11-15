@@ -29,6 +29,9 @@
     .ct-record .record-month-column span { display:block; }
     .ct-record .record-month-chart small { font-size:.65rem; }
     .ct-record .record-key { display:inline-block; width:.7rem; height:.7rem; border-radius:2px; }
+    .ct-record .record-live-results .record-row{padding:.65rem 0;gap:.65rem}
+    .ct-record .recent-results-more summary{cursor:pointer;min-height:44px;align-content:center;font-weight:600;color:#004177;margin-top:.3rem}
+    .ct-record .recent-results-more summary:focus-visible{outline:3px solid #b85b00;outline-offset:2px}
     .ct-record .results-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:.6rem 1rem; margin-bottom:.75rem; }
     .ct-record .results-toolbar .record-filter { align-items:center; gap:.5rem; }
     .ct-record .results-toolbar .form-select { min-height:44px; min-width:8rem; width:auto; }
@@ -46,7 +49,6 @@
       .ct-record .results-grid .record-comparison-table :is(th,td) { white-space:normal; }
     }
     @media(max-width:575px) {
-      .ct-record .record-month-chart > div:nth-child(even) small { visibility:hidden; }
       .ct-record .record-upcoming-row { grid-template-columns:minmax(0,1fr); gap:.25rem; }
       .ct-record .record-upcoming-row .record-fixture-link { justify-self:start; }
       .ct-record .record-rating-comparison-side > .record-note { margin-inline-start:0; }
@@ -54,6 +56,7 @@
   </style>
   @include('frontend.my-tennis.profile-header', ['workspaceTab' => $recordSection, 'ratingPlayer' => $recordPlayer])
   @if($recordSection === 'record')
+    @include('frontend.my-tennis.record-overview')
     @isset($liveResults)
       @include('frontend.my-tennis.record-live-results')
     @endisset
@@ -68,41 +71,23 @@
     </div>
   @endif
   @if($record['reason'])
-    <div class="record-sheet" role="status">{{ $record['reason'] }}</div>
+    @if($recordSection === 'opponents')<div class="record-sheet" role="status">{{ $record['reason'] }}</div>@endif
   @else
-    @if($recordSection === 'record')
-      <div class="results-toolbar">
-        <div>
-          <h2 class="h5 mb-0">Saved match history</h2>
-          @if($pastRatings ?? [])<p class="record-note mb-0">Badges show the latest saved Overall CTR.</p>@endif
-        </div>
-    @endif
+    @if($recordSection === 'opponents')
     <form method="get" class="record-filter {{ $recordSection === 'opponents' ? 'mb-3' : '' }}" action="{{ route('my.tennis.record', ['player' => $recordPlayer->id, 'section' => $recordSection]) }}{{ $recordSection === 'opponents' ? '#past-opponents' : '' }}">
       @if($record['opponent'] || request()->integer('opponent'))<input type="hidden" name="opponent" value="{{ $record['opponent']['id'] ?? request()->integer('opponent') }}">@endif
       @foreach(['first', 'second'] as $comparisonSide)@if($record['comparison'][$comparisonSide.'_year'] !== '')<input type="hidden" name="compare_{{ $comparisonSide }}" value="{{ $record['comparison'][$comparisonSide.'_year'] }}">@endif @endforeach
       <div @class(['d-flex align-items-center gap-2' => $recordSection === 'record'])><label for="record-year" @class(['form-label', 'mb-0' => $recordSection === 'record'])>Season</label><select id="record-year" name="year" class="form-select"><option value="">All seasons</option>@foreach($record['years'] as $year)<option value="{{ $year }}" @selected((string)$year === $record['year'])>{{ $year }}</option>@endforeach</select></div>
       <button class="btn btn-outline-primary" type="submit">Apply</button>
     </form>
-    @if($recordSection === 'record')</div>@endif
-    @if($record['stale'])<p class="record-note" role="status">{{ $recordSection === 'record' ? 'The saved history and season stats are waiting for their next update.' : 'An update is pending. These are the last saved results.' }}</p>@endif
-    @if(!$record['played'])<div class="record-sheet" role="status">No saved match results for this season.</div>@endif
+    @endif
+    @if($recordSection === 'opponents' && $record['stale'])<p class="record-note" role="status">{{ $recordSection === 'record' ? 'The saved history and season stats are waiting for their next update.' : 'An update is pending. These are the last saved results.' }}</p>@endif
+    @if($recordSection === 'opponents' && !$record['played'])<div class="record-sheet" role="status">No saved match results for this season.</div>@endif
     @if($recordSection === 'record')
       <div class="results-grid">
       <section class="record-sheet" id="match-results">
         <h2>Match results</h2>
-      @if($record['played'])
-        <p class="mb-2"><strong>{{ $record['played'] }} {{ \Illuminate\Support\Str::plural('match', $record['played']) }}</strong>
-          · {{ $record['wins'] }} W · {{ $record['played'] - $record['wins'] }} L · {{ round(100 * $record['wins'] / $record['played']) }}% win rate
-          <span class="record-note">· {{ $record['events'] }} {{ \Illuminate\Support\Str::plural('event', $record['events']) }} · {{ $record['opponent_count'] }} {{ \Illuminate\Support\Str::plural('opponent', $record['opponent_count']) }}</span>
-        </p>
-      @endif
-      @if($record['form'])
-        <div class="results-form">
-          <strong class="record-note">Latest five saved results</strong>
-          @foreach($record['form'] as $formMatch)<span class="badge" style="background:{{ $formMatch['won'] ? '#004177' : '#172e45' }};color:#fff" aria-label="{{ $formMatch['won'] ? 'Win' : 'Loss' }} against {{ $formMatch['opponent'] }} on {{ $formMatch['date'] }}">{{ $formMatch['won'] ? 'W' : 'L' }}</span>@endforeach
-          <span class="record-note">Order may be approximate.</span>
-        </div>
-      @endif
+        <p class="record-note">Saved match history @if($pastRatings ?? []) · Badges show the latest saved Overall CTR.@endif</p>
         @if(!empty($record['record_month']))
           <p class="record-note">{{ \Carbon\CarbonImmutable::createFromFormat('!Y-m', $record['record_month'])->format('F Y') }} · <a href="{{ request()->fullUrlWithQuery(['record_month' => null, 'page' => null]) }}#match-results">Clear month filter</a></p>
           @if(!$record['results']['total'])<p class="record-note" role="status">No saved match results for this month.</p>@endif
@@ -110,7 +95,6 @@
         @include('frontend.my-tennis.record-matches', ['matchPage' => $record['results'], 'pageKey' => 'page', 'matchRatings' => $pastRatings ?? []])
       </section>
       <aside aria-label="Results trends and milestones">
-      @include('frontend.my-tennis.record-monthly')
       @include('frontend.my-tennis.record-comparison')
       @if($record['first'])
       <section class="record-sheet"><h2>First recorded matches</h2><p><strong>Earliest recorded match:</strong> {{ $record['first']['date'] }} · {{ $record['first']['opponent'] }} · {{ $record['first']['event'] }}</p>
@@ -158,10 +142,12 @@
       </section>
       @endif
     @endif
+    @if($recordSection === 'opponents')
     <details class="record-coverage">
       <summary>About these results</summary>
       <p class="record-note mb-0">Saved results{{ $record['coverage_start'] ? ' from '.$record['coverage_start'] : '' }} through {{ $record['as_of'] }}. Some matches may be missing. Final placings are separate from played matches. Estimated match dates use the event start date. The order of matches on the same day may be unknown.@unless(auth()->user()?->hasRole('super-user')) Connected TeamSheet match details have limited access.@endunless</p>
     </details>
+    @endif
   @endif
 </div>
 @endsection

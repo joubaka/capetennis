@@ -144,9 +144,9 @@ async function run() {
           liveScore = '7–5';
           await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
           await live.getByText('7–5', {exact: true}).waitFor();
-          const chart = workspace.getByRole('region', { name: 'Recorded matches by month' });
+          const chart = workspace.getByRole('region', { name: 'Match activity', exact: true });
           await chart.getByText('Monthly counts and match links').click();
-          const october = chart.getByRole('link', { name: 'Oct 2026' });
+          const october = chart.getByRole('link', { name: 'Oct 2026', exact: true });
           assert.match(await october.getAttribute('href'), /record_month=2026-10#match-results$/);
           assert.equal(await chart.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
         }

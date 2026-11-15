@@ -355,9 +355,9 @@
       "title": "Player Plus discovery needs an age-group Top 10 and individual rating lookup",
       "scope": "Ordinary Player Plus discovery for an authorised linked player; administrative full-list browsing remains separate.",
       "symptoms": "Plus members have no age-group Top 10, while a broad name search reveals several ratings together.",
-      "cause": "The member discovery projection withheld ranking lists entirely and returned scores in every matching search suggestion.",
-      "fix": "Derive the member's Overall CTR Top 10 from the selected authorised player's calendar-year age group and gender. Junior groups include younger players; missing birth dates do not produce a broad list. Ignore submitted age, gender, level, page and page-size list overrides for members. Return at most ten alphabetically matched public names without scores, then reveal one selected eligible candidate's Overall CTR. Keep selected identity bound to the current search candidates and preserve publication, convergence, comparability and entitlement checks.",
-      "verification": "On 2026-11-02 PlayerRatingTopTenTest passed locally with 17 tests and 304 assertions using isolated SQLite. Coverage includes member filter tampering, ten-player bounds, one-player search selection, publication revocation, disconnected estimates, missing birth dates and administrative browsing. This is local evidence only.",
+      "cause": "The member discovery projection withheld ranking lists entirely and returned scores in every matching search suggestion. A later Rating controller regression supplied metadata-only context while still rendering positions and Top 10, manufacturing empty-list messages despite comparable saved evidence.",
+      "fix": "Derive the member's Overall CTR Top 10 from the selected authorised player's calendar-year age group and gender. Rating views displaying positions or lists must call PlayerRatingTopTen::build; context is access/filter metadata only and cannot establish an empty population. Keep full comparison reads off unrelated Profile and Activity tabs. Junior groups include younger players; missing birth dates do not produce a broad list. Ignore submitted age, gender, level, page and page-size list overrides for members. Return at most ten alphabetically matched public names without scores, then reveal one selected eligible candidate's Overall CTR. Keep selected identity bound to the current search candidates and preserve publication, convergence, comparability and entitlement checks.",
+      "verification": "Initial isolated SQLite coverage checks member filter tampering, ten-player bounds, one-player search selection, publication revocation, disconnected estimates, missing birth dates and administrative browsing. On 2026-11-15 navigation, Top 10 and repair-library regressions passed 32 tests and 838 assertions, including selected comparable positions across full, direct, AJAX and workspace responses, omitted private participants, genuine snapshot unavailability and no leaderboard reads on unrelated tabs. This is local evidence only; it does not verify a particular production player's saved membership.",
       "limits": "Search reveals only the selected comparable public rating, not private history or evidence. This does not grant player ownership, alter ratings, enable opponent badges, or authorize deployment.",
       "assistant_action": "guide_only",
       "sources": [
@@ -365,7 +365,8 @@
         "app/Http/Controllers/Frontend/MyTennisController.php"
       ],
       "tests": [
-        "tests/Feature/PlayerRatingTopTenTest.php"
+        "tests/Feature/PlayerRatingTopTenTest.php",
+        "tests/Feature/MyTennisRatingNavigationTest.php"
       ]
     },
     {

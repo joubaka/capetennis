@@ -92,6 +92,13 @@ class PlayerPlusRecordService
             'form' => array_slice(array_reverse($selected), 0, 5),
             'events' => count(array_unique(array_column($selected, 'event_id'))), 'opponent_count' => count($opponents),
             'monthly' => $monthly, 'record_month' => $recordMonth,
+            'month_report' => $recordMonth === '' ? null : [
+                'month' => $recordMonth,
+                'covered' => isset($source['as_of']) && substr($source['as_of'], 0, 7) >= $recordMonth,
+                'summary' => $this->summary($register),
+                'previous' => $this->summary(array_values(array_filter($matches, fn ($row) => substr($row['date'], 0, 7) === CarbonImmutable::parse($recordMonth.'-01')->subMonth()->format('Y-m')))),
+                'estimated_dates' => count(array_filter($register, fn ($row) => str_contains($row['date_basis'], 'proxy'))),
+            ],
             'results' => $this->page(array_reverse($register), (int) ($filters['page'] ?? 1)),
             'opponents' => $this->page(array_values($opponents), (int) ($filters['opponent_page'] ?? 1)),
             'opponent' => $opponent, 'meetings' => $this->page(array_reverse($meetings), (int) ($filters['meeting_page'] ?? 1))];

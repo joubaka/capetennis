@@ -1,6 +1,6 @@
 @php
   $featureDescriptions = [
-    'record' => ['Playing Record', 'Bring eligible saved match results together by calendar year. Compare seasons, revisit recorded milestones and explore wins and losses. This is an available-record view, not a complete career archive.'],
+    'record' => ['Your season. Your monthly tennis report.', 'See your month in matches, wins and events, revisit recent form and compare seasons. Explore the saved singles results behind your tennis story.'],
     'opponents' => ['Opponent Insights', 'Explore recorded meetings with familiar opponents, per-season outcomes and recent encounters. Sparse results and estimated dates stay labelled; outcomes do not predict the next match.'],
     'pathway' => ['Tennis pathway', 'Explore ball-level benchmarks, recorded event experience and development options to discuss with your coach. A membership does not guarantee a rating or a completed pathway stage.'],
     'events' => ['Past-event ratings', 'Explore retrospective estimates at eligible event completion dates. These use published evidence available at each cutoff; they are not ratings originally published at the time.'],
@@ -11,7 +11,7 @@
   $previewHeading = ($showSample ?? false) ? 'h2' : 'h3';
   $samplePanels = [
       'rating' => ['Orange Ball CTR' => '48.2 / 100', 'Confidence' => 'Medium', 'Last snapshot' => 'October'],
-      'record' => ['Season' => '2026', 'Recorded wins' => '12', 'Recorded losses' => '7'],
+      'record' => ['Month' => 'Example month', 'Recorded matches' => '6', 'Record' => '4 wins · 2 losses', 'Events' => '2'],
       'opponents' => ['Opponent' => 'Sample player', 'Recorded meetings' => '3', 'Match record' => '2 wins · 1 loss'],
       'pathway' => ['Current ball level' => 'Orange Ball', 'Event type to explore' => 'Junior development events'],
       'events' => ['Event' => 'Sample junior tournament', 'Estimated CTR' => '46.8 / 100'],
@@ -25,11 +25,11 @@
       <p>{{ $featureDescription }}</p>
       @if(($showSample ?? false) && $requestedFeature === $featureKey)
         <div class="plus-sample" data-plus-sample>
-          <strong>Blurred example</strong>
-          <p class="small mb-0">These sample values show what this tab looks like with Player Plus.</p>
+          <strong>Fictional example · not this player’s results</strong>
+          <p class="small mb-0">These invented values demonstrate the feature; they are not a personal assessment or a forecast.</p>
           <dl>
             @foreach($samplePanels[$featureKey] as $label => $value)
-              <div><dt>{{ $label }}</dt><dd aria-hidden="true">{{ $value }}</dd><dd class="visually-hidden">Sample value hidden</dd></div>
+              <div><dt>{{ $label }}</dt><dd>{{ $value }}</dd></div>
             @endforeach
           </dl>
         </div>

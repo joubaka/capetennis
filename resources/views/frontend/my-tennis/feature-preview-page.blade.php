@@ -13,7 +13,7 @@
       .plus-sample{background:#fff;border:1px solid #cbd9e9;border-radius:.75rem;margin:1rem 0;padding:1rem}
       .plus-sample dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(8rem,1fr));gap:.75rem;margin:.75rem 0 0}
       .plus-sample dl>div{background:#f1f5fa;border-radius:.5rem;padding:.75rem;min-width:0}
-      .plus-sample dd[aria-hidden]{filter:blur(4px);font-size:1.15rem;font-weight:700;margin:0;user-select:none;overflow-wrap:anywhere}
+      .plus-sample dd{color:#004177;font-size:1.15rem;font-weight:700;margin:0;overflow-wrap:anywhere}
     </style>
     @include('frontend.my-tennis.feature-preview', ['showSample' => true])
   </div>

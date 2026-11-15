@@ -68,6 +68,13 @@ class MyTennisController extends Controller
                 $data['overviewPathway'] = app(\App\Services\Performance\PlayerPathwayService::class)->summary($data['selectedPlayer'], $history);
             }
         }
+        $data['overviewRecord'] = null;
+        if ($tab === 'profile' && $data['selectedPlayer'] && $data['canViewRating']) {
+            $data['overviewRecord'] = app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer(
+                $data['selectedPlayer'], ['year' => now('Africa/Johannesburg')->format('Y'), 'record_month' => now('Africa/Johannesburg')->format('Y-m')],
+                $user->hasRole('super-user'),
+            );
+        }
         return response()->view('frontend.my-tennis.index', $data)->header('Cache-Control', 'private, no-store');
     }
 
@@ -114,7 +121,7 @@ class MyTennisController extends Controller
             'ratingPlayer' => $player,
             'ratingHistory' => $history,
             'matchProgress' => app(\App\Services\Performance\PlayerMatchProgress::class)->forPlayer($request->user(), $player),
-            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->context($request->user(), $player,
+            'ratingTopTen' => app(\App\Services\Performance\PlayerRatingTopTen::class)->build($request->user(), $player,
                 array_map(fn ($value) => $value ?? '', array_intersect_key($filters, array_flip(['rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])))),
         ];
     }

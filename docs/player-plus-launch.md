@@ -72,15 +72,57 @@ until a successful response, retain URL/history filters, cancel superseded reads
 and stop the spinner after the bounded foreground timeout. Failure offers an
 explicit retry and an ordinary full-page link through the same authorised route.
 
-The Rating panel uses `PlayerRatingTopTen::context()` for canonical access and
-filter metadata without discovering global participants or loading unused rating
-lists. Actual match comparison data still uses its existing public/entitlement
-projection. Page reads never fit ratings or request a derived-data refresh.
+The Rating panel displays positions and the age-group Top 10, so it uses
+`PlayerRatingTopTen::build()` to project the saved comparable public population.
+`context()` returns access/filter metadata only and must not be rendered as an
+empty leaderboard. Keep that lightweight path for consumers that do not display
+comparisons; Profile and Activity must not load the full leaderboard. Actual match
+comparison data retains its existing public/entitlement projection. Page reads
+never fit ratings or request a derived-data refresh.
+
+Results opens with a saved Results overview: season totals, win rate, latest-five
+form and a wins/losses activity chart. The selected year controls both totals and
+chart; All seasons totals cover all saved seasons while the chart covers the
+latest 12 saved months. Selecting a month narrows the match register only. Saved
+date/update status stays visible, and detailed coverage notes are expandable.
+Recently posted or updated seven-day scores follow separately, with three rows
+initially and a native disclosure for the rest. Polling preserves the disclosure's
+open state and summary focus. Unavailable saved data never implies zero played
+matches; an empty selected season shows zero counts and no win-rate estimate.
+This is presentation of existing scoped records, not a new rating
+calculation. See `PlayerPlusRecordTest` and `tests/Browser/results-overview.cjs`.
 
 `MyTennisRatingNavigationTest`, `PlayerRatingTopTenTest` and
 `tests/Browser/my-tennis-navigation.cjs` cover the boundary. A screenshot showing a
 spinner or retry message does not establish a production request's status or
 cause; inspect the actual target environment only with current authority.
+
+## Player overview and monthly report
+
+The default Profile tab keeps player details and editing available beneath the
+performance overview. For a selected related player with rating access, it reads
+the existing saved playing record once: current SAST calendar-year totals, recent
+form and a current-calendar-month report. The monthly summary uses all eligible
+saved rows, independently of the paginated results register; the previous
+calendar month can belong to the preceding year. Links retain the selected player,
+season and report month when opening Results.
+
+Report counts describe available saved singles records, not complete career
+coverage or a measure of improved playing strength. Show the saved cutoff and
+pending status. If the source cutoff predates the report month, show awaiting
+coverage rather than zero activity. Unavailable records remain unavailable.
+Keep disconnected, historical-connection and finishing-only rating qualifications
+beside the score. Overview requests never fit ratings or request a refresh.
+
+Non-Plus profiles and feature previews show readable, explicitly fictional
+examples without reading private rating or match sources. Membership links retain
+the existing configured offer/availability flow; examples never establish that a
+particular player has sufficient evidence. Purchasing remains separate from
+relationship access.
+
+`MyTennisOverviewTest` covers the aggregation/access and presentation boundaries.
+Export fictional HTTP-rendered pages with `CT_OVERVIEW_EXPORT_DIR` and run
+`tests/Browser/my-tennis-overview.cjs` for responsive overview/preview checks.
 
 ## Verification and launch gates
 

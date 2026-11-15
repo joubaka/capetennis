@@ -57,7 +57,7 @@
             <span>{{ $member['position'] }}.</span><span class="flex-grow-1 text-break">{{ $member['name'] }}@if($member['id'] === (int) $ratingPlayer->id)<small class="d-block text-muted">Your selected player</small>@endif<small class="d-block text-muted" data-rating-confidence>{{ $member['confidence'] }} confidence</small></span><span class="d-inline-flex flex-column align-items-center" style="width:4rem;flex-shrink:0"><x-ctr-badge size="inline" :score="$member['score']" :overall="true" /></span>
           </li>
       @empty
-        <li class="list-group-item text-muted"><span role="status">{{ $ratingTopTen['reason'] ? 'Rating comparisons unavailable.' : 'No ratings for this age group.' }}</span></li>
+        <li class="list-group-item text-muted"><span role="status">{{ $ratingTopTen['reason'] ? 'Rating comparisons unavailable.' : 'No comparable published ratings for this age group yet.' }}</span>@if($ratingTopTen['reason'])<small class="d-block">{{ $ratingTopTen['reason'] }}</small>@endif</li>
       @endforelse
       </ol>
       <p class="small text-muted mt-2 mb-0">Confidence describes the strength and freshness of recorded evidence, not a guarantee of rating accuracy.</p>

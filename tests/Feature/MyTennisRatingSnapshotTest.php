@@ -26,6 +26,7 @@ class MyTennisRatingSnapshotTest extends TestCase
             ->withArgs(fn ($actual, $filters, $summaryOnly) => $actual->id === $player->id && $filters === [] && $summaryOnly === true)
             ->andReturn(['reason' => null, 'ball_stage' => 'orange', 'as_of' => '2026-11-03', 'points' => [
                 ['index' => 11, 'date' => '2026-11-03', 'score' => 66.6, 'group' => 'a', 'confidence_label' => 'Medium', 'private' => 'must-not-project']]]);
+        $this->app->make(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->andReturn(['reason' => 'Saved results pending.']);
     }
 
     public function test_authorized_dashboard_reuses_one_history_read_and_projects_only_selected_player_snapshot(): void

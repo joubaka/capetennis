@@ -1,4 +1,5 @@
 @if($selectedPlayer)
+  @include('frontend.my-tennis.player-overview')
   @php
     $dateOfBirth = substr((string) $selectedPlayer->dateOfBirth, 0, 10);
     $validBirthDate = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateOfBirth)

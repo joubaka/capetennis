@@ -171,21 +171,37 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - The shared My Tennis tab header shows the selected player's authorized saved
   rating summary, including on Results and Opponents. Keep this personal badge
   separate from the published, comparable Overall CTR used in match comparisons.
+- Results leads with saved season totals, form and match activity. Month links
+  filter only the match register; totals remain season-wide, and All seasons
+  totals may exceed the chart's latest 12 saved months. Keep recently posted or
+  updated seven-day scores distinct from saved aggregates. The native recent
+  results disclosure must retain open state and summary focus during polling.
+  Verify `PlayerPlusRecordTest` and `tests/Browser/results-overview.cjs` before
+  changing this presentation; it never recalculates ratings or results.
 - The plain My Tennis landing opens Profile, including for players with rating
   access. Explicit player and tab links retain their destinations. The full
   Tournament options level map is always visible. Revalidate remembered players against
   the current account relationship before displaying personal details.
   Activity and profile editing are standard features; Plus tabs and private
   ratings follow the selected player's entitlement.
+- Profile's performance overview uses the selected related player's existing
+  rating-access gate and saved playing record. Monthly reports use the SAST
+  calendar month and show the source cutoff; missing coverage is not zero
+  activity. Previous-month totals include a preceding calendar year when needed
+  and are independent of result pagination. Non-Plus samples remain explicitly
+  fictional and never read private evidence. See `docs/player-plus-launch.md`
+  and `MyTennisOverviewTest`.
 - My Tennis tab fragments use the same authorized GET routes as direct links.
   Preserve full-page fallback, rebind controls on workspace mount, and cancel
   transient rating and pathway reads when leaving a view.
   Render the initial authorized Rating panel with its tab response. Use the
   rating fragment endpoint for subsequent filters and refreshes.
   Cache visited tabs without speculative all-tab fetches; selected navigation must
-  not wait for a background Rating request. Rating uses lightweight canonical
-  `PlayerRatingTopTen::context()` when discovery lists are not displayed; retain
-  the separate match-player privacy projection. See repair RK-051 and
+  not wait for a background Rating request. Use lightweight canonical
+  `PlayerRatingTopTen::context()` only when discovery lists are not displayed.
+  The Rating panel renders positions and Top 10 lists and must use `build()`;
+  metadata-only context is not evidence of an empty comparable population.
+  Retain the separate match-player privacy projection. See repair RK-051 and
   `docs/player-plus-launch.md` for timeout/retry and full-page fallback checks.
 - Rating history month, evidence scope, chart scale and section must survive
   reload, shared links and browser Back/Forward. Validate the same filters for

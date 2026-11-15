@@ -239,6 +239,93 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertNotNull($result['reason']); $this->assertSame(0, $result['played']);
     }
 
+    private function renderResultsOverview(array $record, array $live = [], string $section = 'record'): string
+    {
+        $template = preg_replace('/@extends\([^\n]+\)\r?\n/', '', file_get_contents(resource_path('views/frontend/my-tennis/playing-record.blade.php')));
+        return \Illuminate\Support\Facades\Blade::render($template.'@yield("content")', [
+            'recordPlayer' => $this->player(), 'recordSection' => $section, 'record' => $record,
+            'liveResults' => collect($live), 'pastRatings' => [], 'workspace' => ['canViewRating' => true],
+        ]);
+    }
+
+    public function test_results_overview_precedes_recent_and_history_and_keeps_saved_scope_and_month_links(): void
+    {
+        $this->app->instance('request', Request::create('/my-tennis/players/42/record', 'GET', ['year' => 2026, 'record_month' => '2026-02', 'compare_first' => 2025, 'compare_second' => 2026]));
+        $rows = [];
+        for ($i = 0; $i < 124; $i++) $rows[] = $this->row('match:'.$i, [
+            'date' => '2026-'.str_pad((string) (1 + $i % 11), 2, '0', STR_PAD_LEFT).'-01',
+            'event_id' => 1 + $i % 6, 'players' => [42, 43 + $i % 20],
+            'winner_side' => $i % 4 === 0 ? 2 : 1,
+        ]);
+        $rows[] = $this->row('match:old', ['date' => '2025-02-01']);
+        $record = $this->record($rows, ['year' => 2026, 'record_month' => '2026-02', 'compare_first' => 2025, 'compare_second' => 2026]);
+        $record['stale'] = true;
+        $live = [];
+        for ($i = 0; $i < 6; $i++) $live[] = ['recorded_at' => '2026-11-14 10:00:00', 'opponents' => 'Recent Opponent '.$i,
+            'opponent_players' => [], 'event' => 'Recent Event '.$i, 'draw' => 'Singles', 'url' => '/events/'.(100 + $i), 'outcome' => $i % 2 ? 'Loss' : 'Win', 'score' => '6-3 6-4'];
+        $html = $this->renderResultsOverview($record, $live);
+        $dom = new \DOMDocument; @$dom->loadHTML($html); $xp = new \DOMXPath($dom);
+        foreach (['played' => '124', 'wins' => '93', 'losses' => '31', 'rate' => '75%'] as $key => $expected) {
+            $this->assertSame($expected, trim($xp->evaluate('string(//*[@data-results-stat="'.$key.'"])')));
+        }
+        $this->assertLessThan(strpos($html, 'data-my-tennis-live-results='), strpos($html, 'data-results-overview'));
+        $this->assertLessThan(strpos($html, 'id="match-results"'), strpos($html, 'data-my-tennis-live-results='));
+        $this->assertSame(1, substr_count($html, 'data-match-activity'));
+        $this->assertSame(5, $xp->query('//*[@data-results-form]/*[@data-result]')->length);
+        $this->assertSame(12, $xp->query('//*[@data-match-activity]//ul/li')->length);
+        $this->assertSame(3, $xp->query('//*[@data-my-tennis-live-results]/*[@data-recent-results-row]')->length);
+        $this->assertSame(3, $xp->query('//details[@data-recent-results-more]/*[@data-recent-results-row]')->length);
+        $this->assertSame(0, $xp->query('//details[@data-recent-results-more][@open]')->length);
+        $this->assertStringContainsString('Show all recent results', $html);
+        $this->assertStringContainsString('Update pending', $html);
+        $this->assertStringContainsString('Wins and losses · 2026', $html);
+        $this->assertStringContainsString('compare_first=2025', $html);
+        $this->assertStringContainsString('record_month=2026-02', $html);
+        $this->assertStringContainsString('Monthly counts and match links', $html);
+        $this->assertStringContainsString('separate from your saved season totals', $html);
+        if (getenv('CT_RESULTS_QA_HTML') === '1') {
+            $this->writeResultsArtifact('results-overview-qa.html', $html);
+            $this->app->instance('request', Request::create('/my-tennis/players/42/record'));
+            $all = $this->record($rows);
+            $this->writeResultsArtifact('results-overview-all-qa.html', $this->renderResultsOverview($all, $live));
+            $this->app->instance('request', Request::create('/my-tennis/players/42/record', 'GET', ['year' => 2026]));
+            $extremeRows = array_map(fn ($row) => array_replace($row, ['winner_side' => 1]), $rows);
+            $this->writeResultsArtifact('results-overview-extreme-qa.html', $this->renderResultsOverview($this->record($extremeRows, ['year' => 2026]), $live));
+        }
+    }
+
+    public function test_results_overview_distinguishes_zero_matches_unavailable_record_and_opponents_without_fake_totals(): void
+    {
+        $record = $this->record([], ['year' => 2026]);
+        $zero = $this->renderResultsOverview($record);
+        $this->assertStringContainsString('data-results-stat="played">0</dd>', $zero);
+        $this->assertStringContainsString('value="2026" selected>2026 · no saved results', $zero);
+        $this->assertStringContainsString('data-results-stat="rate">—</dd>', $zero);
+        $this->assertStringContainsString('No saved match activity in this chart’s time window.', $zero);
+        $this->assertStringNotContainsString('data-recent-results-more', $zero);
+        $record['reason'] = 'Saved match record unavailable.';
+        $unavailable = $this->renderResultsOverview($record);
+        $this->assertStringContainsString('Saved match record unavailable.', $unavailable);
+        $this->assertStringNotContainsString('data-results-stat=', $unavailable);
+        $opponents = $this->renderResultsOverview($record, [], 'opponents');
+        $this->assertStringNotContainsString('data-results-overview', $opponents);
+        $this->assertStringNotContainsString('data-my-tennis-live-results=', $opponents);
+        if (getenv('CT_RESULTS_QA_HTML') === '1') {
+            $this->writeResultsArtifact('results-overview-zero-qa.html', $zero);
+            $this->writeResultsArtifact('results-overview-unavailable-qa.html', $unavailable);
+        }
+    }
+
+    private function writeResultsArtifact(string $name, string $body): void
+    {
+        \Illuminate\Support\Facades\File::ensureDirectoryExists(storage_path('framework/testing'));
+        $head = '<!DOCTYPE html><html lang="en" class="light-style"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Results overview · fictional QA</title>';
+        foreach (['assets/vendor/css/rtl/core.css', 'assets/vendor/css/rtl/theme-default.css', 'assets/css/demo.css', 'assets/css/my-tennis-profile.css', 'assets/css/player-workspace.css'] as $css) {
+            if (is_file(public_path($css))) $head .= '<link rel="stylesheet" href="/'.$css.'">';
+        }
+        file_put_contents(storage_path('framework/testing/'.$name), $head.'</head><body style="background:#f4f6fa">'.$body.'</body></html>');
+    }
+
     public function test_blade_sections_render_escaped_results_and_do_not_link_private_opponent_profiles(): void
     {
         // Render content against an isolated layout: no shared navbar/database side effects.

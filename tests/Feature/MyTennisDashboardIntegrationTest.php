@@ -18,6 +18,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
         parent::setUp();
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn(['series' => [], 'reason' => 'Saved results are pending.']);
+        $this->app->make(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->andReturn(['reason' => 'Saved results are pending.']);
     }
 
     private function export(string $name, $response): void
@@ -146,7 +147,7 @@ class MyTennisDashboardIntegrationTest extends TestCase
             'reason' => null, 'series' => [], 'as_of' => '2026-11-03', 'ball_stage' => 'standard',
             'points' => [['index' => 11, 'date' => '2026-11-03', 'score' => 91.1]],
         ]);
-        $this->app->make(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->twice()->andReturn([
+        $this->app->make(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->times(4)->andReturn([
             'reason' => null, 'as_of' => '2026-11-03', 'built_at' => '2026-11-03', 'evidence' => [
                 ['source_id' => 'match:1', 'kind' => 'match', 'months' => 1, 'event_id' => 1,
                     'event' => 'Example Open', 'date' => '2026-10-01', 'date_basis' => 'event start proxy',
@@ -176,8 +177,8 @@ class MyTennisDashboardIntegrationTest extends TestCase
                 ->assertDontSee('my-tennis-navigation.js', false)
                 ->assertSee('id="my-tennis-player"', false)->assertSee('91.1');
             if ($name === 'profile') $response->assertSee($player->getProfileStatus()['message']);
-            if ($name === 'record') $response->assertSee('Recorded matches by month')->assertSee('record_month=2026-10', false);
-            if ($name === 'opponents') $response->assertDontSee('Recorded matches by month');
+            if ($name === 'record') $response->assertSee('data-match-activity', false)->assertSee('Match activity')->assertSee('record_month=2026-10', false);
+            if ($name === 'opponents') $response->assertDontSee('data-match-activity', false);
             $this->export('ajax-'.$name, $response);
         }
         $this->get(route('my.tennis.pathway', $other), $headers)->assertForbidden();

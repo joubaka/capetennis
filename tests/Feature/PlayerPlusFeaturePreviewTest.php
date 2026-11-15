@@ -17,9 +17,9 @@ class PlayerPlusFeaturePreviewTest extends TestCase
         $player = Player::factory()->create(['userId' => $user->id]);
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
         $this->mock(PlayerPlusRecordService::class)->shouldNotReceive('forPlayer');
-        foreach (['record' => 'Playing Record', 'opponents' => 'Opponent Insights', 'pathway' => 'Tennis pathway', 'events' => 'Past-event ratings', 'rating' => 'Player rating'] as $feature => $title) {
+        foreach (['record' => 'Your season. Your monthly tennis report.', 'opponents' => 'Opponent Insights', 'pathway' => 'Tennis pathway', 'events' => 'Past-event ratings', 'rating' => 'Player rating'] as $feature => $title) {
             $response = $this->actingAs($user)->get(route('my.tennis.feature-preview', ['player' => $player, 'feature' => $feature]))
-                ->assertOk()->assertSee($title)->assertSee('Blurred example')
+                ->assertOk()->assertSee($title)->assertSee('Fictional example')->assertDontSee('Sample value hidden')
                 ->assertSee('data-plus-sample', false)
                 ->assertSee('View membership and availability')->assertDontSee('data-plus-preview-link', false)
                 ->assertHeader('Cache-Control', 'no-store, private');
