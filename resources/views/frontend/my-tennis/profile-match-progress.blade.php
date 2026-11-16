@@ -40,7 +40,7 @@
   </div>
   <div class="pm-body">
     <p class="pm-basis"><strong>Reconstructed using scheduled match order.</strong></p>
-    <p class="pm-note">Overall CTR estimates, not archived ratings or verified completion times.@if($profileMatchProgress['as_of'] ?? null) Saved through {{ $profileMatchProgress['as_of'] }}.@endif</p>
+    <p class="pm-note">CTR estimates, not archived ratings or verified completion times.@if($profileMatchProgress['as_of'] ?? null) Saved through {{ $profileMatchProgress['as_of'] }}.@endif</p>
     @if($progressReason !== null)
       <p class="pm-pending mb-0" role="status" data-profile-match-pending>{{ $progressReason }}</p>
     @elseif(!$progressRows)
@@ -51,7 +51,7 @@
         <div class="pm-scroll" tabindex="0" role="region" aria-label="Reconstructed match ratings; scroll horizontally on a narrow screen" data-profile-match-chart>
           <svg viewBox="0 0 660 352" role="group" aria-labelledby="profile-match-chart-title" aria-describedby="profile-match-chart-description">
             <title id="profile-match-chart-title">Latest five eligible matches, oldest to newest, on a fixed 0 to 100 CTR scale</title>
-            <desc id="profile-match-chart-description">Each separate arrow compares reconstructed Overall CTR immediately before and after that match. Gaps are deliberate: no continuous rating trend between matches is implied. Exact values, results and unavailable reasons are in the match values list below.</desc>
+            <desc id="profile-match-chart-description">Each separate arrow compares reconstructed CTR immediately before and after that match. Gaps are deliberate: no continuous rating trend between matches is implied. Exact values, results and unavailable reasons are in the match values list below.</desc>
             <defs><marker id="profile-match-pair-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker></defs>
             @foreach([100, 75, 50, 25, 0] as $tick)
               @php $tickY = 190 - 1.6 * $tick; @endphp

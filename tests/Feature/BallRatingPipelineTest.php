@@ -306,7 +306,7 @@ class BallRatingPipelineTest extends TestCase
             }
             $this->assertSame('standard', $history->forPlayer($players[0])['ball_stage']);
             $registry = $saved['evidence'];
-            $this->assertCount(3, array_filter($registry, fn ($row) => $row['cohort'] === AllAgeRatingModel::COHORT));
+            $this->assertCount(1, array_filter($registry, fn ($row) => $row['cohort'] === AllAgeRatingModel::COHORT));
         } finally { File::delete($path); }
     }
 
@@ -406,7 +406,8 @@ class BallRatingPipelineTest extends TestCase
         $snapshotStore->replace($snapshot, CarbonImmutable::today(), $ability->fingerprint(), $snapshotStore->manifest($snapshot));
         foreach ($fixtures as $fixture) $this->assertSame('red', app(PlayerRatingBadgeService::class)->forPlayer($players[0]->id, $fixture->draw)['ball_type']);
         $builder = new \App\Services\Performance\PlayerRatingEvidenceBuilder; $builder->append($snapshot, $sources, 11);
-        $rows = array_values(array_filter($builder->all(), fn ($row) => $row['cohort'] === AllAgeRatingModel::COHORT));
+        $this->assertSame([], array_values(array_filter($builder->all(), fn ($row) => $row['cohort'] === AllAgeRatingModel::COHORT)));
+        $rows = array_values(array_filter($builder->all(), fn ($row) => $row['cohort'] === BallRatingModel::COHORTS['red']));
         $this->assertCount(3, $rows);
         foreach ($rows as $row) $this->assertSame('red', $row['rating_ball_type']);
         $saved = ['as_of' => CarbonImmutable::today()->toDateString(), 'publication_manifest' => $snapshotStore->manifest($snapshot), 'evidence' => $rows];

@@ -50,7 +50,7 @@ class PlayerRatingTopTen
             $level = 'overall';
             $perPage = 10;
         }
-        // Existing Green/Yellow filter links now select the shared Overall rating.
+        // Overall is the all-age Green/Yellow CTR list, not a combined-ball graph.
         if ($level === 'standard') $level = 'overall';
         $ageOptions = PlayerRatingProfileDirectory::birthYearLabels($today->year);
         foreach (array_keys($ageOptions) as $key) {
@@ -69,7 +69,7 @@ class PlayerRatingTopTen
         ['rating_age' => $age, 'rating_gender' => $gender, 'rating_level' => $level, 'rating_per_page' => $perPage] = $result['filters'];
         if (!$result['visible']) return $result;
         $snapshot = $this->snapshots->current();
-        foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $key => $label) {
+        foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'CTR'] as $key => $label) {
             if ((!$result['can_browse'] || $matchIds !== null) && $key !== 'overall') continue;
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
@@ -82,7 +82,7 @@ class PlayerRatingTopTen
         $result['stale'] = ($snapshot['snapshot_stale'] ?? false) === true;
         $ratings = [];
         foreach (array_keys($result['lists']) as $key) {
-            $graph = $key === 'overall' ? ($snapshot['all_age'] ?? []) : ($snapshot['ball_ratings'][$key] ?? []);
+            $graph = $snapshot['ball_ratings'][$key === 'overall' ? 'standard' : $key] ?? [];
             $reference = $graph['reference_component'] ?? null;
             $component = $graph['components'][$reference ?? ''] ?? [];
             if (!$reference || ($component['converged'] ?? false) !== true) continue;

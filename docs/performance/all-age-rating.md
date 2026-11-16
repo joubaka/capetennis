@@ -1,7 +1,8 @@
 # Cape Tennis all-age singles rating
 
-The shared rating is a private, provisional 0–100 measure. One player has one
-shared score across age categories. Age and gender filters change membership of
+CTR is the private, provisional 0–100 Green/Yellow rating. Red and Orange have
+independent ratings and evidence pools; no mixed-ball rating is permitted.
+One player has one score per ball pool across age categories. Age and gender filters change membership of
 lists, never the player's estimated strength. It is not UTR, WTN, a win
 percentage, or an official selection ranking.
 
@@ -19,8 +20,11 @@ cutoffs, New Year rollover and exact-group override regressions.
 canonical eligible played singles. It uses the existing bounded score-margin
 targets and per-player incident budget of one per event. Match weights have a
 180-day half-life. Results within 730 days may establish shared connections;
-results older than that are excluded. Future results, duplicated sources, doubles, finishing-order
-inferences and age-specific trial anchors do not enter this fit.
+results older than that are excluded. Future results, duplicated sources, doubles
+and age-specific trial anchors do not enter the played-match fit. Separately
+validated published finishing fields may provide weaker evidence within their
+own ball pool. Finish-only estimates remain local and noncomparable; they never
+manufacture played matches or entry into the comparable Top 10.
 
 Shared players and opponents connect age categories. Age, gender and event labels
 provide no strength offsets. The largest component connected by matches within
@@ -50,18 +54,22 @@ groups and does not report those changes as like-for-like monthly gains.
 
 ## Playing format
 
-The current `AllAgeRatingModel::VERSION = 6` accepts otherwise eligible played
-singles across ball and court formats. Its `format()` does not exclude matches
-or infer standard format from age, category, missing metadata or court labels.
-These labels do not add strength offsets. Identity, publication, completed-match,
-date and duplicate-source checks still apply. Red and Orange use their separate
-ball-level projections; this does not make their scores interchangeable.
+The standing product rule keeps Red, Orange and Green/Yellow evidence and scores
+separate. CTR and any "Overall" all-age list use Green/Yellow only; "Overall"
+never means all ball levels. Explicit Red or Orange contexts use their own saved
+graph and never borrow a CTR score, or vice versa. Age and gender filters do not
+change the score or admit evidence from another ball pool.
 
-Earlier policies excluded some modified or unresolved formats. Historical
-validation results from those policies are not evidence that version 6 is
-calibrated to competition levels. `AllAgeRatingModelTest` covers the current
-format behavior. Confidence describes evidence sufficiency, not accuracy or
-Wilson/TSA readiness.
+Classification uses `BallRatingModel` and `BallRatingContext`, including the U9
+Orange fallback and explicit playing-condition overrides documented in
+[ball-level classification](ball-level-classification.md). Identity, publication,
+completed-match, date and duplicate-source checks still apply.
+
+Earlier combined-ball calculations are superseded and must not be displayed as
+CTR or used as a missing-rating fallback. Saved calculations and derived history
+require a policy-compatible rebuild; a code deployment alone does not establish
+that the rebuild has completed. Confidence describes evidence sufficiency, not
+accuracy or Wilson/TSA readiness.
 
 By explicit product decision, Player Plus shows a personalized Cape Tennis
 tournament stage from the saved comparable Green/Yellow CTR: Wilson B at 50 or
@@ -107,16 +115,16 @@ Focused coverage: `PlayerPathwayEventsTest` and `PlayerPathwayTest`.
 
 ## Integration and saved data
 
-The additive `all_age` snapshot retains legacy `cohorts` for explicit historical
-review. Combined-model profiles, event membership lists, authorized badges,
-the integration API and default monthly history use the shared projection.
-Disconnected or missing estimates never fall back silently to an age-relative
-score. Directory presentation follows the distinct ball-level policy below.
+The compatibility `all_age` snapshot key represents the Green/Yellow graph only;
+it must never carry a combined-ball fit. Red and Orange retain independent
+graphs. Profiles, event membership lists, authorized badges, the integration API
+and monthly history must respect those same pool boundaries. Disconnected or
+missing estimates never borrow another pool or a legacy age-relative score.
 
 The Super Admin directory's ordinary Overall choice is an all-age view of the
-Green/Yellow CTR (`standard`) graph, not this combined model. It displays the
-same scores as its CTR choice and clears age restrictions. Explicit historical
-Overall comparison-group links remain a labelled review of this combined graph.
+Green/Yellow CTR (`standard`) graph. It displays the same scores as its CTR
+choice and clears age restrictions. Historical Overall comparison-group links
+must match the current Green/Yellow graph or withhold the mismatched rating.
 See `ball-level-classification.md` for directory filter and navigation rules.
 
 Model/policy hashes invalidate earlier saved calculations. Existing background

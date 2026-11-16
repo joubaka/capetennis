@@ -96,7 +96,7 @@ class BallRatingModel
         return self::bucket($ballType);
     }
 
-    public function fit(array $matches, CarbonImmutable $asOf, array $fields = []): array
+    public function fit(array $matches, CarbonImmutable $asOf, array $fields = [], int $windowDays = AllAgeRatingModel::WINDOW_DAYS): array
     {
         $buckets = array_fill_keys(array_keys(self::LABELS), []);
         foreach ($matches as $match) {
@@ -108,10 +108,10 @@ class BallRatingModel
         $ratings = [];
         foreach ($buckets as $stage => $rows) {
             $ownFields = array_values(array_filter($fields, fn ($field) => ($field['rating_ball_type'] ?? null) === $stage));
-            $ratings[$stage] = (new AllAgeRatingModel)->fit($rows, $asOf, ordinalFields: $ownFields);
+            $ratings[$stage] = (new AllAgeRatingModel)->fit($rows, $asOf, $windowDays, ordinalFields: $ownFields, ballStage: $stage);
             if (array_filter($ratings[$stage]['components'], fn ($component) => empty($component['converged']))) {
                 // A failed independent fit is unrated; it must not block healthy ball levels or invent a score.
-                $ratings[$stage] = (new AllAgeRatingModel)->fit([], $asOf);
+                $ratings[$stage] = (new AllAgeRatingModel)->fit([], $asOf, $windowDays, ballStage: $stage);
                 $ratings[$stage]['unrated_reason'] = 'This ball-level model did not converge. Its rating is withheld until a valid fit is available.';
                 $ratings[$stage]['excluded']['Ball-level model did not converge'] = count($rows);
             }

@@ -4,8 +4,8 @@
   $ageLabel = $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable';
   $genderLabel = \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable';
   $positionLabels = $canBrowse
-      ? ['age' => 'Overall CTR · '.$ageLabel.' · all genders', 'overall' => 'Overall CTR · all ages and genders']
-      : ['age' => 'Overall CTR · '.$ageLabel.' · '.$genderLabel];
+      ? ['age' => 'CTR · '.$ageLabel.' · all genders', 'overall' => 'CTR · all ages and genders']
+      : ['age' => 'CTR · '.$ageLabel.' · '.$genderLabel];
   $hasRatingPosition = !empty($ratingTopTen['summary']['age']['player']) || ($canBrowse && !empty($ratingTopTen['summary']['overall']['player']));
 @endphp
 <section class="mt-4" aria-labelledby="player-top-ten-heading" data-player-rating-top-ten>
@@ -69,7 +69,7 @@
     @foreach(['month', 'scope', 'scale'] as $historyFilter)<input type="hidden" name="{{ $historyFilter }}" value="{{ $ratingHistory[$historyFilter] ?? '' }}">@endforeach
     <div data-rating-age-filter @if($ratingTopTen['filters']['rating_level'] !== 'overall') hidden @endif><label for="ctr-rating-age">Overall age group</label><select id="ctr-rating-age" name="rating_age" class="form-select"><option value="">All ages</option>@foreach($ratingTopTen['age_options'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_age'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-gender">Gender</label><select id="ctr-rating-gender" name="rating_gender" class="form-select"><option value="">All genders</option>@foreach(\App\Services\Performance\PlayerRatingProfileDirectory::GENDERS as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_gender'] === $value)>{{ $label }}</option>@endforeach</select></div>
-    <div><label for="ctr-rating-level">Rating level</label><select id="ctr-rating-level" name="rating_level" class="form-select">@foreach(['red' => 'Red', 'orange' => 'Orange', 'overall' => 'Overall CTR'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_level'] === $value)>{{ $label }}</option>@endforeach</select></div>
+    <div><label for="ctr-rating-level">Rating level</label><select id="ctr-rating-level" name="rating_level" class="form-select">@foreach(['red' => 'Red', 'orange' => 'Orange', 'overall' => 'CTR'] as $value => $label)<option value="{{ $value }}" @selected($ratingTopTen['filters']['rating_level'] === $value)>{{ $label }}</option>@endforeach</select></div>
     <div><label for="ctr-rating-per-page">Players per page</label><select id="ctr-rating-per-page" name="rating_per_page" class="form-select">@foreach(\App\Services\Performance\PlayerRatingTopTen::PAGE_SIZES as $size)<option value="{{ $size }}" @selected(($ratingTopTen['filters']['rating_per_page'] ?? \App\Services\Performance\PlayerRatingTopTen::PER_PAGE) === $size)>{{ $size }}</option>@endforeach</select></div>
     @if($ratingFragment ?? true)<noscript>@endif
     <button type="submit" class="btn btn-primary">Show ratings</button>
@@ -122,7 +122,7 @@
     <summary>Who’s included?</summary>
     <p class="mt-2 mb-1">Positions compare players who have a comparable CTR and are publicly listed as an event participant. They are separate from official rankings. Junior age groups include younger players, based on the age they reach this calendar year.</p>
     @if($ratingTopTen['can_browse'] ?? false)
-      <p class="mb-0">Red and Orange have separate ratings and include all ages. Green/Yellow uses Overall CTR. Filters change positions without changing rating scores. Players with equal displayed scores share a position.</p>
+      <p class="mb-0">Red and Orange have separate ratings and include all ages. CTR uses Green/Yellow results only. Filters change positions without changing rating scores. Players with equal displayed scores share a position.</p>
     @endif
   </details>
 </section>

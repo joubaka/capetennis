@@ -33,6 +33,8 @@
 
 ## Verification
 
+- Rating pools must always remain separate: Red, Orange, and normal CTR (Green/Yellow). Never combine evidence or scores across these pools, substitute another pool when a rating is missing, or display a combined-ball rating as CTR. "Overall" means all ages within the Green/Yellow CTR pool, never a combination of ball levels. Apply this rule across ratings, lists, badges, history, match comparisons and pathway guidance. Historical combined calculations do not authorize continued mixed-pool use.
+
 - When investigating missing player results or CTR evidence, always check the event's attached documents when structured finishing results or match records are absent. Review the actual documents before concluding that no result evidence exists; a missing local attachment file does not mean the event has no document. Record the document reference and distinguish verified finishing positions from team-selection order, reserves, or registration lists. Preserve publication, identity, event-isolation, and rating-confidence checks; an attachment alone must not manufacture played matches or final placings.
 
 - For draw and scheduling work, consult `docs/draw-knowledge/README.md` for reviewed problem/solution history and focused regressions. Verify its rules against current owning code; historical repairs and release approvals do not authorize new live actions.

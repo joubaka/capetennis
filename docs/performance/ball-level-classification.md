@@ -4,6 +4,14 @@ Ball-level ratings classify evidence independently from age or score. The owning
 fallback rules are in `BallRatingModel`; `BallRatingContext` applies the same rules
 to finishing fields and display contexts.
 
+Standing product decision (2026-11-16): Red, Orange and normal CTR (Green/Yellow)
+must always remain separate. Never combine their evidence or scores, use another
+pool as a fallback, or present a mixed-ball calculation as CTR. This applies to
+ratings, lists, badges, history, match comparisons and pathway guidance.
+"Overall" means all ages within Green/Yellow CTR, not all ball levels.
+Earlier combined-model behavior is superseded by this decision; recording the
+rule does not establish that every existing consumer has been corrected.
+
 User-confirmed competition formats (updated 2026-11-15), for boys and girls:
 
 - Single-age U9 divisions use Orange across all tournaments, including A, B,
@@ -51,9 +59,9 @@ same graph and the same scores across all ages in one list; it clears any
 retained age filter and age-based ordering. Red CTR and Orange CTR each retain
 their separate, age-independent graph. Overall player links use `standard`
 so opening a profile cannot switch the displayed score to the combined model.
-Explicit historical `overall` comparison-group links remain a separately
-labelled recorded combined-graph review. This display policy does not change
-the combined model used elsewhere or recalculate saved evidence.
+Historical `overall` comparison-group links must resolve within the current
+Green/Yellow graph or withhold the rating when the group no longer matches.
+They never authorize a combined-ball graph or a fallback to another pool.
 
 Region choices remain stable across ball-level changes and represent recorded
 affiliations of valid rated players. Selecting a region without players at the

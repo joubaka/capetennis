@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\{DB, Schema};
 /** Derived private materialization, never a canonical player or ranking record. */
 class PlayerAbilitySnapshotStore
 {
-    public const POLICY_VERSION = 3;
+    public const POLICY_VERSION = 4;
     private const PUBLICATION_CHECK_CHUNK = 2000;
     private ?array $loaded = null;
 
@@ -19,12 +19,12 @@ class PlayerAbilitySnapshotStore
                 'finishes' => 'validated published completed singles fields covering all active nonwithdrawn memberships; weak ordinal evidence; played-covered fields excluded; no A/B cross-field links',
                 'ordinal_solver_iterations' => 2000],
             'all_age' => ['version' => AllAgeRatingModel::VERSION, 'regularization' => AllAgeRatingModel::REGULARIZATION, 'window_days' => AllAgeRatingModel::WINDOW_DAYS, 'recent_window_days' => AllAgeRatingModel::RECENT_WINDOW_DAYS,
-                'evidence' => 'played singles only; no age offsets, ordinal fields or cohort trial anchors',
+                'evidence' => 'compatibility alias of Green/Yellow standard graph; independent validated matches and finishing fields',
                 'reference' => 'historical component containing the largest recent connected backbone; no reference without recent matches',
                 'disconnected' => 'provisional numeric estimate within its played component; confidence capped Low; not calibrated across components',
                 'historical_connection' => 'minimax played-link age from the recent backbone; edge age is freshest actual result between opponents',
                 'historical_connection_confidence_cap' => AllAgeRatingModel::HISTORICAL_CONFIDENCE_CAP,
-                'format' => 'all ball and court categories included; no format assumptions or rating offsets'],
+                'format' => 'Green/Yellow only; Red and Orange remain separate; no cross-pool fallback'],
             'all_age_team_reader' => ['version' => 1, 'demographics' => 'labels do not establish identity or restrict shared singles',
                 'cross_context_format' => 'playing conditions do not restrict verified singles', 'source_gates' => 'independent pre-cohort identity, event-side, roster, singles, score, date and publication checks'],
             'policy' => self::POLICY_VERSION, 'played_event_incident_budget' => 1, 'played_half_life_days' => 180,
@@ -97,9 +97,11 @@ class PlayerAbilitySnapshotStore
                     }
                 }
             }
+            if (!isset($payload['all_age'], $payload['ball_ratings']) || $payload['cohorts'] !== []) throw new \UnexpectedValueException('Independent ball pools are required.');
             if (array_key_exists('all_age', $payload)) {
-                $this->assertAllAgeGraph($payload['all_age'], $row->as_of);
+                $this->assertAllAgeGraph($payload['all_age'], $row->as_of, ballFinishes: true);
                 $this->assertBallGraphs($payload['ball_ratings'] ?? null, $row->as_of);
+                if ($payload['all_age'] !== $payload['ball_ratings']['standard']) throw new \UnexpectedValueException('CTR must equal the Green/Yellow graph.');
             }
             if (isset($payload['badge_players']) && !is_array($payload['badge_players'])) { throw new \UnexpectedValueException('Invalid saved badges.'); }
         } catch (\Throwable) {
@@ -348,12 +350,17 @@ class PlayerAbilitySnapshotStore
     public function replace(array $payload, CarbonImmutable $asOf, string $fingerprint, array $manifest): void
     {
         if ($payload['preview_only'] ?? false) { throw new \LogicException('Hypothetical review snapshots cannot replace saved ratings.'); }
+        if (!isset($payload['all_age'], $payload['ball_ratings']) || ($payload['cohorts'] ?? null) !== []) throw new \UnexpectedValueException('Independent ball pools are required.');
         foreach ($payload['cohorts'] as $cohort) {
             foreach ($cohort['components'] as $component) {
                 if (!$component['converged']) { throw new \RuntimeException('Incomplete model cannot replace the saved snapshot.'); }
             }
         }
-        if (array_key_exists('all_age', $payload)) { $this->assertAllAgeGraph($payload['all_age'], $asOf->toDateString()); $this->assertBallGraphs($payload['ball_ratings'] ?? null, $asOf->toDateString()); }
+        if (array_key_exists('all_age', $payload)) {
+            $this->assertAllAgeGraph($payload['all_age'], $asOf->toDateString(), ballFinishes: true);
+            $this->assertBallGraphs($payload['ball_ratings'] ?? null, $asOf->toDateString());
+            if ($payload['all_age'] !== $payload['ball_ratings']['standard']) throw new \UnexpectedValueException('CTR must equal the Green/Yellow graph.');
+        }
         if ($asOf->toDateString() > CarbonImmutable::today('Africa/Johannesburg')->toDateString()) { throw new \RuntimeException('Future snapshots cannot be persisted.'); }
         if ($payload['reason'] || !$this->published($manifest)) { throw new \RuntimeException('Snapshot sources are not ready for replacement.'); }
         DB::transaction(function () use ($payload, $asOf, $fingerprint, $manifest) {
@@ -380,6 +387,12 @@ class PlayerAbilitySnapshotStore
         foreach ($graphs as $stage => $graph) {
             $this->assertAllAgeGraph($graph, $asOf, ballFinishes: true);
             if (($graph['policy']['ball_bucket'] ?? null) !== $stage || ($graph['policy']['classification_version'] ?? null) !== BallRatingModel::VERSION) throw new \UnexpectedValueException('Invalid ball-level policy.');
+            foreach ($graph['history_evidence']['matches'] ?? [] as $match) {
+                if (BallRatingModel::forMatch($match) !== $stage) throw new \UnexpectedValueException('Cross-pool match evidence.');
+            }
+            foreach ($graph['history_evidence']['fields'] ?? [] as $field) {
+                if (($field['rating_ball_type'] ?? null) !== $stage) throw new \UnexpectedValueException('Cross-pool finishing evidence.');
+            }
         }
     }
 }

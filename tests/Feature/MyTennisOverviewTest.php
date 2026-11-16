@@ -46,6 +46,19 @@ class MyTennisOverviewTest extends TestCase
         }
     }
 
+    public function test_activity_keeps_schedule_and_history_accessible_without_rating_calculations(): void
+    {
+        $player = $this->player();
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Rating update pending.']);
+        $history->shouldNotReceive('recordSource');
+        $response = $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'activity']))->assertOk()
+            ->assertSee('Your tennis activity')->assertSee('Upcoming matches')->assertSee('Match reminders')
+            ->assertSee('No upcoming published match times found.')->assertSee('Entries')
+            ->assertSee('Recent published results')->assertSee('Current rankings');
+        $this->export('activity', $response->getContent());
+    }
+
     public function test_profile_composes_current_month_and_season_without_calculating_ratings(): void
     {
         $player = $this->player();

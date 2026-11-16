@@ -121,6 +121,43 @@
       #my-tennis-page .my-tennis-header-actions .btn { flex: 1; }
       #my-tennis-page .my-tennis-profile-header { padding: 1rem; }
     }
+    #my-tennis-page .my-tennis-activity-intro { display:flex;align-items:center;justify-content:space-between;gap:1rem;margin:1.75rem 0 1.25rem; }
+    #my-tennis-page .my-tennis-activity-eyebrow { display:block;color:#90500c;font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.35rem; }
+    #my-tennis-page .my-tennis-activity-intro h2 { color:#172e45;font-size:clamp(1.5rem,3vw,2rem);font-weight:750;letter-spacing:-.035em;margin:0 0 .35rem; }
+    #my-tennis-page .my-tennis-activity-intro p { color:#536873;margin:0; }
+    #my-tennis-page .my-tennis-activity-mark { display:grid;place-items:center;flex:0 0 64px;height:64px;border-radius:50%;background:#fff0de;color:#a75408;font-size:2.3rem;transform:rotate(-15deg); }
+    #my-tennis-page .my-tennis-activity .my-tennis-player-summary { border:1px solid #cdddeb;border-left:4px solid #004177;background:linear-gradient(110deg,#eaf2fa,#fff);margin-bottom:.85rem;box-shadow:0 4px 16px #172e4506; }
+    #my-tennis-page .my-tennis-section-icon { display:grid;place-items:center;flex:0 0 44px;height:44px;border-radius:12px;background:#eaf2fa;color:#004177;font-size:1.5rem; }
+    #my-tennis-page .my-tennis-schedule-empty { display:flex;align-items:center;gap:1rem;padding:1.35rem 1.5rem;margin-bottom:1.5rem;border:1px dashed #c4d5e4;border-radius:14px;background:#f8fbfe; }
+    #my-tennis-page .my-tennis-schedule-empty > i { font-size:2rem;color:#547899; }
+    #my-tennis-page .my-tennis-schedule-empty h3 { color:#29485f;font-size:1rem;margin:0 0 .25rem; }
+    #my-tennis-page .my-tennis-schedule-empty p { color:#536873;font-size:.85rem;margin:0; }
+    #my-tennis-page .my-tennis-activity-card { border:1px solid #dce5ee !important;border-radius:16px;overflow:hidden;box-shadow:0 5px 20px #172e4507 !important; }
+    #my-tennis-page .my-tennis-card-heading { display:flex;align-items:center;gap:.85rem;margin-bottom:1rem; }
+    #my-tennis-page .my-tennis-card-heading h2 { color:#172e45;font-weight:700; }
+    #my-tennis-page .my-tennis-entries .table { font-size:.88rem; }
+    #my-tennis-page .my-tennis-entries th { background:#edf3f9;color:#47617a;font-size:.68rem;letter-spacing:.07em;border-bottom:1px solid #dce5ee;padding:1rem; }
+    #my-tennis-page .my-tennis-entries td { padding:1rem;border-color:#edf1f6; }
+    #my-tennis-page .my-tennis-entries tbody tr:nth-child(even) { background:#f9fbfd; }
+    #my-tennis-page .my-tennis-entry-event { color:#203e58;font-weight:600;min-width:14rem; }
+    #my-tennis-page .my-tennis-status { display:inline-flex;align-items:center;padding:.25rem .65rem;border-radius:6px;font-size:.75rem;font-weight:600;white-space:nowrap; }
+    #my-tennis-page .my-tennis-status-active { color:#004177;background:#e8f1fb; }
+    #my-tennis-page .my-tennis-status-neutral { color:#596572;background:#edf0f3; }
+    #my-tennis-page .my-tennis-status-paid { color:#256344;background:#e8f4ed; }
+    #my-tennis-page .my-tennis-status-unpaid { color:#8d4b07;background:#fff0da; }
+    #my-tennis-page .my-tennis-results { border-top:3px solid #f49b40 !important; }
+    #my-tennis-page .my-tennis-results .my-tennis-section-icon { color:#90500c;background:#fff0de; }
+    #my-tennis-page .my-tennis-rankings { border-top:3px solid #2877b9 !important; }
+    #my-tennis-page .my-tennis-activity .my-tennis-development { border-left:4px solid #f49b40;background:linear-gradient(110deg,#eef4fb,#fff); }
+    @media (max-width:575.98px) {
+      #my-tennis-page .my-tennis-activity-mark { flex-basis:48px;height:48px;font-size:1.8rem; }
+      #my-tennis-page .my-tennis-activity-intro { align-items:flex-start; }
+      #my-tennis-page .my-tennis-activity .my-tennis-player-summary .my-tennis-player-details { flex:1 1 calc(100% - 60px); }
+      #my-tennis-page .my-tennis-activity .my-tennis-player-summary > .d-flex { width:100%; }
+      #my-tennis-page .my-tennis-activity .my-tennis-player-summary .btn { flex:1; }
+      #my-tennis-page .my-tennis-schedule-empty { padding:1rem; }
+      #my-tennis-page .my-tennis-entries td,#my-tennis-page .my-tennis-entries th { padding:.85rem .75rem; }
+    }
   </style>
   @php
     $workspaceTab = $workspaceTab ?? 'profile';

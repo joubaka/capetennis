@@ -69,7 +69,7 @@ class PlayerRatingHistoryService
         $point = collect($points)->firstWhere('index', $month);
         $previous = collect($points)->firstWhere('index', $month - 1);
         $evidence = $this->evidence($saved['evidence'], $player, $cohort, $month, $scope, (int) ($filters['page'] ?? 1), $point !== null);
-        $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, $series[AllAgeRatingModel::COHORT] ?? [], $pending);
+        $pathwayMetrics = app(PlayerPathwayEvidence::class)->fromHistory($saved, $player, ($series[AllAgeRatingModel::COHORT] ?? []) ?: $points, $pending);
         return ['series' => $series, 'reason' => null, 'as_of' => $saved['as_of'], 'built_at' => $saved['built_at'],
             'stale' => $stale,
             'cohort' => $cohort, 'current_group_label' => $currentStage ? BallRatingModel::LABELS[$currentStage] : 'Not rated yet',

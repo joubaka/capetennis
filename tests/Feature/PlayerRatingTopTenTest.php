@@ -10,6 +10,30 @@ use Tests\TestCase;
 
 class PlayerRatingTopTenTest extends TestCase
 {
+    public function test_ctr_and_match_comparisons_ignore_a_legacy_combined_graph_and_keep_ball_lists_separate(): void
+    {
+        foreach (range(1, 4) as $id) $this->player($id);
+        $snapshot = $this->snapshot([1 => 80, 2 => 60]);
+        $snapshot['all_age'] = $this->snapshot([3 => 99, 4 => 98])['all_age'];
+        $snapshot['ball_ratings']['red'] = $this->snapshot([3 => 90])['all_age'];
+        $snapshot['ball_ratings']['orange'] = $this->snapshot([4 => 95])['all_age'];
+        $result = $this->build($snapshot);
+        $this->assertSame([1, 2], array_column($result['lists']['overall']['players'], 'id'));
+        $this->assertSame('CTR', $result['lists']['overall']['label']);
+        $this->assertSame([3], array_column($result['lists']['red']['players'], 'id'));
+        $this->assertSame([4], array_column($result['lists']['orange']['players'], 'id'));
+    }
+
+    public function test_missing_green_yellow_pool_never_falls_back_to_combined_or_orange_scores(): void
+    {
+        $this->player(1);
+        $snapshot = $this->snapshot([1 => 99]);
+        unset($snapshot['ball_ratings']['standard']);
+        $result = $this->build($snapshot);
+        $this->assertSame([], $result['lists']['overall']['players']);
+        $this->assertSame([1], array_column($result['lists']['orange']['players'], 'id'));
+    }
+
     public function test_context_preserves_member_scope_without_loading_snapshots_or_participants(): void
     {
         $access = $this->mock(PlayerRatingAccess::class);
@@ -95,7 +119,7 @@ class PlayerRatingTopTenTest extends TestCase
         $access->shouldReceive('allowsDiscovery')->twice()->andReturnTrue();
         $access->shouldReceive('allows')->twice()->with($user, $selected)->andReturn(true, false);
         $snapshot = $this->snapshot([1 => 80, 2 => 75, 3 => 70, 4 => 65, 5 => 60]);
-        $snapshot['all_age']['ratings'][3]['comparable'] = false;
+        $snapshot['ball_ratings']['standard']['ratings'][3]['comparable'] = false;
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
         $service = app(PlayerRatingTopTen::class);
         $ratings = $service->forMatchPlayers($user, $selected, [1, 2, 3, 4]);
@@ -108,7 +132,7 @@ class PlayerRatingTopTenTest extends TestCase
     public function test_plus_receives_own_positions_and_age_top_ten_without_full_browsing(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
-        foreach (range(1, 3) as $id) {
+        foreach (range(1, 4) as $id) {
             $this->player($id, 'Private peer '.$id);
             DB::table('players')->where('id', $id)->update(['dateOfBirth' => '2015-01-01', 'gender' => '1']);
         }
@@ -118,7 +142,12 @@ class PlayerRatingTopTenTest extends TestCase
         $access = $this->mock(PlayerRatingAccess::class);
         $access->shouldReceive('allowsDiscovery')->once()->with($user)->andReturnTrue();
         $access->shouldReceive('allows')->once()->with($user, $selected)->andReturnTrue();
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($this->snapshot([1 => 90, 2 => 80, 3 => 70]));
+        $snapshot = $this->snapshot([1 => 90, 2 => 80, 3 => 70]);
+        // This public age peer has Orange-only evidence and an obsolete combined
+        // score. Neither is eligible for this member's Green/Yellow Top 10.
+        $snapshot['all_age'] = $this->snapshot([4 => 99])['all_age'];
+        $snapshot['ball_ratings']['orange'] = $this->snapshot([4 => 95])['all_age'];
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
         $result = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_page' => 2, 'rating_gender' => 'girls']);
         $this->assertFalse($result['can_browse']);
         $this->assertSame([1, 2, 3], array_column($result['lists']['overall']['players'], 'id'));
@@ -148,7 +177,7 @@ class PlayerRatingTopTenTest extends TestCase
         $access->shouldReceive('allowsDiscovery')->once()->andReturnTrue();
         $access->shouldReceive('allows')->once()->with($user, $selected)->andReturnTrue();
         $snapshot = $this->snapshot([1 => 90, 2 => 80, 3 => 70]);
-        foreach ([1 => 'Low', 2 => 'Medium', 3 => 'High'] as $id => $label) $snapshot['all_age']['ratings'][$id]['confidence_label'] = $label;
+        foreach ([1 => 'Low', 2 => 'Medium', 3 => 'High'] as $id => $label) $snapshot['ball_ratings']['standard']['ratings'][$id]['confidence_label'] = $label;
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
         $result = app(PlayerRatingTopTen::class)->build($user, $selected);
         $this->assertFalse($result['can_browse']);
@@ -216,10 +245,10 @@ class PlayerRatingTopTenTest extends TestCase
         $access->shouldReceive('allowsDiscovery')->times(4)->andReturnTrue();
         $access->shouldReceive('allows')->times(4)->with($user, $selected)->andReturnTrue();
         $snapshot = $this->snapshot(array_combine(range(1, 18), range(90, 73)));
-        $snapshot['all_age']['ratings'][1]['comparable'] = false;
-        $snapshot['all_age']['ratings'][15]['score'] = 100;
-        $snapshot['all_age']['ratings'][17]['score'] = 99;
-        $snapshot['all_age']['ratings'][11]['score'] = $snapshot['all_age']['ratings'][10]['score'];
+        $snapshot['ball_ratings']['standard']['ratings'][1]['comparable'] = false;
+        $snapshot['ball_ratings']['standard']['ratings'][15]['score'] = 100;
+        $snapshot['ball_ratings']['standard']['ratings'][17]['score'] = 99;
+        $snapshot['ball_ratings']['standard']['ratings'][11]['score'] = $snapshot['ball_ratings']['standard']['ratings'][10]['score'];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
         $normal = app(PlayerRatingTopTen::class)->build($user, $selected);
         $tampered = app(PlayerRatingTopTen::class)->build($user, $selected, ['rating_age' => '', 'rating_gender' => 'girls', 'rating_level' => 'red', 'rating_page' => 200, 'rating_per_page' => 500]);
@@ -268,7 +297,7 @@ class PlayerRatingTopTenTest extends TestCase
             'ratingHistory' => ['cohort' => 'overall', 'month' => 11, 'scope' => 'new', 'scale' => 'focused']])->render();
         $this->assertStringContainsString('Rating position #13 of 13', strip_tags($html));
         $this->assertStringContainsString('name="rating_age"', $html);
-        $this->assertStringContainsString('Overall CTR', $html);
+        $this->assertStringContainsString('CTR', $html);
         $this->assertStringContainsString('value="overall"', $html);
         $this->assertStringNotContainsString('value="standard"', $html);
     }
@@ -364,7 +393,7 @@ class PlayerRatingTopTenTest extends TestCase
         $snapshot['ball_ratings']['red']['ratings'][6]['comparable'] = false;
         $snapshot['ball_ratings']['red']['ratings'][7]['component'] = 'local';
         $snapshot['ball_ratings']['orange']['components']['shared']['converged'] = false;
-        $snapshot['all_age']['ratings'][1]['score'] = 99;
+        $snapshot['ball_ratings']['standard']['ratings'][1]['score'] = 99;
         $result = $this->build($snapshot);
         $this->assertSame([2, 1], array_column($result['lists']['red']['players'], 'id'));
         $this->assertSame([], $result['lists']['orange']['players']);
@@ -383,15 +412,15 @@ class PlayerRatingTopTenTest extends TestCase
 
         $result = $this->build($snapshot, selected: $selected);
         $this->assertSame('overall', $result['filters']['rating_level']);
-        $this->assertSame(62.3, $result['summary']['age']['player']['score']);
-        $this->assertSame(62.3, $result['summary']['overall']['player']['score']);
+        $this->assertSame(67.9, $result['summary']['age']['player']['score']);
+        $this->assertSame(67.9, $result['summary']['overall']['player']['score']);
         $this->assertSame(1, $result['summary']['age']['player']['position']);
         $this->assertSame(2, $result['summary']['overall']['player']['position']);
         $this->assertSame([1, 2], array_column($result['lists']['overall']['players'], 'id'));
 
         $all = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'overall', 'rating_age' => '', 'rating_gender' => '']);
         $this->assertSame([3, 1, 2], array_column($all['lists']['overall']['players'], 'id'));
-        $this->assertSame(62.3, $all['lists']['overall']['players'][1]['score']);
+        $this->assertSame(67.9, $all['lists']['overall']['players'][1]['score']);
         $this->assertSame($result['summary'], $all['summary']);
         $legacy = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'standard']);
         $this->assertSame('overall', $legacy['filters']['rating_level']);

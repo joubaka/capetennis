@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /** One played-singles scale; age and gender are evidence labels, never rating offsets. */
 class AllAgeRatingModel
 {
-    public const VERSION = 6;
+    public const VERSION = 7;
     public const REGULARIZATION = 0.015625;
     public const COHORT = 'all ages · singles';
     public const WINDOW_DAYS = 730;
@@ -21,13 +21,15 @@ class AllAgeRatingModel
     }
 
     /** Canonical match rows. Only the independent ball projection supplies validated weak ordinal fields. */
-    public function fit(array $matches, CarbonImmutable $asOf, int $windowDays = self::WINDOW_DAYS, array $ordinalFields = []): array
+    public function fit(array $matches, CarbonImmutable $asOf, int $windowDays = self::WINDOW_DAYS, array $ordinalFields = [], string $ballStage = 'standard'): array
     {
+        if (!array_key_exists($ballStage, BallRatingModel::LABELS)) throw new \InvalidArgumentException('Unsupported rating ball pool.');
         if (!in_array($windowDays, [self::RECENT_WINDOW_DAYS, self::WINDOW_DAYS], true)) { throw new \InvalidArgumentException('Unsupported all-age evidence window.'); }
         $asOf = $asOf->startOfDay();
         $players = []; $byEvent = []; $excluded = []; $seen = [];
         usort($matches, fn ($a, $b) => strcmp($a['source_id'], $b['source_id']));
         foreach ($matches as $match) {
+            if (BallRatingModel::forMatch($match) !== $ballStage) continue;
             $source = $match['source_id'];
             if (isset($seen[$source])) { continue; }
             $seen[$source] = true;
@@ -58,6 +60,7 @@ class AllAgeRatingModel
         $playedEdges = $edges;
         $fields = []; $seenFields = [];
         foreach ($ordinalFields as $field) {
+            if (($field['rating_ball_type'] ?? null) !== $ballStage) continue;
             $ids = $field['players']; $date = $field['completed_at'];
             $days = CarbonImmutable::parse($date)->diffInDays($asOf, false);
             if (isset($seenFields[$field['source_id']]) || $days < 0 || $days > $windowDays || count($ids) < 2
@@ -133,7 +136,7 @@ class AllAgeRatingModel
         return ['ratings' => $fit['ratings'], 'components' => $components, 'players' => $players, 'reference_component' => $reference, 'recent_backbone' => $backbone,
             'excluded' => $excluded, 'history_evidence' => ['matches' => $playedEdges, 'fields' => $fields],
             'policy' => ['version' => self::VERSION, 'regularization' => self::REGULARIZATION, 'window_days' => $windowDays, 'recent_window_days' => self::RECENT_WINDOW_DAYS, 'as_of' => $asOf->toDateString(), 'scale' => '0–100; higher is stronger',
-                'format' => 'Verified completed singles across all ball and court categories; no category-based rating offsets.',
+                'ball_pool' => $ballStage, 'format' => 'Verified singles within one independent ball pool; all ages, no cross-pool evidence or score fallback.',
                 'status' => 'Provisional; historical links have low confidence and comparisons require the same connected reference group.']];
     }
 }

@@ -8,6 +8,25 @@ use PHPUnit\Framework\TestCase;
 
 class AllAgeRatingModelTest extends TestCase
 {
+    public function test_ctr_never_combines_or_borrows_red_and_orange_evidence(): void
+    {
+        $rows = [$this->match(1, 2, 'U13 boys', 'yellow'),
+            $this->match(2, 3, 'U9 boys', 'orange', ball: 'orange'),
+            $this->match(3, 4, 'U7 boys', 'red', ball: 'red')];
+        $model = new AllAgeRatingModel;
+        $day = CarbonImmutable::parse('2026-10-02');
+        $ctr = $model->fit($rows, $day);
+        $this->assertSame([1, 2], array_keys($ctr['ratings']));
+        $this->assertSame(['yellow'], array_column($ctr['history_evidence']['matches'], 'source_id'));
+        $orange = $model->fit($rows, $day, ballStage: 'orange');
+        $this->assertSame([2, 3], array_keys($orange['ratings']));
+        $this->assertSame(['orange'], array_column($orange['history_evidence']['matches'], 'source_id'));
+        $red = $model->fit($rows, $day, ballStage: 'red');
+        $this->assertSame([3, 4], array_keys($red['ratings']));
+        $this->assertSame(['red'], array_column($red['history_evidence']['matches'], 'source_id'));
+        $this->assertSame([], $model->fit(array_slice($rows, 1), $day)['ratings']);
+    }
+
     private function match(int $winner, int $loser, string $cohort, string $source, string $date = '2026-10-01', ?string $ball = 'yellow'): array
     {
         return ['winner' => $winner, 'loser' => $loser, 'cohort' => $cohort, 'category' => $cohort, 'source_id' => $source,
@@ -49,7 +68,7 @@ class AllAgeRatingModelTest extends TestCase
         $this->assertNotNull($fit['ratings'][3]['score']);
     }
 
-    public function test_ball_colour_court_and_age_labels_do_not_classify_verified_head_to_head_results(): void
+    public function test_format_eligibility_is_independent_but_fitting_keeps_ball_pools_separate(): void
     {
         $model = new AllAgeRatingModel;
         foreach (['red', 'orange', 'green', 'unrecognized'] as $ball) { $this->assertTrue($model->format('U13 boys', $ball)['eligible']); }
@@ -63,7 +82,7 @@ class AllAgeRatingModelTest extends TestCase
         $this->assertSame([], $fit['excluded']);
         $this->assertCount(1, $fit['components']);
         $relabeled = [$this->match(1, 2, 'Open', 'a', ball: 'red'), $this->match(2, 3, 'u18 girls orange ball', 'unknown', ball: 'orange'), $this->match(2, 4, 'unknown', 'green', ball: null)];
-        $this->assertSame(array_column($fit['ratings'], 'score'), array_column($model->fit($relabeled, CarbonImmutable::parse('2026-10-02'))['ratings'], 'score'));
+        $this->assertSame([2, 4], array_keys($model->fit($relabeled, CarbonImmutable::parse('2026-10-02'))['ratings']));
     }
 
     public function test_duplicate_source_and_input_order_do_not_change_ratings_or_counts(): void

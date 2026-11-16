@@ -10,6 +10,30 @@ use Tests\TestCase;
 
 class PlayerRatingLeaderboardTest extends TestCase
 {
+    public function test_event_ball_pools_have_distinct_rows_positions_badges_and_detail_links(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $player = Player::factory()->create(['name' => 'Separate', 'surname' => 'Pools']);
+        $this->entry($this->field($event, 'U10 Boys A'), $player);
+        $this->entry($this->field($event, 'U10 Boys B'), $player);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
+            'cohorts' => [], 'all_age' => [], 'reason' => null, 'built_at' => '2026-11-16', 'snapshot_stale' => false,
+        ]);
+        $ability = $this->mock(PlayerSharedAbilityService::class)->makePartial();
+        $ability->shouldReceive('ballBadgeSnapshot')->with('red')->andReturn([]);
+        $ability->shouldReceive('ballBadgeSnapshot')->with('orange')->andReturn([$player->id => $this->estimate(90, 'same-component')]);
+        $ability->shouldReceive('ballBadgeSnapshot')->with('standard')->andReturn([$player->id => $this->estimate(40, 'same-component')]);
+        $rows = app(PlayerRatingLeaderboardService::class)->build($event)['rows'];
+        $this->assertCount(2, $rows);
+        $this->assertSame(['orange', 'standard'], $rows->pluck('ball_stage')->all());
+        $this->assertSame([1, 1], $rows->pluck('position')->all());
+        $this->assertSame([90.0, 40.0], $rows->map(fn ($row) => $row['rating']['score'])->all());
+        $response = $this->get(route('backend.player-performance.event-ratings', $event))->assertOk();
+        $response->assertSee('Orange ball')->assertSee('Green/Yellow ball')->assertSee('ball_type=orange', false)->assertSee('ball_type=standard', false);
+        $response->assertSee('data-ctr-stage="orange"', false)->assertSee('data-ctr-stage="standard"', false);
+    }
+
     use RefreshDatabase;
 
     public function test_current_profile_age_and_gender_filters_do_not_relabel_saved_ratings(): void
@@ -19,10 +43,10 @@ class PlayerRatingLeaderboardTest extends TestCase
         $match = Player::factory()->create(['name' => 'Find', 'surname' => 'This', 'dateOfBirth' => '2014-12-31', 'gender' => 2]);
         Player::factory()->create(['name' => 'Wrong', 'surname' => 'Gender', 'dateOfBirth' => '2014-01-01', 'gender' => 1]);
         Player::factory()->create(['name' => 'Wrong', 'surname' => 'Age', 'dateOfBirth' => '2013-12-31', 'gender' => 2]);
-        $this->saved([$match->id => [$this->estimate(61, 'first', 'u11 girls'), $this->estimate(72, 'second', 'u12 girls')]]);
+        $this->saved([$match->id => [$this->estimate(61, 'first')]]);
         $response = $this->get(route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'girls']))->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')->assertSee('Find This')->assertDontSee('Wrong Gender')->assertDontSee('Wrong Age')
-            ->assertSee('61.0/100')->assertSee('u11 girls')->assertSee('72.0/100')->assertSee('u12 girls')->assertSee('highest to lowest rating');
+            ->assertSee('CTR 61.0')->assertDontSee('72.0/100')->assertSee('data-ctr-ball-type="standard"', false)->assertSee('Highest to lowest shared-scale');
         $this->assertSame(1, $response->viewData('players')->total());
         $this->get(route('backend.player-performance.ratings', ['search' => 'This Find']))->assertOk()->assertSee('Find This')->assertDontSee('Wrong Gender');
         $this->getJson(route('backend.player-performance.ratings', ['age_group' => 'u99']))->assertUnprocessable();
@@ -53,7 +77,7 @@ class PlayerRatingLeaderboardTest extends TestCase
             $ratings[$player->id] = [$this->estimate(50)];
         }
         $this->saved($ratings);
-        $response = $this->get($url.'?age_group=u13&gender=boys&page=2')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('data-rating-position="26"', false);
+        $response = $this->get($url.'?age_group=u13&age_scope=group&gender=boys&u13_boys_page=2&per_page=25')->assertOk()->assertSee('Paged Row26')->assertDontSee('Paged Row01')->assertSee('data-rating-position="26"', false);
         $this->assertSame(27, $response->viewData('players')->total());
     }
 
@@ -81,13 +105,9 @@ class PlayerRatingLeaderboardTest extends TestCase
         foreach (['Nine' => 9, 'Eighty' => 80, 'Hundred' => 100, 'Zero' => 0, 'Tie Alpha' => 80, 'Tie Zulu' => 80] as $name => $score) {
             $ratings[$players[$name]->id] = [$this->estimate($score)];
         }
-        $ratings[$girl->id] = [$this->estimate(90, 'girls', 'u12 girls')];
-        $ratings[$older->id] = [$this->estimate(70, 'older', 'u13 boys')];
-        $ratings[$players['Headline']->id] = [
-            $this->estimate(99, 'old', 'u12 boys'),
-            array_replace($this->estimate(60, 'recent', 'u11 boys'), ['last_played' => '2026-10-01']),
-            array_replace($this->estimate(50, 'recent', 'u10 boys'), ['last_played' => '2026-10-01']),
-        ];
+        $ratings[$girl->id] = [$this->estimate(90)];
+        $ratings[$older->id] = [$this->estimate(70)];
+        $ratings[$players['Headline']->id] = [$this->estimate(50)];
         $this->saved($ratings);
         $response = $this->get(route('backend.player-performance.ratings'))->assertOk();
         $rows = $response->viewData('players')->getCollection();
@@ -95,10 +115,10 @@ class PlayerRatingLeaderboardTest extends TestCase
         $this->assertSame(['Hundred Hundred', 'Eighty Eighty', 'Tie Alpha Tie Alpha', 'Tie Zulu Tie Zulu', 'Headline Headline', 'Nine Nine', 'Zero Zero'], $boys->pluck('name')->all());
         $this->assertSame(range(1, 7), $boys->pluck('position')->all());
         $this->assertSame(50.0, $boys->firstWhere('name', 'Headline Headline')['rating']['score']);
-        $this->assertSame('u10 boys', $boys->firstWhere('name', 'Headline Headline')['rating']['cohort']);
+        $this->assertSame(\App\Services\Performance\BallRatingModel::COHORTS['standard'], $boys->firstWhere('name', 'Headline Headline')['rating']['cohort']);
         $this->assertSame(1, $rows->firstWhere('id', $girl->id)['position']);
         $this->assertSame(1, $rows->firstWhere('id', $older->id)['position']);
-        $response->assertSee('U12 (12) · Boys')->assertSee('U12 (12) · Girls')->assertSee('U13 (13) · Boys');
+        $response->assertSee('U12 · born 2014')->assertSee('U13 · born 2013')->assertSee('Boys')->assertSee('Girls');
     }
 
     public function test_current_group_order_is_calculated_before_paging_and_search(): void
@@ -111,8 +131,8 @@ class PlayerRatingLeaderboardTest extends TestCase
             $ratings[$player->id] = [$this->estimate($i)];
         }
         $this->saved($ratings);
-        $url = route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'boys']);
-        $response = $this->get($url.'&page=2')->assertOk()->assertSeeInOrder(['Ranked 03', 'Ranked 02', 'Ranked 01'])->assertDontSee('Ranked 28');
+        $url = route('backend.player-performance.ratings', ['age_group' => 'u12', 'gender' => 'boys', 'per_page' => 25]);
+        $response = $this->get($url.'&u12_boys_page=2')->assertOk()->assertSeeInOrder(['Ranked 03', 'Ranked 02', 'Ranked 01'])->assertDontSee('Ranked 28');
         $this->assertSame([26, 27, 28], $response->viewData('players')->getCollection()->pluck('position')->all());
         $searched = $this->get($url.'&search=Ranked%2002')->assertOk();
         $this->assertSame([27], $searched->viewData('players')->getCollection()->pluck('position')->all());
@@ -145,11 +165,31 @@ class PlayerRatingLeaderboardTest extends TestCase
                 $cohorts[$rating['cohort']]['components'][$rating['component']]['members'][] = (int) $id;
             }
         }
+        $graph = ['ratings' => [], 'components' => [], 'reference_component' => null];
+        $standard = [];
+        foreach ($ratings as $id => $estimates) {
+            $rating = $estimates[0];
+            $graph['reference_component'] ??= $rating['component'];
+            $rating += ['comparable' => $rating['component'] === $graph['reference_component'],
+                'ball_type' => 'standard', 'rating_scope' => 'all_age', 'local_score' => $rating['score'],
+                'connection_status' => $rating['component'] === $graph['reference_component'] ? 'recent' : 'disconnected',
+                'historical_connection' => false, 'confidence_index' => 55];
+            $rating['cohort'] = \App\Services\Performance\BallRatingModel::COHORTS['standard'];
+            $graph['ratings'][$id] = $rating;
+            $graph['components'][$rating['component']]['members'][] = (int) $id;
+            $graph['components'][$rating['component']]['converged'] = true;
+            $standard[$id] = $rating;
+        }
+        $empty = ['ratings' => [], 'components' => [], 'reference_component' => null];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
             'cohorts' => $cohorts, 'names' => [], 'reason' => null, 'built_at' => '2026-10-09 08:00:00', 'snapshot_as_of' => '2026-10-09', 'snapshot_stale' => false,
+            'all_age' => $graph, 'ball_ratings' => ['red' => $empty, 'orange' => $empty, 'standard' => $graph],
         ]);
         $mock = $this->mock(PlayerSharedAbilityService::class)->makePartial();
         $mock->shouldReceive('badgeSnapshot')->andReturn($ratings);
+        $mock->shouldReceive('ballBadgeSnapshot')->with('standard')->andReturn($standard);
+        $mock->shouldReceive('ballBadgeSnapshot')->with('red')->andReturn([]);
+        $mock->shouldReceive('ballBadgeSnapshot')->with('orange')->andReturn([]);
         $mock->shouldNotReceive('calculateSnapshot');
         $mock->shouldNotReceive('forPlayer');
     }
@@ -197,7 +237,7 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->assertSee('Imported Unrated')->assertDontSee('Stale Imported name')->assertDontSee('Foreign Player')->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Private provisional singles ratings')->assertSee('not a win percentage')
             ->assertSee('Confidence describes the strength and freshness of the evidence, not rating accuracy.')
-            ->assertSee('Rating evidence')->assertSee('62.0/100')->assertSee('Medium confidence')
+            ->assertSee('Rating evidence')->assertSee('CTR 62.0')->assertSee('Medium confidence')
             ->assertSee('14 recorded played matches')->assertSee('8 opponents')->assertSee('last match 2026-09-01');
         $this->assertNull($rows->firstWhere('name', 'Dangling Profile')['rating']);
         if (getenv('CT_LEADERBOARD_QA_HTML') === '1') {
@@ -292,7 +332,7 @@ class PlayerRatingLeaderboardTest extends TestCase
         $response->assertDontSee('Ratings banner event · player ratings');
 
         $this->get(route('backend.player-performance.ratings'))->assertOk()
-            ->assertSee('Cape Tennis all-age ratings')->assertDontSee('Tournament workspace')
+            ->assertSee('CTR Ratings')->assertDontSee('Tournament workspace')
             ->assertDontSee('event-workspace-chrome');
     }
 
@@ -382,7 +422,7 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->andReturn(['failed' => true, 'pending' => true, 'version' => 'saved']);
 
         $this->get(route('backend.player-performance.event-ratings', $event))->assertOk()
-            ->assertSee('62.0/100')->assertSee('Last successful calculation: 2026-10-09 08:00:00')
+            ->assertSee('CTR 62.0')->assertSee('Last successful calculation: 2026-10-09 08:00:00')
             ->assertSee('evidence as of 2026-10-09')->assertSee('This page shows the latest available saved ratings.')
             ->assertDontSee('Retry ratings update')->assertDontSee('Rating unavailable')
             ->assertDontSee('A background update is pending.');

@@ -7,6 +7,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Ratings, evidence and pathway
 
+- Standing user decision (2026-11-16): Red, Orange and normal CTR (Green/Yellow)
+  must always remain separate across evidence, scores and all consumers.
+  "Overall" means all ages in Green/Yellow CTR, never all ball levels. Never
+  borrow another pool's score when a rating is absent. This supersedes earlier
+  combined-model product guidance. See `AGENTS.md` and
+  `docs/performance/ball-level-classification.md`. The compatibility `all_age`
+  key means the Green/Yellow graph, never a fourth pool; old mixed artifacts
+  must be withheld under the current policy until rebuilt. Verify current
+  implementation and saved-artifact policy before claiming compliance.
+
 - Single-age U9 divisions (including A, B and combined A/B) and exact U10 B
   divisions default to Orange across all tournaments, including generic standard
   courts. Explicit ball conditions take precedence; multiple-age labels do not
@@ -18,16 +28,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   (all ages). CTR and ordinary Overall read the same saved Green/Yellow
   (`standard`) graph; Overall clears age restrictions and uses one all-age list.
   Red CTR and Orange CTR remain independent, age-independent lists. Filters
-  change membership, never strength. Explicit historical `overall` comparison
-  groups retain their recorded combined graph and are labelled separately.
-  This directory policy does not replace the combined model used by other
-  consumers. See `docs/performance/ball-level-classification.md` and
+  change membership, never strength. Historical combined graphs are legacy
+  artifacts, not an authorized rating pool or fallback. See
+  `docs/performance/ball-level-classification.md` and
   `PlayerRatingProfileDirectory` before changing directory/detail links.
-- Overall model version 6 accepts otherwise eligible played singles across ball
-  and court formats without format or age offsets. Red and Orange retain their
-  separate projections. Verify `AllAgeRatingModel::format`,
-  `AllAgeRatingModelTest` and `docs/performance/all-age-rating.md`; historical
-  format exclusions and validation metrics do not establish the current policy.
+- The shared solver fits one explicit ball pool at a time; its default is
+  Green/Yellow. Red and Orange callers must pass their own pool. Legacy combined
+  behavior is superseded, not an authorized fallback. Verify `AllAgeRatingModel`,
+  `BallRatingModel`, snapshot validation and their tests; all-age comparisons
+  must stay within one ball pool.
 - Missing, disconnected, invalidated, unpublished or non-comparable evidence must
   remain unavailable or explicitly qualified. Never invent calibration, replace
   a missing shared score with a local component score, or call confidence a

@@ -1,5 +1,9 @@
 # Reconstructed CTR before and after a match
 
+CTR means Green/Yellow only, across all ages. Red and Orange results and scores
+remain in their own pools and cannot enter this reconstruction or fill missing
+CTR values. Old mixed-ball artifacts must be withheld until a compatible rebuild.
+
 The Player Plus match timeline reconstructs Overall CTR immediately before and
 after each of the latest five eligible matches in recorded scheduled order. It
 does not recover archived ratings: native fixtures do not record verified match

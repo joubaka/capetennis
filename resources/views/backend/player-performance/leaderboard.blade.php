@@ -60,8 +60,8 @@
     @else
         <p class="small text-muted mb-3">{{ $players->total() }} player / cohort entries · ordered within separate comparison groups.</p>
         @if(!$event)<p class="small text-muted">Membership follows recorded categories and saved rating evidence. Legacy teams without a category are available in their event view as unresolved; they are not assigned an age group by guesswork.</p>@endif
-        @forelse($players->getCollection()->groupBy('cohort') as $group => $members)
-            <section class="mb-4" aria-label="{{ $group }}"><h2 class="h5">{{ $group }}</h2>
+        @forelse($players->getCollection()->groupBy(fn ($row) => $row['cohort'].'|'.($row['ball_stage'] ?? 'unknown')) as $group => $members)
+            <section class="mb-4" aria-label="{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}"><h2 class="h5">{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}</h2>
                 @foreach($members->groupBy('component') as $component => $comparisonMembers)
                 <h3 class="h6 mt-3">{{ $snapshot['reason'] ? 'Ratings unavailable' : ($comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players') }}</h3>
                 <ul class="list-group mb-3">
@@ -70,10 +70,10 @@
                     <li class="list-group-item">
                         <div class="rating-row">
                             <div class="rating-player">@if($displayRating && $member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
-                                @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', $member['player_id']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
+                                @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', [$member['player_id'], 'ball_type' => $member['ball_stage'] ?? 'standard']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
                                 @if($event && $member['regions'])<span class="text-muted">({{ implode(', ', $member['regions']) }})</span>@endif
                             </div>
-                            <div class="rating-score">@if($displayRating)<x-ctr-badge :overall="true" :compact="true" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" /><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
+                            <div class="rating-score">@if($displayRating)<x-ctr-badge :stage="$member['ball_stage']" :compact="true" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" /><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
                         </div>
                         @if($displayRating)
                             <p class="small text-muted mb-1">{{ $displayRating['played'] ?? 'Unknown' }} recorded played matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents · last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>

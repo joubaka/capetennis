@@ -128,7 +128,7 @@
     @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
     <section class="mt-4" aria-labelledby="ctr-match-progress-heading" data-match-progress>
       <h3 class="h5" id="ctr-match-progress-heading">Reconstructed CTR before/after match</h3>
-      <p class="small text-muted"><strong>Reconstructed using scheduled match order.</strong> These are Overall CTR estimates, not archived ratings or verified match completion times.</p>
+      <p class="small text-muted"><strong>Reconstructed using scheduled match order.</strong> These are CTR estimates, not archived ratings or verified match completion times.</p>
       @if(!isset($matchProgress) || $matchProgress['reason'] !== null)
         <p class="small text-muted mb-0" role="status">{{ $matchProgress['reason'] ?? 'Before/after reconstruction is awaiting a saved update.' }}</p>
       @else
@@ -140,7 +140,7 @@
         @if(count($matchProgressRows))
           <figure class="mb-3" data-match-progress-chart>
             <div class="ctr-chart-scroll" tabindex="0" aria-label="Before and after match chart; scroll horizontally on a narrow screen">
-              <svg viewBox="0 0 620 420" width="100%" style="min-width:600px;max-width:60rem;display:block" role="group" aria-describedby="ctr-match-grid-description" aria-label="Reconstructed using scheduled match order: Overall CTR before and after the latest five eligible matches, oldest to newest, on a fixed 0 to 100 scale">
+              <svg viewBox="0 0 620 420" width="100%" style="min-width:600px;max-width:60rem;display:block" role="group" aria-describedby="ctr-match-grid-description" aria-label="Reconstructed using scheduled match order: CTR before and after the latest five eligible matches, oldest to newest, on a fixed 0 to 100 scale">
                 <title>Reconstructed using scheduled match order</title>
                 <desc id="ctr-match-grid-description">@foreach($matchProgressRows as $progress){{ $progress['date'] }} vs {{ $progress['opponent'] }}: {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}. @if($progress['delta'] !== null)Before {{ number_format($progress['before_score'], 1) }}, after {{ number_format($progress['after_score'], 1) }}, change {{ sprintf('%+.1f', $progress['delta']) }} CTR. @else Reconstruction unavailable: {{ $progress['reason'] }}. @endif @endforeach</desc>
                 <defs><marker id="ctr-progress-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" /></marker></defs>
@@ -186,7 +186,7 @@
                 @endforeach
               </svg>
             </div>
-            <figcaption class="small text-muted mt-1">Oldest to newest · fixed 0–100 Overall CTR scale. Each arrow is one reconstructed before/after pair. Gaps between matches are not connected; changes between cutoffs are not attributed to a match.</figcaption>
+            <figcaption class="small text-muted mt-1">Oldest to newest · fixed 0–100 CTR scale. Each arrow is one reconstructed before/after pair. Gaps between matches are not connected; changes between cutoffs are not attributed to a match.</figcaption>
             @foreach($matchProgressRows as $chartIndex => $progress)
               <section id="ctr-match-explanation-{{ $chartIndex }}" data-match-explanation hidden tabindex="-1" class="border rounded p-3 mt-3" aria-label="Match calculation explanation">
                 <h6>{{ $progress['date'] }} · {{ $progress['opponent'] }} · {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}</h6>
@@ -201,7 +201,7 @@
                     <dt class="col-7">Your eligible matches</dt><dd class="col-5">{{ $counts['own_before'] }} before → {{ $counts['own_after'] }} after</dd>
                     <dt class="col-7">Your distinct opponents</dt><dd class="col-5">{{ $counts['opponents_before'] }} before → {{ $counts['opponents_after'] }} after</dd>
                   </dl>
-                  <p>Before: fit the canonical Overall CTR model to eligible earlier evidence. After: add this match and refit on the same {{ $progress['date'] }} rating date. Later matches are excluded. Both fits must converge on the same comparison scale.</p>
+                  <p>Before: fit the canonical CTR model to eligible earlier evidence. After: add this match and refit on the same {{ $progress['date'] }} rating date. Later matches are excluded. Both fits must converge on the same comparison scale.</p>
                   <p>The model uses score margins, opponent strength, recency and per-event evidence weights. The refit recalculates event budgets; this is not a fixed points-per-match formula, and changes are not additive.</p>
                   <p class="mb-0"><strong>{{ number_format($progress['after_score'], 1) }} after − {{ number_format($progress['before_score'], 1) }} before = {{ sprintf('%+.1f', $progress['delta']) }} CTR</strong></p>
                   <div class="table-responsive mt-3">

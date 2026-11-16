@@ -15,7 +15,10 @@ class PlayerRatingLeaderboardService
     {
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         $unified = array_key_exists('all_age', $snapshot);
-        $sharedRatings = $unified ? app(PlayerSharedAbilityService::class)->allAgeBadgeSnapshot() : [];
+        $sharedRatings = [];
+        foreach (array_keys(BallRatingModel::LABELS) as $stage) {
+            $sharedRatings[$stage] = $unified ? app(PlayerSharedAbilityService::class)->ballBadgeSnapshot($stage) : [];
+        }
         $ratings = $unified ? [] : app(PlayerSharedAbilityService::class)->badgeSnapshot();
         $fields = DB::table('category_events as ce')->join('categories as c', 'c.id', '=', 'ce.category_id')
             ->join('events as e', 'e.id', '=', 'ce.event_id')
@@ -25,8 +28,10 @@ class PlayerRatingLeaderboardService
             return ['rows' => collect(), 'cohorts' => [], 'snapshot' => $snapshot, 'limitReason' => 'Too many category contexts to display safely. Narrow the view to an event.'];
         }
         $events = Event::query()->with('eventTypeModel')->whereIn('id', $fields->pluck('event_id')->unique())->get(['id', 'eventType'])->keyBy('id');
-        $contexts = [];
+        $contexts = []; $stages = [];
+        $fieldModels = \App\Models\CategoryEvent::with(['category', 'event'])->whereIn('id', $fields->pluck('id'))->get()->keyBy('id');
         foreach ($fields as $field) {
+            $stages[$field->id] = isset($fieldModels[$field->id]) ? app(BallRatingContext::class)->stage($fieldModels[$field->id]) : null;
             $division = app(PlayerPerformancePilotService::class)->division($field->name);
             $label = $division['reason'] && $division['reason'] !== 'No explicit A/B division in category name'
                 ? 'Unresolved category: '.$field->name
@@ -43,9 +48,9 @@ class PlayerRatingLeaderboardService
         }
         $fieldIds = array_keys(array_filter($contexts, fn ($cohort) => !$selected || $cohort === $selected));
         $members = [];
-        $add = function ($id, string $name, string $cohort, string $identity, ?string $region = null) use (&$members, $ratings, $event, $unified, $sharedRatings) {
-            $key = $cohort.'|'.$identity;
-            $estimate = $unified ? ($sharedRatings[$id] ?? null) : collect($ratings[$id] ?? [])->first(fn ($r) => $r['cohort'] === $cohort);
+        $add = function ($id, string $name, string $cohort, string $identity, ?string $region = null, ?string $stage = null) use (&$members, $ratings, $event, $unified, $sharedRatings) {
+            $key = $cohort.'|'.($stage ?? 'unknown').'|'.$identity;
+            $estimate = $unified ? ($sharedRatings[$stage ?? ''][$id] ?? null) : null;
             $ratingReason = $estimate['reason'] ?? null;
             if (!is_numeric($estimate['score'] ?? null)) { $estimate = null; }
             $regions = $members[$key]['regions'] ?? [];
@@ -55,6 +60,7 @@ class PlayerRatingLeaderboardService
             $regions = array_values(array_unique($regions));
             sort($regions, SORT_NATURAL | SORT_FLAG_CASE);
             $members[$key] = ['player_id' => $id, 'name' => $name, 'cohort' => $cohort, 'identity' => $identity, 'regions' => $regions,
+                'ball_stage' => $stage, 'ball_label' => BallRatingModel::LABELS[$stage ?? ''] ?? 'Unresolved ball level',
                 'rating' => $estimate, 'component' => $estimate['component'] ?? 'Unrated', 'rating_reason' => $ratingReason];
         };
         $individual = DB::table('category_event_registrations as cer')
@@ -78,12 +84,13 @@ class PlayerRatingLeaderboardService
         if ($individual->count() + $roster->count() + $imported->count() > self::MEMBER_LIMIT || $teams->count() > self::MEMBER_LIMIT) {
             return compact('cohorts', 'snapshot') + ['rows' => collect(), 'limitReason' => 'This selection exceeds the safe display limit. Choose a smaller cohort or event.'];
         }
-        foreach ($individual as $member) { $add($member->id, trim($member->name.' '.$member->surname), $contexts[$member->category_event_id], 'p:'.$member->id); }
-        foreach ($roster as $member) { $add($member->id, trim($member->name.' '.$member->surname), $teamContexts[$member->team_id], 'p:'.$member->id, $teamRegions[$member->team_id]); }
+        foreach ($individual as $member) { $add($member->id, trim($member->name.' '.$member->surname), $contexts[$member->category_event_id], 'p:'.$member->id, stage: $stages[$member->category_event_id] ?? null); }
+        $teamStages = $teams->mapWithKeys(fn ($team) => [$team->id => $stages[$team->category_event_id] ?? null])->all();
+        foreach ($roster as $member) { $add($member->id, trim($member->name.' '.$member->surname), $teamContexts[$member->team_id], 'p:'.$member->id, $teamRegions[$member->team_id], $teamStages[$member->team_id]); }
         foreach ($imported as $member) {
             $id = $member->player_profile ? (int) $member->player_profile : null;
             $name = $id ? trim($member->profile_name.' '.$member->profile_surname) : trim($member->name.' '.$member->surname);
-            $add($id, $name, $teamContexts[$member->team_id], $id ? 'p:'.$id : 'np:'.$member->id, $teamRegions[$member->team_id]);
+            $add($id, $name, $teamContexts[$member->team_id], $id ? 'p:'.$id : 'np:'.$member->id, $teamRegions[$member->team_id], $teamStages[$member->team_id]);
         }
         if (!$event) {
             $snapshotIds = [];
@@ -100,13 +107,14 @@ class PlayerRatingLeaderboardService
             return compact('cohorts', 'snapshot') + ['rows' => collect(), 'limitReason' => 'This selection exceeds the safe display limit. Choose a smaller cohort or event.'];
         }
         $rows = collect($members)->sort(fn ($a, $b) => strnatcasecmp($a['cohort'], $b['cohort'])
+            ?: strcmp($a['ball_stage'] ?? '', $b['ball_stage'] ?? '')
             ?: (($a['rating'] === null) <=> ($b['rating'] === null))
             ?: strnatcasecmp($a['component'], $b['component'])
             ?: (($b['rating']['score'] ?? 0) <=> ($a['rating']['score'] ?? 0))
             ?: strnatcasecmp($a['name'], $b['name']) ?: strcmp($a['identity'], $b['identity']))->values();
         $positions = [];
         $rows = $rows->map(function ($row) use (&$positions) {
-            $group = $row['cohort'].'|'.$row['component'];
+            $group = $row['cohort'].'|'.($row['ball_stage'] ?? 'unknown').'|'.$row['component'];
             $row['position'] = $row['rating'] ? ($positions[$group] = ($positions[$group] ?? 0) + 1) : null;
             return $row;
         });

@@ -4,6 +4,7 @@
   const workspaceSelector = '[data-my-tennis-workspace]';
   const cacheLifetime = 60000;
   let pending = null;
+  let pendingLoading = null;
   let renderedUrl = pageKey(new URL(window.location.href));
   let scope = null;
   let warmDisabled = false;
@@ -182,6 +183,8 @@
     if (!workspace) return;
 
     pending?.abort();
+    pendingLoading?.close();
+    pendingLoading = null;
     pending = null;
     const key = pageKey(url);
     const ready = cachedPage(key);
@@ -204,10 +207,23 @@
     spinner.className = 'spinner-border spinner-border-sm flex-shrink-0 me-1';
     spinner.dataset.myTennisTabSpinner = '';
     spinner.setAttribute('aria-hidden', 'true');
+    let loading = null;
+    let cancelled = false;
+    const closeLoading = () => {
+      loading?.close();
+      if (pendingLoading === loading) pendingLoading = null;
+      loading = null;
+    };
     const spinnerDelay = window.setTimeout(() => {
       if (pending !== request) return;
       (tab || status).prepend(spinner);
       if (!tab) status.classList.remove('visually-hidden');
+      loading = window.CapeLoading?.show({
+        title: tab ? `Loading ${tab.textContent.trim()}…` : 'Loading My Tennis…',
+        message: 'Please wait while we load this view.',
+        onCancel: () => { cancelled = true; request.abort(); },
+      });
+      pendingLoading = loading;
     }, 180);
 
     try {
@@ -221,16 +237,19 @@
       }
       if (request.signal.aborted) throw new Error('My Tennis request timed out');
       if (scope) remember(scope, key, page);
+      closeLoading();
       render(page, workspace, url, {back, focus});
     } catch (error) {
       if (pending !== request) return;
+      closeLoading();
       if (back) {
         window.location.reload();
         return;
       }
       status.classList.remove('visually-hidden');
       status.textContent = tab ? `${tab.textContent.trim()} could not be loaded. ` : 'This view could not be loaded. ';
-      if (request.signal.aborted) status.textContent += 'The request took too long. ';
+      if (cancelled) status.textContent = 'Loading cancelled. ';
+      else if (request.signal.aborted) status.textContent += 'The request took too long. ';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'btn btn-sm btn-outline-secondary';
@@ -244,6 +263,7 @@
       status.append(fullPage);
       if (focus) retry.focus({preventScroll: true});
     } finally {
+      closeLoading();
       spinner.remove();
       window.clearTimeout(spinnerDelay);
       window.clearTimeout(timeout);
@@ -295,6 +315,8 @@
   window.addEventListener('pagehide', () => {
     stopLiveResults?.();
     pending?.abort();
+    pendingLoading?.close();
+    pendingLoading = null;
     pending = null;
     disableCache();
   });

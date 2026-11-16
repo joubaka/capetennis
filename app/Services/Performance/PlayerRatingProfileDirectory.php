@@ -42,11 +42,10 @@ class PlayerRatingProfileDirectory
         if (!in_array($ballType, ['overall', ...array_keys(BallRatingModel::LABELS)], true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['ball_type' => 'Choose a supported ball level.']);
         }
-        // Old explicit comparison-group links still refer to the combined graph.
-        // Ordinary Overall is only an all-age view of the Green/Yellow CTR graph.
-        $legacyOverall = $ballType === 'overall' && $comparisonGroup !== '';
-        $ratingStage = $ballType === 'overall' && !$legacyOverall ? 'standard' : $ballType;
-        $overallList = $ballType === 'overall' && !$legacyOverall;
+        // Overall, including old comparison-group links, is Green/Yellow CTR only.
+        $legacyOverall = false;
+        $ratingStage = $ballType === 'overall' ? 'standard' : $ballType;
+        $overallList = $ballType === 'overall';
         $allAgesBall = in_array($ballType, ['red', 'orange'], true) || $overallList;
         if ($allAgesBall) {
             // Ball level is the age-independent umbrella, including old filtered links.

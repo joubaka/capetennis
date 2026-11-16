@@ -87,7 +87,7 @@
       <div class="results-grid">
       <section class="record-sheet" id="match-results">
         <h2>Match results</h2>
-        <p class="record-note">Saved match history @if($pastRatings ?? []) · Badges show the latest saved Overall CTR.@endif</p>
+        <p class="record-note">Saved match history @if($pastRatings ?? []) · Badges show the latest saved CTR.@endif</p>
         @if(!empty($record['record_month']))
           <p class="record-note">{{ \Carbon\CarbonImmutable::createFromFormat('!Y-m', $record['record_month'])->format('F Y') }} · <a href="{{ request()->fullUrlWithQuery(['record_month' => null, 'page' => null]) }}#match-results">Clear month filter</a></p>
           @if(!$record['results']['total'])<p class="record-note" role="status">No saved match results for this month.</p>@endif
@@ -129,7 +129,7 @@
         @foreach($record['opponents']['rows'] as $opponent)
           @php($opponentRating = $pastRatings[$opponent['id']] ?? null)
           <a class="record-opponent text-decoration-none" href="{{ request()->fullUrlWithQuery(['opponent' => $opponent['id'], 'meeting_page' => null]) }}#opponent-meetings"
-            aria-label="View matchup: {{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}{{ $opponentRating ? ', Overall CTR '.number_format($opponentRating['score'], 1) : '' }}"
+            aria-label="View matchup: {{ $recordPlayer->full_name }} vs {{ $opponent['name'] }}{{ $opponentRating ? ', CTR '.number_format($opponentRating['score'], 1) : '' }}"
             @if(($record['opponent']['id'] ?? null) === $opponent['id']) aria-current="true" @endif>
             <div>
               @include('frontend.my-tennis.record-player-name', ['name' => $opponent['name'], 'rating' => $opponentRating])

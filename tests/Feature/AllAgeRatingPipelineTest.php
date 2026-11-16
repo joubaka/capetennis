@@ -38,7 +38,8 @@ class AllAgeRatingPipelineTest extends TestCase
             $this->assertSame((int) ($first > $second ? $fixture->registration1_id : $fixture->registration2_id), (int) $fixture->winner_registration);
             $sources = [];
             $snapshot = $ability->historySnapshot($date, $sources);
-            $this->assertCount(1, $snapshot['all_age']['history_evidence']['matches']);
+            $this->assertCount(1, $snapshot['ball_ratings']['orange']['history_evidence']['matches']);
+            $this->assertSame([], $snapshot['all_age']['ratings']);
             $this->assertDatabaseCount('fixture_results', 1);
         }
         app(\App\Services\DrawService::class)->saveScore($fixture->fresh(), [[2, 2]]);
@@ -46,7 +47,7 @@ class AllAgeRatingPipelineTest extends TestCase
         $this->assertSame([], $ability->calculateSnapshot($date)['all_age']['ratings'], 'A completed timed draw has no winner-based rating evidence.');
     }
 
-    public function test_every_disconnected_played_component_has_a_low_confidence_provisional_rating_and_saved_evidence(): void
+    public function test_red_orange_and_ctr_are_independent_in_saved_snapshots_headlines_and_evidence(): void
     {
         $event = Event::factory()->create(['start_date' => '2026-10-01', 'end_date' => '2026-11-02', 'published' => true]);
         $venue = Venue::forceCreate(['name' => 'Synthetic disconnected courts']);
@@ -57,21 +58,43 @@ class AllAgeRatingPipelineTest extends TestCase
         $sources = [];
         $date = CarbonImmutable::parse('2026-10-31');
         $snapshot = $service->historySnapshot($date, $sources);
-        $this->assertCount(4, $snapshot['all_age']['ratings']);
+        $this->assertCount(2, $snapshot['all_age']['ratings']);
+        $this->assertSame($snapshot['ball_ratings']['standard'], $snapshot['all_age']);
+        $this->assertSame([], $snapshot['cohorts']);
+        $this->assertArrayNotHasKey($players[2]->id, $snapshot['all_age']['ratings']);
         foreach ($snapshot['all_age']['ratings'] as $rating) $this->assertIsFloat($rating['score']);
-        $local = $snapshot['all_age']['ratings'][$players[2]->id];
-        $this->assertFalse($local['comparable']);
-        $this->assertSame('provisional_local', $local['rating_status']);
-        $this->assertSame('Low', $local['confidence_label']);
-        $this->assertLessThanOrEqual(39, $local['confidence_index']);
+        $orange = $snapshot['ball_ratings']['orange']['ratings'][$players[2]->id];
+        $this->assertTrue($orange['comparable']);
+        $this->assertSame(1, $orange['played']);
         $store = new PlayerAbilitySnapshotStore;
         $store->replace($snapshot, $date, $service->fingerprint(), $store->manifest($snapshot));
-        $this->assertSame($local['score'], (new PlayerAbilitySnapshotStore)->current()['all_age']['ratings'][$players[2]->id]['score']);
-        $projection = app(\App\Services\Performance\PlayerRatingGroupProjection::class)->project($snapshot, $local['component']);
-        $this->assertSame($local['score'], $projection[$players[2]->id]['within_group_score']);
+        $saved = (new PlayerAbilitySnapshotStore)->current();
+        $this->assertArrayNotHasKey($players[2]->id, $saved['all_age']['ratings']);
+        $this->assertNull($service->forPlayer($players[2])['headline']);
         $builder = new \App\Services\Performance\PlayerRatingEvidenceBuilder;
         $builder->append($snapshot, $sources, 11);
-        $this->assertCount(2, collect($builder->all())->where('cohort', AllAgeRatingModel::COHORT));
+        $this->assertCount(1, collect($builder->all())->where('cohort', AllAgeRatingModel::COHORT));
+        $corrupt = $snapshot;
+        $corrupt['all_age'] = $snapshot['ball_ratings']['orange'];
+        try {
+            $store->replace($corrupt, $date, $service->fingerprint(), $store->manifest($snapshot));
+            $this->fail('A mixed compatibility graph was accepted.');
+        } catch (\UnexpectedValueException $exception) {
+            $this->assertStringContainsString('Green/Yellow', $exception->getMessage());
+        }
+        $corrupt = $snapshot;
+        $corrupt['ball_ratings']['standard']['history_evidence']['matches'][0]['rating_ball_type'] = 'orange';
+        $corrupt['all_age'] = $corrupt['ball_ratings']['standard'];
+        try {
+            $store->replace($corrupt, $date, $service->fingerprint(), $store->manifest($snapshot));
+            $this->fail('Cross-pool match evidence was accepted.');
+        } catch (\UnexpectedValueException $exception) {
+            $this->assertStringContainsString('Cross-pool', $exception->getMessage());
+        }
+        DB::table('player_ability_snapshots')->where('snapshot_key', 'current')->update(['policy_hash' => str_repeat('0', 64)]);
+        $oldPolicy = (new PlayerAbilitySnapshotStore)->current();
+        $this->assertStringContainsString('earlier policy', $oldPolicy['reason']);
+        $this->assertArrayNotHasKey('all_age', $oldPolicy);
     }
 
     private function match(Event $event, Venue $venue, string $label, Player $winner, Player $loser, bool $published = true): Fixture

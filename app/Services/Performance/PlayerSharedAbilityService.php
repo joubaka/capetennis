@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\{Cache, DB, Schema};
 /** Private v6 shared-opponent estimates. No saved financial/player/ranking state. */
 class PlayerSharedAbilityService
 {
-    public const VERSION = 15;
+    public const VERSION = 16;
     private const EVENT_CAP = 1000;
     private const PLAYER_CAP = 5000;
     private const EDGE_CAP = 50000;
@@ -44,7 +44,7 @@ class PlayerSharedAbilityService
         if ($regional && !$allowed) { return []; }
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();
         if ($snapshot['reason']) { return []; }
-        $ratings = $snapshot['all_age']['ratings'] ?? [];
+        $ratings = $snapshot['ball_ratings']['standard']['ratings'] ?? [];
         if ($regional) { $ratings = array_intersect_key($ratings, array_flip($allowed)); }
         foreach ($ratings as &$rating) {
             unset($rating['local_score'], $rating['strength']);
@@ -129,7 +129,7 @@ class PlayerSharedAbilityService
             return AbilityConfidenceDisplay::normalize($estimate);
         });
         $cohorts = $cohorts->sort(fn ($a, $b) => strcmp($b['last_played'], $a['last_played']) ?: strcmp($a['cohort'], $b['cohort']))->values();
-        $allAge = $snapshot['all_age']['ratings'][$player->id] ?? null;
+        $allAge = $snapshot['ball_ratings']['standard']['ratings'][$player->id] ?? null;
         if ($allAge !== null) { unset($allAge['local_score'], $allAge['strength']); }
         $ballRatings = [];
         foreach (BallRatingModel::LABELS as $stage => $label) {
@@ -419,24 +419,13 @@ class PlayerSharedAbilityService
         foreach (array_chunk($playerIds, 500) as $chunk) {
             foreach (Player::query()->whereIn('id', $chunk)->get(['id', 'name', 'surname']) as $player) { $names[$player->id] = trim($player->name.' '.$player->surname); }
         }
-        $cohorts = [];
-        foreach ($graphs as $cohort => $graph) {
-            if ($selectedCohorts && !in_array($cohort, $selectedCohorts, true)) { continue; }
-            $baseline = $trialBaselines[$cohort] ?? ['anchors' => [], 'metadata' => null];
-            $edges = array_map(function ($edge) use ($baseline) {
-                if ($edge['kind'] === 'played' && ($edge['event_id'] ?? null) === ($baseline['metadata']['event_id'] ?? null)
-                    && isset($baseline['anchors'][$edge['winner']], $baseline['anchors'][$edge['loser']])) { $edge['topology_only'] = true; }
-                return $edge;
-            }, $graph['edges']);
-            $cohorts[$cohort] = app(SharedAbilityModel::class)->fit($edges, $cohort, $ordinalFields[$cohort] ?? [], $baseline['anchors'], $experiment)
-                + ['players' => $graph['players'], 'baseline' => $baseline];
-            if ($completedSources !== null) {
-                $cohorts[$cohort]['history_evidence'] = ['matches' => array_values(array_filter($edges, fn ($edge) => $edge['kind'] === 'played')),
-                    'fields' => $ordinalFields[$cohort] ?? []];
-            }
-        }
-        return ['cohorts' => $cohorts, 'all_age' => (new AllAgeRatingModel)->fit($allAgeMatches, $asOf, $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS),
-            'ball_ratings' => (new BallRatingModel)->fit($allAgeMatches, $asOf, $ballFields ?? []), 'names' => $names, 'reason' => null, 'built_at' => $builtAt, 'teamsheet_held' => $externalHeld,
+        // Retain source collection for publication checks, but do not calculate
+        // or publish the superseded age-cohort graphs that mixed ball levels.
+        $ballRatings = (new BallRatingModel)->fit($allAgeMatches, $asOf, $ballFields ?? [], $experiment['all_age_window_days'] ?? AllAgeRatingModel::WINDOW_DAYS);
+        // Compatibility key for existing history consumers: all ages within CTR,
+        // never a fourth graph combining Red, Orange and Green/Yellow evidence.
+        return ['cohorts' => [], 'all_age' => $ballRatings['standard'],
+            'ball_ratings' => $ballRatings, 'names' => $names, 'reason' => null, 'built_at' => $builtAt, 'teamsheet_held' => $externalHeld,
             'source_events' => collect($graphs)->flatMap(fn ($g) => array_column($g['edges'], 'event_id'))->merge(array_keys($allAgeEvents))->unique()->values()->all(),
             'source_matches' => array_keys($seenSources)];
     }

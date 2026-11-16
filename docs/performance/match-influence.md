@@ -1,5 +1,10 @@
 # Estimated match influence on Overall CTR
 
+CTR here means Green/Yellow only. "Overall" refers to all ages in that pool.
+Red and Orange evidence and scores must never enter this calculation or serve
+as a fallback. Old mixed-ball artifacts require rebuilding under the current
+separation policy before display.
+
 The offline influence tool retains a saved sensitivity estimate for the latest
 five eligible singles matches included in a player's saved Overall CTR. The
 Player Plus overview instead uses the [chronological reconstruction](match-ctr-timeline.md).

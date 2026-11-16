@@ -41,7 +41,8 @@ class PlayerEventRatingHistory
             if ($snapshot['reason'] ?? null) throw new \RuntimeException('Historical sources could not produce a complete reconstruction.');
             $counts = array_fill_keys(array_keys(BallRatingModel::LABELS), 0); $seen = [];
             // Use the validated, date-filtered fitted edges, including their resolved classification.
-            foreach ($snapshot['all_age']['history_evidence']['matches'] ?? [] as $match) {
+            $stageMatches = array_merge(...array_values(array_map(fn ($graph) => $graph['history_evidence']['matches'] ?? [], $snapshot['ball_ratings'] ?? [])));
+            foreach ($stageMatches as $match) {
                 if ((int) ($match['event_id'] ?? 0) !== (int) $event->id || ($match['confidence_date'] ?? '9999') > $key
                     || !in_array((int) $player->id, [(int) ($match['winner'] ?? 0), (int) ($match['loser'] ?? 0)], true)) continue;
                 $source = $match['source_id'] ?? null;

@@ -69,10 +69,11 @@ class PlayerPathwayEvidence
                 || preg_match('/walkover|\bbye\b|\bw\s*\/?\s*o\b/i', $row['score'])
                 || !is_string($row['date'] ?? null) || $row['date'] < $cutoff || $row['date'] > $date) continue;
             $stage = BallRatingModel::forMatch($row);
-            if (!$overall) {
-                if ($stage === $ratingStage) $ratedStageMatches[$ratingStage][$source] = true;
-                continue;
-            }
+            if (!$overall && $stage !== $ratingStage) continue;
+            if (!$overall) $ratedStageMatches[$ratingStage][$source] = true;
+            // Overall is only a compatibility copy of the standard evidence;
+            // Red/Orange participation comes from their own independent rows.
+            if ($overall && $stage !== 'standard') continue;
             $events[$event] = true;
             if (is_string($stage) && array_key_exists($stage, $stageEvents)) {
                 $stageEvents[$stage][$event] = true;
@@ -93,7 +94,7 @@ class PlayerPathwayEvidence
             $matches = array_values($matches);
         }
         unset($matches);
-        $score = $latest['score'] ?? null;
+        $score = $saved['months'][$latest['index']]['cohorts'][BallRatingModel::COHORTS['standard']][$player->id]['score'] ?? null;
         $score = is_numeric($score) && is_finite((float) $score) && $score >= 0 && $score <= 100 ? (float) $score : null;
         $stale = $pending || ($saved['as_of'] ?? '') !== $today->toDateString() || $date !== ($saved['as_of'] ?? null);
         // Yesterday's unchanged saved build remains useful across the nightly refresh boundary.
