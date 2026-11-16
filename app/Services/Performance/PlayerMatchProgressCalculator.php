@@ -45,7 +45,14 @@ class PlayerMatchProgressCalculator
             $order = $chronology[$match['source_id']] ?? null;
             if (!$order) return array_replace($empty, ['reason' => 'Other eligible evidence has no reliable ordering information.']);
             if ($order['time'] !== null) {
-                if ($order['time'] === $time) return array_replace($empty, ['reason' => 'Eligible matches share this scheduled time; their order is ambiguous.']);
+                if (substr($order['time'], 0, 10) !== $match['confidence_date']) return array_replace($empty, ['reason' => 'Other eligible evidence has inconsistent scheduled dates.']);
+                if ($order['time'] === $time) {
+                    if (array_intersect([(int) $target['winner'], (int) $target['loser']], [(int) $match['winner'], (int) $match['loser']])) {
+                        return array_replace($empty, ['reason' => 'A player in this match has another result at the same scheduled time; their order is ambiguous.']);
+                    }
+                    // Other courts do not establish a prior result: neither fit includes simultaneous evidence.
+                    continue;
+                }
                 if ($order['time'] < $time) $before[] = $match;
             } elseif ($order['latest_date'] < $day->toDateString()) {
                 $before[] = $match;

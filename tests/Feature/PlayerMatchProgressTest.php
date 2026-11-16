@@ -98,12 +98,13 @@ class PlayerMatchProgressTest extends TestCase
     }
     public function test_stale_player_policy_source_version_score_publication_and_basis_mismatches_are_withheld(): void
     {
-        foreach (['date', 'player', 'policy', 'source', 'version', 'score', 'publication', 'basis'] as $change) {
+        foreach (['date', 'player', 'policy', 'source', 'version', 'artifact_version', 'score', 'publication', 'basis'] as $change) {
             $snapshot = $this->snapshot(); if ($change === 'publication') $snapshot['reason'] = 'Publication changed.';
             [$snapshots, $ability] = $this->readers($snapshot); $store = $this->store(); $saved = $this->artifact($store);
             match ($change) {
                 'date' => $saved['as_of'] = $saved['rows'][0]['date'] = now('Africa/Johannesburg')->subDay()->toDateString(), 'player' => $saved['player_id'] = 2,
                 'policy' => $saved['policy_hash'] = str_repeat('d', 64), 'source' => $saved['source_fingerprint'] = str_repeat('d', 64), 'version' => $saved['snapshot_version'] = str_repeat('d', 64),
+                'artifact_version' => $saved['version'] = 4,
                 'score' => $saved['current_score'] = 60.0, 'publication' => null, 'basis' => $saved['basis'] = 'leave_one_out',
             };
             if ($change === 'date') $saved['rows'][0]['time'] = $saved['rows'][0]['date'].' 09:00:00';

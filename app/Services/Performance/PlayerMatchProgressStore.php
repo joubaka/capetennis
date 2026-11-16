@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\File;
 /** Separate private chronology artifact; cannot be mistaken for leave-one-out influence. */
 class PlayerMatchProgressStore
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
     public const EVIDENCE_LIMIT = 100;
     public const MAX_BYTES = 524288;
 
@@ -20,7 +20,7 @@ class PlayerMatchProgressStore
 
     public function policyHash(): string
     {
-        return hash('sha256', self::VERSION.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':overall:scheduled-order-prefix:full-historical-window:ambiguous-unavailable');
+        return hash('sha256', self::VERSION.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':overall:strictly-before-scheduled-prefix:full-historical-window:simultaneous-unrelated-excluded:participant-ties-unavailable');
     }
 
     public function read(int $player): ?array

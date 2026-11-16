@@ -16,8 +16,11 @@ const read = name => fs.readFileSync(path.join(fixtures, name), 'utf8').replace(
       const url = new URL(route.request().url());
       if (url.hostname !== 'localhost') return route.abort();
       if (url.pathname === '/profile-chart-qa') {
-        const pending = url.searchParams.get('state') === 'pending';
-        return route.fulfill({ contentType: 'text/html', body: read(pending ? 'profile-match-progress-pending-qa.html' : 'profile-match-progress-qa.html') });
+        const state = url.searchParams.get('state');
+        return route.fulfill({ contentType: 'text/html', body: read(state === 'pending' ? 'profile-match-progress-pending-qa.html' : state === 'unavailable' ? 'profile-match-progress-unavailable-qa.html' : 'profile-match-progress-qa.html') });
+      }
+      if (url.pathname === '/rating-chart-qa') {
+        return route.fulfill({ contentType: 'text/html', body: read(url.searchParams.get('state') === 'unavailable' ? 'rating-match-progress-unavailable-qa.html' : 'rating-match-progress-qa.html') + '<script src="/assets/js/player-match-explanation.js"></script>' });
       }
       const target = path.resolve(publicRoot, '.' + decodeURIComponent(url.pathname));
       if (!target.startsWith(publicRoot + path.sep) || !fs.existsSync(target) || !fs.statSync(target).isFile()) return route.abort();
@@ -85,7 +88,40 @@ const read = name => fs.readFileSync(path.join(fixtures, name), 'utf8').replace(
       assert.equal(await page.locator('[data-profile-match-pair]').count(), 0);
       assert.equal(await page.locator('[data-profile-match-chart]').count(), 0);
       assert.ok(await page.locator('[data-profile-match-pending]').isVisible());
+      await page.goto('http://localhost/profile-chart-qa?state=unavailable', { waitUntil: 'networkidle' });
+      assert.equal(await page.locator('[data-profile-match-chart]').count(), 0);
+      assert.equal(await page.locator('[data-profile-match-unavailable]').count(), 1);
+      assert.equal(await page.locator('.pm-values').evaluate(el => el.open), true);
+      assert.equal(await page.locator('[data-profile-match-row]').count(), 2);
+      await page.locator('[data-profile-match-progress]').screenshot({ path: path.join(fixtures, `profile-match-progress-unavailable-${width}.png`) });
+      for (const state of ['mixed', 'unavailable']) {
+        await page.goto(`http://localhost/rating-chart-qa?state=${state}`, { waitUntil: 'networkidle' });
+        const panel = page.locator('[data-match-progress]');
+        assert.equal(await panel.count(), 1);
+        assert.equal(await panel.locator('[data-match-progress-segment]').count(), state === 'mixed' ? 4 : 0);
+        assert.equal(await panel.locator('[data-match-progress-unavailable] article').count(), state === 'unavailable' ? 5 : 0);
+        assert.equal(await panel.evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, `${width}px ${state}: panel containment`);
+        if (state === 'unavailable') {
+          assert.equal(await panel.locator('svg').count(), 0);
+          assert.ok(await panel.getByText('The same player has two matches at this scheduled time.', { exact: true }).first().isVisible());
+          const button = panel.locator('[data-match-progress-unavailable] button').first();
+          assert.ok(await button.evaluate(el => el.getBoundingClientRect().height >= 44));
+          await button.focus();
+          await page.keyboard.press('Enter');
+          const explanation = panel.locator('[data-match-explanation]').first();
+          assert.ok(await explanation.isVisible());
+          assert.equal(await button.getAttribute('aria-expanded'), 'true');
+          await page.keyboard.press('Escape');
+          assert.equal(await explanation.isVisible(), false);
+          assert.equal(await button.evaluate(el => el === document.activeElement), true);
+          await page.keyboard.press('Enter');
+          await explanation.locator('[data-match-explanation-close]').click();
+          assert.equal(await explanation.isVisible(), false);
+          assert.equal(await button.evaluate(el => el === document.activeElement), true);
+        }
+        await panel.screenshot({ path: path.join(fixtures, `rating-match-progress-${state}-${width}.png`) });
+      }
     }
-    console.log('PASS: prominent Profile match-rating graph, signed before/after pairs, unavailable/pending states and keyboard/scroll containment at 360/390/768/1440px.');
+    console.log('PASS: Profile and Rating match progress, mixed pairs, compact unavailable/pending states and keyboard/scroll containment at 360/390/768/1440px.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

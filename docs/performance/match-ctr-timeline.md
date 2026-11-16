@@ -35,6 +35,8 @@ This preserves results that were then inside the 730-day window even if they are
 too old for today's snapshot. Use played singles only for Overall CTR.
 
 The before pool contains evidence known to precede the target scheduled time.
+Unrelated matches scheduled at exactly the same time are excluded from both
+fits: no arbitrary order is assigned to simultaneous play on other courts.
 The after pool is that same pool plus the target match. Exclude later dates and
 later same-day matches. Fit both pools using the canonical model at the same
 target calendar date, preserving score-margin targets, recency and event budgets.
@@ -49,7 +51,11 @@ has its own arrow, numeric endpoints, signed change, opponent and player-facing
 result. Green rises and orange falls supplement text and accessible descriptions;
 color alone never conveys the change. Gaps between pairs are deliberate: there
 is no connecting line implying continuous progress across different match dates.
-Unavailable pairs have no numeric arrow.
+Unavailable pairs have no numeric arrow. When every pair is unavailable, Rating
+and Profile show compact readable match results and visible reasons instead of
+an empty numeric grid. Rating retains each match's explanation control; Profile
+opens its result/availability disclosure by default. Mixed availability retains
+the fixed-scale chart without inventing numeric points for missing pairs.
 
 Each match can open its saved calculation explanation from the grid. The
 explanation separates eligible network evidence from the selected player's own
@@ -103,7 +109,11 @@ unique schedule. Require the scheduled date to agree with the evidence date and
 the event interval. Order verified same-day matches by scheduled time, never by
 fixture ID or record update time.
 
-Unknown or tied ordering at a cutoff is unavailable. An unscheduled match in an
+Unknown ordering or a simultaneous match involving either target participant
+makes the pair unavailable. An unrelated simultaneous network match does not:
+the strictly earlier baseline excludes it, and the after fit adds only the
+selected match. This is a scheduled-cutoff estimate, not actual completion order.
+An unscheduled match in an
 event that spans the cutoff can represent future evidence even if its proxy date
 is earlier; do not silently include it. Unsupported sources must not be assigned
 invented timestamps.
@@ -136,3 +146,17 @@ batches; page requests never start a calculation.
 The separate [leave-one-match-out tool](match-influence.md) remains an offline
 sensitivity analysis. Its without/with comparison must not be relabelled as a
 historical rating change or substituted for this timeline.
+
+## Local regression evidence
+
+The 2026-11-16 cutoff correction reproduced the unrelated simultaneous-match
+rejection before the fix. Calculator, saved-progress, chronology-source and
+event-progress regressions then passed: 21 tests, 537 assertions on PHP 8.5
+with isolated SQLite for feature tests. My Tennis overview and Rating
+presentation passed 14 tests and 170 assertions; the existing rating-history
+endpoint rendering regression also passed. Independent calculator/presentation
+verification passed 9 tests and 294 assertions, and repair-library checks passed
+3 tests and 412 assertions. Responsive rendered Profile/Rating checks covered
+360, 390, 768 and 1440px, including unavailable/mixed states and keyboard
+explanation controls. Route registration and isolated Blade compilation passed.
+These are local checks, not deployment or a rebuilt live player artifact.

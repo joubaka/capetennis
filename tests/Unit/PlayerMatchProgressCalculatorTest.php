@@ -68,6 +68,31 @@ class PlayerMatchProgressCalculatorTest extends TestCase
         }
         $this->assertSame($expected, $calculator->pair(1, 'match:108', $matches, $order, $day));
     }
+
+    public function test_unrelated_simultaneous_matches_are_excluded_from_both_fits_and_after_adds_only_the_target(): void
+    {
+        [$matches, $order] = $this->evidence(); $day = CarbonImmutable::parse('2026-10-11');
+        $calculator = new PlayerMatchProgressCalculator(new AllAgeRatingModel);
+        $expected = $calculator->pair(1, 'match:108', $matches, $order, $day);
+        $this->assertNull($expected['reason']);
+        foreach ([[3, 4], [998, 999]] as $index => [$winner, $loser]) {
+            $extra = $matches[0]; $extra['source_id'] = 'simultaneous:'.$index;
+            $extra['winner'] = $winner; $extra['loser'] = $loser; $extra['confidence_date'] = '2026-10-11'; $matches[] = $extra;
+            $order[$extra['source_id']] = ['time' => '2026-10-11 09:00:00', 'earliest_date' => '2026-10-11', 'latest_date' => '2026-10-11'];
+        }
+        foreach ([$matches, array_reverse($matches)] as $input) {
+            $this->assertSame($expected, $calculator->pair(1, 'match:108', $input, $order, $day));
+        }
+        $pre = array_values(array_filter($matches, fn ($m) => $order[$m['source_id']]['time'] < '2026-10-11 09:00:00'));
+        $target = array_values(array_filter($matches, fn ($m) => $m['source_id'] === 'match:108'))[0];
+        $model = $this->createMock(AllAgeRatingModel::class); $calls = [];
+        $model->expects($this->exactly(2))->method('fit')->willReturnCallback(function ($pool, $asOf) use (&$calls) {
+            $calls[] = array_column($pool, 'source_id');
+            return (new AllAgeRatingModel)->fit($pool, $asOf);
+        });
+        $this->assertSame($expected, (new PlayerMatchProgressCalculator($model))->pair(1, 'match:108', $matches, $order, $day));
+        $this->assertSame([array_column($pre, 'source_id'), array_column([...$pre, $target], 'source_id')], $calls);
+    }
     public function test_opponent_pair_is_unavailable_when_its_comparability_or_context_changes_even_if_selected_pair_is_valid(): void
     {
         [$matches, $order] = $this->evidence(); $day = CarbonImmutable::parse('2026-11-08'); $model = new AllAgeRatingModel;
@@ -88,13 +113,18 @@ class PlayerMatchProgressCalculatorTest extends TestCase
 
     public function test_unknown_tied_or_overlapping_proxy_order_withholds_the_whole_pair_without_fitting(): void
     {
-        foreach (['target_unknown', 'same_day_unknown', 'same_time', 'overlapping_proxy'] as $case) {
+        foreach (['target_unknown', 'target_date_mismatch', 'same_day_unknown', 'overlapping_proxy', 'evidence_date_mismatch', 'target_winner_as_winner', 'target_winner_as_loser', 'target_loser_as_winner', 'target_loser_as_loser'] as $case) {
             [$matches, $order] = $this->evidence(); $model = $this->createMock(AllAgeRatingModel::class); $model->expects($this->never())->method('fit');
             if ($case === 'target_unknown') $order['match:108']['time'] = null;
+            elseif ($case === 'target_date_mismatch') $order['match:108']['time'] = '2026-10-10 09:00:00';
             else {
                 $extra = $matches[0]; $extra['source_id'] = 'ambiguous-other'; $extra['winner'] = 999; $extra['loser'] = 998;
+                if (str_starts_with($case, 'target_')) {
+                    $participant = str_starts_with($case, 'target_winner_') ? 1 : 2;
+                    $extra[str_ends_with($case, '_as_winner') ? 'winner' : 'loser'] = $participant;
+                }
                 $extra['confidence_date'] = $case === 'overlapping_proxy' ? '2026-10-01' : '2026-10-11'; $matches[] = $extra;
-                $order['ambiguous-other'] = ['time' => $case === 'same_time' ? '2026-10-11 09:00:00' : null,
+                $order['ambiguous-other'] = ['time' => str_starts_with($case, 'target_') ? '2026-10-11 09:00:00' : ($case === 'evidence_date_mismatch' ? '2026-10-10 09:00:00' : null),
                     'earliest_date' => $extra['confidence_date'], 'latest_date' => $case === 'overlapping_proxy' ? '2026-10-15' : '2026-10-11'];
             }
             $pair = (new PlayerMatchProgressCalculator($model))->pair(1, 'match:108', $matches, $order, CarbonImmutable::parse('2026-10-11'));

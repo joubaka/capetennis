@@ -232,6 +232,13 @@ class MyTennisOverviewTest extends TestCase
         $html = view('frontend.my-tennis.profile-match-progress', $data)->render();
         $this->assertStringNotContainsString('data-profile-match-pair', $html);
         $this->assertStringContainsString('Comparison context changed.', $html);
+        $this->assertStringNotContainsString('data-profile-match-chart', $html);
+        $this->assertStringContainsString('data-profile-match-unavailable', $html);
+        $this->assertStringContainsString('Match results and availability', $html);
+        $dom = new \DOMDocument; @$dom->loadHTML($html); $xp = new \DOMXPath($dom);
+        $this->assertSame(1, $xp->query('//details[contains(@class,"pm-values") and @open]')->length);
+        $this->assertSame(2, $xp->query('//*[@data-profile-match-row]')->length);
+        if (getenv('CT_PROFILE_MATCH_QA_HTML') === '1') file_put_contents(storage_path('framework/testing/profile-match-progress-unavailable-qa.html'), '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body>'.$html.'</body></html>');
     }
 
     public function test_profile_non_plus_preview_does_not_load_private_progress(): void

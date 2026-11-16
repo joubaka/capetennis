@@ -46,6 +46,22 @@
     .ctr-history .ctr-rating-status { color:#52677b;margin:0;padding:.5rem .75rem;background:#f1f5fa;border-radius:8px; }
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot:has([data-rating-mini-trend]) { display:block; }
     .ctr-history .ctr-overview-snapshot .ct-rating-snapshot-score { flex-direction:row;flex-wrap:wrap;align-items:center; }
+    .ctr-history .ctr-match-panel { border:1px solid #dbe4ef;border-radius:14px;overflow:hidden;background:#fff;margin-top:1.5rem; }
+    .ctr-history .ctr-match-heading { background:#172e45;color:#fff;padding:1.1rem clamp(1rem,2vw,1.5rem); }
+    .ctr-history .ctr-match-heading h3.h5 { color:#fff;font-size:1.15rem;margin:0 0 .35rem; }
+    .ctr-history .ctr-match-heading p { margin:0;color:#e0ebf5;font-size:.8125rem;line-height:1.6; }
+    .ctr-history .ctr-match-body { padding:clamp(1rem,2vw,1.5rem); }
+    .ctr-history .ctr-match-body .text-muted { color:#52677b !important; }
+    .ctr-history .ctr-match-scroll-cue { display:none; }
+    .ctr-history .ctr-match-body > p { max-width:75ch;line-height:1.6; }
+    .ctr-history .ctr-match-empty-note { padding:.8rem 1rem;background:#f1f5fa;border-radius:10px;color:#233d58;font-size:.875rem; }
+    .ctr-history .ctr-match-list { display:grid;gap:.65rem;margin:1rem 0; }
+    .ctr-history .ctr-match-row { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) auto;gap:.6rem 1.25rem;align-items:center;padding:1rem;border:1px solid #e0e8f1;border-radius:10px;background:#fbfcfe;overflow-wrap:anywhere; }
+    .ctr-history .ctr-match-row h4 { font-size:.9rem;color:#172e45;margin:0 0 .25rem;font-weight:600; }
+    .ctr-history .ctr-match-row p { margin:0;color:#52677b;font-size:.8125rem;line-height:1.5; }
+    .ctr-history .ctr-match-row button { min-height:44px;white-space:normal;font-size:.8125rem; }
+    @media(max-width:767.98px) { .ctr-history .ctr-match-row { grid-template-columns:1fr;gap:.5rem; }.ctr-history .ctr-match-row button { justify-self:start; } }
+    @media(max-width:650px) { .ctr-history .ctr-match-scroll-cue { display:block; } }
     @media(min-width:768px) {
       .ctr-history .ctr-overview-snapshot .ct-rating-snapshot:has([data-rating-mini-trend]) {
         display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:.5rem 1.5rem;align-items:start;
@@ -126,19 +142,25 @@
     @endif
     @include('frontend.my-tennis.rating-top-ten')
     @unless($ratingTopTen['visible'] ?? false)<p>Rating comparisons are not available for this account.</p>@endunless
-    <section class="mt-4" aria-labelledby="ctr-match-progress-heading" data-match-progress>
-      <h3 class="h5" id="ctr-match-progress-heading">Reconstructed CTR before/after match</h3>
-      <p class="small text-muted"><strong>Reconstructed using scheduled match order.</strong> These are CTR estimates, not archived ratings or verified match completion times.</p>
+    <section class="ctr-match-panel" aria-labelledby="ctr-match-progress-heading" data-match-progress>
+      <div class="ctr-match-heading">
+        <h3 class="h5" id="ctr-match-progress-heading">Reconstructed CTR before/after match</h3>
+        <p><strong>Reconstructed using scheduled match order.</strong> CTR estimates, not archived ratings or verified match completion times.</p>
+      </div>
+      <div class="ctr-match-body">
       @if(!isset($matchProgress) || $matchProgress['reason'] !== null)
         <p class="small text-muted mb-0" role="status">{{ $matchProgress['reason'] ?? 'Before/after reconstruction is awaiting a saved update.' }}</p>
       @else
-        <p class="small text-muted">Latest five eligible results in recorded scheduled order · reconstruction updated through {{ $matchProgress['as_of'] }}. Each pair uses eligible results before that match, then adds that match. Later results are excluded from both estimates.</p>
+        <p class="small text-muted">Latest five eligible results · reconstruction updated through {{ $matchProgress['as_of'] }}. Each pair uses eligible results scheduled strictly earlier, then adds that match. Other matches at the same time and later results are excluded from both estimates.</p>
         <p class="small text-muted">Change means after minus before. These are not fixed points awarded for a win or loss, and changes must not be assumed to sum to a monthly movement.</p>
         @php
           $matchProgressRows = array_reverse($matchProgress['rows']);
+          $hasMatchProgressValues = collect($matchProgressRows)->contains(fn ($row) => $row['delta'] !== null);
         @endphp
         @if(count($matchProgressRows))
           <figure class="mb-3" data-match-progress-chart>
+            @if($hasMatchProgressValues)
+            <p class="ctr-match-scroll-cue small text-muted">Swipe or scroll across to see every match. Use “How calculated” for exact values and evidence.</p>
             <div class="ctr-chart-scroll" tabindex="0" aria-label="Before and after match chart; scroll horizontally on a narrow screen">
               <svg viewBox="0 0 620 420" width="100%" style="min-width:600px;max-width:60rem;display:block" role="group" aria-describedby="ctr-match-grid-description" aria-label="Reconstructed using scheduled match order: CTR before and after the latest five eligible matches, oldest to newest, on a fixed 0 to 100 scale">
                 <title>Reconstructed using scheduled match order</title>
@@ -187,6 +209,18 @@
               </svg>
             </div>
             <figcaption class="small text-muted mt-1">Oldest to newest · fixed 0–100 CTR scale. Each arrow is one reconstructed before/after pair. Gaps between matches are not connected; changes between cutoffs are not attributed to a match.</figcaption>
+            @else
+              <p class="ctr-match-empty-note" role="status">Your match results are saved. Before/after CTR is unavailable for these matches; the reason for each is shown below.</p>
+              <div class="ctr-match-list" data-match-progress-unavailable>
+                @foreach($matchProgressRows as $chartIndex => $progress)
+                  <article class="ctr-match-row">
+                    <div><h4>{{ $progress['opponent'] }}</h4><p>{{ \Carbon\CarbonImmutable::parse($progress['date'])->format('j M Y') }} · {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}</p></div>
+                    <p>{{ $progress['reason'] ?? 'A comparable before/after pair is unavailable.' }}</p>
+                    <button type="button" class="btn btn-outline-primary" data-match-explanation-target="ctr-match-explanation-{{ $chartIndex }}" aria-controls="ctr-match-explanation-{{ $chartIndex }}" aria-expanded="false" aria-label="How calculated: {{ $progress['date'] }} vs {{ $progress['opponent'] }}">View explanation</button>
+                  </article>
+                @endforeach
+              </div>
+            @endif
             @foreach($matchProgressRows as $chartIndex => $progress)
               <section id="ctr-match-explanation-{{ $chartIndex }}" data-match-explanation hidden tabindex="-1" class="border rounded p-3 mt-3" aria-label="Match calculation explanation">
                 <h6>{{ $progress['date'] }} · {{ $progress['opponent'] }} · {{ $progress['won'] ? 'Won' : 'Lost' }} {{ $progress['score'] }}</h6>
@@ -201,7 +235,7 @@
                     <dt class="col-7">Your eligible matches</dt><dd class="col-5">{{ $counts['own_before'] }} before → {{ $counts['own_after'] }} after</dd>
                     <dt class="col-7">Your distinct opponents</dt><dd class="col-5">{{ $counts['opponents_before'] }} before → {{ $counts['opponents_after'] }} after</dd>
                   </dl>
-                  <p>Before: fit the canonical CTR model to eligible earlier evidence. After: add this match and refit on the same {{ $progress['date'] }} rating date. Later matches are excluded. Both fits must converge on the same comparison scale.</p>
+                  <p>Before: fit the canonical CTR model to eligible earlier evidence. After: add this match and refit on the same {{ $progress['date'] }} rating date. Other matches at the same time and later matches are excluded from both fits. Both fits must converge on the same comparison scale.</p>
                   <p>The model uses score margins, opponent strength, recency and per-event evidence weights. The refit recalculates event budgets; this is not a fixed points-per-match formula, and changes are not additive.</p>
                   <p class="mb-0"><strong>{{ number_format($progress['after_score'], 1) }} after − {{ number_format($progress['before_score'], 1) }} before = {{ sprintf('%+.1f', $progress['delta']) }} CTR</strong></p>
                   <div class="table-responsive mt-3">
@@ -230,8 +264,9 @@
           <p class="small text-muted">No eligible included matches with available details.</p>
         @endif
         @if($matchProgress['restricted'])<p class="small text-muted mt-2">Some match details are restricted and are not shown here.</p>@endif
-        <p class="small text-muted mt-2 mb-0">Unknown or tied ordering, an overlapping event with uncertain match dates, or a changed comparison scale makes a pair unavailable. Current verified identity, publication and rating rules are used retrospectively.</p>
+        <p class="small text-muted mt-2 mb-0">A shared player scheduled in two matches at the same time, uncertain match dates or a changed comparison scale can make a pair unavailable. Current verified identity, publication and rating rules are used retrospectively.</p>
       @endif
+      </div>
     </section>
   </div>
   <div class="tab-pane {{ $activeRatingSection === 'progress' ? 'active show' : '' }}" id="ctr-panel-progress" role="tabpanel" aria-labelledby="ctr-tab-progress" tabindex="0">
@@ -372,7 +407,7 @@
     <details class="ctr-method"><summary>How to read CTR and its evidence</summary><div class="small text-muted mt-2">
       <p>CTR is a provisional ability estimate, not an official ranking or an accuracy percentage. The all-age singles rating uses played results across ages; compare players connected to the same shared reference group. Solid lines retain the same comparison group; dashed lines join consecutive snapshots whose group or baseline changed. Those changes are not like-for-like performance gains or losses.</p>
       <p>Ratings update nightly at 03:02 SAST. Opponents’ results and the age of your matches affect your estimate. Completed matches can count during an event. Finishing positions, where eligible, are considered after the event ends.</p>
-      <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. All ball colours and court formats are included without category-based rating offsets. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
+      <p>Each point refits the model using eligible completed matches dated on or before that date, including matches from ongoing events. The shared model uses up to two years of singles results with a six-month weight half-life. Comparisons needing links older than one year are marked Low confidence — historical connection. Only Green/Yellow singles enter CTR; Red and Orange remain in their own rating pools, without cross-pool fallback. Disconnected groups receive provisional within-group ratings with low confidence; scores are not calibrated against other groups. Recorded publication and player identity are checked as they exist now, so this is a retrospective reconstruction rather than archived historical ratings. This shared rating uses played singles results only; finishing orders and category baselines do not add points.</p>
     </div></details>
   </div>
   </div>

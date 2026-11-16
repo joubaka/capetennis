@@ -8,6 +8,7 @@
       && $row['before_score'] >= 0 && $row['before_score'] <= 100 && $row['after_score'] >= 0 && $row['after_score'] <= 100
       && ($row['reason'] ?? null) === null && abs(round((float) $row['after_score'] - (float) $row['before_score'], 1) - (float) $row['delta']) < .00001;
   $timeLabel = static fn (array $row): ?string => empty($row['time']) ? null : \Carbon\CarbonImmutable::parse($row['time'], 'Africa/Johannesburg')->format('H:i');
+  $hasProgressValues = collect($progressRows)->contains($hasPair);
 @endphp
 <section class="profile-match-progress" aria-labelledby="profile-match-progress-heading" data-profile-match-progress>
   <style>
@@ -40,12 +41,13 @@
   </div>
   <div class="pm-body">
     <p class="pm-basis"><strong>Reconstructed using scheduled match order.</strong></p>
-    <p class="pm-note">CTR estimates, not archived ratings or verified completion times.@if($profileMatchProgress['as_of'] ?? null) Saved through {{ $profileMatchProgress['as_of'] }}.@endif</p>
+    <p class="pm-note">CTR estimates, not archived ratings or verified completion times. Each pair uses strictly earlier scheduled results, then adds that match; other simultaneous results are excluded.@if($profileMatchProgress['as_of'] ?? null) Saved through {{ $profileMatchProgress['as_of'] }}.@endif</p>
     @if($progressReason !== null)
       <p class="pm-pending mb-0" role="status" data-profile-match-pending>{{ $progressReason }}</p>
     @elseif(!$progressRows)
       <p class="pm-pending mb-0" role="status" data-profile-match-pending>No eligible included matches with available details yet. Saved match reconstructions will appear after an overnight update.</p>
     @else
+      @if($hasProgressValues)
       <p class="pm-scroll-cue">Swipe or scroll across to see every available match. Exact values are also listed below.</p>
       <figure class="mb-0">
         <div class="pm-scroll" tabindex="0" role="region" aria-label="Reconstructed match ratings; scroll horizontally on a narrow screen" data-profile-match-chart>
@@ -87,8 +89,11 @@
         </div>
         <figcaption class="pm-caption"><span>Oldest → newest · fixed 0–100 scale</span><span>Each arrow is one match’s before/after pair.</span></figcaption>
       </figure>
-      <details class="pm-values">
-        <summary>Exact values and match results</summary>
+      @else
+        <p class="pm-pending" role="status" data-profile-match-unavailable>Your match results are saved. Before/after CTR is unavailable for these matches; the reason for each is shown below.</p>
+      @endif
+      <details class="pm-values" @if(!$hasProgressValues) open @endif>
+        <summary>{{ $hasProgressValues ? 'Exact values and match results' : 'Match results and availability' }}</summary>
         @foreach($progressRows as $row)
           <article class="pm-value-row" data-profile-match-row>
             <div><h3>{{ $row['opponent'] }}</h3><p>{{ $row['date'] }}{{ $timeLabel($row) ? ' · '.$timeLabel($row) : '' }} · {{ $row['won'] ? 'Won' : 'Lost' }} {{ $row['score'] }}</p></div>

@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-056",
+      "title": "Match CTR reconstruction rejects simultaneous matches on other courts",
+      "scope": "Saved Player Plus before/after CTR reconstruction and its Rating/Profile presentation; no schedule or result mutation.",
+      "symptoms": "Uniquely scheduled player matches all show ambiguous order because unrelated eligible network matches share each scheduled start. All-unavailable charts leave a large empty numeric grid.",
+      "cause": "The chronological calculator rejected every network timestamp tie instead of distinguishing unrelated simultaneous play from conflicting schedules involving either target participant.",
+      "fix": "Use strictly earlier scheduled evidence as the common baseline, exclude unrelated simultaneous matches from both fits, then add only the target match after. Reject simultaneous matches sharing either participant, unknown chronology and unstable comparison scales. Invalidate old saved reconstruction policy. Keep exact source/event resolution, pool separation and publication/access gates. Render all-unavailable results as compact match rows with visible reasons and existing explanations, without a numeric grid. See docs/performance/match-ctr-timeline.md.",
+      "verification": "Read-only schedule inspection distinguished unrelated network concurrency from player conflicts. Local regression and presentation validation are documented in docs/performance/match-ctr-timeline.md; referenced tests cover scheduled cutoff membership, shared-participant conflicts, unchanged input ordering and compact unavailable presentation.",
+      "limits": "Guide only. Scheduled starts do not prove completion order. Some pairs remain unavailable when chronology or comparison-scale safeguards fail. A local fix does not change remote code or rebuild saved artifacts; deployment and production refresh require their own authorization.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/PlayerMatchProgressCalculator.php", "app/Services/Performance/PlayerMatchChronologySources.php", "app/Services/Performance/PlayerMatchProgressStore.php", "docs/performance/match-ctr-timeline.md"],
+      "tests": ["tests/Unit/PlayerMatchProgressCalculatorTest.php", "tests/Feature/PlayerMatchProgressTest.php", "tests/Feature/PlayerMatchChronologySourcesTest.php", "tests/Feature/MyTennisOverviewTest.php", "tests/Feature/PlayerMatchProgressPresentationTest.php", "tests/Browser/profile-match-progress.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-053",
       "title": "Overall rating changes CTR scores or keeps a previous age restriction",
       "scope": "CTR pool separation across My Tennis, Top 10, shared ratings and directory links; Red and Orange remain independent.",

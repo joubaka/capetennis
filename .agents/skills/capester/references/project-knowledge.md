@@ -73,7 +73,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Before/after match CTR in Plus is a retrospective scheduled-order
   reconstruction, not an archived actual rating. Use each target day's full
   historical evidence window and strict chronological before/after pools;
-  withhold ambiguous order and changed comparison scales. Never substitute
+  withhold ambiguous order and changed comparison scales. Simultaneous unrelated
+  matches on other courts are excluded from both cutoff fits; a simultaneous
+  match sharing either target participant still makes the pair unavailable.
+  Never substitute
   today's leave-one-out rating or fixture-ID order. Keep the proxy basis visible
   and calculations offline. Interactive match explanations must project saved
   accepted-evidence aggregates, distinguish network counts from the player's
