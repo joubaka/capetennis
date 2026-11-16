@@ -88,8 +88,9 @@ class MyTennisRatingNavigationTest extends TestCase
         foreach ([$player->id => 80, $peer->id => 90, $private->id => 99] as $id => $score) {
             $ratings[$id] = ['component' => 'shared', 'comparable' => true, 'score' => $score, 'confidence_label' => 'Medium'];
         }
+        $graph = ['reference_component' => 'shared', 'components' => ['shared' => ['converged' => true, 'members' => array_keys($ratings)]], 'ratings' => $ratings];
         $snapshot = ['reason' => null, 'snapshot_as_of' => '2026-11-15', 'snapshot_stale' => false,
-            'all_age' => ['reference_component' => 'shared', 'components' => ['shared' => ['converged' => true, 'members' => array_keys($ratings)]], 'ratings' => $ratings]];
+            'ball_ratings' => ['standard' => $graph]];
         $this->mock(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn(['series' => [], 'reason' => 'Saved history pending.']);
         $direct = route('my.tennis.rating', $player);

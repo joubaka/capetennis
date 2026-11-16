@@ -98,6 +98,16 @@ class PlayerRatingTopTen
         }
         $ids = array_values(array_unique(array_merge(...array_values(array_map('array_keys', $ratings ?: [[]])))));
         if (count($ids) > 5000) return $this->limited($result);
+        if (!$result['can_browse'] && $matchIds === null) {
+            // Member lists only rank their authorised age/gender population. Resolve
+            // that small candidate set before the expensive public roster checks;
+            // demographics are never evidence of publication or entitlement.
+            $ids = $selectedAge === 'unknown' ? [] : Player::query()->whereIntegerInRaw('id', $ids)
+                ->get(['id', 'dateOfBirth', 'gender'])
+                ->filter(fn ($candidate) => $this->matchesAgeScope($this->ageKey($candidate->dateOfBirth, $today), $selectedAge)
+                    && $this->genderKey($candidate->gender) === $gender)
+                ->modelKeys();
+        }
         $public = [];
         try { $participants = $this->publicParticipants($ids); }
         catch (\OverflowException) { return $this->limited($result); }

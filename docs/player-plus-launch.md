@@ -80,6 +80,13 @@ comparisons; Profile and Activity must not load the full leaderboard. Actual mat
 comparison data retains its existing public/entitlement projection. Page reads
 never fit ratings or request a derived-data refresh.
 
+For ordinary members, narrow comparable candidate IDs using the existing
+age/gender scope before public-participation discovery. Keep the original global
+candidate cap and run all canonical publication and roster checks on the remaining
+IDs on every read; demographics never grant access. Super-user browsing and
+match-player projections retain their separate scopes. This reduces discovery
+work, not the exact saved-history fingerprint or publication validation.
+
 Results opens with a saved Results overview: season totals, win rate, latest-five
 form and a wins/losses activity chart. The selected year controls both totals and
 chart; All seasons totals cover all saved seasons while the chart covers the

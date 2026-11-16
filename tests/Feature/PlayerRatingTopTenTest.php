@@ -10,6 +10,42 @@ use Tests\TestCase;
 
 class PlayerRatingTopTenTest extends TestCase
 {
+    public function test_member_discovery_checks_publication_only_for_its_age_and_gender_candidates(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-16'));
+        foreach (range(1, 5) as $id) $this->player($id, 'Player'.$id, published: $id !== 3);
+        DB::table('players')->whereIn('id', [1, 3])->update(['dateOfBirth' => '2015-01-01', 'gender' => 'Male']);
+        DB::table('players')->where('id', 2)->update(['dateOfBirth' => '2016-01-01', 'gender' => 'Male']);
+        DB::table('players')->where('id', 4)->update(['dateOfBirth' => '2014-01-01', 'gender' => 'Male']);
+        DB::table('players')->where('id', 5)->update(['dateOfBirth' => '2015-01-01', 'gender' => 'Female']);
+        $access = $this->mock(PlayerRatingAccess::class);
+        $access->shouldReceive('allowsDiscovery')->andReturnTrue();
+        $access->shouldReceive('allows')->andReturnTrue();
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')
+            ->andReturn($this->snapshot([1 => 80, 2 => 90, 3 => 99, 4 => 98, 5 => 97]));
+        $user = \Mockery::mock(User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturnFalse();
+        $selected = \App\Models\Player::findOrFail(1);
+        DB::enableQueryLog();
+        $result = app(PlayerRatingTopTen::class)->build($user, $selected,
+            ['rating_age' => 'u18', 'rating_gender' => 'girls', 'rating_level' => 'red']);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame([2, 1], array_column($result['lists']['overall']['players'], 'id'));
+        $this->assertSame(2, $result['summary']['age']['total']);
+        $this->assertSame(2, $result['summary']['age']['player']['position']);
+        $publicationQuery = collect($queries)->first(fn ($query) => str_contains($query['query'], 'exists')
+            && str_starts_with($query['query'], 'select "id", "name", "surname"'));
+        $this->assertNotNull($publicationQuery);
+        $this->assertStringContainsString('"id" in (1, 2, 3)', $publicationQuery['query']);
+        $this->assertStringNotContainsString('"id" in (1, 2, 3, 4, 5)', $publicationQuery['query']);
+        // A later publication revocation still takes effect on the next read.
+        DB::table('draws')->where('id', 2)->update(['published' => false]);
+        $after = app(PlayerRatingTopTen::class)->build($user, $selected);
+        $this->assertSame([1], array_column($after['lists']['overall']['players'], 'id'));
+        $this->assertSame(1, $after['summary']['age']['total']);
+    }
+
     public function test_ctr_and_match_comparisons_ignore_a_legacy_combined_graph_and_keep_ball_lists_separate(): void
     {
         foreach (range(1, 4) as $id) $this->player($id);
