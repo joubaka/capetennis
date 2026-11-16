@@ -115,7 +115,7 @@ class BallRatingPipelineTest extends TestCase
         $context = app(\App\Services\Performance\BallRatingContext::class);
         $this->assertSame('red', $context->stage($field));
         $field->category->update(['name' => 'U9B Boys']); $this->assertSame('orange', $context->stage($field));
-        $field->category->update(['name' => 'U9B Boys A']); $this->assertSame('standard', $context->stage($field));
+        $field->category->update(['name' => 'U9B Boys A']); $this->assertSame('orange', $context->stage($field));
         $field->category->update(['name' => 'Green Ball U9B Boys A']); $this->assertSame('standard', $context->stage($field));
         $field->category->update(['name' => 'Red and Orange U9B Boys A']); $this->assertNull($context->stage($field));
     }
@@ -153,7 +153,7 @@ class BallRatingPipelineTest extends TestCase
         $fixtures = [];
         foreach ([['School Holiday Open', 'u/10 Girls - B division'],
             ['City Club Championships', 'Under 10 Boys B'],
-            ['District Junior Festival', 'u/9 Girls B - Division']] as $index => [$event, $category]) {
+            ['District Junior Festival', 'u/9 Girls A - Division']] as $index => [$event, $category]) {
             [$finishEvent, $field] = $this->finishField($event, $category);
             $fixture = $this->match($event, $players[0], $players[$index + 1], '2026-10-20');
             $fixture->draw->categoryEvent->category->update(['name' => $category]);
@@ -181,7 +181,7 @@ class BallRatingPipelineTest extends TestCase
 
     public function test_explicit_courts_keep_their_format_for_orange_division_finishes_and_display(): void
     {
-        [$event, $field] = $this->finishField('School Junior Open', 'U10 Girls B');
+        [$event, $field] = $this->finishField('School Junior Open', 'U9 Girls A');
         $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $field->id]);
         $court = DB::table('event_venue_courts')->insertGetId([
             'event_id' => $event->id, 'venue_id' => 1, 'label' => '1', 'ball_type' => 'standard', 'active' => true,

@@ -31,6 +31,16 @@ This verifies rendered fictional data, not live event availability or registrati
 
 These checks serve HTML rendered by Laravel's test suite together with the real public assets. Mutating endpoints are isolated in-memory HTTP doubles; no application database is changed by the browser harness. Backend persistence, eligibility, authorization and rollback are covered by the draw feature tests.
 
+`node tests/Browser/profile-match-progress.cjs` checks the authorized Profile's
+last-five-match CTR graph at 360, 390, 768 and 1440px. Generate its populated and
+pending fixtures using `CT_PROFILE_MATCH_QA_HTML=1` and `MyTennisOverviewTest`.
+It loads actual fictional route HTML with local assets, blocks external requests,
+and checks prominent placement, exact chronological before/after/signed changes,
+unavailable gaps, pending states, keyboard scrolling and readable result rows.
+Screenshots are under `storage/framework/testing`. Use Node 20+ and configure
+`NODE_PATH` for Playwright as needed. This does not verify live player artifacts
+or run any rating calculations.
+
 `node tests/Browser/results-overview.cjs` checks the Results overview with actual
 fictional Blade fixtures and local styles at 360, 390, 768 and 1440px. Generate the
 five `results-overview-*-qa.html` fixtures with `CT_RESULTS_QA_HTML=1` and

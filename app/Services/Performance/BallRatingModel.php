@@ -7,7 +7,7 @@ use Carbon\CarbonImmutable;
 /** Independent singles graphs with weaker published finishing fields; unstated conditions belong to normal tennis. */
 class BallRatingModel
 {
-    public const VERSION = 5;
+    public const VERSION = 6;
     public const LABELS = ['red' => 'Red ball', 'orange' => 'Orange ball', 'standard' => 'Green/Yellow ball'];
     public const COHORTS = ['red' => 'red ball · singles', 'orange' => 'orange ball · singles', 'standard' => 'green/yellow ball · singles'];
 
@@ -43,20 +43,22 @@ class BallRatingModel
         return null;
     }
 
-    /** Exact U9 B and U10 B divisions use Orange across all events. */
+    /** Single-age U9 and exact U10 B divisions use Orange across all events. */
     public static function isOrangeDivision(?string $category): bool
     {
         $category = mb_strtolower((string) $category);
         // Preserve compact historical labels such as WilsonU9B.
         $category = str_replace('wilson', ' ', $category);
-        // Combined divisions and age ranges do not establish one exact playing format.
-        if (preg_match('/\b[ac]\b/u', $category) === 1
-            || preg_match_all('/\b(?:u\s*\/?\s*|under[\s-]*)\d+/u', $category, $ages, PREG_OFFSET_CAPTURE) !== 1) return false;
+        // Mixed ages do not establish one playing format, even if one age is U9.
+        if (preg_match_all('/\b(?:u\s*\/?\s*|under[\s-]*)(\d+)/u', $category, $ages, PREG_OFFSET_CAPTURE) !== 1) return false;
         $afterAge = substr($category, $ages[0][0][1] + strlen($ages[0][0][0]));
         if (preg_match('/(?:\/|&|\+|\band\b|[-–])\s*(?:[1-9]|1[0-8])(?!\d)/u', $afterAge) === 1) return false;
 
-        return preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)(?:9|10)\s*[-–]?\s*b\b/u', $category) === 1
-            || preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)(?:9|10)\b[^\r\n]*\bb\b/u', $category) === 1;
+        if ((int) $ages[1][0][0] === 9) return true;
+        // U10 keeps its narrower B-only fallback; combined A/B or B/C stays unstated.
+        if (preg_match('/\b[ac]\b/u', $category) === 1) return false;
+        return preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)10\s*[-–]?\s*b\b/u', $category) === 1
+            || preg_match('/\b(?:u\s*\/?\s*|under[\s-]*)10\b[^\r\n]*\bb\b/u', $category) === 1;
     }
 
     public static function stage(string $cohort): ?string

@@ -4,20 +4,22 @@ Ball-level ratings classify evidence independently from age or score. The owning
 fallback rules are in `BallRatingModel`; `BallRatingContext` applies the same rules
 to finishing fields and display contexts.
 
-User-confirmed competition formats (2026-11-11), for boys and girls:
+User-confirmed competition formats (updated 2026-11-15), for boys and girls:
 
-- Exact U9 B and U10 B divisions use Orange across all tournaments.
+- Single-age U9 divisions use Orange across all tournaments, including A, B,
+  combined divisions within U9 and labels with no division letter. Exact U10 B
+  divisions also use Orange; U10 A/B combined divisions retain the normal fallback.
 - The rule applies to match evidence, published finishing fields and badge
   contexts, including shared courts recorded as generic `standard`.
 - Generic `standard` courts also use explicit Red or Orange category/event
   labels instead of masking that format.
 - Explicit Red, Orange, Green or Yellow playing conditions resolve the actual
-  ball level before this division fallback. A combined A/B or multiple-age
-  category does not establish an exact U9 B or U10 B division.
+  ball level before this division fallback. Multiple-age categories do not
+  establish an Orange fallback.
 
-This decision broadens the earlier named-event defaults for Wilson U9 B,
-Ceres U9 B and Overberg / West Coast Trials U10 B. Event names are no longer
-required to establish the exact division's Orange fallback.
+This decision broadens the earlier U9 B-only fallback to all single-age U9
+divisions. Event names are not required to establish the U9 or exact U10 B
+Orange fallback. The rule classifies competition evidence, not a player's age.
 
 Changing a classification requires incrementing `BallRatingModel::VERSION` so
 saved calculations cannot silently retain the old evidence buckets. A code fix

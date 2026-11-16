@@ -157,7 +157,8 @@ class BallRatingModelTest extends TestCase
 
     public function test_exact_orange_divisions_support_age_notation_and_reject_ambiguous_fields(): void
     {
-        foreach (['U9B', 'u/9 Boys B', 'Under 9 Girls B division', 'Under-10 Boys - B', 'U10B Girls', 'u/10 Girls B'] as $category) {
+        foreach (['U9B', 'u/9 Boys B', 'Under 9 Girls B division', 'U9 Boys A', 'u/9 Girls A-Division',
+            'Under-9 Girls', 'U9', 'U/9 Boys A-Division', 'U9 Boys A/B', 'U9 Girls B/C', 'WilsonU9A', 'Under-10 Boys - B', 'U10B Girls', 'u/10 Girls B'] as $category) {
             foreach (['School Open', 'District Trials', 'Junior Tournament', null] as $event) {
                 $match = ['category' => $category, 'event_name' => $event];
                 $this->assertSame('orange', BallRatingModel::forMatch($match), $category);
@@ -167,9 +168,9 @@ class BallRatingModelTest extends TestCase
                 }
             }
         }
-        foreach (['U9 Boys A/B', 'U10 Girls A and B', 'U9 Girls B/C', 'Under 9 A - Under 10 B', 'U9/U10 B',
+        foreach (['U10 Girls A and B', 'U10 Girls B/C', 'Under 9 A - Under 10 B', 'U9/U10 B',
             'U9/10 Boys B', 'U9 B / 10 B', 'U9B/10B', 'Under 9 and 10 Girls B', 'U9 Boys and 10 Boys B',
-            'U10 Girls B / U12 Girls B', 'U9 Boys', 'U10 Girls', 'U8B', 'U11B'] as $category) {
+            'U10 Girls B / U12 Girls B', 'U10 Girls', 'U8B', 'U11B', 'U90 Boys A'] as $category) {
             $this->assertFalse(BallRatingModel::isOrangeDivision($category), $category);
             $this->assertSame('standard', BallRatingModel::forMatch(['category' => $category, 'event_name' => 'Wilson Junior Series']), $category);
             $this->assertSame('standard', BallRatingModel::forCourt('standard', $category, 'School Open'), $category);
@@ -189,7 +190,7 @@ class BallRatingModelTest extends TestCase
         }
     }
 
-    public function test_u9_b_and_u10_b_default_to_orange_without_overriding_explicit_conditions(): void
+    public function test_u9_and_u10_b_default_to_orange_without_overriding_explicit_conditions(): void
     {
         foreach (['Overberg Tennis Trials - Leg 2 2026', 'Westcoast Trials 2026', 'West Coast Tennis Trials', 'West-Coast Trials'] as $event) {
             foreach (['u/10 Girls - B division', 'U10 Boys B', 'u10b Girls'] as $category) {
@@ -206,13 +207,13 @@ class BallRatingModelTest extends TestCase
         foreach (['Overberg Junior Open', 'West Coast Festival', 'Other District Trials'] as $event) {
             $this->assertSame('orange', BallRatingModel::forMatch(['category' => 'U10 Girls B', 'event_name' => $event]));
         }
-        foreach (['u/9 Girls B - Division', 'U9 Boys B', 'U9B Girls'] as $category) {
+        foreach (['u/9 Girls B - Division', 'U9 Boys B', 'U9B Girls', 'U9 Girls A', 'U9 Girls'] as $category) {
             $match = ['category' => $category, 'event_name' => 'Cavaliers Junior Ceres Tournament 2026'];
             $this->assertSame('orange', BallRatingModel::forMatch($match));
             $this->assertSame('standard', BallRatingModel::forMatch(['ball_type' => 'yellow'] + $match));
             $this->assertSame('standard', BallRatingModel::forMatch(['category' => 'Green Ball '.$category] + $match));
         }
-        foreach (['U9 Girls A', 'U12 Boys B', 'U9 Girls'] as $category) {
+        foreach (['U12 Boys B'] as $category) {
             $this->assertSame('standard', BallRatingModel::forMatch(['category' => $category, 'event_name' => 'Cavaliers Junior Ceres Tournament 2026']));
         }
         $this->assertSame('orange', BallRatingModel::forMatch(['category' => 'U9 Girls B', 'event_name' => 'Ceres School Trials']));

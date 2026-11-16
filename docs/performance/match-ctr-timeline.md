@@ -9,6 +9,21 @@ The interface must say **Reconstructed using scheduled match order**. Never labe
 these values as actual recorded before/after ratings. Corrected results and
 current publication, identity and rating policy can change a later reconstruction.
 
+## Profile visibility
+
+The authorized selected Plus player's Profile shows a prominent compact timeline
+immediately below the shared player header, before the season/month report.
+It projects the same saved `PlayerMatchProgress::forPlayer()` data as Rating,
+with at most five separate oldest-to-newest pairs on a fixed 0–100 scale.
+Before/after values, signed changes, results and unavailable reasons are also
+available as readable rows. Narrow screens retain a keyboard-scrollable chart.
+The Profile link opens the detailed explanations on Rating; that full timeline
+remains available there. Missing, stale or mismatched artifacts show a pending
+state, never zero-valued pairs. Non-Plus and unrelated Profile views do not read
+this private projection. Profile GETs never build, fit or queue reconstructions.
+Verify `MyTennisOverviewTest`, `PlayerMatchProgressTest` and
+`tests/Browser/profile-match-progress.cjs` when changing this placement.
+
 ## Calculation
 
 For each target match date, load the canonical historical snapshot for that day.

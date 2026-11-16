@@ -7,9 +7,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Ratings, evidence and pathway
 
-- Exact U9 B and U10 B divisions default to Orange across all tournaments,
-  including generic standard courts. Explicit ball conditions take precedence,
-  and combined A/B or multiple-age labels do not establish this division.
+- Single-age U9 divisions (including A, B and combined A/B) and exact U10 B
+  divisions default to Orange across all tournaments, including generic standard
+  courts. Explicit ball conditions take precedence; multiple-age labels do not
+  establish this fallback, and combined U10 A/B does not establish U10 B.
   Consult `docs/performance/ball-level-classification.md` and verify
   `BallRatingModel` and `BallRatingContext`; classification changes invalidate
   saved calculations.
@@ -75,6 +76,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   a current-score permission lookup must never replace historical reconstruction
   values. See
   `docs/performance/match-ctr-timeline.md`.
+- The authorized selected Plus Profile prominently shows the saved last-five
+  match before/after CTR graph directly below its shared header, before season
+  reports. Reuse `PlayerMatchProgress::forPlayer()`; keep the full explanations
+  on Rating and retain scheduled-order, fixed-scale and missing-artifact states.
+  This extra Profile projection never authorizes a build or refresh on GET.
+  Verify `MyTennisOverviewTest` and `tests/Browser/profile-match-progress.cjs`.
 - Automatic Plus materialization uses one ordered overnight pipeline: current
   ability, monthly history, then each active Plus player's match and event
   reconstructions. Keep its saved cursor, context guards, bounded continuations

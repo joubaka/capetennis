@@ -138,6 +138,9 @@
   @endif
 
   @if($workspaceTab === 'profile')
+    @if(($canViewRating ?? false) && $selectedPlayer && isset($profileMatchProgress))
+      @include('frontend.my-tennis.profile-match-progress')
+    @endif
     @include('frontend.my-tennis.profile-details')
   @elseif($workspaceTab === 'rating' && ($ratingPlayer ?? null))
   <section id="my-tennis-rating" aria-label="Player rating" @if($canViewRating ?? false) data-rating-url="{{ route('my.tennis.rating', ['player' => $ratingPlayer->id] + request()->only(['month', 'scope', 'scale', 'page', 'rating_section', 'rating_age', 'rating_gender', 'rating_level', 'rating_page', 'rating_per_page'])) }}" data-rating-workspace-url="{{ route('my.tennis', ['player' => $ratingPlayer->id, 'tab' => 'rating']) }}" @endif>

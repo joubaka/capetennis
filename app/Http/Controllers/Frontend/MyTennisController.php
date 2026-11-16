@@ -69,7 +69,9 @@ class MyTennisController extends Controller
             }
         }
         $data['overviewRecord'] = null;
+        $data['profileMatchProgress'] = null;
         if ($tab === 'profile' && $data['selectedPlayer'] && $data['canViewRating']) {
+            $data['profileMatchProgress'] = app(\App\Services\Performance\PlayerMatchProgress::class)->forPlayer($user, $data['selectedPlayer']);
             $data['overviewRecord'] = app(\App\Services\Performance\PlayerPlusRecordService::class)->forPlayer(
                 $data['selectedPlayer'], ['year' => now('Africa/Johannesburg')->format('Y'), 'record_month' => now('Africa/Johannesburg')->format('Y-m')],
                 $user->hasRole('super-user'),

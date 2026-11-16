@@ -15,6 +15,11 @@ class MyTennisOverviewTest extends TestCase
     {
         parent::setUp();
         $this->travelTo(\Carbon\Carbon::parse('2026-11-15 10:00', 'Africa/Johannesburg'));
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldReceive('forPlayer')->andReturn([
+            'rows' => [], 'as_of' => null, 'restricted' => 0, 'reason' => 'Before/after reconstruction is awaiting a nightly saved update.',
+        ]);
+        $this->mock(\App\Services\Performance\PlayerMatchProgressCalculator::class)->shouldNotReceive('latest', 'pair');
+        $this->mock(\App\Services\Performance\PlayerMatchInfluenceCalculator::class)->shouldNotReceive('calculate');
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
     }
 
@@ -67,6 +72,7 @@ class MyTennisOverviewTest extends TestCase
     public function test_non_plus_profile_and_previews_show_readable_fictional_samples_without_private_reads(): void
     {
         $player = $this->player(false);
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldNotReceive('forPlayer', 'build');
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer', 'recordSource');
         $response = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()
             ->assertSee('Fictional example')->assertSee('4 wins · 2 losses')->assertDontSee('Sample value hidden')
@@ -81,6 +87,7 @@ class MyTennisOverviewTest extends TestCase
     {
         $player = $this->player();
         $this->actingAs(User::factory()->create());
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldNotReceive('forPlayer', 'build');
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer', 'recordSource');
         $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()->assertDontSee('data-monthly-report', false);
         $this->get(route('my.tennis.feature-preview', ['player' => $player, 'feature' => 'record']))->assertForbidden();
@@ -140,4 +147,90 @@ class MyTennisOverviewTest extends TestCase
         $this->assertSame(1, $record['month_report']['previous']['losses']);
         $this->assertSame(25, $record['played']);
     }
+    public function test_profile_prominently_shows_five_saved_pairs_in_chronological_order_without_calculation(): void
+    {
+        $player = $this->player();
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Rating update pending.']);
+        $history->shouldReceive('recordSource')->once()->andReturn(['reason' => null, 'as_of' => '2026-11-15', 'evidence' => []]);
+        $rows = [];
+        foreach ([[70, 71.2, 1.2], [62, 60.5, -1.5], [55, 55, 0], [null, null, null], [0, 100, 100]] as $index => [$before, $after, $delta]) {
+            $rows[] = ['date' => '2026-11-'.(10 + $index), 'time' => '2026-11-'.(10 + $index).' 09:00:00', 'opponent' => 'Fictional Opponent '.($index + 1),
+                'score' => $index % 2 ? '3-6' : '6-3', 'won' => $index % 2 === 0,
+                'before_score' => $before, 'after_score' => $after, 'delta' => $delta,
+                'reason' => $delta === null ? 'Scheduled match order could not be established.' : null,
+                'hidden_matches' => $index === 1 ? 2 : 0, 'used_matches' => []];
+        }
+        $progress = ['rows' => array_reverse($rows), 'as_of' => '2026-11-15', 'restricted' => 1, 'reason' => null];
+        $service = $this->mock(\App\Services\Performance\PlayerMatchProgress::class);
+        $service->shouldNotReceive('build');
+        $service->shouldReceive('forPlayer')->once()->withArgs(fn ($user, $actual) => $user->id === $player->userId && $actual->id === $player->id)->andReturn($progress);
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldNotReceive('build');
+        $response = $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'profile']))->assertOk()
+            ->assertSee('CTR before &amp; after each match', false)->assertSee('Reconstructed using scheduled match order.')
+            ->assertSee('Scheduled match order could not be established.')->assertSee('Some match details are restricted')
+            ->assertSee('2 evidence details are unavailable, restricted or beyond the display limit')
+            ->assertSee('#ctr-match-progress-heading')->assertHeader('Cache-Control', 'no-store, private');
+        $html = $response->getContent();
+        $dom = new \DOMDocument; @$dom->loadHTML($html); $xp = new \DOMXPath($dom);
+        $this->assertSame(1, $xp->query('//*[@data-profile-match-progress]')->length);
+        $this->assertSame(5, $xp->query('//*[@data-profile-match-row]')->length);
+        $this->assertSame(4, $xp->query('//*[@data-profile-match-pair]')->length);
+        $this->assertSame(['1.2', '-1.5', '0', '100'], array_map(fn ($node) => $node->getAttribute('data-delta'), iterator_to_array($xp->query('//*[@data-profile-match-pair]'))));
+        $this->assertSame(['Fictional Opponent 1', 'Fictional Opponent 2', 'Fictional Opponent 3', 'Fictional Opponent 4', 'Fictional Opponent 5'], array_map(fn ($node) => trim($node->textContent), iterator_to_array($xp->query('//*[@data-profile-match-row]//h3'))));
+        $this->assertLessThan(strpos($html, 'data-player-overview'), strpos($html, 'data-profile-match-progress'));
+        $this->assertStringContainsString('+0.0 CTR', $html);
+        $this->assertStringContainsString('0–100 scale', $html);
+        if (getenv('CT_PROFILE_MATCH_QA_HTML') === '1') file_put_contents(storage_path('framework/testing/profile-match-progress-qa.html'), $html);
+    }
+
+    public function test_profile_reads_only_saved_progress_and_missing_artifact_never_becomes_zero_pairs(): void
+    {
+        $player = $this->player();
+        $history = $this->mock(PlayerRatingHistoryService::class);
+        $history->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Rating update pending.']);
+        $history->shouldReceive('recordSource')->once()->andReturn(['reason' => 'Saved record pending.']);
+        $this->mock(\App\Services\Performance\PlayerMatchProgressStore::class)->shouldReceive('read')->once()->with((int) $player->id)->andReturnNull();
+        $this->instance(\App\Services\Performance\PlayerMatchProgress::class, $this->app->build(\App\Services\Performance\PlayerMatchProgress::class));
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldNotReceive('build', 'forMatchPlayers');
+        $response = $this->get(route('my.tennis', ['player' => $player->id]))->assertOk()
+            ->assertSee('data-profile-match-pending', false)->assertSee('Before/after reconstruction is awaiting a nightly saved update.')
+            ->assertDontSee('data-profile-match-pair', false)->assertDontSee('data-before="0"', false);
+        if (getenv('CT_PROFILE_MATCH_QA_HTML') === '1') file_put_contents(storage_path('framework/testing/profile-match-progress-pending-qa.html'), $response->getContent());
+    }
+
+    public function test_profile_compact_chart_caps_rows_and_withholds_stale_or_inconsistent_pairs(): void
+    {
+        $row = ['date' => '2026-11-14', 'time' => '2026-11-14 09:00:00', 'opponent' => 'Fictional opponent', 'score' => '6-3', 'won' => true,
+            'before_score' => 50, 'after_score' => 51, 'delta' => 1, 'reason' => null];
+        $rows = array_fill(0, 5, $row);
+        $rows[] = array_replace($row, ['opponent' => 'Sixth row must be omitted']);
+        $data = ['selectedPlayer' => new Player(['id' => 42]), 'profileMatchProgress' => ['rows' => $rows, 'reason' => null, 'as_of' => '2026-11-15', 'restricted' => 0]];
+        $data['selectedPlayer']->id = 42;
+        $html = view('frontend.my-tennis.profile-match-progress', $data)->render();
+        $this->assertSame(5, substr_count($html, 'data-profile-match-pair'));
+        $this->assertStringNotContainsString('Sixth row must be omitted', $html);
+        $data['profileMatchProgress']['reason'] = 'Saved reconstruction is out of date.';
+        $html = view('frontend.my-tennis.profile-match-progress', $data)->render();
+        $this->assertStringContainsString('Saved reconstruction is out of date.', $html);
+        $this->assertStringNotContainsString('data-profile-match-pair', $html);
+        $data['profileMatchProgress']['reason'] = null;
+        $data['profileMatchProgress']['rows'] = [array_replace($row, ['delta' => 5]), array_replace($row, ['reason' => 'Comparison context changed.'])];
+        $html = view('frontend.my-tennis.profile-match-progress', $data)->render();
+        $this->assertStringNotContainsString('data-profile-match-pair', $html);
+        $this->assertStringContainsString('Comparison context changed.', $html);
+    }
+
+    public function test_profile_non_plus_preview_does_not_load_private_progress(): void
+    {
+        $player = $this->player();
+        $this->actingAs(User::factory()->create());
+        // Use the canonical super-user role, not a submitted preview flag, to authorize marketing preview.
+        $user = auth()->user();
+        $user->assignRole(\Spatie\Permission\Models\Role::findOrCreate('super-user'));
+        $this->mock(\App\Services\Performance\PlayerMatchProgress::class)->shouldNotReceive('forPlayer', 'build');
+        $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer', 'recordSource');
+        $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'profile', 'preview_non_plus' => 1]))->assertOk()->assertDontSee('data-profile-match-progress', false);
+    }
+
 }
