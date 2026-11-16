@@ -36,6 +36,22 @@ canonical refresh workflow after the appropriate authorization. No player profil
 canonical result, publication gate or rating-confidence policy should be changed
 to repair a classification.
 
+The ability refresh command must validate its `all_age` compatibility graph with
+the same dated, finish-aware mode as snapshot reading and replacement:
+`assertAllAgeGraph($graph, $asOf, ballFinishes: true)`. A finishing-only player
+may belong to the reference component without a played-match connection; that
+does not make the player comparable. The legacy validation mode can reject this
+valid graph before saving and block every dependent refresh stage. Keep the
+store's independent pool, publication and provenance checks in place.
+`BallRatingPipelineTest::test_ability_refresh_saves_standard_finish_only_players_without_making_them_comparable`
+exercises the real command and saved snapshot for this case; it failed before
+the command correction and passed afterward.
+On 2026-11-16 the focused BallRatingPipeline, AllAgeRatingPipeline,
+PlayerPlusDerivedRefresh, AllAgeRatingSnapshotValidation and
+AllAgeHistoricalConnection suites passed on PHP 8.5 with isolated SQLite:
+44 tests and 471 assertions. This verifies the local correction, not a remote
+rebuild or deployment.
+
 The personal history page selects the highest valid ball level in the latest
 saved month (Green/Yellow, then Orange, then Red). A requested historical cohort
 or a recorded starting pathway stage does not override that current level.

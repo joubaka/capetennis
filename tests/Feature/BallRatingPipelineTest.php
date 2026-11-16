@@ -55,6 +55,31 @@ class BallRatingPipelineTest extends TestCase
         } finally { File::delete($path); }
     }
 
+    public function test_ability_refresh_saves_standard_finish_only_players_without_making_them_comparable(): void
+    {
+        [, , $players] = $this->finishField();
+        $this->match('Fictional standard match', $players[0], $players[1], '2026-10-20');
+        // Isolate the command's host-local builder lock from other local work.
+        config(['cache.stores.file' => ['driver' => 'array']]);
+        app('cache')->forgetDriver('file');
+
+        $this->artisan('player-ability:refresh')->assertSuccessful();
+
+        $saved = app(PlayerAbilitySnapshotStore::class)->freshCurrent();
+        $this->assertNull($saved['reason']);
+        $this->assertSame($saved['all_age'], $saved['ball_ratings']['standard']);
+        $this->assertSame([], $saved['ball_ratings']['red']['ratings']);
+        $this->assertSame([], $saved['ball_ratings']['orange']['ratings']);
+        $rating = $saved['ball_ratings']['standard']['ratings'][$players[2]->id];
+        $this->assertSame('finish_only', $rating['evidence_basis']);
+        $this->assertSame(0, $rating['played']);
+        $this->assertSame(1, $rating['finish_events']);
+        $this->assertFalse($rating['comparable']);
+        $this->assertSame('provisional_local', $rating['rating_status']);
+        $this->assertNull($rating['connection_age_days']);
+        $this->assertDatabaseCount('player_ability_snapshots', 1);
+    }
+
     public function test_finishing_context_rejects_changed_deleted_or_new_results_and_unpublication(): void
     {
         [$event] = $this->finishField(); $ability = app(PlayerSharedAbilityService::class); $store = app(PlayerAbilitySnapshotStore::class);

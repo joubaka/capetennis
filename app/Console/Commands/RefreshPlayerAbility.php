@@ -65,7 +65,7 @@ class RefreshPlayerAbility extends Command
                 return [$generation, $fingerprint, $snapshot, $manifest];
             });
             $stage = 'validation';
-            if (array_key_exists('all_age', $snapshot)) { $store->assertAllAgeGraph($snapshot['all_age']); }
+            if (array_key_exists('all_age', $snapshot)) { $store->assertAllAgeGraph($snapshot['all_age'], $asOf->toDateString(), ballFinishes: true); }
             foreach ($snapshot['cohorts'] as $cohort) {
                 foreach ($cohort['components'] as $component) {
                     if (!$component['converged']) {
