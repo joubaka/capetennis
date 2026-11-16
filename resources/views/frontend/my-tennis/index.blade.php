@@ -151,7 +151,8 @@
     @endif
   </section>
   @elseif($workspaceTab === 'activity')
-  <div id="my-tennis-overview">
+  <div id="my-tennis-overview" class="my-tennis-activity">
+  <div class="my-tennis-activity-intro"><div><span class="my-tennis-activity-eyebrow">On and off the court</span><h2>Your tennis activity</h2><p>Your next matches, tournament entries and latest achievements.</p></div><span class="my-tennis-activity-mark" aria-hidden="true"><i class="ti ti-ball-tennis"></i></span></div>
   @if(!$selectedPlayer)
     <div class="card border-0 shadow-sm mb-4">
       <div class="card-body py-5 text-center">
@@ -165,9 +166,10 @@
     @if(($playerCount ?? 0) > \App\Services\MyTennisService::PLAYER_LIMIT)<p class="small text-muted">Use Manage players to open a linked profile that is missing from the player selector.</p>@endif
     @if($matchReadLimited ?? false)<p class="small text-muted" role="status">Showing part of the schedule. Check the event programme for all matches.</p>@endif
     <div class="my-tennis-player-summary">
+      <span class="my-tennis-section-icon" aria-hidden="true"><i class="ti ti-calendar-event"></i></span>
       <div class="my-tennis-player-details">
         <h2 class="my-tennis-section-heading mb-0">Upcoming matches</h2>
-        <p class="small text-muted mb-0">{{ $upcomingMatchPage->total() }} scheduled</p>
+        <p class="small text-muted mb-0"><strong>{{ $upcomingMatchPage->total() }}</strong> scheduled</p>
       </div>
       <div class="d-flex flex-wrap align-items-center gap-2">
         <button class="btn btn-outline-primary" type="button" data-open-match-reminder aria-controls="match-reminder">Match reminders</button>
@@ -221,7 +223,7 @@
         @endforeach
       </section>
     @empty
-      <div class="card border-0 shadow-sm"><div class="card-body text-muted">No upcoming published match times found.</div></div>
+      <div class="my-tennis-schedule-empty"><i class="ti ti-calendar-time" aria-hidden="true"></i><div><h3>Your next match is still to come</h3><p>No upcoming published match times found.</p></div></div>
     @endforelse
     @if($upcomingMatchPage->hasPages())
       <div class="mt-3">{{ $upcomingMatchPage->links() }}</div>
@@ -230,15 +232,15 @@
   </div>
 
   @if($selectedPlayer)
-  <div id="my-tennis-history">
+  <div id="my-tennis-history" class="my-tennis-activity">
     <div class="row g-4 mb-4">
       <div class="col-12">
-        <div class="card border-0 shadow-sm"><div class="card-body">
-          <div class="d-flex justify-content-between align-items-center gap-2 mb-3"><h2 class="h5 mb-0">Entries</h2><i class="ti ti-clipboard-list text-primary fs-4" aria-hidden="true"></i></div>
+        <div class="card border-0 shadow-sm my-tennis-activity-card my-tennis-entries"><div class="card-body">
+          <div class="my-tennis-card-heading"><span class="my-tennis-section-icon" aria-hidden="true"><i class="ti ti-clipboard-list"></i></span><div><span class="my-tennis-activity-eyebrow">Your tournaments</span><h2 class="h5 mb-0">Entries</h2></div></div>
           <p class="text-muted small mb-3">Your entry is confirmed once payment is complete.</p>
           <div class="table-responsive" role="region" aria-label="Entries table" tabindex="0"><table class="table align-middle mb-0"><thead><tr><th scope="col">Event</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Payment</th></tr></thead><tbody>
           @forelse($entries as $entry)
-            <tr><td>{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td>{{ $entry->status ?: 'Active' }}</td><td>{{ $entry->is_paid ? 'Paid' : 'Unpaid' }}</td></tr>
+            <tr><td class="my-tennis-entry-event">{{ $entry->categoryEvent?->event?->name ?? 'Event' }}</td><td>{{ $entry->categoryEvent?->category?->name ?? 'Category' }}</td><td><span class="my-tennis-status {{ strtolower($entry->status ?: 'active') === 'active' ? 'my-tennis-status-active' : 'my-tennis-status-neutral' }}">{{ ucfirst($entry->status ?: 'Active') }}</span></td><td><span class="my-tennis-status {{ $entry->is_paid ? 'my-tennis-status-paid' : 'my-tennis-status-unpaid' }}">{{ $entry->is_paid ? 'Paid' : 'Unpaid' }}</span></td></tr>
           @empty
             <tr><td colspan="4" class="text-muted">No entries found for this player.</td></tr>
           @endforelse
@@ -247,12 +249,12 @@
         </div></div>
       </div>
       <div class="col-12 col-lg-6">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h2 class="h5">Recent published results</h2>
+        <div class="card h-100 border-0 shadow-sm my-tennis-activity-card my-tennis-results"><div class="card-body"><div class="my-tennis-card-heading"><span class="my-tennis-section-icon" aria-hidden="true"><i class="ti ti-trophy"></i></span><h2 class="h5 mb-0">Recent published results</h2></div>
           @forelse($history['placements'] as $placement)<div class="border-bottom py-2"><div class="fw-semibold">{{ $placement->categoryEvent?->event?->name ?? 'Event' }}</div><div class="small text-muted">{{ $placement->categoryEvent?->category?->name ?? 'Category' }} · Place {{ $placement->position }}</div></div>@empty<p class="text-muted mb-0">No published results yet.</p>@endforelse
         </div></div>
       </div>
       <div class="col-12 col-lg-6">
-        <div class="card h-100 border-0 shadow-sm"><div class="card-body"><h2 class="h5">Current rankings</h2>
+        <div class="card h-100 border-0 shadow-sm my-tennis-activity-card my-tennis-rankings"><div class="card-body"><div class="my-tennis-card-heading"><span class="my-tennis-section-icon" aria-hidden="true"><i class="ti ti-chart-bar"></i></span><h2 class="h5 mb-0">Current rankings</h2></div>
           @forelse($history['seriesRankings'] as $ranking)<div class="border-bottom py-2"><div class="fw-semibold">{{ $ranking->series?->name ?? 'Series' }}</div><div class="small text-muted">{{ $ranking->category?->name ?? 'Category' }} · #{{ $ranking->rank_position }} · {{ $ranking->total_points }} points</div></div>@empty<p class="text-muted mb-0">No published series ranking yet.</p>@endforelse
         </div></div>
       </div>
