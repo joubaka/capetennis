@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-057",
+      "title": "Frontend audit finds vulnerable vendor dependencies or embedded merge code",
+      "scope": "npm frontend audit/build gate and checked-in browser vendor assets; no automatic dependency installation or release action.",
+      "symptoms": "The frontend gate reports unexpected npm findings, or a dependency override clears the report while a shipped vendor module still embeds an older helper.",
+      "cause": "Lockfiles retained affected dependency versions. Shepherd's distributed browser module embeds its merge helper, so replacing its installed dependency alone does not change that execution path.",
+      "fix": "Review advisory ranges and package compatibility, update scoped dependencies and both lockfiles, retain fail-closed audit rules, and verify emitted browser code. The pinned MIT Shepherd distribution delegates its sole merge entry point to patched deepmerge-ts through a checked pre-loader before Babel; unknown source shapes fail the build. Keep matching npm overrides and Yarn resolutions. Run merge regressions, the production build and real vendor-bundle smoke tests. Refresh affected public assets and manifest entries; deployment does not build them. See docs/frontend-dependency-security.md.",
+      "verification": "The scoped audit reported zero vulnerabilities and audit-wrapper/merge regression tests passed locally. Build and emitted-bundle evidence is recorded in docs/frontend-dependency-security.md. A passing local audit is not a deployed asset update or a guarantee against future advisories.",
+      "limits": "Guide only. Registry transmission, dependency installation, commit and deployment retain their own task authorization. Never broaden the audit exception to hide new findings, accept a license change silently, or claim an override fixes embedded code without testing its actual execution path.",
+      "assistant_action": "guide_only",
+      "sources": ["docs/frontend-dependency-security.md"],
+      "tests": ["tests/Frontend/check-npm-audit.test.js", "tests/Frontend/shepherd-safe-merge.test.cjs", "tests/Frontend/vendor-bundles.test.cjs", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-056",
       "title": "Match CTR reconstruction rejects simultaneous matches on other courts",
       "scope": "Saved Player Plus before/after CTR reconstruction and its Rating/Profile presentation; no schedule or result mutation.",

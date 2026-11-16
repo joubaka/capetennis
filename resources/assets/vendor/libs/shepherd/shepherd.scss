@@ -2,7 +2,7 @@
 @use '../../scss/_bootstrap-extended/include-dark' as dark;
 @charset "UTF-8";
 @import '../../scss/_custom-variables/libs';
-@import '~shepherd.js/dist/css/shepherd';
+@import '~shepherd.js/dist/css/shepherd.css';
 @import './mixins';
 
 $shepherd-header-content-padding-x: 1.25rem !default;

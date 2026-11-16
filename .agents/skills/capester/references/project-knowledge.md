@@ -289,6 +289,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Frontend dependency overrides do not patch an embedded copy inside a vendor
+  bundle. Verify the actual emitted execution path and checked-in public assets;
+  deployment does not run npm. See `docs/frontend-dependency-security.md` for
+  Shepherd's narrowly checked merge remediation and its regressions.
+
 - Free individual administrative entries capture zero Cape Tennis fees using
   effective category pricing; an explicit paid category override remains paid.
   Zero payment amounts have zero PayFast estimates. Preserve explicit historical

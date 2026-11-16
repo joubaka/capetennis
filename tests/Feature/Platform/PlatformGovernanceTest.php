@@ -368,7 +368,11 @@ class PlatformGovernanceTest extends TestCase
 
     public function test_schedule_engine_allows_unlocked_draft_draw(): void
     {
-        $draw = \App\Models\Draw::factory()->create(['locked' => false, 'published' => false]);
+        $draw = \App\Models\Draw::factory()->create([
+            'event_id' => \App\Models\Event::factory()->create()->id,
+            'locked' => false,
+            'published' => false,
+        ]);
 
         $engine = app(\App\Services\ScheduleEngine::class);
 

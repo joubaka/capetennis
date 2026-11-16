@@ -9,6 +9,7 @@ use App\Models\Fixture;
 use App\Models\FixtureResult;
 use App\Models\Registration;
 use App\Models\User;
+use App\Services\Draw\IndividualScoreRevision;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
@@ -90,6 +91,11 @@ class BracketHardeningTest extends TestCase
         return "/api/draws/{$draw->id}/fixtures/{$fixture->id}/score";
     }
 
+    private function reviewedScore(Fixture $fixture): array
+    {
+        return ['score_revision' => app(IndividualScoreRevision::class)->forFixture($fixture->fresh())];
+    }
+
     // ─────────────────────────────────────────────
     // 1. Guest cannot save bracket score
     // ─────────────────────────────────────────────
@@ -143,7 +149,7 @@ class BracketHardeningTest extends TestCase
         ]);
 
         $this->actingAs($this->adminUser($draw))
-             ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3']])
+             ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3']] + $this->reviewedScore($fixture))
              ->assertOk()
              ->assertJsonPath('success', true);
 
@@ -165,7 +171,7 @@ class BracketHardeningTest extends TestCase
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
         $this->actingAs($this->adminUser($draw))
-            ->deleteJson($this->scoreUrl($draw, $fixture))
+            ->deleteJson($this->scoreUrl($draw, $fixture), $this->reviewedScore($fixture))
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -317,7 +323,9 @@ class BracketHardeningTest extends TestCase
         $fixture = $this->makeBracketFixture($draw);
 
         $this->actingAs($this->adminUser($draw))
-             ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3', '6-4']]);
+             ->postJson($this->scoreUrl($draw, $fixture), ['sets' => ['6-3', '6-4']] + $this->reviewedScore($fixture))
+             ->assertOk()
+             ->assertJsonPath('success', true);
 
         $this->assertDatabaseHas('draw_audit_logs', [
             'draw_id'    => $draw->id,
@@ -336,7 +344,9 @@ class BracketHardeningTest extends TestCase
         $fixture = $this->makeBracketFixture($draw, ['match_status' => 1]);
 
         $this->actingAs($this->adminUser($draw))
-             ->deleteJson($this->scoreUrl($draw, $fixture));
+             ->deleteJson($this->scoreUrl($draw, $fixture), $this->reviewedScore($fixture))
+             ->assertOk()
+             ->assertJsonPath('success', true);
 
         $this->assertDatabaseHas('draw_audit_logs', [
             'draw_id'    => $draw->id,
@@ -360,7 +370,7 @@ class BracketHardeningTest extends TestCase
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
         $this->actingAs($this->adminUser($draw))
-             ->deleteJson($this->scoreUrl($draw, $fixture))
+             ->deleteJson($this->scoreUrl($draw, $fixture), $this->reviewedScore($fixture))
              ->assertOk()
              ->assertJson(['success' => true]);
 
@@ -393,7 +403,7 @@ class BracketHardeningTest extends TestCase
         FixtureResult::factory()->create(['fixture_id' => $fixture->id]);
 
         $this->actingAs($this->adminUser($draw))
-             ->deleteJson($this->scoreUrl($draw, $fixture))
+             ->deleteJson($this->scoreUrl($draw, $fixture), $this->reviewedScore($fixture))
              ->assertOk();
 
         $parent->refresh();

@@ -55,11 +55,17 @@ mix.webpackConfig({
   module: {
     rules: [
       {
-        test: /\.es6$|\.js$/,
+        test: /[\\/]shepherd\.js[\\/]dist[\\/]esm[\\/]shepherd\.mjs$/,
+        enforce: 'pre',
+        use: [path.join(__dirname, 'tools/webpack/shepherd-safe-merge-loader.cjs')]
+      },
+      {
+        test: /\.(?:es6|m?js)$/,
         include: [
           path.join(__dirname, 'node_modules/bootstrap/'),
           path.join(__dirname, 'node_modules/popper.js/'),
-          path.join(__dirname, 'node_modules/shepherd.js/')
+          /[\\/]node_modules[\\/]shepherd\.js[\\/]/,
+          /[\\/]node_modules[\\/]deepmerge-ts[\\/]/
         ],
         loader: 'babel-loader',
         options: {
