@@ -449,7 +449,7 @@ class EventController extends Controller
     $cavaliersCanManageNominations = $cavaliersRegistrationOpen && auth()->check()
       && (auth()->user()->hasRole('super-user') || auth()->user()->can('event.manage', $event));
 
-    $nominationProvenance = $eventView === 'cavaliers_trials'
+    $nominationProvenance = $eventView === 'cavaliers_trials' && (auth()->user()?->hasAnyRole(['admin', 'super-user']) ?? false)
       ? app(\App\Services\PublicCavaliersNominationProvenance::class)->forEvent($event) : [];
 
     Log::debug('EVENT SHOW: completed', [

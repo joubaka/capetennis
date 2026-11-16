@@ -837,6 +837,19 @@
         "tests/Feature/Draw/ScoreRevisionMySqlConcurrencyTest.php",
         "tests/Support/score-revision-mysql-worker.php"
       ]
+    },
+    {
+      "id": "RK-058",
+      "title": "Published Platteland nominees have no region badge",
+      "scope": "Public Cavaliers trial nomination region/source badges; no change to candidate eligibility, saved nomination order or private selection reports.",
+      "symptoms": "A published nominee has an exact Platteland source membership but no public region badge, especially a reserve or a player also on a combined Inter-Districts Platteland team.",
+      "cause": "The public lookup excluded all reserves and treated legitimate memberships in the two source events as conflicting regions. This hid originating Platteland regions despite valid exact published source evidence.",
+      "fix": "Resolve exact linked identities only in the configured published source events and published event-owned teams for the prior age/gender group. Permit Platteland reserve membership for already-published target nominees and project region/source only. Prefer Platteland originating-region evidence when both sources qualify; use Inter-Districts only if no qualifying Platteland evidence exists. Keep canonical Inter-Districts main-roster filtering. Withhold blank or multiple regions within the preferred source, rather than masking them with another source. Never read private finalized candidate snapshots or infer identity from names.",
+      "verification": "On 2026-11-16 independent isolated local MySQL public-provenance regressions passed 9 tests and 81 assertions, including reserve identities, dual-source preference, same-source conflicts, blank preferred regions, source/group/identity/publication isolation and unchanged nominations. Repair-library validation passed 3 tests and 424 assertions. PHP syntax and whitespace checks passed. No live outcome is established by this guide.",
+      "limits": "Guide only. Public target/source/team publication, exact identity, prior group and event isolation remain required. Membership is not proof of played matches or the selector's reason. This procedure does not publish records, change source rosters, access production or authorize deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/PublicCavaliersNominationProvenance.php", "app/Services/EventTeamScope.php", "docs/architecture/event-type-template-parity.md"],
+      "tests": ["tests/Feature/PublicCavaliersNominationProvenanceTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
     }
   ]
 }

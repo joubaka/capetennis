@@ -139,8 +139,39 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
         return $team;
     }
 
-    public function test_public_badges_show_only_published_region_and_source_and_keep_alphabetical_names(): void
+    public function test_nomination_regions_are_only_projected_for_admin_and_super_user_roles(): void
     {
+        [$event, $division, $inter] = $this->events();
+        [$player, $nominee] = $this->nominee($event, $division, 'Visible');
+        $this->team($inter, 'Drakenstein', $player);
+        $url = route('events.show', $event);
+        $before = EventNomination::findOrFail($nominee->id)->getAttributes();
+
+        $this->get($url)->assertOk()->assertSee('Visible Example')
+            ->assertDontSee('(Drakenstein · Inter-Districts)')->assertViewHas('nominationProvenance', []);
+        $normal = User::factory()->create();
+        $this->actingAs($normal)->get($url)->assertOk()->assertSee('Visible Example')
+            ->assertDontSee('(Drakenstein · Inter-Districts)')->assertViewHas('nominationProvenance', []);
+        // Event management permission alone must not reveal the suffix.
+        \App\Models\EventConvenor::create(['event_id' => $event->id, 'user_id' => $normal->id, 'role' => 'hoof']);
+        $this->assertTrue($normal->can('event.manage', $event));
+        $this->get($url)->assertOk()->assertDontSee('(Drakenstein · Inter-Districts)')
+            ->assertViewHas('nominationProvenance', []);
+
+        foreach (['admin', 'super-user'] as $role) {
+            $viewer = User::factory()->create()->assignRole(Role::findOrCreate($role, 'web'));
+            $this->actingAs($viewer)->get($url)->assertOk()->assertSee('Visible Example')
+                ->assertSee('(Drakenstein · Inter-Districts)')
+                ->assertViewHas('nominationProvenance', [$division->id => [
+                    $nominee->id => ['region' => 'Drakenstein', 'source' => 'Inter-Districts'],
+                ]]);
+        }
+        $this->assertSame($before, $nominee->fresh()->getAttributes());
+    }
+
+    public function test_admin_badges_show_only_published_region_and_source_and_keep_alphabetical_names(): void
+    {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         [$zoe, $zoeNominee] = $this->nominee($event, $division, 'Zoe');
         [$amy, $amyNominee] = $this->nominee($event, $division, 'Amy');
@@ -165,6 +196,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 
     public function test_published_platteland_nominees_show_region_for_profile_imported_and_frozen_reserves_only(): void
     {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         $actor = User::factory()->create();
         $expected = [];
@@ -203,6 +235,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 
     public function test_platteland_reserve_regions_still_require_unambiguous_published_owned_team_and_exact_identity(): void
     {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         foreach (['Hidden', 'WrongAge', 'WrongGender', 'Ambiguous', 'OtherEvent', 'Unlinked'] as $name) {
             [$player] = $this->nominee($event, $division, $name);
@@ -223,6 +256,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 
     public function test_platteland_origin_region_takes_precedence_over_a_second_inter_districts_membership(): void
     {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         [$player, $nominee] = $this->nominee($event, $division, 'BothSources');
         $this->team($platteland, 'OriginRegion', $player);
@@ -237,6 +271,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 
     public function test_only_qualifying_platteland_memberships_override_inter_districts_and_blank_preferred_regions_stay_hidden(): void
     {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         $expected = [];
         foreach (['Hidden', 'WrongGroup', 'Unlinked', 'BlankRegion'] as $name) {
@@ -252,6 +287,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
 
     public function test_hidden_inter_districts_reserves_private_finalization_wrong_group_and_ambiguous_memberships_never_supply_badges(): void
     {
+        $this->actingAs(User::factory()->create()->assignRole(Role::findOrCreate('admin', 'web')));
         [$event, $division, $inter, $platteland] = $this->events();
         $actor = User::factory()->create();
         $actor->assignRole(Role::findOrCreate('super-user', 'web'));
