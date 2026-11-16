@@ -163,7 +163,65 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
         }
     }
 
-    public function test_hidden_reserves_private_finalization_wrong_group_and_ambiguous_memberships_never_supply_badges(): void
+    public function test_published_platteland_nominees_show_region_for_profile_imported_and_frozen_reserves_only(): void
+    {
+        [$event, $division, $inter, $platteland] = $this->events();
+        $actor = User::factory()->create();
+        $expected = [];
+        foreach ([false, true] as $imported) {
+            [$player, $nominee] = $this->nominee($event, $division, $imported ? 'ImportedReserve' : 'ProfileReserve');
+            $this->team($platteland, 'PublishedRegion', $player, imported: $imported, rank: 11);
+            $expected[$nominee->id] = ['region' => 'PublishedRegion', 'source' => 'Platteland'];
+        }
+        [$frozenPlayer, $frozenNominee] = $this->nominee($event, $division, 'FrozenReserve');
+        $frozenTeam = $this->team($platteland, 'FrozenRegion', $frozenPlayer, imported: true);
+        $final = EventSelectionFinalization::create(['event_id' => $platteland->id, 'finalized_by' => $actor->id,
+            'draft_versions' => [], 'groups' => [], 'team_size' => 10, 'reserve_count' => 5,
+            'fingerprint' => str_repeat('f', 64), 'finalized_at' => now()]);
+        EventSelectionRosterImport::create(['event_id' => $platteland->id, 'finalization_id' => $final->id,
+            'region_id' => $frozenTeam->region_id, 'imported_by' => $actor->id, 'imported_at' => now(),
+            'groups' => ['10-girls' => ['team_id' => $frozenTeam->id, 'players' => [[
+                'slot_id' => $frozenTeam->team_players_no_profile()->first()->id,
+                'profile_id' => $frozenPlayer->id, 'status' => 'reserve',
+            ]]]]]);
+        $expected[$frozenNominee->id] = ['region' => 'FrozenRegion', 'source' => 'Platteland'];
+        // A source member without a published target nomination is never projected.
+        $this->team($platteland, 'NON_NOMINEE_REGION', Player::factory()->create(), rank: 11);
+        $hiddenDivision = $this->division($event, 'U11 Girls');
+        [$hiddenPlayer] = $this->nominee($event, $hiddenDivision, 'HiddenNomination');
+        $hiddenDivision->update(['nominations_published' => false]);
+        $this->team($platteland, 'HIDDEN_NOMINATION_REGION', $hiddenPlayer, rank: 11);
+        $before = EventNomination::orderBy('id')->get()->map->getAttributes()->all();
+        $page = $this->get(route('events.show', $event))->assertOk()
+            ->assertViewHas('nominationProvenance', [$division->id => $expected])
+            ->assertSee('(PublishedRegion · Platteland)')->assertSee('(FrozenRegion · Platteland)')
+            ->assertDontSee('NON_NOMINEE_REGION')->assertDontSee('HIDDEN_NOMINATION_REGION');
+        $this->assertSame($before, EventNomination::orderBy('id')->get()->map->getAttributes()->all());
+        $platteland->update(['published' => false]);
+        $this->get(route('events.show', $event))->assertOk()->assertViewHas('nominationProvenance', []);
+    }
+
+    public function test_platteland_reserve_regions_still_require_unambiguous_published_owned_team_and_exact_identity(): void
+    {
+        [$event, $division, $inter, $platteland] = $this->events();
+        foreach (['Hidden', 'WrongAge', 'WrongGender', 'Ambiguous', 'OtherEvent', 'Unlinked'] as $name) {
+            [$player] = $this->nominee($event, $division, $name);
+            $team = $this->team($platteland, 'WITHHELD_'.$name, $player, imported: true, rank: 11,
+                age: $name === 'WrongAge' ? 'U11 Girls' : ($name === 'WrongGender' ? 'U10 Boys' : 'U10 Girls'),
+                published: $name !== 'Hidden');
+            if ($name === 'Ambiguous') $this->team($platteland, 'WITHHELD_OTHER_REGION', $player, rank: 11);
+            if ($name === 'OtherEvent') {
+                $other = Event::factory()->create(['eventType' => $inter->eventType, 'published' => true]);
+                $team->update(['category_event_id' => $this->division($other, 'U10 Girls')->id]);
+                $other->regions()->attach($team->region_id);
+            }
+            if ($name === 'Unlinked') $team->team_players_no_profile()->update(['player_profile' => null]);
+        }
+        $this->get(route('events.show', $event))->assertOk()->assertViewHas('nominationProvenance', [])
+            ->assertDontSee('WITHHELD_');
+    }
+
+    public function test_hidden_inter_districts_reserves_private_finalization_wrong_group_and_ambiguous_memberships_never_supply_badges(): void
     {
         [$event, $division, $inter, $platteland] = $this->events();
         $actor = User::factory()->create();

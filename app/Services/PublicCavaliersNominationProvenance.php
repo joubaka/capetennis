@@ -35,8 +35,11 @@ final class PublicCavaliersNominationProvenance
                     'team_players_no_profile' => fn ($query) => $query->whereIn('player_profile', $nominees),
                 ])->limit(501)->get();
             if ($teams->count() > 500) continue;
-            try { $roles = $this->roles->classify($source, $teams); }
-            catch (HttpException) { continue; } // Optional metadata stays absent if public role resolution is unavailable.
+            $roles = ['imported' => [], 'profile' => []];
+            if ($label === 'Inter-Districts') {
+                try { $roles = $this->roles->classify($source, $teams); }
+                catch (HttpException) { continue; } // Optional metadata stays absent if public role resolution is unavailable.
+            }
             foreach ($teams as $team) {
                 $group = $this->group($team->category?->category?->name ?? $team->name)['key'] ?? null;
                 if (! $group || ! $priorGroups->contains($group)) continue;
@@ -45,6 +48,8 @@ final class PublicCavaliersNominationProvenance
                 foreach ($members as $member) {
                     $playerId = (int) ($team->noProfile ? $member->player_profile : $member->player_id);
                     $reserve = $team->noProfile ? isset($roles['imported'][$team->id][$member->id]) : isset($roles['profile'][$team->id][$playerId]);
+                    // A published Trials nominee may come from Platteland's reserve/additional
+                    // candidates. Publish their region only, never their private selection role.
                     if ($reserve || $member->rank < 1 || ! $nominees->contains($playerId)) continue;
                     $evidence[$group][$playerId][$source->id.':'.$team->region_id] = $region !== '' ? ['region' => $region, 'source' => $label] : null;
                 }

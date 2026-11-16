@@ -72,10 +72,13 @@ entry lookup for that exact player and category. It is an unnumbered presentatio
 order. Keep the existing event-isolation and category-publication gates.
 For configured Trials252, small public region/source badges use only the exact
 published Inter-Districts242 and Platteland241 source events, published owned
-teams in the prior age/gender group, and canonical public main-roster membership.
-Project only region/source for already published target nominees. Private
-reserves and finalized candidate snapshots never supply public provenance;
-missing, unlinked or conflicting source/region evidence produces no badge.
+teams in the prior age/gender group, and exact linked player membership.
+Inter-Districts requires canonical public main-roster membership. Platteland
+also permits reserve membership for already published target nominees, because
+its nominees include reserve and additional candidates. Project only region/source,
+never a source selection role, rank or result. Private finalized candidate snapshots
+never supply public provenance. Missing, unlinked or conflicting source/region
+evidence produces no badge.
 Membership provenance is not proof of played matches or the selector's reason.
 
 Configured Cavaliers252 uses the existing individual registration checkout,
