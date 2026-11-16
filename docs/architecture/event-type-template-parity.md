@@ -70,7 +70,8 @@ ID as the final stable tie-break. Registered status uses the canonical paid acti
 entry lookup for that exact player and category. It is an unnumbered presentation only: retain saved
 `roster_position`, private nomination/reserve order and backend publication-review
 order. Keep the existing event-isolation and category-publication gates.
-For configured Trials252, small public region/source badges use only the exact
+For configured Trials252, frontend region/source badges are visible only to
+`admin` and `super-user`, and use only the exact
 published Inter-Districts242 and Platteland241 source events, published owned
 teams in the prior age/gender group, and exact linked player membership.
 Inter-Districts requires canonical public main-roster membership. Platteland
@@ -94,6 +95,9 @@ Keep this registration-only gate out of candidate preparation and verified
 payment finalization. A Registered marker means a paid/free active entry in that
 exact division, excluding withdrawn/cancelled/deleted or unpaid records.
 
+Logged-out visitors see a Decline link beside eligible public nominees; it
+opens the authenticated decline route and preserves that destination through
+sign-in. Showing the link does not authorize a decline.
 Public nomination decline requires an already linked account or canonical event
 manager, an open published/unlocked division and a saved private draft. Preview
 is read-only; explicit confirmation is actor/session-bound and expires. Reject

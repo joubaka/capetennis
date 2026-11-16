@@ -107,6 +107,52 @@ class CavaliersNominationWorkflowTest extends TestCase
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('?nomination=', false);
     }
 
+    public function test_guest_can_discover_decline_and_login_returns_to_exact_nomination_without_mutation(): void
+    {
+        $s = $this->scenario(); [$event, $division, $player, $owner, $nomination] = $s;
+        $url = $this->url($s);
+        $before = DB::table('cavaliers_trial_roster_drafts')->where('category_event_id', $division->id)->first();
+        $nomineesBefore = EventNomination::count();
+        $auditBefore = DB::table('activity_log')->where('log_name', 'cavaliers-nomination')->count();
+
+        $page = $this->get(route('events.show', $event))->assertOk()
+            ->assertSee('class="btn btn-sm btn-outline-danger" href="'.$url.'">Decline</a>', false);
+        $this->export('guest-actions', $page);
+        $this->get($url)->assertRedirect(route('login'))->assertSessionHas('url.intended', $url);
+        $this->post($url, ['confirmed' => '1', 'token' => (string) Str::uuid()])->assertRedirect(route('login'));
+        $stranger = User::factory()->create();
+        $this->actingAs($stranger)->get($url)->assertForbidden();
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('href="'.$url.'"', false);
+        $this->actingAs($owner)->get(route('events.show', $event))->assertOk()
+            ->assertSee('class="btn btn-sm btn-outline-danger" href="'.$url.'">Decline</a>', false);
+        $this->get($url)->assertOk()->assertSee('Confirm decline');
+
+        $this->assertEquals($before, DB::table('cavaliers_trial_roster_drafts')->where('category_event_id', $division->id)->first());
+        $this->assertDatabaseCount('event_nominations', $nomineesBefore);
+        $this->assertSame($auditBefore, DB::table('activity_log')->where('log_name', 'cavaliers-nomination')->count());
+        $this->assertModelExists($nomination);
+        $this->assertDatabaseCount('registration_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Mail::assertNothingSent(); Mail::assertNothingQueued();
+    }
+
+    public function test_guest_decline_discovery_still_requires_open_published_unlocked_unregistered_nomination(): void
+    {
+        $s = $this->scenario(); [$event, $division, $player, $owner] = $s;
+        $url = $this->url($s);
+        $eventUrl = route('events.show', $event);
+        $event->update(['signUp' => false]);
+        $this->get($eventUrl)->assertOk()->assertDontSee('href="'.$url.'"', false);
+        $event->update(['signUp' => true]);
+        $division->update(['locked_at' => now()]);
+        $this->get($eventUrl)->assertOk()->assertDontSee('href="'.$url.'"', false);
+        $division->update(['locked_at' => null, 'nominations_published' => false]);
+        $this->get($eventUrl)->assertOk()->assertDontSee('href="'.$url.'"', false);
+        $division->update(['nominations_published' => true]);
+        $this->entry($division, $player, $owner, 1, ['payment_method' => 'free']);
+        $this->get($eventUrl)->assertOk()->assertSee('Registered')->assertDontSee('href="'.$url.'"', false);
+    }
+
     public function test_confirmed_owner_decline_is_atomic_audited_idempotent_and_keeps_other_roster_places(): void
     {
         $s = $this->scenario(); [$event, $division, $player, $owner, $nomination, $other, $reserve] = $s;

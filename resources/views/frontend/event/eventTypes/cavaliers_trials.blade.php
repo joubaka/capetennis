@@ -70,7 +70,7 @@
                                     @elseif (($cavaliersRegistrationOpen ?? false) && $nomination->player_id && !$eventCategory->isLocked())
                                         <div class="d-flex flex-wrap gap-2 mt-2">
                                             <a class="btn btn-sm btn-outline-primary" href="{{ route('register.register', ['id' => $event->id, 'nomination' => $nomination->id]) }}">Register</a>
-                                            @if (($cavaliersCanManageNominations ?? false) || in_array((int) $nomination->player_id, $cavaliersDeclinePlayerIds ?? [], true))
+                                            @if (auth()->guest() || ($cavaliersCanManageNominations ?? false) || in_array((int) $nomination->player_id, $cavaliersDeclinePlayerIds ?? [], true))
                                                 <a class="btn btn-sm btn-outline-danger" href="{{ route('cavaliers.nominations.decline', [$event, $eventCategory, $nomination->id]) }}">Decline</a>
                                             @endif
                                         </div>
