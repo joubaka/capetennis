@@ -77,8 +77,11 @@ Inter-Districts requires canonical public main-roster membership. Platteland
 also permits reserve membership for already published target nominees, because
 its nominees include reserve and additional candidates. Project only region/source,
 never a source selection role, rank or result. Private finalized candidate snapshots
-never supply public provenance. Missing, unlinked or conflicting source/region
-evidence produces no badge.
+never supply public provenance. When both sources contain a player, prefer the
+Platteland originating region over Inter-Districts membership, which can be a
+combined Platteland team. Use Inter-Districts when no qualifying Platteland
+membership exists. Missing, unlinked or conflicting regions within the preferred
+source produce no badge; never fall back to another source to mask a conflict.
 Membership provenance is not proof of played matches or the selector's reason.
 
 Configured Cavaliers252 uses the existing individual registration checkout,

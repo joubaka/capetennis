@@ -51,14 +51,18 @@ final class PublicCavaliersNominationProvenance
                     // A published Trials nominee may come from Platteland's reserve/additional
                     // candidates. Publish their region only, never their private selection role.
                     if ($reserve || $member->rank < 1 || ! $nominees->contains($playerId)) continue;
-                    $evidence[$group][$playerId][$source->id.':'.$team->region_id] = $region !== '' ? ['region' => $region, 'source' => $label] : null;
+                    $evidence[$group][$playerId][$source->id][$team->region_id] = $region !== '' ? ['region' => $region, 'source' => $label] : null;
                 }
             }
         }
         $badges = [];
         foreach ($divisions as $division) {
             foreach ($division->nominations->where('event_id', $event->id) as $nominee) {
-                $rows = $evidence[$priorGroups[$division->id] ?? ''][$nominee->player_id] ?? [];
+                $sources = $evidence[$priorGroups[$division->id] ?? ''][$nominee->player_id] ?? [];
+                // Platteland records the originating region; an Inter-Districts
+                // combined Platteland team is a second legitimate membership.
+                // Conflicts within the preferred source still withhold the badge.
+                $rows = $sources[241] ?? $sources[242] ?? [];
                 if (count($rows) === 1 && ($badge = reset($rows))) $badges[$division->id][$nominee->id] = $badge;
             }
         }

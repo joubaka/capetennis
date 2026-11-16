@@ -221,6 +221,35 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
             ->assertDontSee('WITHHELD_');
     }
 
+    public function test_platteland_origin_region_takes_precedence_over_a_second_inter_districts_membership(): void
+    {
+        [$event, $division, $inter, $platteland] = $this->events();
+        [$player, $nominee] = $this->nominee($event, $division, 'BothSources');
+        $this->team($platteland, 'OriginRegion', $player);
+        $this->team($inter, 'Plat', $player, imported: true);
+        $expected = [$division->id => [$nominee->id => ['region' => 'OriginRegion', 'source' => 'Platteland']]];
+        $this->get(route('events.show', $event))->assertOk()->assertViewHas('nominationProvenance', $expected)
+            ->assertSee('(OriginRegion · Platteland)')->assertDontSee('(Plat · Inter-Districts)');
+        // A conflict in the preferred source cannot be hidden by falling back to Inter-Districts.
+        $this->team($platteland, 'ConflictingOrigin', $player);
+        $this->get(route('events.show', $event))->assertOk()->assertViewHas('nominationProvenance', []);
+    }
+
+    public function test_only_qualifying_platteland_memberships_override_inter_districts_and_blank_preferred_regions_stay_hidden(): void
+    {
+        [$event, $division, $inter, $platteland] = $this->events();
+        $expected = [];
+        foreach (['Hidden', 'WrongGroup', 'Unlinked', 'BlankRegion'] as $name) {
+            [$player, $nominee] = $this->nominee($event, $division, $name);
+            $this->team($inter, 'InterRegion', $player);
+            $team = $this->team($platteland, $name === 'BlankRegion' ? '' : 'PlattelandRegion', $player,
+                imported: true, age: $name === 'WrongGroup' ? 'U10 Boys' : 'U10 Girls', published: $name !== 'Hidden');
+            if ($name === 'Unlinked') $team->team_players_no_profile()->update(['player_profile' => null]);
+            if ($name !== 'BlankRegion') $expected[$nominee->id] = ['region' => 'InterRegion', 'source' => 'Inter-Districts'];
+        }
+        $this->get(route('events.show', $event))->assertOk()->assertViewHas('nominationProvenance', [$division->id => $expected]);
+    }
+
     public function test_hidden_inter_districts_reserves_private_finalization_wrong_group_and_ambiguous_memberships_never_supply_badges(): void
     {
         [$event, $division, $inter, $platteland] = $this->events();
@@ -242,7 +271,7 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
         [$wrongGender] = $this->nominee($event, $division, 'WrongGender');
         $this->team($inter, 'WRONG_GENDER', $wrongGender, age: 'U10 Boys');
         [$ambiguous] = $this->nominee($event, $division, 'Ambiguous');
-        $this->team($inter, 'AMBIGUOUS_A', $ambiguous);
+        $this->team($platteland, 'AMBIGUOUS_A', $ambiguous);
         $this->team($platteland, 'AMBIGUOUS_B', $ambiguous);
         [$privateOnly] = $this->nominee($event, $division, 'PrivateFinalization');
         EventSelectionFinalization::create(['event_id' => $platteland->id, 'finalized_by' => $actor->id, 'draft_versions' => [],
