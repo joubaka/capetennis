@@ -102,13 +102,23 @@ time. All canonical financial and lifecycle guards remain unchanged.
 
 Preview locks and checks canonical handoff/automatic-expiry provenance, original
 soft-deleted entry, complete invitation history, published nomination, current
-eligibility/capacity and absence of draw, refund, manual/EFT, successor-checkout
+eligibility/capacity and absence of draw, refund, manual/EFT, conflicting checkout
 or any existing receipt or conflicting entry history on first apply. A matching
 receipt already retained by a late ITN also requires separate review; this
 command does not cover that different starting state. It returns an actor-bound confirmation
 token expiring in ten minutes. An apply call uses the same evidence and reason
 with `--confirmation=<preview-token>` and rechecks current state and fingerprint.
 Stop if any guard blocks; do not weaken it to fit an incident.
+
+A later same-payer attempt may be preserved only when it was created after the
+original automatic expiry, has one identical player/category item and a distinct
+registration, and itself automatically expired without any payment handoff.
+Require exactly one canonical expiry activity, unchanged cancelled order and
+soft-deleted pending-entry timestamps, and no current or historical handoff,
+release, settlement, wallet, refund, manual/EFT/recovery or competition evidence.
+Other payers, ambiguous history, multiple items and active attempts still block.
+Lock and fingerprint the preserved attempts and their provenance; disclose their
+IDs in preview and audit, recheck on apply, and leave every preserved row unchanged.
 
 The apply operation goes through scoped entry, invitation, payment and receipt
 services in one transaction. It retains the original provider paid time, actual

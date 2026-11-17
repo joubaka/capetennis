@@ -89,7 +89,8 @@ final class IndividualPayfastReconciliationService
                 && $entry->admin_payment_status !== 'paid', 'Withdrawal, refund or private collection history requires separate review.');
             $others = RegistrationOrderItems::where('player_id', $item->player_id)->where('order_id', '!=', $orderId)
                 ->whereHas('category_event', fn ($query) => $query->where('event_id', $event->id))->lockForUpdate()->get();
-            $this->require($others->isEmpty(), 'Another checkout exists for this player in the event.');
+            $preserved = $this->preservedNeverHandedOffAttempts($others->pluck('order_id')->unique()->sort()->values()->all(),
+                $order, $item, $expiry);
             $this->require(! CategoryEventRegistration::where('id', '!=', $entry->id)
                 ->whereHas('categoryEvent', fn ($query) => $query->where('event_id', $event->id))
                 ->whereHas('registration.players', fn ($query) => $query->where('players.id', $item->player_id))->lockForUpdate()->exists(), 'Another event entry exists for this player.');
@@ -102,6 +103,9 @@ final class IndividualPayfastReconciliationService
                 'reviewed_current_platform_fee' => $event->cape_tennis_fee,
                 'platform_fee_source' => 'current_event_configuration_at_review',
                 'applied' => false, 'already_reconciled' => false, 'new_charge' => false, 'wallet_debit' => false, 'mail' => false];
+            $result['preserved_never_handed_off_order_ids'] = array_column($preserved['summary'], 'order_id');
+            $result['preserved_expired_attempts'] = $preserved['summary'];
+            $result['other_attempts_unchanged'] = true;
             $result = array_merge($result, $this->reviewContext($evidence));
             $digest = hash('sha256', json_encode($evidence, JSON_THROW_ON_ERROR));
             if ($reconciled->isNotEmpty()) {
@@ -151,7 +155,8 @@ final class IndividualPayfastReconciliationService
             app(DivisionCapacityService::class)->assertAvailable($category);
             $state = [$order->getRawOriginal(), $item->getRawOriginal(), $registration->getRawOriginal(), $entry->getRawOriginal(),
                 $category->getRawOriginal(), $event->getRawOriginal(), $nomination->getRawOriginal(), $invitation->getRawOriginal(),
-                $batch->getRawOriginal(), $handoff->getRawOriginal(), $expiry->getRawOriginal(), $reset->getRawOriginal(), $evidence, $reason];
+                $batch->getRawOriginal(), $handoff->getRawOriginal(), $expiry->getRawOriginal(), $reset->getRawOriginal(),
+                $preserved['state'], $evidence, $reason];
             $fingerprint = hash_hmac('sha256', json_encode($state, JSON_THROW_ON_ERROR), (string) config('app.key'));
             if ($confirmation === null) {
                 $expires = now()->addMinutes(10)->timestamp;
@@ -161,7 +166,7 @@ final class IndividualPayfastReconciliationService
             [$expires, $mac] = array_pad(explode('.', $confirmation, 2), 2, '');
             $this->require(ctype_digit($expires) && (int) $expires >= now()->timestamp && (int) $expires <= now()->addMinutes(10)->timestamp
                 && hash_equals(hash_hmac('sha256', $actor->id.':'.$expires.':'.$fingerprint, (string) config('app.key')), $mac), 'The preview expired or changed. Review a fresh preview before applying.');
-            FinanceMutationScope::run('individual_payfast_reconciliation', function () use ($entry, $actor, $invitation, $order, $registration, $reset, $evidence, $paidAt, $reason, $digest, $handoff, $expiry, $event): void {
+            FinanceMutationScope::run('individual_payfast_reconciliation', function () use ($entry, $actor, $invitation, $order, $registration, $reset, $evidence, $paidAt, $reason, $digest, $handoff, $expiry, $event, $preserved): void {
                 app(EntryService::class)->restoreReconciledExpiredEntry($entry, $actor);
                 app(InvitationService::class)->restoreReconciledExpiredOrder($invitation, $order, $registration->id, $reset->before['accepted_at'], $actor);
                 $paid = app(RegistrationPaymentService::class)->completeReconciledExpiredPayment($order, $actor, (float) $evidence['gross'], $evidence['provider_id']);
@@ -174,10 +179,88 @@ final class IndividualPayfastReconciliationService
                     'reset_audit_id' => $reset->id, 'entry_id' => $entry->id, 'invitation_id' => $invitation->id,
                     'reviewed_platform_fee' => $event->cape_tennis_fee, 'platform_fee_source' => 'current_event_configuration_at_review',
                     'pf_payment_id' => $evidence['provider_id'], 'new_charge' => false, 'wallet_debit' => false, 'mail' => false,
+                    'preserved_expired_attempts' => $preserved['summary'], 'other_attempts_unchanged' => true,
                 ], $this->reviewContext($evidence)))->log(self::AUDIT);
             });
             return array_replace($result, ['applied' => true]);
         }, 3);
+    }
+
+    /** Preserve only later automatic expiries with no payment handoff or competing history. */
+    private function preservedNeverHandedOffAttempts(array $orderIds, RegistrationOrder $original, RegistrationOrderItems $originalItem, Activity $originalExpiry): array
+    {
+        $summary = $state = [];
+        foreach ($orderIds as $orderId) {
+            $other = RegistrationOrder::lockForUpdate()->findOrFail($orderId);
+            $items = $other->items()->lockForUpdate()->get();
+            $this->require($items->count() === 1, 'Another checkout has multiple items and requires separate review.');
+            $item = $items->sole();
+            $this->require($other->created_at->gt($originalExpiry->created_at) && (int) $other->id > (int) $original->id
+                && (int) $other->user_id === (int) $original->user_id && (int) $item->user_id === (int) $original->user_id
+                && (int) $item->category_event_id === (int) $originalItem->category_event_id
+                && (int) $item->player_id === (int) $originalItem->player_id
+                && (int) $item->registration_id !== (int) $originalItem->registration_id,
+                'Only a later exact same-payer, player and category attempt can be preserved.');
+            $this->require($other->status === 'cancelled' && ! $other->pay_status && ! $other->payfast_paid
+                && ! $other->payfast_pf_payment_id && ! $other->payfast_handed_off_at && (float) $other->payfast_amount_due === 0.0
+                && (float) $other->wallet_reserved === 0.0 && ! $other->wallet_debited && ! $other->wallet_transaction_id
+                && $this->cents($other->total_fee) === $this->cents($item->item_price),
+                'Another checkout is active, paid, funded or inconsistent and requires separate review.');
+            $activities = Activity::where('subject_type', $other->getMorphClass())->where('subject_id', $other->id)->lockForUpdate()->get();
+            $expiry = $activities->count() === 1 ? $activities->sole() : null;
+            $this->require($expiry && $expiry->description === 'Unpaid registration checkout expired; reservation released'
+                && (int) $expiry->properties['payer_id'] === (int) $original->user_id
+                && (int) $expiry->properties['timeout_minutes'] === CheckoutExpiryPolicy::MINUTES
+                && $other->updated_at->format('Y-m-d H:i:s') === $expiry->created_at->format('Y-m-d H:i:s')
+                && $expiry->created_at->gte($other->created_at->copy()->addMinutes(CheckoutExpiryPolicy::MINUTES)),
+                'Another attempt needs one unchanged canonical expiry and no handoff, release or other activity history.');
+            $history = AuditEvent::where('subject_type', $other->getMorphClass())->where('subject_id', $other->id)
+                ->orderBy('id')->lockForUpdate()->get();
+            $this->require($history->isNotEmpty(), 'Another attempt lacks integrity-verifiable order history.');
+            foreach ($history as $audit) {
+                $this->require(AuditIntegrity::verify($audit->getRawOriginal()), 'Another attempt has tampered order history requiring separate review.');
+                foreach ([$audit->before ?? [], $audit->after ?? []] as $snapshot) {
+                    $this->require(empty($snapshot['payfast_handed_off_at']) && empty($snapshot['payfast_pf_payment_id'])
+                        && empty($snapshot['pay_status']) && empty($snapshot['payfast_paid']) && empty($snapshot['wallet_debited'])
+                        && empty($snapshot['wallet_transaction_id']) && (float) ($snapshot['wallet_reserved'] ?? 0) === 0.0
+                        && ! in_array($snapshot['status'] ?? null, ['completed', 'reconciliation_required'], true),
+                        'Another attempt has historical handoff or financial evidence requiring separate review.');
+                }
+            }
+            $registration = Registration::lockForUpdate()->findOrFail($item->registration_id);
+            $players = DB::table('player_registrations')->where('registration_id', $registration->id)->lockForUpdate()->pluck('player_id');
+            $entries = CategoryEventRegistration::withTrashed()->where('registration_id', $registration->id)->lockForUpdate()->get();
+            $entry = $entries->count() === 1 ? $entries->sole() : null;
+            $this->require($players->count() === 1 && (int) $players->sole() === (int) $originalItem->player_id
+                && $entry && (int) $entry->category_event_id === (int) $originalItem->category_event_id
+                && (int) $entry->user_id === (int) $original->user_id && $entry->trashed() && $entry->status === 'pending_checkout'
+                && $entry->deleted_at->format('Y-m-d H:i:s') === $expiry->created_at->format('Y-m-d H:i:s')
+                && $entry->updated_at->format('Y-m-d H:i:s') === $expiry->created_at->format('Y-m-d H:i:s')
+                && ! $entry->payment_status_id && ! $entry->pf_transaction_id && ! $entry->wallet_transaction_id
+                && ! $entry->withdrawn_at && ! $entry->withdrawn_by && ! $entry->refunded_at && ! $entry->refund_waived_at
+                && ! $entry->refund_waived_by && ! $entry->refund_method && ! $entry->refund_waiver_reason
+                && ! $entry->refund_gross && ! $entry->refund_fee && ! $entry->refund_net
+                && ($entry->refund_status === null || in_array($entry->refund_status, CategoryEventRegistration::NO_REFUND_STATUSES, true))
+                && $entry->admin_payment_status !== 'paid', 'Another attempt has changed entry, withdrawal, refund or private collection history.');
+            foreach (['registration_manual_receipts', 'trial_payment_proofs', 'registration_payment_recoveries'] as $table) {
+                $column = $table === 'registration_payment_recoveries' ? 'registration_order_id' : 'order_id';
+                $this->require(! DB::table($table)->where($column, $other->id)->lockForUpdate()->exists(),
+                    'Another attempt has manual, EFT or recovery history requiring separate review.');
+            }
+            $this->require(! Transaction::where('custom_int5', $other->id)
+                ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', ''))->lockForUpdate()->exists()
+                && ! WalletTransaction::where('source_type', 'event_registration_wallet_payment')->where('source_id', $other->id)->lockForUpdate()->exists()
+                && ! DB::table('category_adjustments')->where('entry_id', $entry->id)->lockForUpdate()->exists()
+                && ! DB::table('draw_registrations')->where('registration_id', $registration->id)->lockForUpdate()->exists()
+                && ! DB::table('fixtures')->where(fn ($query) => $query->where('registration1_id', $registration->id)
+                    ->orWhere('registration2_id', $registration->id))->lockForUpdate()->exists(),
+                'Another attempt has receipt, wallet or competition history requiring separate review.');
+            $summary[] = ['order_id' => (int) $other->id, 'registration_id' => (int) $registration->id,
+                'entry_id' => (int) $entry->id, 'expiry_audit_id' => (int) $expiry->id, 'preserved_cancelled' => true];
+            $state[] = [$other->getRawOriginal(), $item->getRawOriginal(), $registration->getRawOriginal(), $entry->getRawOriginal(),
+                $players->all(), $expiry->getRawOriginal(), $history->map(fn ($audit) => $audit->getRawOriginal())->all()];
+        }
+        return compact('summary', 'state');
     }
 
     private function evidence(array $evidence, User $actor, string $reason): array

@@ -370,6 +370,142 @@ class IndividualPayfastReconciliationTest extends TestCase
         $this->assertDatabaseCount('transactions_pf', 0);
     }
 
+    public function test_later_never_handed_off_expiry_is_disclosed_and_preserved_through_original_recovery_and_replay(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later, $laterEntry] = $this->laterExpiredAttempt($order);
+        $laterBefore = [$later->getRawOriginal(), $laterEntry->getRawOriginal(), $later->items->sole()->getRawOriginal()];
+        $before = $this->counts();
+        $preview = $this->runRecovery($order, $actor, $evidence);
+        $this->assertSame([$later->id], $preview['preserved_never_handed_off_order_ids']);
+        $this->assertTrue($preview['other_attempts_unchanged']);
+        $this->assertSame($before, $this->counts());
+        $this->assertTrue($this->runRecovery($order, $actor, $evidence, $preview['confirmation'])['applied']);
+        $this->assertTrue($order->fresh()->pay_status);
+        $this->assertSame($laterBefore, [$later->fresh()->getRawOriginal(), $laterEntry->fresh()->getRawOriginal(), $later->items()->sole()->getRawOriginal()]);
+        $this->assertSame('cancelled', $later->fresh()->status);
+        $this->assertFalse($later->fresh()->pay_status);
+        $this->assertTrue($laterEntry->fresh()->trashed());
+        $after = $this->counts();
+        $this->assertSame($before['orders'], $after['orders']);
+        $this->assertSame($before['items'], $after['items']);
+        $this->assertSame($before['entries'], $after['entries']);
+        $this->assertSame($before['ownership_links'], $after['ownership_links']);
+        $this->assertSame($before['wallet'], $after['wallet']);
+        $audit = \Spatie\Activitylog\Models\Activity::where('description', IndividualPayfastReconciliationService::AUDIT)->sole();
+        $this->assertSame($later->id, $audit->properties['preserved_expired_attempts'][0]['order_id']);
+        $this->assertTrue($this->runRecovery($order, $actor, $evidence, $preview['confirmation'])['already_reconciled']);
+        $this->assertSame($after, $this->counts());
+        Mail::assertNothingSent();
+        Mail::assertNothingQueued();
+    }
+
+    public function test_later_handed_off_or_active_attempt_still_blocks_original_recovery(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later, $entry] = $this->laterExpiredAttempt($order, true);
+        $this->assertNull($later->payfast_handed_off_at);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertTrue($entry->fresh()->trashed());
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_later_attempt_preview_detects_reactivation_and_other_attempt_state_changes(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later, $entry] = $this->laterExpiredAttempt($order);
+        $preview = $this->runRecovery($order, $actor, $evidence);
+        $later->update(['status' => 'pending']);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence, $preview['confirmation']));
+        $later->update(['status' => 'cancelled']);
+        $preview = $this->runRecovery($order, $actor, $evidence);
+        $later->update(['total_fee' => 451]);
+        $later->items()->sole()->forceFill(['item_price' => 451])->save();
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence, $preview['confirmation']));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertTrue($entry->fresh()->trashed());
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_later_attempt_other_payer_refund_or_missing_canonical_expiry_cannot_be_ignored(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later, $entry] = $this->laterExpiredAttempt($order);
+        $payer = $later->user_id;
+        $later->update(['user_id' => User::factory()->create()->id]);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $later->update(['user_id' => $payer]);
+        $entry->update(['refund_status' => 'pending']);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $entry->update(['refund_status' => 'not_refunded']);
+        \Spatie\Activitylog\Models\Activity::where('subject_type', $later->getMorphClass())->where('subject_id', $later->id)->delete();
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_later_attempt_receipt_and_historical_handoff_evidence_block_recovery(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later] = $this->laterExpiredAttempt($order);
+        $receipt = new Transaction();
+        $receipt->pf_payment_id = 'PF-LATER-CONFLICT';
+        $receipt->custom_int5 = $later->id;
+        $receipt->custom_str5 = '';
+        $receipt->save();
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $receipt->delete();
+        app(\App\Support\Audit\AuditWriter::class)->record(['category' => 'data', 'action' => 'registration-order.updated',
+            'subject' => $later, 'before' => ['payfast_handed_off_at' => now()->subMinutes(8)->toIso8601String()],
+            'after' => ['payfast_handed_off_at' => null]], true);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_later_attempt_with_manual_receipt_cannot_be_preserved_as_an_unused_checkout(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later] = $this->laterExpiredAttempt($order);
+        \App\Models\RegistrationManualReceipt::create(['order_id' => $later->id, 'event_id' => $evidence['event_id'],
+            'amount' => 450, 'method' => 'eft', 'reference' => 'REVIEWED-LATER-RECEIPT',
+            'verified_by_user_id' => $actor->id, 'paid_at' => now()]);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertSame('cancelled', $later->fresh()->status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('registration_manual_receipts', 1);
+    }
+
+    public function test_later_attempt_tampered_order_history_and_missing_history_are_rejected(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        [$later] = $this->laterExpiredAttempt($order);
+        $history = AuditEvent::where('subject_type', $later->getMorphClass())->where('subject_id', $later->id)->get();
+        $this->assertNotEmpty($history);
+        DB::table('audit_events')->where('id', $history->first()->id)->update(['integrity_hash' => str_repeat('0', 64)]);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        DB::table('audit_events')->whereIn('id', $history->pluck('id'))->delete();
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    private function laterExpiredAttempt(RegistrationOrder $original, bool $handoff = false): array
+    {
+        $this->travel(1)->minutes();
+        $item = $original->items->sole();
+        $invitation = InterprovincialTrialInvitation::where('player_id', $item->player_id)
+            ->where('category_event_id', $item->category_event_id)->latest('id')->firstOrFail();
+        $later = app(InvitationService::class)->accept($invitation, $original->user);
+        if ($handoff) $later = app(RegistrationPaymentService::class)->preparePayfastHandoff($later, $original->user, 0, (float) $later->total_fee);
+        $entry = CategoryEventRegistration::where('registration_id', $later->items->sole()->registration_id)->sole();
+        $this->travel(7)->minutes();
+        $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($later->fresh()));
+        return [$later->fresh('items'), $entry->fresh()];
+    }
+
     private function reconfirmedEvidence(array $fresh): array
     {
         unset($fresh['verified_at']);
