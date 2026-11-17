@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Frontend;
 use App\Domain\Payments\Services\RegistrationPaymentService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Models\MastersInvitation;
@@ -409,6 +410,26 @@ class RegistrationPaymentController extends Controller
    */
   public function handlePayfastSuccess(array $payfastData): bool
   {
+    try {
+      // The receipt, entry and invitation updates must commit with settlement.
+      // Retry the complete operation so a deadlock cannot leave a partial payment.
+      return DB::transaction(fn () => $this->processPayfastSuccess($payfastData), 3);
+    } catch (\Throwable $exception) {
+      app(PaymentFailureReporter::class)->report('registration.payfast_itn_finalize', [
+        'order_id' => (int) ($payfastData['custom_int5'] ?? 0),
+        'payfast_payment_id' => $payfastData['pf_payment_id'] ?? null,
+      ], $exception);
+
+      if (app(\Illuminate\Contracts\Database\ConcurrencyErrorDetector::class)->causedByConcurrencyError($exception)) {
+        throw $exception;
+      }
+
+      return false;
+    }
+  }
+
+  private function processPayfastSuccess(array $payfastData): bool
+  {
     Log::info('PAYFAST ITN RECEIVED', [
       'order_id' => (int) ($payfastData['custom_int5'] ?? 0),
       'pf_payment_id' => $payfastData['pf_payment_id'] ?? null,
@@ -418,7 +439,11 @@ class RegistrationPaymentController extends Controller
 
     $orderId = (int) ($payfastData['custom_int5'] ?? 0);
     $paymentStatus = $payfastData['payment_status'] ?? null;
-    $amountGross = (float) ($payfastData['amount_gross'] ?? 0);
+    $rawAmount = $payfastData['amount_gross'] ?? null;
+    if (! is_numeric($rawAmount) || ! is_finite((float) $rawAmount) || (float) $rawAmount <= 0) {
+      throw new \RuntimeException('PayFast payment amount must be a positive number.');
+    }
+    $amountGross = (float) $rawAmount;
 
     if (!$orderId) {
       app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'No order ID received', 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
@@ -433,25 +458,48 @@ class RegistrationPaymentController extends Controller
       return false;
     }
 
-    $order = RegistrationOrder::with('user.wallet', 'items')->find($orderId);
+    $order = RegistrationOrder::with('user.wallet', 'items.category_event')->lockForUpdate()->find($orderId);
 
     if (!$order) {
       app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Order not found', 'order_id' => $orderId, 'payfast_status' => $paymentStatus, 'amount_gross' => $amountGross]);
       return false;
     }
 
-    try {
-      if (app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $payfastData)) {
-        return true;
-      }
-      $this->assertInvitationOnlyOrderIsLinked($order);
-    } catch (\Throwable $exception) {
-      app(PaymentFailureReporter::class)->report('registration.payfast_itn', ['reason' => 'Invitation linkage failed', 'order_id' => $orderId]);
-      return false;
+    $providerId = trim((string) ($payfastData['pf_payment_id'] ?? ''));
+    if ($providerId === '' || ! empty($payfastData['custom_str5'])
+      || (isset($payfastData['custom_int4']) && (string) $payfastData['custom_int4'] !== (string) $order->user_id)) {
+      throw new \RuntimeException('PayFast receipt metadata does not match its registration order.');
     }
+    $identities = ['custom_int1' => 'category_event_id', 'custom_int2' => 'player_id', 'custom_int3' => 'event_id'];
+    $providedIdentities = array_intersect_key($payfastData, $identities);
+    if ($providedIdentities && ! $order->items->contains(function ($item) use ($payfastData, $identities): bool {
+      foreach ($identities as $field => $identity) {
+        $expected = $identity === 'event_id' ? $item->category_event?->event_id : $item->{$identity};
+        if (isset($payfastData[$field]) && (string) $expected !== (string) $payfastData[$field]) {
+          return false;
+        }
+      }
+      return true;
+    })) {
+      throw new \RuntimeException('PayFast receipt metadata does not match its registration items.');
+    }
+    $existingReceipt = \App\Models\Transaction::where('pf_payment_id', $providerId)->lockForUpdate()->first();
+    if ($existingReceipt && ((int) $existingReceipt->custom_int5 !== (int) $order->id
+      || (int) $existingReceipt->custom_int4 !== (int) $order->user_id || filled($existingReceipt->custom_str5))) {
+      throw new \RuntimeException('PayFast receipt already belongs to another payment.');
+    }
+    if (app(\App\Domain\Payments\Services\ExpiredPayfastHandoffService::class)->recordReceipt($order, $payfastData)) {
+      return true;
+    }
+    $this->assertInvitationOnlyOrderIsLinked($order);
 
     // 🔐 Idempotency protection
     if ($order->pay_status == 1) {
+      if ((string) $order->payfast_pf_payment_id !== $providerId
+        || ! is_numeric($payfastData['amount_gross'] ?? null)
+        || round((float) $payfastData['amount_gross'], 2) !== round((float) $order->payfast_amount_due, 2)) {
+        throw new \RuntimeException('PayFast replay does not match the original settlement.');
+      }
       app(\App\Services\Masters\MastersInvitationService::class)->confirmPaidOrder($order->fresh());
       app(\App\Services\InterprovincialTrials\InvitationService::class)->confirmPaidOrder($order->fresh());
       $this->reconcilePaymentRecovery($order);
@@ -502,6 +550,9 @@ class RegistrationPaymentController extends Controller
       $this->reconcilePaymentRecovery($order);
 
     } catch (\Throwable $e) {
+      if (app(\Illuminate\Contracts\Database\ConcurrencyErrorDetector::class)->causedByConcurrencyError($e)) {
+        throw $e;
+      }
       // Confirmation of a replacement cart can retire the old order between
       // the first receipt check and the locked payment finalization.
       $current = $order->fresh();
@@ -520,9 +571,7 @@ class RegistrationPaymentController extends Controller
         'message' => $e->getMessage(),
       ]);
 
-      app(PaymentFailureReporter::class)->report('registration.payfast_itn_finalize', ['order_id' => $orderId, 'payfast_payment_id' => $payfastData['pf_payment_id'] ?? null], $e);
-
-      return false;
+      throw $e;
     }
 
     Log::info('HYBRID PAYMENT COMPLETED SUCCESSFULLY', [

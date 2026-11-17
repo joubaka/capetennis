@@ -464,8 +464,16 @@ class RegisterController extends Controller
     }
 
     // Route the legacy PayFast callback through the canonical payment adapter.
-    if (! app(RegistrationPaymentController::class)->handlePayfastSuccess($data)) {
-      return response('Payment verification failed', 400);
+    try {
+      if (! app(RegistrationPaymentController::class)->handlePayfastSuccess($data)) {
+        return response('Payment verification failed', 400);
+      }
+    } catch (\Throwable $exception) {
+      if (app(\Illuminate\Contracts\Database\ConcurrencyErrorDetector::class)->causedByConcurrencyError($exception)) {
+        return response('Payment confirmation temporarily unavailable', 503);
+      }
+
+      throw $exception;
     }
 
     return response('OK', 200);
@@ -1593,6 +1601,25 @@ class RegisterController extends Controller
 
     // Redirect back to the event the user registered for
     $eventId = optional($order->items->first()?->category_event)->event_id;
+
+    // A browser return is not proof that PayFast has confirmed settlement.
+    if (! $order->pay_status || $order->status === 'cancelled' || $order->status === 'reconciliation_required') {
+      $message = 'Payment confirmation is still pending. Your registration is not confirmed yet. Please do not pay again while we check your payment.';
+      if ($order->status === 'cancelled' || $order->status === 'reconciliation_required') {
+        $message = 'This checkout is closed or needs payment review. Your registration is not confirmed. If PayFast charged you, please contact support with your payment receipt before paying again.';
+      }
+
+      return redirect()->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
+        ->with('warning', $message);
+    }
+
+    $activeEntries = $order->items->isNotEmpty() && $order->items->every(fn ($item) => \App\Models\CategoryEventRegistration::query()
+      ->where('registration_id', $item->registration_id)->where('category_event_id', $item->category_event_id)
+      ->where('user_id', $order->user_id)->where('payment_status_id', 1)->where('status', 'active')->whereNull('withdrawn_at')->exists());
+    if (! $activeEntries) {
+      return redirect()->route($eventId ? 'events.show' : 'home', $eventId ? ['event' => $eventId] : [])
+        ->with('info', 'Payment recorded. Your current registration is inactive or needs review. Check the event page for its current status.');
+    }
 
     if ($eventId) {
       return redirect()->route('events.show', $eventId)

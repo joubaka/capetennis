@@ -54,11 +54,15 @@ class ExpiredPayfastHandoffService
             $snapshot = $audit->properties;
             $team = $locked instanceof TeamPaymentOrder;
             $providerId = trim((string) ($data['pf_payment_id'] ?? ''));
-            $reconciled = $team && ! $locked->withdrawn_at && $locked->pay_status && $locked->payfast_paid
+            $individualReconciled = ! $team && $locked->status === 'completed' && $locked->pay_status && $locked->payfast_paid
+                && (string) $locked->payfast_pf_payment_id === $providerId
+                && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
+                    ->where('description', IndividualPayfastReconciliationService::AUDIT)->where('properties->pf_payment_id', $providerId)->exists();
+            $reconciled = $individualReconciled || ($team && ! $locked->withdrawn_at && $locked->pay_status && $locked->payfast_paid
                 && $locked->collection_status === 'paid' && (string) $locked->payfast_pf_payment_id === $providerId
                 && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
-                    ->where('description', TeamLatePaymentReconciliationService::AUDIT)->where('properties->pf_payment_id', $providerId)->exists();
-            if (($team ? (!$locked->withdrawn_at && ! $reconciled) : $locked->status !== 'cancelled')
+                    ->where('description', TeamLatePaymentReconciliationService::AUDIT)->where('properties->pf_payment_id', $providerId)->exists());
+            if (($team ? (!$locked->withdrawn_at && ! $reconciled) : ($locked->status !== 'cancelled' && ! $individualReconciled))
                 || ($data['payment_status'] ?? '') !== 'COMPLETE' || $providerId === ''
                 || (string) ($data['custom_int5'] ?? '') !== (string) $locked->id
                 || (string) ($data['custom_int4'] ?? '') !== (string) $snapshot['payer_id']

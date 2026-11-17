@@ -14,7 +14,7 @@ The payments domain handles PayFast payment processing, wallet credit, refund is
 
 | Model | Table | Purpose |
 |-------|-------|---------|
-| `TransactionPf` | `transactions_pf` | PayFast ITN payment record |
+| `Transaction` | `transactions_pf` | Provider payment receipt |
 | `Wallet` | `wallets` | Player wallet (credit balance) |
 | `WalletTransaction` | `wallet_transactions` | Credit/debit entries per wallet |
 | `BankRefund` | `bank_refunds` | Bank transfer refund records |
@@ -24,13 +24,19 @@ The payments domain handles PayFast payment processing, wallet credit, refund is
 ## Payment Flow
 
 ```
-PayFast ITN → TransactionPf created → Wallet credited → CER status updated
+Verified PayFast COMPLETE ITN → canonical order finalization + provider receipt + entry/invitation confirmation
 ```
+
+Individual registration settlement is atomic across these writes. Reserved wallet
+funds are debited only during verified finalization; a PayFast registration does
+not credit a payer wallet. Browser returns must report saved payment state rather
+than imply settlement. See [individual PayFast confirmation](../payfast-registration-confirmation.md)
+for retry, replay, delivery diagnostics and expired-checkout recovery boundaries.
 
 Refund flow:
 ```
-Admin issues refund → WalletTransaction (debit) → CER refund_status = refunded
-Bank refund path:   → BankRefund created        → manual bank transfer → BankRefund confirmed
+Verified withdrawal → canonical refund service → provider reversal, wallet credit or reviewed bank refund
+Refund state records the reversal; original paid history remains an audit record.
 ```
 
 ---
@@ -39,15 +45,15 @@ Bank refund path:   → BankRefund created        → manual bank transfer → B
 
 ### Payment Receipt (ITN)
 
-- Must be **idempotent** — duplicate ITN calls for the same `pf_payment_id` must not double-credit wallets.
-- Verify `pf_payment_id` uniqueness before creating `TransactionPf`.
-- Wallet credit must be inside a DB transaction with the `TransactionPf` insert.
+- Must be **idempotent** — duplicate ITN calls for the same `pf_payment_id` must not duplicate receipts, wallet debits or entries.
+- Verify `pf_payment_id` uniqueness and ownership before creating a provider receipt.
+- Any required wallet ledger debit must be inside the complete settlement transaction with the provider receipt and entry/invitation updates.
 - Log: `PlatformAuditLogger::log(PAYMENT_COMPLETION, ...)` (via `PerformanceTracker::track`).
 
 ### Refund Issuance
 
-- Never mutate wallet balance directly — always insert a `WalletTransaction` debit row.
-- Refund must correspond to an existing withdrawal — check for `withdrawals` record first.
+- Never mutate wallet balance directly — append the appropriate credit/debit ledger entry through the canonical financial service.
+- Refund must correspond to an existing withdrawal and pass the canonical ownership, deadline, payment and idempotency checks.
 - Log: `PlatformAuditLogger::log(REFUND_ISSUED, $cer, before: $before, after: $after)`.
 - If no withdrawal exists, surface as a `data:cleanup-refund-without-withdrawal` candidate, not a silent fix.
 
@@ -61,9 +67,9 @@ Bank refund path:   → BankRefund created        → manual bank transfer → B
 ## Forbidden Patterns
 
 - ❌ `DB::table('wallets')->increment('balance', ...)` — wallets have no stored balance column
-- ❌ Creating `TransactionPf` without checking `pf_payment_id` uniqueness
+- ❌ Creating a provider receipt without checking `pf_payment_id` uniqueness and ownership
 - ❌ Issuing a refund outside a DB transaction
-- ❌ Deleting a `WalletTransaction` — debit instead
+- ❌ Deleting a `WalletTransaction` — use the canonical service to append the appropriate compensating ledger entry
 - ❌ Reading wallet balance with a raw SUM without the proper join (see `PlatformHealthService` for correct pattern)
 
 ---
@@ -91,7 +97,9 @@ php artisan data:cleanup-refund-without-withdrawal --dry-run
 
 ## Duplicate Payment Detection
 
-Known issue: 4 duplicate `pf_payment_id` groups exist in production (pre-existing data drift).
-Run the cleanup command before any financial reporting.
+Use current read-only integrity evidence to identify duplicate `pf_payment_id`
+groups. Historical counts are not current production evidence. Review exact
+records and obtain the applicable authorization before any repair; a reporting
+request does not authorize cleanup or deletion.
 
 Contact for withdrawals/refund issues: **support@capetennis.co.za**

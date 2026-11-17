@@ -41,6 +41,17 @@ use Illuminate\Validation\ValidationException;
  */
 class EntryService
 {
+    /** Only the reviewed original-order reconciliation may restore this exact row. */
+    public function restoreReconciledExpiredEntry(CategoryEventRegistration $entry, User $actor): void
+    {
+        abort_unless($actor->fresh()->hasRole('super-user') && DB::transactionLevel() > 0
+            && FinanceMutationScope::allows('individual_payfast_reconciliation'), 403);
+        abort_unless($entry->trashed() && $entry->status === 'pending_checkout' && ! $entry->withdrawn_at && ! $entry->payment_status_id
+            && ! $entry->pf_transaction_id && ! $entry->wallet_transaction_id && ! $entry->refunded_at, 422);
+        $entry->restore();
+        $entry->update(['status' => 'pending_checkout']);
+    }
+
     /** Preview or archive one explicitly identified, unused zero-money admin test. */
     public function archiveFreeTestHistory(User $actor, array $ids, string $reason, string $evidence, ?string $fingerprint = null): array
     {

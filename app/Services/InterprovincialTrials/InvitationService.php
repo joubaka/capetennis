@@ -23,6 +23,16 @@ use App\Services\InvitationMailSecurity;
 
 class InvitationService
 {
+    public function restoreReconciledExpiredOrder(InterprovincialTrialInvitation $invitation, RegistrationOrder $order, int $registrationId, string $acceptedAt, User $actor): void
+    {
+        abort_unless($actor->fresh()->hasRole('super-user') && DB::transactionLevel() > 0
+            && \App\Support\FinanceMutationScope::allows('individual_payfast_reconciliation'), 403);
+        abort_unless($invitation->status === 'sent' && ! $invitation->order_id && ! $invitation->registration_id
+            && ! $invitation->accepted_at && ! $invitation->paid_at && ! $invitation->withdrawn_at, 422);
+        $invitation->update(['order_id' => $order->id, 'registration_id' => $registrationId,
+            'status' => InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, 'accepted_at' => $acceptedAt]);
+    }
+
     /** Move an administrator-approved Trials entry without breaking its payment tuple. */
     public function transferEntry(CategoryEventRegistration $entry, CategoryEvent $target, User $actor): CategoryEventRegistration
     {
@@ -474,9 +484,12 @@ class InvitationService
         });
     }
 
-    public function confirmPaidOrder(RegistrationOrder $order): void
+    public function confirmPaidOrder(RegistrationOrder $order, ?\Carbon\CarbonInterface $verifiedPaidAt = null): void
     {
-        DB::transaction(function () use ($order): void {
+        if ($verifiedPaidAt) {
+            abort_unless(\App\Support\FinanceMutationScope::allows('individual_payfast_reconciliation') && DB::transactionLevel() > 0, 403);
+        }
+        DB::transaction(function () use ($order, $verifiedPaidAt): void {
             $lockedOrder = RegistrationOrder::query()->lockForUpdate()->findOrFail($order->id);
             $invitation = InterprovincialTrialInvitation::query()
                 ->lockForUpdate()
@@ -544,6 +557,7 @@ class InvitationService
             }
 
             if ($invitation->status === InterprovincialTrialInvitation::PAID_CONFIRMED) {
+                if ($verifiedPaidAt) $invitation->update(['paid_at' => $verifiedPaidAt]);
                 return;
             }
 
@@ -556,7 +570,7 @@ class InvitationService
             if ($entry->status === 'pending_checkout') {
                 $entry->update(['status' => 'active']);
             }
-            $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
+            $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED, 'paid_at' => $verifiedPaidAt ?? now()]);
         });
     }
 

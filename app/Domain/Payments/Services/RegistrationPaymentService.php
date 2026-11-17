@@ -15,6 +15,18 @@ use Illuminate\Validation\ValidationException;
 
 class RegistrationPaymentService
 {
+    public function completeReconciledExpiredPayment(RegistrationOrder $order, User $actor, float $amount, string $providerId): RegistrationOrder
+    {
+        abort_unless($actor->fresh()->hasRole('super-user') && DB::transactionLevel() > 0
+            && FinanceMutationScope::allows('individual_payfast_reconciliation'), 403);
+        abort_unless($order->status === 'cancelled' && ! $order->pay_status && ! $order->payfast_paid
+            && ! $order->wallet_debited && (float) $order->wallet_reserved === 0.0
+            && ! $order->wallet_transaction_id && ! $order->payfast_pf_payment_id, 422);
+        FinanceMutationScope::run('payment_state_write', fn () => $order->forceFill(['status' => 'pending', 'payfast_amount_due' => $amount])->save());
+        return $this->finalizePayfastPayment($order, $amount, ['pf_payment_id' => $providerId,
+            'payment_method' => 'payfast', 'suppress_registration_confirmation' => true]);
+    }
+
     public function __construct(
         private PaymentOrchestrator $paymentOrchestrator
     ) {
@@ -497,7 +509,9 @@ class RegistrationPaymentService
                         ],
                     ]);
                 }
-                app(\App\Services\PlayerRegistrationUpdateService::class)->order($lockedOrder);
+                if (! FinanceMutationScope::allows('individual_payfast_reconciliation')) {
+                    app(\App\Services\PlayerRegistrationUpdateService::class)->order($lockedOrder);
+                }
             });
         });
     }

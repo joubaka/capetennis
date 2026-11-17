@@ -289,6 +289,26 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Individual PayFast browser returns must report saved order state; reaching a
+  success URL is not settlement. Keep the entire callback settlement, receipt,
+  wallet debit and entry/invitation confirmation in one retried transaction,
+  with after-commit side effects. Verify the callback and return regressions
+  before claiming these safeguards are deployed. When a paid registration is
+  missing, distinguish provider evidence, web-server delivery, application
+  processing and saved state; a missing callback log is not proof of deadlock.
+  See `docs/payfast-registration-confirmation.md`.
+
+- The explicit individual PayFast reconciliation command is limited to an
+  original zero-wallet, single-player Interpro checkout with independently
+  operator-verified on-time settlement followed by canonical automatic expiry.
+  It requires fresh dashboard attestation, an actor-bound preview and current
+  lifecycle guards; it restores the original soft-deleted entry and invitation
+  rather than creating a manual-paid replacement. Preserve actual provider
+  amounts/date, separately disclose the reviewed current platform fee and keep
+  recovery free of outbound mail. It neither proves callback delivery nor
+  authorizes deployment/live application. Verify the owning service and
+  `IndividualPayfastReconciliationTest`; see the same confirmation guide.
+
 - Frontend dependency overrides do not patch an embedded copy inside a vendor
   bundle. Verify the actual emitted execution path and checked-in public assets;
   deployment does not run npm. See `docs/frontend-dependency-security.md` for

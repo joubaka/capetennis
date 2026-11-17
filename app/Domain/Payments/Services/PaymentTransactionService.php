@@ -11,6 +11,29 @@ use Illuminate\Support\Facades\DB;
 
 class PaymentTransactionService
 {
+    /** Dashboard-attested settlement: distinct from an automatically signed ITN. */
+    public function recordAttestedRegistrationReceipt(\App\Models\RegistrationOrder $order, array $evidence, \Carbon\CarbonInterface $paidAt): Transaction
+    {
+        abort_unless(DB::transactionLevel() > 0 && FinanceMutationScope::allows('individual_payfast_reconciliation'), 403);
+        abort_if(Transaction::where('pf_payment_id', $evidence['provider_id'])->lockForUpdate()->exists(), 422);
+        $item = $order->items->sole();
+        $receipt = $this->record(['pf_payment_id' => $evidence['provider_id'], 'amount_gross' => $evidence['gross'],
+            'custom_int1' => $item->category_event_id, 'custom_int2' => $item->player_id,
+            'custom_int3' => $item->category_event->event_id, 'custom_int4' => $order->user_id, 'custom_int5' => $order->id,
+            'item_name' => $item->category_event->event->name,
+            'cape_tennis_fee' => $evidence['cape_tennis_fee_snapshot']], null);
+        return FinanceMutationScope::run('payment_transaction_write', function () use ($receipt, $item, $evidence, $paidAt) {
+            $receipt->amount_fee = $evidence['fee'];
+            $receipt->amount_net = $evidence['net'];
+            $receipt->registration_id = $item->registration_id;
+            $receipt->payment_status = 'COMPLETE';
+            $receipt->is_test = false;
+            $receipt->created_at = $paidAt;
+            $receipt->save();
+            return $receipt;
+        });
+    }
+
     public const WITHDRAWAL_BEFORE_DEADLINE_CONTEXT = 'withdrawel_before_deadline';
     private const CAPE_TENNIS_FEE = 10;
 
