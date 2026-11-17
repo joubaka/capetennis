@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 class ExpireUnpaidEventCheckouts extends Command
 {
     protected $signature = 'registrations:expire-checkouts {--apply : Expire eligible drafts; otherwise show candidate counts only}';
-    protected $description = 'Release event checkout drafts older than five minutes, preserving payments in progress and financial evidence';
+    protected $description = 'Release event checkout drafts older than 30 minutes, preserving payments in progress and financial evidence';
 
     public function handle(UnpaidCheckoutExpiryService $service): int
     {

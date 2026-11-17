@@ -232,7 +232,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $selection->beginRegistration($source->event_id, $team->id, $invitation->player_id, $payer);
         $original = $payments->ensureOrder($payer, $team, $invitation->player, $source->event, 123.45);
         $selection->attachOrder($original);
-        $original->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $original->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $import->update(['response_deadline' => now()->subMinute(), 'payment_deadline' => now()->addDay()]);
         $source->event->update(['signUp' => false]);
         $selected = $selection->beginRegistration($source->event_id, $team->id, $invitation->player_id, $payer);

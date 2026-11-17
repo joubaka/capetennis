@@ -11,6 +11,20 @@ use Illuminate\Support\Facades\DB;
 
 class PaymentTransactionService
 {
+    /** Classify an existing verified late receipt without rewriting provider receipt history. */
+    public function classifyReconciledIndividualReceipt(Transaction $receipt, \App\Models\RegistrationOrder $order): void
+    {
+        abort_unless(DB::transactionLevel() > 0 && FinanceMutationScope::allows('individual_payfast_reconciliation')
+            && $order->pay_status && $order->payfast_paid && $order->status === 'completed'
+            && blank($receipt->custom_str5) && (int) $receipt->custom_int5 === (int) $order->id
+            && (int) $receipt->custom_int4 === (int) $order->user_id
+            && (string) $receipt->pf_payment_id === (string) $order->payfast_pf_payment_id, 403);
+        FinanceMutationScope::run('payment_transaction_write', function () use ($receipt, $order): void {
+            $receipt->cape_tennis_fee = round((float) $order->items->sole()->category_event->event->cape_tennis_fee, 2);
+            $receipt->save();
+        });
+    }
+
     /** Dashboard-attested settlement: distinct from an automatically signed ITN. */
     public function recordAttestedRegistrationReceipt(\App\Models\RegistrationOrder $order, array $evidence, \Carbon\CarbonInterface $paidAt): Transaction
     {

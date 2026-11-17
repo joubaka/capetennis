@@ -41,7 +41,7 @@ rolls back the withdrawal, refund and replacement together.
 - Full funding finalizes through the canonical wallet payment service. Excess
   refund remains in the original payer's wallet.
 - Partial funding reserves the proceeds without a debit or paid entry. The
-  original payer must complete checkout within its normal five-minute window.
+  original payer must complete checkout within its normal 30-minute window.
   Expiry releases the reservation; the refund remains in their wallet. Partial
   funding is rejected if that payer cannot use the normal checkout.
 - Active managed selection campaigns use their invitation workflow instead;

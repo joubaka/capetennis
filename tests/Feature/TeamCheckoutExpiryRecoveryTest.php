@@ -16,7 +16,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
     {
         $this->freezeTime();
         $order = $this->scenario(true);
-        $handoffAt = now()->subMinutes(6);
+        $handoffAt = now()->subMinutes(31);
         $order->forceFill(['payfast_handed_off_at' => $handoffAt, 'wallet_reserved' => 40, 'payfast_amount_due' => 450])->save();
         $route = [$order->team_id, $order->player_id, $order->event_id];
 
@@ -79,7 +79,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
             } else {
                 $order->team->update(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $otherEvent->id])->id]);
             }
-            $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(6)])->save();
+            $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(31)])->save();
             $before = $order->fresh()->getAttributes();
             Log::spy();
             $this->assertFalse(app(TeamPaymentService::class)->expireUnpaidCheckout($order));
@@ -98,7 +98,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
     {
         $this->freezeTime();
         $order = $this->scenario(true);
-        $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(6)])->save();
+        $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(31)])->save();
         DB::table('transactions_pf')->insert(['pf_payment_id' => 'PF-DO-NOT-LOG', 'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'amount_gross' => 490]);
         $before = $order->fresh()->getAttributes();
         Log::spy();
@@ -125,7 +125,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
     {
         $this->freezeTime();
         $order = $this->scenario();
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $checkoutUrl = route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]);
         $handoffUrl = route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]);
 
@@ -155,7 +155,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
     public function test_foreign_payer_and_mismatched_route_cannot_expire_or_handoff_an_order(): void
     {
         $order = $this->scenario();
-        $order->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(31)])->save();
         $before = $order->fresh()->getAttributes();
         $route = [$order->team_id, $order->player_id, $order->event_id];
         $this->actingAs(User::factory()->create())->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $order->id])->assertForbidden();
@@ -172,7 +172,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
     public function test_payment_evidence_blocks_expiry_and_does_not_offer_a_fresh_checkout(): void
     {
         $order = $this->scenario();
-        $order->forceFill(['created_at' => now()->subMinutes(6)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(31)])->save();
         \Illuminate\Support\Facades\DB::table('transactions_pf')->insert([
             'pf_payment_id' => 'PF-RECOVERY-EVIDENCE', 'custom_str5' => 'TeamOrder',
             'custom_int5' => $order->id, 'amount_gross' => 490,

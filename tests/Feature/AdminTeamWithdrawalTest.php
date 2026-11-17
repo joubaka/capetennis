@@ -240,10 +240,10 @@ class AdminTeamWithdrawalTest extends TestCase
             $this->postJson(route('backend.team.changePlayer'), $payload)->assertStatus($fee === 200 ? 404 : 422);
             $this->assertSame(1, TeamPaymentOrder::where('player_id', $payload['player_id'])->count());
             if ($fee > 256.50) {
-                $response->assertJsonPath('message', 'Player changed. R256.50 of the refund is reserved. The original payer must complete the remaining R28.50 through checkout within five minutes or restart. The replacement remains unpaid until payment completes.');
+                $response->assertJsonPath('message', 'Player changed. R256.50 of the refund is reserved. The original payer must complete the remaining R28.50 through checkout within 30 minutes or restart. The replacement remains unpaid until payment completes.');
                 $this->actingAs($s['actor'])->get(route('team.checkout', $order))->assertForbidden();
                 $this->actingAs($s['payer'])->get(route('team.checkout', $order))->assertOk()->assertViewHas('walletReserved', 256.50);
-                $this->travel(6)->minutes();
+                $this->travel(31)->minutes();
                 $this->assertTrue(app(\App\Domain\Payments\Services\TeamPaymentService::class)->expireUnpaidCheckout($order));
                 $this->assertEquals(0, $order->fresh()->wallet_reserved);
                 $this->assertFalse($order->fresh()->wallet_debited);

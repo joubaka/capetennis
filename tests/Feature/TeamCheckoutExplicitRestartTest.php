@@ -19,7 +19,7 @@ class TeamCheckoutExplicitRestartTest extends TestCase
         [$order] = $this->scenario();
         $payer = $order->user;
         $order->event->update(['entryFee' => 999]);
-        foreach ([now(), now()->subMinutes(4)] as $handoff) {
+        foreach ([now(), now()->subMinutes(29)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             $before = $order->fresh()->getAttributes();
             $this->actingAs($payer)->get(route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]))
@@ -38,11 +38,11 @@ class TeamCheckoutExplicitRestartTest extends TestCase
         }
     }
 
-    public function test_same_payer_reopening_at_five_minutes_gets_fresh_checkout_and_stale_form_cannot_pay(): void
+    public function test_same_payer_reopening_at_thirty_minutes_gets_fresh_checkout_and_stale_form_cannot_pay(): void
     {
         $this->freezeTime();
         [$order] = $this->scenario();
-        $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(30)])->save();
         $this->actingAs($order->user)
             ->get(route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]))
             ->assertOk()->assertViewHas('total', 490.0)

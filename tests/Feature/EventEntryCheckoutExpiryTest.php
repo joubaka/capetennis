@@ -21,14 +21,14 @@ class EventEntryCheckoutExpiryTest extends TestCase
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
     }
 
-    public function test_entries_view_expires_at_five_minutes_using_order_clock_and_is_idempotent(): void
+    public function test_entries_view_expires_at_thirty_minutes_using_order_clock_and_is_idempotent(): void
     {
         [$order, $entry, $event] = $this->checkout();
-        $order->forceFill(['created_at' => now()->subMinutes(4)->subSeconds(59)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(29)->subSeconds(59)])->save();
         DB::table('category_event_registrations')->where('id', $entry->id)->update(['created_at' => null]);
         $this->get(route('admin.events.entries.new', $event))->assertOk()
             ->assertSee('data-pending-checkout-id="'.$entry->id.'"', false)
-            ->assertSee('29 Oct 2026 11:55')->assertSee('Checkout created');
+            ->assertSee('29 Oct 2026 11:30')->assertSee('Checkout created');
         $this->assertSame('pending', $order->fresh()->status);
         $this->travel(1)->seconds();
         foreach ([1, 2] as $request) {
@@ -100,7 +100,7 @@ class EventEntryCheckoutExpiryTest extends TestCase
     {
         foreach (['handoff', 'paid', 'pending', 'verified'] as $protection) {
             [$order, $entry, $event] = $this->checkout();
-            if ($protection === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(4)->subSeconds(59)])->save();
+            if ($protection === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(29)->subSeconds(59)])->save();
             elseif ($protection === 'paid') $order->forceFill(['pay_status' => true])->save();
             else TrialPaymentProof::create(['order_id' => $order->id, 'event_id' => $event->id, 'payer_id' => $order->user_id,
                 'path' => 'private-proof.pdf', 'mime_type' => 'application/pdf', 'size' => 10, 'status' => $protection]);
@@ -201,7 +201,7 @@ class EventEntryCheckoutExpiryTest extends TestCase
             'user_id' => $payer->id, 'payment_status_id' => 0, 'status' => 'active']);
         $order = RegistrationOrder::create(['user_id' => $payer->id, 'total_fee' => 100, 'wallet_reserved' => 25,
             'payfast_amount_due' => 75, 'wallet_debited' => false, 'payfast_paid' => false, 'pay_status' => false, 'status' => 'pending']);
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         (new RegistrationOrderItems)->forceFill(['order_id' => $order->id, 'registration_id' => $registration->id,
             'category_event_id' => $category->id, 'player_id' => $player->id, 'user_id' => $payer->id, 'item_price' => 100])->save();
         return [$order, $entry, $event];

@@ -36,7 +36,7 @@ class MastersPaymentReconciliationTest extends TestCase
         $invitation->batch->event->update(['eventType' => $type]);
         $service = app(MastersInvitationService::class);
         $original = $service->accept($invitation, $payer);
-        $original->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $original->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $replacement = $service->accept($invitation->fresh(), $payer);
         $this->assertNotSame($original->id, $replacement->id);
         $this->assertSame('cancelled', $original->fresh()->status);

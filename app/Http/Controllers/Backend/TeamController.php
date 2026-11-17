@@ -500,7 +500,7 @@ class TeamController extends Controller
             $order = app(TeamPaymentService::class)->ensureOrder($user, $team, $player, $event, $total);
           }
         } catch (\Illuminate\Validation\ValidationException $exception) {
-          $busyMessage = 'Someone is busy processing a payment. Please wait five minutes before trying again.';
+          $busyMessage = 'Someone is busy processing a payment. Please wait '.\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES.' minutes before trying again.';
           if ($exception->errors() !== ['payment' => [$busyMessage]]) {
             throw $exception;
           }
@@ -1093,7 +1093,7 @@ class TeamController extends Controller
         $message = 'Player changed.';
         if ($order) {
           $message = $order->pay_status ? (($data['refund_action'] ?? null) === 'transfer' ? 'Player changed. The original payment paid the replacement entry.' : 'Player changed. The refund paid the replacement entry.')
-            : 'Player changed. R'.number_format($order->wallet_reserved, 2).' of the refund is reserved. The original payer must complete the remaining R'.number_format($order->payfast_amount_due, 2).' through checkout within five minutes or restart. The replacement remains unpaid until payment completes.';
+            : 'Player changed. R'.number_format($order->wallet_reserved, 2).' of the refund is reserved. The original payer must complete the remaining R'.number_format($order->payfast_amount_due, 2).' through checkout within '.\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES.' minutes or restart. The replacement remains unpaid until payment completes.';
         }
         return response()->json(['message' => $message]);
       }

@@ -33,12 +33,12 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $this->assertSame($replacement->id, app(TeamPaymentService::class)->ensureOrder($payer, $team, $player, $event, 200)->id);
     }
 
-    public function test_same_payer_continues_recent_handoff_then_restarts_at_five_minutes_and_paid_order_is_protected(): void
+    public function test_same_payer_continues_recent_handoff_then_restarts_at_thirty_minutes_and_paid_order_is_protected(): void
     {
         [$order, $event, $team, $player] = $this->scenario();
         $service = app(TeamPaymentService::class);
         $this->freezeTime();
-        foreach ([now(), now()->subMinutes(4)->subSeconds(59)] as $handoff) {
+        foreach ([now(), now()->subMinutes(29)->subSeconds(59)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             $before = $order->fresh()->getAttributes();
             $continued = $service->ensureOrder($order->user, $team, $player, $event, 999);
@@ -57,23 +57,23 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_recent_new_payer_checkout_is_protected_then_restarts_at_exactly_five_minutes(): void
+    public function test_recent_new_payer_checkout_is_protected_then_restarts_at_exactly_thirty_minutes(): void
     {
         $this->freezeTime();
         [$order, $event, $team, $player] = $this->scenario();
         $service = app(TeamPaymentService::class);
         $newPayer = User::factory()->create();
-        foreach ([now()->subMinutes(4)->subSeconds(59), now()->subMinutes(4)] as $handoff) {
+        foreach ([now()->subMinutes(29)->subSeconds(59), now()->subMinutes(29)] as $handoff) {
             $order->update(['payfast_handed_off_at' => $handoff]);
             try {
                 $service->ensureOrder($newPayer, $team, $player, $event, 200);
                 $this->fail('The protected handoff was restarted.');
             } catch (ValidationException $exception) {
-                $this->assertSame('Someone is busy processing a payment. Please wait five minutes before trying again.', $exception->errors()['payment'][0]);
+                $this->assertSame('Someone is busy processing a payment. Please wait 30 minutes before trying again.', $exception->errors()['payment'][0]);
             }
         }
         $this->assertDatabaseCount('team_payment_orders', 1);
-        $order->update(['payfast_handed_off_at' => now()->subMinutes(5)]);
+        $order->update(['payfast_handed_off_at' => now()->subMinutes(30)]);
         $replacement = $service->ensureOrder($newPayer, $team, $player, $event, 200);
         $this->assertNotSame($order->id, $replacement->id);
         $this->assertSame($newPayer->id, (int) $replacement->user_id);
@@ -113,7 +113,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
             app(TeamPaymentService::class)->ensureOrder(User::factory()->create(), $team, $player, $event, 200);
             $this->fail('An order with an existing provider receipt was restarted.');
         } catch (ValidationException $exception) {
-            $this->assertSame('This checkout has payment or settlement evidence and cannot be reset.', $exception->errors()['player_id'][0]);
+            $this->assertSame('This checkout contains payment evidence or an inconsistent lifecycle and cannot be reset automatically.', $exception->errors()['payment'][0]);
         }
         $this->assertDatabaseCount('team_payment_orders', 1);
         $this->assertSame(40.0, $order->fresh()->wallet_reserved);
@@ -223,7 +223,7 @@ class TeamCheckoutAutomaticRestartTest extends TestCase
         $order = TeamPaymentOrder::create(['user_id' => User::factory()->create()->id, 'team_id' => $team->id,
             'player_id' => $player->id, 'event_id' => $event->id, 'total_amount' => 200,
             'wallet_reserved' => 40, 'payfast_amount_due' => 160, 'pay_status' => false, 'payfast_paid' => false,
-            'wallet_debited' => false, 'payfast_handed_off_at' => now()->subMinutes(6)]);
+            'wallet_debited' => false, 'payfast_handed_off_at' => now()->subMinutes(31)]);
         return [$order, $event, $team, $player];
     }
 }

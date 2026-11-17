@@ -80,7 +80,7 @@
             <ul class="mb-0 mt-2">
               <li>Moving the full payment to the replacement waives the withdrawal fee.</li>
               <li>Wallet refunds and refunds used toward a replacement deduct the withdrawal fee.</li>
-              <li>The replacement stays unpaid until their entry and regional fees are covered. The original payer has five minutes to pay any shortfall before they need to restart checkout.</li>
+              <li>The replacement stays unpaid until their entry and regional fees are covered. The original payer has {{ \App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES }} minutes to pay any shortfall before they need to restart checkout.</li>
               <li>Unused or released funds stay in the original payer’s wallet. The original payment record stays with the payer and the original player.</li>
             </ul>
           </details>

@@ -41,6 +41,17 @@ use Illuminate\Validation\ValidationException;
  */
 class EntryService
 {
+    /** Explicit reviewed recovery of an ordinary unpaid entry removed by automatic expiry. */
+    public function restoreReconciledLateIndividualEntry(CategoryEventRegistration $entry, User $actor): void
+    {
+        abort_unless($actor->fresh()->hasRole('super-user') && DB::transactionLevel() > 0
+            && FinanceMutationScope::allows('individual_payfast_reconciliation'), 403);
+        abort_unless($entry->trashed() && $entry->status === 'active' && ! $entry->withdrawn_at && ! $entry->payment_status_id
+            && ! $entry->pf_transaction_id && ! $entry->wallet_transaction_id && ! $entry->refunded_at
+            && $entry->admin_payment_status !== 'paid', 422);
+        $entry->restore();
+    }
+
     /** Only the reviewed original-order reconciliation may restore this exact row. */
     public function restoreReconciledExpiredEntry(CategoryEventRegistration $entry, User $actor): void
     {

@@ -7,7 +7,7 @@ use Illuminate\Support\Carbon;
 
 class CheckoutExpiryPolicy
 {
-    public const MINUTES = 5;
+    public const MINUTES = 30;
 
     public static function cutoff(): Carbon
     {

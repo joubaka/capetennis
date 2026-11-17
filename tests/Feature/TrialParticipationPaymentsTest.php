@@ -15,7 +15,7 @@ class TrialParticipationPaymentsTest extends TestCase {
         $service = app(TrialParticipationService::class);
         $participation = $service->begin($this->slot, $this->payer);
         $oldOrder = $participation->order;
-        $oldOrder->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $oldOrder->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->assertTrue(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($oldOrder));
         $this->assertNull($participation->fresh()->order_id);
         $this->assertNull($participation->fresh()->payer_id);

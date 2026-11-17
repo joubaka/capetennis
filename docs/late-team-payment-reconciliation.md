@@ -1,10 +1,14 @@
 # Late team PayFast payments
 
 A verified payment can reach Cape Tennis after its checkout expires. Team
-checkouts retain the five-minute window measured from PayFast handoff (or
+checkouts use a 30-minute window measured from PayFast handoff (or
 creation before handoff). Expiry releases the reservation; a delayed receipt
 belongs to the original payer and must not automatically activate registration
 or debit released wallet funds.
+
+The 30-minute policy does not reopen a checkout that already expired under an
+earlier recorded window. Retain its immutable handoff/expiry evidence and use an
+explicit reviewed reconciliation for any verified original payment.
 
 ## Recognition and operator workflow
 

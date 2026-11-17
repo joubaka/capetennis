@@ -24,7 +24,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_first_open_starts_write_once_clock_without_rewriting_history_and_expires_at_five_minutes(): void
+    public function test_first_open_starts_write_once_clock_without_rewriting_history_and_expires_at_thirty_minutes(): void
     {
         $this->freezeTime();
         [$order, $owner] = $this->erroneousFreeOrder(300);
@@ -40,7 +40,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $this->actingAs($owner)->get($url)->assertOk();
         $startedAt = $recovery->fresh()->checkout_started_at;
         $this->assertSame(now()->toDateTimeString(), $startedAt->toDateTimeString());
-        $this->travel(299)->seconds();
+        $this->travel(1799)->seconds();
         $this->get($url)->assertOk();
         $this->assertTrue($recovery->fresh()->checkout_started_at->equalTo($startedAt));
         $this->travel(1)->seconds();
@@ -85,7 +85,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $this->actingAs($owner)->get($url)->assertOk();
         $handoff = $order->fresh()->payfast_handed_off_at->toIso8601String();
         $this->assertNotNull($recovery->fresh()->checkout_started_at);
-        $this->travel(5)->minutes();
+        $this->travel(30)->minutes();
         $this->assertTrue(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($order));
         $payload = ['custom_int5' => $order->id, 'custom_int4' => $owner->id, 'pf_payment_id' => 'PF-RECOVERY-EXPIRED',
             'payment_status' => 'COMPLETE', 'amount_gross' => '300.00', 'amount_fee' => '-10.00', 'amount_net' => '290.00'];
@@ -120,7 +120,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $audit = \Spatie\Activitylog\Models\Activity::where('subject_id', $order->id)->where('description', 'Recovery legacy item ownership resolved from verified order and entry')->firstOrFail();
         $this->assertArrayHasKey('original_user_id', $audit->properties->all());
         $this->assertNull($audit->properties['original_user_id']);
-        $this->travel(5)->minutes();
+        $this->travel(30)->minutes();
         $this->assertTrue(app(\App\Domain\Payments\Services\UnpaidCheckoutExpiryService::class)->expire($order));
         $this->assertSame('cancelled', $order->fresh()->status);
     }
@@ -142,17 +142,17 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_handoff_uses_its_own_five_minutes_and_refresh_does_not_reserve_again(): void
+    public function test_handoff_uses_its_own_thirty_minutes_and_refresh_does_not_reserve_again(): void
     {
         $this->freezeTime();
         [$order, $owner] = $this->erroneousFreeOrder(300);
         $recovery = app(RegistrationPaymentRecoveryService::class)->prepare($order, $owner->id);
         $url = URL::temporarySignedRoute('registration.recovery.show', now()->addHour(), ['recovery' => $recovery->id]);
         $response = $this->actingAs($owner)->get($url)->assertOk();
-        $this->travel(4)->minutes();
+        $this->travel(29)->minutes();
         $this->get($response->viewData('paymentUrl'))->assertOk()->assertViewHas('amount', 300.0);
         $handoff = $order->fresh()->payfast_handed_off_at;
-        $this->travel(4)->minutes();
+        $this->travel(29)->minutes();
         $this->get($url)->assertOk()->assertSee('awaiting confirmation')->assertDontSee('Continue to PayFast');
         $this->assertTrue($handoff->equalTo($order->fresh()->payfast_handed_off_at));
         $this->travel(1)->minutes();

@@ -40,7 +40,7 @@ class PayfastCheckoutRecoveryTest extends TestCase
     {
         $this->travelTo($this->order->payfast_handed_off_at->copy()->addMinute());
         $this->actingAs($this->payer)->get(route('registration.checkout', $this->order))
-            ->assertOk()->assertSee('check automatically five minutes')
+            ->assertOk()->assertSee('check automatically 30 minutes')->assertSee('1740000', false)
             ->assertDontSee('Install Cape Tennis');
         $this->travelBack();
 
@@ -49,8 +49,8 @@ class PayfastCheckoutRecoveryTest extends TestCase
         $this->saveSnapshot('pending', $response->getContent());
         $response
             ->assertOk()->assertSee('Payment pending')
-            ->assertSee('still can’t pay after five minutes')
-            ->assertDontSee('check automatically five minutes')
+            ->assertSee('still can’t pay after 30 minutes')
+            ->assertDontSee('check automatically 30 minutes')
             ->assertSee('Check payment status')->assertDontSee('id="hybridPayForm"', false);
         $this->post(route('registration.hybrid.pay'), ['custom_int5' => $this->order->id])
             ->assertRedirect(route('registration.checkout', $this->order));

@@ -17,7 +17,7 @@ use Tests\TestCase;
 
 class TeamPaymentRecoveryTest extends TestCase
 {
-    private const BUSY_MESSAGE = 'Someone is busy processing a payment. Please wait five minutes before trying again.';
+    private const BUSY_MESSAGE = 'Someone is busy processing a payment. Please wait 30 minutes before trying again.';
 
     protected function setUp(): void
     {

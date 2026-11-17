@@ -46,7 +46,8 @@ an incident. See the [PayFast ITN documentation](https://developers.payfast.co.z
 
 ## Expired original orders
 
-Keep the shared five-minute expiry policy and immutable handoff audit. A verified
+Keep the shared thirty-minute expiry policy and immutable handoff audit. Use each
+historical expiry audit's recorded window when reviewing older attempts. A verified
 late callback records the original payer's receipt for reconciliation; it must
 not automatically reopen an expired checkout or debit released reservations.
 The active-handoff recovery screen does not list expired orders whose current
@@ -56,7 +57,9 @@ Do not use a new manual-paid entry, the legacy import controller, or direct paid
 flags to represent recovery of the original PayFast order. The explicit recovery
 below is limited to on-time, full-PayFast Interpro payments. Other individual
 expired-checkout cases still require separate review. Verified provider evidence
-alone does not bypass lifecycle guards.
+alone does not bypass lifecycle guards. Ordinary single-player registrations
+with an existing verified late receipt have a separate explicit reviewed path in
+`docs/late-individual-payment-reconciliation.md`.
 
 ## Explicit on-time Interpro reconciliation
 

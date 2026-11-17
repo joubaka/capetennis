@@ -129,12 +129,27 @@ class IndividualPayfastReconciliationTest extends TestCase
         }
         foreach ([['gross' => '450.00junk'], ['fee' => '18.85'], ['gross' => '451.00', 'net' => '432.14'],
             ['provider_status' => 'pending'], ['currency' => 'USD'], ['source' => 'screenshot'], ['attested' => false],
-            ['paid_at' => now()->toIso8601String()], ['paid_at' => now()->subMinutes(9)->toIso8601String()],
+            ['paid_at' => now()->toIso8601String()], ['paid_at' => now()->subMinutes(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES + 3)->toIso8601String()],
             ['paid_at' => now()->subMinutes(2)->toIso8601String()],
             ['verified_at' => now()->subHour()->toIso8601String()]] as $bad) {
             $this->blocked(fn () => $this->runRecovery($order, $actor, array_replace($evidence, $bad)));
         }
         $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+    }
+
+    public function test_historical_five_minute_expiry_is_not_reinterpreted_as_thirty_minutes(): void
+    {
+        [$actor, $order, , , $evidence] = $this->scenario();
+        $expiry = \Spatie\Activitylog\Models\Activity::where('subject_type', $order->getMorphClass())
+            ->where('subject_id', $order->id)->where('description', 'Unpaid registration checkout expired; reservation released')->sole();
+        $expiry->properties = $expiry->properties->put('timeout_minutes', 5);
+        $expiry->save();
+        $handoff = \Spatie\Activitylog\Models\Activity::where('subject_type', $order->getMorphClass())
+            ->where('subject_id', $order->id)->where('description', 'Expired unresolved PayFast handoff retained for reconciliation')->sole();
+        $late = array_replace($evidence, ['paid_at' => \Carbon\CarbonImmutable::parse($handoff->properties['handed_off_at'])->addMinutes(20)->toIso8601String()]);
+        $this->blocked(fn () => $this->runRecovery($order, $actor, $late));
+        $this->assertFalse($this->runRecovery($order, $actor, $evidence)['applied']);
         $this->assertDatabaseCount('transactions_pf', 0);
     }
 
@@ -336,9 +351,9 @@ class IndividualPayfastReconciliationTest extends TestCase
         $this->travelTo(now()->setTime(0, 0));
         [$actor, $order, , , $evidence] = $this->scenario();
         $evidence = $this->reconfirmedEvidence($evidence);
-        foreach ([8, 6] as $minutesAgo) {
+        foreach ([\Carbon\CarbonImmutable::parse($evidence['paid_at'])->subMinute(), now()->startOfDay()->subSecond()] as $invalidReview) {
             $this->blocked(fn () => $this->runReconfirmed($order, $actor,
-                array_replace($evidence, ['operator_reviewed_at' => now()->subMinutes($minutesAgo)->toIso8601String()])));
+                array_replace($evidence, ['operator_reviewed_at' => $invalidReview->toIso8601String()])));
         }
         $this->assertFalse($order->fresh()->pay_status);
         $this->assertDatabaseCount('transactions_pf', 0);
@@ -384,6 +399,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later, $laterEntry] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         $laterBefore = [$later->getRawOriginal(), $laterEntry->getRawOriginal(), $later->items->sole()->getRawOriginal()];
         $before = $this->counts();
         $preview = $this->runRecovery($order, $actor, $evidence);
@@ -414,6 +430,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later, $entry] = $this->laterExpiredAttempt($order, true);
+        $evidence['verified_at'] = now()->toIso8601String();
         $this->assertNull($later->payfast_handed_off_at);
         $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
         $this->assertFalse($order->fresh()->pay_status);
@@ -425,6 +442,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later, $entry] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         $preview = $this->runRecovery($order, $actor, $evidence);
         $later->update(['status' => 'pending']);
         $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence, $preview['confirmation']));
@@ -442,6 +460,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later, $entry] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         $payer = $later->user_id;
         $later->update(['user_id' => User::factory()->create()->id]);
         $this->blocked(fn () => $this->runRecovery($order, $actor, $evidence));
@@ -459,6 +478,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         $receipt = new Transaction();
         $receipt->pf_payment_id = 'PF-LATER-CONFLICT';
         $receipt->custom_int5 = $later->id;
@@ -478,6 +498,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         \App\Models\RegistrationManualReceipt::create(['order_id' => $later->id, 'event_id' => $evidence['event_id'],
             'amount' => 450, 'method' => 'eft', 'reference' => 'REVIEWED-LATER-RECEIPT',
             'verified_by_user_id' => $actor->id, 'paid_at' => now()]);
@@ -492,6 +513,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     {
         [$actor, $order, , , $evidence] = $this->scenario();
         [$later] = $this->laterExpiredAttempt($order);
+        $evidence['verified_at'] = now()->toIso8601String();
         $history = AuditEvent::where('subject_type', $later->getMorphClass())->where('subject_id', $later->id)->get();
         $this->assertNotEmpty($history);
         DB::table('audit_events')->where('id', $history->first()->id)->update(['integrity_hash' => str_repeat('0', 64)]);
@@ -511,7 +533,7 @@ class IndividualPayfastReconciliationTest extends TestCase
         $later = app(InvitationService::class)->accept($invitation, $original->user);
         if ($handoff) $later = app(RegistrationPaymentService::class)->preparePayfastHandoff($later, $original->user, 0, (float) $later->total_fee);
         $entry = CategoryEventRegistration::where('registration_id', $later->items->sole()->registration_id)->sole();
-        $this->travel(7)->minutes();
+        $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES + 2)->minutes();
         $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($later->fresh()));
         return [$later->fresh('items'), $entry->fresh()];
     }
@@ -538,8 +560,12 @@ class IndividualPayfastReconciliationTest extends TestCase
 
     private function blocked(callable $action): void
     {
-        try { $action(); $this->fail('Unsafe reconciliation should be rejected.'); }
-        catch (ValidationException|\RuntimeException $exception) { $this->assertNotSame('', $exception->getMessage()); }
+        try { $action(); }
+        catch (ValidationException|\RuntimeException $exception) {
+            $this->assertNotSame('', $exception->getMessage());
+            return;
+        }
+        $this->fail('Unsafe reconciliation should be rejected.');
     }
 
     private function counts(): array
@@ -580,7 +606,7 @@ class IndividualPayfastReconciliationTest extends TestCase
         $order = app(RegistrationPaymentService::class)->preparePayfastHandoff($order, $payer, 0, 450);
         $entry = CategoryEventRegistration::where('registration_id', $order->items->sole()->registration_id)->sole();
         $paidAt = now()->addMinutes(2)->toIso8601String();
-        $this->travel(7)->minutes();
+        $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES + 2)->minutes();
         $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($order->fresh()));
         $evidence = ['source' => 'authenticated_payfast_dashboard', 'attested' => true, 'verified_by' => $actor->id,
             'verified_at' => now()->toIso8601String(), 'provider_status' => 'successful', 'currency' => 'ZAR',

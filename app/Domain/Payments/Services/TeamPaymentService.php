@@ -426,13 +426,13 @@ class TeamPaymentService
                                 'payment' => 'This checkout is currently being processed by PayFast. Please try again later.',
                             ]);
                         }
-                        if ($existing->payfast_handed_off_at->getTimestamp() < now()->subMinutes(5)->getTimestamp()) {
+                        if ($existing->payfast_handed_off_at->getTimestamp() < CheckoutExpiryPolicy::cutoff()->getTimestamp()) {
                             $this->logBlockedCheckout($existing, 'expired_handoff_not_safely_released', 'retry');
                             throw ValidationException::withMessages(['payment' => 'This checkout contains payment evidence or an inconsistent lifecycle and cannot be reset automatically.']);
                         }
-                        $this->logBlockedCheckout($existing, 'payfast_handoff_inside_five_minute_window', 'retry');
+                        $this->logBlockedCheckout($existing, 'payfast_handoff_inside_checkout_window', 'retry');
                         throw ValidationException::withMessages([
-                            'payment' => 'Someone is busy processing a payment. Please wait five minutes before trying again.',
+                            'payment' => 'Someone is busy processing a payment. Please wait '.CheckoutExpiryPolicy::MINUTES.' minutes before trying again.',
                         ]);
                     }
                     if ((int) ($existing->pay_status ?? 0) !== 1 && !(bool) ($existing->payfast_paid ?? false)) {

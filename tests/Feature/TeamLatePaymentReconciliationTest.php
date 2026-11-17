@@ -309,7 +309,7 @@ class TeamLatePaymentReconciliationTest extends TestCase
         TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
         $order = TeamPaymentOrder::create(['user_id' => User::factory()->create()->id, 'team_id' => $team->id, 'event_id' => $event->id,
             'player_id' => $player->id, 'total_amount' => 490, 'wallet_reserved' => 0, 'payfast_amount_due' => 490,
-            'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false, 'payfast_handed_off_at' => now()->subMinutes(6)]);
+            'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false, 'payfast_handed_off_at' => now()->subMinutes(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES + 1)]);
         $this->assertTrue(app(TeamPaymentService::class)->expireUnpaidCheckout($order));
         $this->assertTrue(app(ExpiredPayfastHandoffService::class)->recordReceipt($order, $this->receipt($order)));
         $actor = User::factory()->create();

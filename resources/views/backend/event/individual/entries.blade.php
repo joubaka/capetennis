@@ -317,7 +317,7 @@
       <div class="card-header bg-label-warning">
         <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts and payment review</h3>
         <p class="small mb-0">Canonical unpaid checkout drafts are shown separately from confirmed entries. Rows with recorded payment evidence or inconsistent checkout records are labelled for review. Private collection notes do not change their payment state.</p>
-        <p class="small mb-0 mt-1">Eligible unpaid checkouts expire after five minutes from PayFast handoff, when present, or checkout creation. Paid checkouts and pending or verified EFT proof are protected. Entries needing review remain visible.</p>
+        <p class="small mb-0 mt-1">Eligible unpaid checkouts expire after {{ \App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES }} minutes from PayFast handoff, when present, or checkout creation. Paid checkouts and pending or verified EFT proof are protected. Entries needing review remain visible.</p>
       </div>
       <div class="table-responsive">
         <table class="table mb-0">

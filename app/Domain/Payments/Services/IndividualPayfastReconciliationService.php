@@ -70,8 +70,10 @@ final class IndividualPayfastReconciliationService
             }
             $paidAt = CarbonImmutable::parse($evidence['paid_at'])->setTimezone(config('app.timezone'));
             $handedAt = CarbonImmutable::parse($snapshot['handed_off_at']);
-            $this->require($paidAt->gte($handedAt) && $paidAt->lt($handedAt->addMinutes(CheckoutExpiryPolicy::MINUTES))
-                && $paidAt->lt($expiry->created_at), 'Only settlement completed inside the original five-minute handoff is supported.');
+            $historicalMinutes = (int) ($expiry->properties['timeout_minutes'] ?? 0);
+            $this->require(in_array($historicalMinutes, [5, 30], true), 'The original recorded checkout window is required.');
+            $this->require($paidAt->gte($handedAt) && $paidAt->lt($handedAt->addMinutes($historicalMinutes))
+                && $paidAt->lt($expiry->created_at), 'Only settlement completed inside the original recorded handoff window is supported.');
             $this->require($this->cents($snapshot['expected_provider_amount']) === $this->cents($evidence['gross'])
                 && $this->cents($item->item_price) === $this->cents($evidence['gross'])
                 && $this->cents($order->total_fee) === $this->cents($evidence['gross'])
@@ -209,9 +211,9 @@ final class IndividualPayfastReconciliationService
             $expiry = $activities->count() === 1 ? $activities->sole() : null;
             $this->require($expiry && $expiry->description === 'Unpaid registration checkout expired; reservation released'
                 && (int) $expiry->properties['payer_id'] === (int) $original->user_id
-                && (int) $expiry->properties['timeout_minutes'] === CheckoutExpiryPolicy::MINUTES
+                && in_array((int) $expiry->properties['timeout_minutes'], [5, 30], true)
                 && $other->updated_at->format('Y-m-d H:i:s') === $expiry->created_at->format('Y-m-d H:i:s')
-                && $expiry->created_at->gte($other->created_at->copy()->addMinutes(CheckoutExpiryPolicy::MINUTES)),
+                && $expiry->created_at->gte($other->created_at->copy()->addMinutes((int) $expiry->properties['timeout_minutes'])),
                 'Another attempt needs one unchanged canonical expiry and no handoff, release or other activity history.');
             $history = AuditEvent::where('subject_type', $other->getMorphClass())->where('subject_id', $other->id)
                 ->orderBy('id')->lockForUpdate()->get();

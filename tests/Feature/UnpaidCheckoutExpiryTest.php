@@ -12,11 +12,35 @@ class UnpaidCheckoutExpiryTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_exact_five_minute_boundary_releases_only_draft_and_retains_amounts_and_audit(): void
+    public function test_registration_and_team_checkouts_remain_reserved_at_five_minutes_until_the_exact_thirty_minute_boundary(): void
+    {
+        $this->freezeTime();
+        [$order, $entry] = $this->registration();
+        $teamModel = Team::factory()->create(['category_event_id' => $entry->category_event_id]);
+        $team = TeamPaymentOrder::create(['user_id' => $order->user_id, 'team_id' => $teamModel->id, 'event_id' => $entry->categoryEvent->event_id,
+            'player_id' => $order->items->sole()->player_id, 'total_amount' => 100, 'wallet_reserved' => 0,
+            'payfast_amount_due' => 100, 'pay_status' => false, 'payfast_paid' => false, 'wallet_debited' => false]);
+        $this->travel(5)->minutes();
+        $expiry = app(UnpaidCheckoutExpiryService::class);
+        $this->assertFalse($expiry->expire($order));
+        $this->assertFalse(CheckoutExpiryPolicy::isExpired($team));
+        $this->assertSame(25.0, $order->fresh()->wallet_reserved);
+        $this->assertNull($entry->fresh()->deleted_at);
+        $this->travel(24)->minutes();
+        $this->travel(59)->seconds();
+        $this->assertFalse(CheckoutExpiryPolicy::isExpired($order->fresh()));
+        $this->assertFalse(CheckoutExpiryPolicy::isExpired($team->fresh()));
+        $this->travel(1)->seconds();
+        $this->assertTrue(CheckoutExpiryPolicy::isExpired($order->fresh()));
+        $this->assertTrue(CheckoutExpiryPolicy::isExpired($team->fresh()));
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_exact_thirty_minute_boundary_releases_only_draft_and_retains_amounts_and_audit(): void
     {
         $this->travelTo(Carbon::parse('2026-10-14 12:00:00'));
         [$order, $entry] = $this->registration();
-        $order->forceFill(['created_at' => now()->subMinutes(4)->subSeconds(59)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(29)->subSeconds(59)])->save();
         $service = app(UnpaidCheckoutExpiryService::class);
         $this->assertFalse($service->expire($order));
         $this->travel(1)->seconds();
@@ -38,9 +62,9 @@ class UnpaidCheckoutExpiryTest extends TestCase
     {
         foreach (['pay_status', 'payfast_paid', 'wallet_debited', 'handoff', 'provider_id', 'entry_paid', 'proof', 'receipt'] as $evidence) {
             [$order, $entry, $event] = $this->registration();
-            $order->forceFill(['created_at' => now()->subMinutes(10), 'payfast_handed_off_at' => now()->subMinutes(9)])->save();
+            $order->forceFill(['created_at' => now()->subMinutes(35), 'payfast_handed_off_at' => now()->subMinutes(34)])->save();
             if (in_array($evidence, ['pay_status', 'payfast_paid', 'wallet_debited'], true)) $order->forceFill([$evidence => true])->save();
-            if ($evidence === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(4)])->save();
+            if ($evidence === 'handoff') $order->forceFill(['payfast_handed_off_at' => now()->subMinutes(29)])->save();
             if ($evidence === 'provider_id') $order->forceFill(['payfast_pf_payment_id' => 'PF-EXACT'])->save();
             if ($evidence === 'entry_paid') $entry->forceFill(['payment_status_id' => 1])->save();
             if ($evidence === 'proof') \App\Models\TrialPaymentProof::create(['order_id' => $order->id, 'event_id' => $event->id, 'payer_id' => $order->user_id, 'path' => 'private-proof.pdf', 'mime_type' => 'application/pdf', 'size' => 10]);
@@ -56,7 +80,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
     public function test_checkout_request_enforces_owner_before_lazy_expiry(): void
     {
         [$order, $entry] = $this->registration();
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->withoutMiddleware([\App\Http\Middleware\EnsureAgreementAccepted::class, \App\Http\Middleware\EnsurePlayerProfileUpdated::class]);
         $this->actingAs(User::factory()->create())->get(route('registration.checkout', $order))->assertForbidden();
         $this->assertSame(25.0, $order->fresh()->wallet_reserved);
@@ -71,8 +95,8 @@ class UnpaidCheckoutExpiryTest extends TestCase
         [$order, $entry, $event, $category, $player] = $this->registration();
         $nomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $category->id, 'player_id' => $player->id]);
         $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'status' => 'draft', 'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $order->user_id]);
-        $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $category->id, 'player_id' => $player->id, 'nomination_id' => $nomination->id, 'order_id' => $order->id, 'registration_id' => $entry->registration_id, 'status' => 'accepted_pending_payment', 'accepted_at' => now()->subMinutes(5)]);
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $invitation = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $category->id, 'player_id' => $player->id, 'nomination_id' => $nomination->id, 'order_id' => $order->id, 'registration_id' => $entry->registration_id, 'status' => 'accepted_pending_payment', 'accepted_at' => now()->subMinutes(30)]);
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($order));
         $this->assertSame('sent', $invitation->fresh()->status);
         $this->assertNull($invitation->fresh()->order_id);
@@ -88,7 +112,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $payer = User::factory()->create();
         $slot = TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
         $order = TeamPaymentOrder::create(['user_id' => $payer->id, 'team_id' => $team->id, 'event_id' => $event->id, 'player_id' => $player->id, 'total_amount' => 123.45, 'wallet_reserved' => 23.45, 'payfast_amount_due' => 100, 'pay_status' => false, 'wallet_debited' => false, 'payfast_paid' => false]);
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($order));
         $this->assertFalse(app(UnpaidCheckoutExpiryService::class)->expire($order));
         $this->assertNotNull($order->fresh()->withdrawn_at);
@@ -102,22 +126,22 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
-    public function test_command_is_preview_only_by_default_and_shared_policy_is_five_minutes(): void
+    public function test_command_is_preview_only_by_default_and_shared_policy_is_thirty_minutes(): void
     {
         [$order] = $this->registration();
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->artisan('registrations:expire-checkouts')->assertSuccessful();
         $this->assertSame(25.0, $order->fresh()->wallet_reserved);
         $this->artisan('registrations:expire-checkouts', ['--apply' => true])->assertSuccessful();
         $this->assertSame('cancelled', $order->fresh()->status);
-        $this->assertSame(5, CheckoutExpiryPolicy::MINUTES);
-        $this->assertSame(5, config('masters.pending_payment_minutes'));
+        $this->assertSame(30, CheckoutExpiryPolicy::MINUTES);
+        $this->assertSame(30, config('masters.pending_payment_minutes'));
     }
 
     public function test_tampered_master_link_and_wrong_payer_cannot_release_checkout(): void
     {
         [$order, $entry, $event, $category, $player] = $this->registration();
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $otherEvent = Event::factory()->create();
         $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id]);
         $batch = \App\Models\MastersInvitationBatch::create(['event_id' => $otherEvent->id, 'series_id' => 1, 'ranking_run_id' => 'expiry-test', 'top_x' => 8, 'status' => 'sent']);
@@ -137,7 +161,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
     public function test_cancelled_draft_cannot_be_reserved_handed_off_or_paid_from_stale_models(): void
     {
         [$order] = $this->registration();
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($order));
         $payments = app(RegistrationPaymentService::class);
         foreach ([fn () => $payments->reservePayment($order, 100, 0), fn () => $payments->finalizeWalletPayment($order), fn () => $payments->preparePayfastHandoff($order, $order->user, 25, 75)] as $action) {
@@ -157,7 +181,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $this->actingAs($order->user)->post(route('pay.now.payfast'), ['player' => [$player->id], 'category' => [$category->id], 'terms_accepted' => '1'])
             ->assertRedirect(route('registration.checkout', $order));
         $this->assertDatabaseCount('registration_orders', 1);
-        $order->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
         config(['services.payfast.merchant_id' => 'test-merchant', 'services.payfast.merchant_key' => 'test-key']);
         $this->post(route('pay.now.payfast'), ['player' => [$player->id], 'category' => [$category->id], 'terms_accepted' => '1'])->assertSuccessful();
         $this->assertSame('cancelled', $order->fresh()->status);
@@ -234,7 +258,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $firstBacklogId = (int) RegistrationOrder::min('id');
         \Illuminate\Support\Facades\Cache::forget('checkout-expiry:registration:backlog-cursor');
         [$recent] = $this->registration();
-        $recent->forceFill(['created_at' => now()->subMinutes(5)])->save();
+        $recent->forceFill(['created_at' => now()->subMinutes(30)])->save();
         $service = app(UnpaidCheckoutExpiryService::class);
         $first = $service->expireAll();
         $this->assertSame(1, $first['registration']);
@@ -253,7 +277,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
     public function test_expired_handoff_releases_entry_and_quarantines_exact_delayed_receipt_idempotently(): void
     {
         [$order, $entry, $event, $category, $player] = $this->registration();
-        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(4)])->save();
+        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(29)])->save();
         $service = app(UnpaidCheckoutExpiryService::class);
         $this->assertFalse($service->expire($order));
         $this->travel(1)->minutes();
@@ -296,7 +320,7 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $order = TeamPaymentOrder::create(['user_id' => $payer->id, 'team_id' => $team->id, 'event_id' => $event->id,
             'player_id' => $player->id, 'total_amount' => 450, 'wallet_reserved' => 50, 'payfast_amount_due' => 400,
             'pay_status' => false, 'wallet_debited' => false, 'payfast_paid' => false]);
-        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(5)])->save();
+        $order->forceFill(['created_at' => now()->subDay(), 'payfast_handed_off_at' => now()->subMinutes(30)])->save();
         $this->assertSame(1, app(UnpaidCheckoutExpiryService::class)->expireAll()['team']);
         $data = ['payment_status' => 'COMPLETE', 'pf_payment_id' => 'EXPIRED-TEAM-123', 'amount_gross' => '400.00',
             'custom_str5' => 'TeamOrder', 'custom_int5' => $order->id, 'custom_int4' => $payer->id,

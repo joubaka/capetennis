@@ -29,7 +29,7 @@ class UnpaidCheckoutExpiryService
         $outsideWindow = $current && CheckoutExpiryPolicy::isExpired($current) && !$current->pay_status
             && !$current->payfast_paid && !$current->wallet_debited && !$current->payfast_handed_off_at && !$pendingProof;
         if ($expired || !$current || $current->status === 'cancelled' || $current->withdrawn_at || $outsideWindow) {
-            throw ValidationException::withMessages(['payment' => 'This unpaid checkout expired after five minutes. Start registration again. No wallet funds were deducted.']);
+            throw ValidationException::withMessages(['payment' => 'This unpaid checkout has expired. Start registration again. No wallet funds were deducted.']);
         }
     }
 
@@ -39,10 +39,11 @@ class UnpaidCheckoutExpiryService
         foreach (['registration' => RegistrationOrder::class, 'team' => TeamPaymentOrder::class] as $kind => $model) {
             // Prioritise newly expired drafts; review the older backlog fairly
             // without rescanning every historical order each minute.
-            $recent = $this->candidateQuery($kind)->where('created_at', '>', now()->subMinutes(15))->orderBy('id')->limit(250)->get();
+            $recentBoundary = now()->subMinutes(CheckoutExpiryPolicy::MINUTES + 10);
+            $recent = $this->candidateQuery($kind)->where('created_at', '>', $recentBoundary)->orderBy('id')->limit(250)->get();
             $cursorKey = 'checkout-expiry:'.$kind.':backlog-cursor';
             $cursor = (int) Cache::get($cursorKey, 0);
-            $backlog = $this->candidateQuery($kind)->where('created_at', '<=', now()->subMinutes(15));
+            $backlog = $this->candidateQuery($kind)->where('created_at', '<=', $recentBoundary);
             $older = (clone $backlog)->where('id', '>', $cursor)->orderBy('id')->limit(250)->get();
             if ($older->isEmpty() && $cursor > 0) $older = $backlog->orderBy('id')->limit(250)->get();
             foreach ($recent->concat($older) as $candidate) {

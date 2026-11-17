@@ -57,7 +57,8 @@ class ExpiredPayfastHandoffService
             $individualReconciled = ! $team && $locked->status === 'completed' && $locked->pay_status && $locked->payfast_paid
                 && (string) $locked->payfast_pf_payment_id === $providerId
                 && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
-                    ->where('description', IndividualPayfastReconciliationService::AUDIT)->where('properties->pf_payment_id', $providerId)->exists();
+                    ->whereIn('description', [IndividualPayfastReconciliationService::AUDIT, LateIndividualPayfastReconciliationService::AUDIT])
+                    ->where('properties->pf_payment_id', $providerId)->exists();
             $reconciled = $individualReconciled || ($team && ! $locked->withdrawn_at && $locked->pay_status && $locked->payfast_paid
                 && $locked->collection_status === 'paid' && (string) $locked->payfast_pf_payment_id === $providerId
                 && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
@@ -86,10 +87,12 @@ class ExpiredPayfastHandoffService
                 throw new \RuntimeException('PayFast receipt already belongs to another payment.');
             }
             if ($reconciled) {
-                if (! $existing || (int) $existing->event_id !== (int) $snapshot['event_id']
+                if (! $existing || $existing->is_test || (int) $existing->event_id !== (int) $snapshot['event_id']
                     || (int) $existing->player_id !== (int) $snapshot['player_id']
                     || (int) $existing->custom_int2 !== (int) $snapshot['player_id']
-                    || (int) $existing->custom_int3 !== (int) $snapshot['event_id']) {
+                    || (int) $existing->custom_int3 !== (int) $snapshot['event_id']
+                    || (! $team && ((int) $existing->custom_int1 !== (int) $snapshot['category_event_id']
+                        || (int) $existing->category_event_id !== (int) $snapshot['category_event_id']))) {
                     throw new \RuntimeException('Reconciled PayFast receipt is inconsistent.');
                 }
                 return true;
