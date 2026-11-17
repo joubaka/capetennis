@@ -298,6 +298,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   processing and saved state; a missing callback log is not proof of deadlock.
   See `docs/payfast-registration-confirmation.md`.
 
+- Callback URL construction uses `PayfastCallbackUrl` and deployment
+  configuration before signing, never the checkout request origin. The first
+  global `PayfastCallbackTelemetry` records bounded unverified file ingress and
+  observed/inferred outcomes before session/audit failures without weakening
+  canonical financial auditing. Neither that telemetry nor recovery proves
+  delivery outside Laravel. Verify `PayfastCallbackTransportTest` and successful
+  multi-player cases in `RegistrationPayfastConfirmationTest`; see the same
+  confirmation guide. Configured ITN fee estimates remain distinct from actual
+  authenticated-dashboard recovery amounts.
+
 - The explicit individual PayFast reconciliation command is limited to an
   original zero-wallet, single-player Interpro checkout with independently
   operator-verified on-time settlement followed by canonical automatic expiry.

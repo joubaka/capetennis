@@ -24,6 +24,41 @@ the original reference and amount and must not add another receipt or debit.
 
 ## Distinguish delivery from processing
 
+### Callback URL and ingress boundary
+
+`PayfastCallbackUrl` builds each known callback endpoint from deployment
+configuration before the existing PayFast form signature is calculated. A browser
+request's host or scheme must not change the callback destination. The individual
+and team overrides remain endpoint-scoped; other flows retain their own endpoint.
+Production destinations require HTTPS and reject credentials, query strings,
+fragments and wrong endpoint paths. Review configured origins before release.
+
+`PayfastCallbackTelemetry`, first in the global middleware stack, records bounded
+file-only ingress and outcome observations for exact POST callback paths before
+maintenance, session or canonical request auditing can fail. Provider/order IDs
+are explicitly labelled unverified. Never log the raw body, signatures, merchant
+keys, passphrases, contact details or IP addresses in this transport channel.
+Only the existing form parameter bag is inspected; do not decode JSON bodies
+before request-size validation. The dedicated daily log retains fourteen days;
+rotation bounds retained days, not incoming volume within one day. Monitor disk
+and request volume without weakening financial verification or auditing.
+Returned-response status is observed; exception status is only inferred before
+Laravel renders its response. Logging failure cannot change a financial response
+or swallow its original exception. Canonical auditing remains fail-closed, and
+signature, COMPLETE, amount and idempotency checks remain mandatory.
+
+An ingress line proves PHP middleware entry, not signature validity or settlement.
+No ingress line does not establish whether PayFast sent the notification: retain
+provider delivery, DNS/TLS, hosting/WAF and origin access evidence. A provider
+HTTP 200 without a matching application result needs its response body checked.
+The browser return and a longer expiry window cannot replace a missing ITN.
+
+Successful signed two- and three-player basket regressions must prove every
+original entry settles, one provider receipt and one reserved-wallet debit are
+created, transaction failure rolls back the whole basket, and replay is harmless.
+Normal ITN receipt fee projections remain configured estimates; authenticated
+dashboard recovery records actual observed provider fee/net separately.
+
 Trace one exact provider reference and original order through:
 
 1. Independently authenticated PayFast transaction details, including amount,

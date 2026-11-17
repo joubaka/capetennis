@@ -100,7 +100,7 @@
           @php
             $returnUrl = route('event.success', ['id' => $event->id]);
             $cancelUrl = $cancelUrl ?? route('team.payment.payfast', ['team' => $team->id, 'player' => $player->id, 'event' => $event->id]);
-            $notifyUrl = route('notify.team');
+            $notifyUrl = \App\Support\PayfastCallbackUrl::for('notify_team');
           @endphp
 
           @if($payfastDue > 0)

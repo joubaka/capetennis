@@ -80,6 +80,105 @@ class RegistrationPayfastConfirmationTest extends TestCase
         Events::assertNotDispatched(PaymentCompleted::class);
     }
 
+    #[\PHPUnit\Framework\Attributes\DataProvider('cartSizes')]
+    public function test_signed_multi_item_payment_settles_every_entry_once_and_rolls_back_as_one_unit(int $size): void
+    {
+        [$order, $payload] = $this->scenario();
+        $anchor = $order->items()->first();
+        $category = $anchor->category_event;
+        $category->event->forceFill(['cape_tennis_fee' => 15])->save();
+        for ($index = 1; $index < $size; $index++) {
+            $player = Player::factory()->create();
+            $registration = Registration::create([]);
+            $registration->players()->attach($player);
+            $registration->categoryEvents()->attach($category, ['user_id' => $order->user_id, 'payment_status_id' => 0, 'status' => 'active']);
+            (new RegistrationOrderItems())->forceFill(['order_id' => $order->id, 'registration_id' => $registration->id,
+                'player_id' => $player->id, 'category_event_id' => $category->id, 'item_price' => 200])->save();
+        }
+        $gross = $size * 200 - 40;
+        $order->update(['total_fee' => $size * 200, 'payfast_amount_due' => $gross]);
+        $payload = array_replace($payload, ['amount_gross' => number_format($gross, 2, '.', ''),
+            'amount_fee' => $size === 2 ? '-20.70' : '-35.42',
+            'amount_net' => number_format($gross - ($size === 2 ? 20.70 : 35.42), 2, '.', '')]);
+        $this->recorder(3);
+        $this->sendCallback($payload)->assertStatus(503);
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertSame($size, \App\Models\CategoryEventRegistration::where('payment_status_id', 0)->count());
+        Events::assertNotDispatched(PaymentCompleted::class);
+
+        $this->recorder(0);
+        $this->sendCallback($payload)->assertOk();
+        $this->sendCallback($payload)->assertOk();
+        $this->assertTrue($order->fresh()->pay_status);
+        $this->assertDatabaseCount('registration_orders', 1);
+        $this->assertDatabaseCount('registration_order_items', $size);
+        $this->assertDatabaseCount('registrations', $size);
+        $this->assertDatabaseCount('category_event_registrations', $size);
+        $this->assertSame($size, \App\Models\CategoryEventRegistration::where('payment_status_id', 1)->where('status', 'active')->count());
+        $this->assertDatabaseCount('transactions_pf', 1);
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $receipt = Transaction::sole();
+        $this->assertSame((float) $gross, (float) $receipt->amount_gross);
+        $this->assertSame((float) (15 * $size), (float) $receipt->cape_tennis_fee);
+        // Canonical receipts currently use the configured fee estimate, independently of the signed provider fee.
+        $estimatedFee = \App\Models\SiteSetting::calculatePayfastFee($gross);
+        $this->assertSame((float) $estimatedFee, (float) $receipt->amount_fee);
+        $this->assertSame(round($gross - $estimatedFee, 2), (float) $receipt->amount_net);
+        Events::assertDispatchedTimes(PaymentCompleted::class, 1);
+    }
+
+    public static function cartSizes(): array
+    {
+        return [[2], [3]];
+    }
+
+    public function test_transport_records_critical_audit_failure_without_settling_a_valid_callback(): void
+    {
+        [$order, $payload] = $this->scenario();
+        config(['audit.enabled' => true]);
+        $observer = new class extends \App\Http\Middleware\PayfastCallbackTelemetry {
+            public array $records = [];
+            protected function write(string $message, array $context): void { $this->records[] = [$message, $context]; }
+        };
+        $this->app->instance(\App\Http\Middleware\PayfastCallbackTelemetry::class, $observer);
+        $this->mock(\App\Support\Audit\AuditWriter::class, function ($mock) {
+            $mock->shouldReceive('record')->andThrow(new \RuntimeException('audit unavailable'));
+        });
+        $this->sendCallback($payload)->assertStatus(500);
+        $this->assertCount(2, $observer->records);
+        $this->assertSame('payfast.callback.ingress', $observer->records[0][0]);
+        $this->assertSame(500, $observer->records[1][1]['http_status']);
+        $this->assertFalse($order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseHas('category_event_registrations', ['registration_id' => $order->items->first()->registration_id, 'payment_status_id' => 0]);
+        Events::assertNotDispatched(PaymentCompleted::class);
+    }
+
+    public function test_rendered_payment_form_signs_the_canonical_callback_url(): void
+    {
+        [$order] = $this->scenario();
+        config(['app.url' => 'https://canonical.example', 'services.payfast.notify_url' => '/notify']);
+        $this->actingAs($order->user);
+        $payfast = new \App\Services\Payfast();
+        $html = view('frontend.payfast.pay_now', [
+            'payfast' => $payfast, 'amount' => $order->payfast_amount_due, 'orderId' => $order->id,
+            'return_url' => 'https://browser.example/return', 'cancel_url' => 'https://browser.example/cancel',
+            'notify_url' => \App\Support\PayfastCallbackUrl::for('notify'),
+        ])->render();
+        preg_match_all('/<input type="hidden" name="([^"]+)" value="([^"]*)">/', $html, $matches, PREG_SET_ORDER);
+        $fields = [];
+        foreach ($matches as $match) $fields[$match[1]] = html_entity_decode($match[2], ENT_QUOTES);
+        $signature = $fields['signature'];
+        unset($fields['signature']);
+        $this->assertSame('https://canonical.example/notify', $fields['notify_url']);
+        $this->assertSame($payfast->generateFormSignature($fields), $signature);
+        $fields['notify_url'] = 'https://browser.example/notify';
+        $this->assertNotSame($payfast->generateFormSignature($fields), $signature);
+    }
+
     public function test_invalid_signature_status_identity_and_amount_do_not_settle(): void
     {
         [$order, $payload] = $this->scenario();

@@ -27,7 +27,7 @@ class TrialParticipationController extends Controller {
         if (blank($payfast->id) || blank($payfast->key)) { throw \Illuminate\Validation\ValidationException::withMessages(['payment' => 'PayFast is temporarily unavailable. Your checkout remains available for EFT or another attempt.']); }
         $payfast->setEvent($event);$payfast->setPlayerInfo($participation->player);$payfast->setPayer(request()->user());
         $payfast->custom_int4=request()->user()->id;$payfast->custom_int5=$order->id;$payfast->custom_str5='TeamOrder';$payfast->amount=number_format((float)$order->payfast_amount_due,2,'.','');
-        $payfast->item_name=$event->name.' — regional team participation';$payfast->setTeamNotifyUrl(route('notify.team'));$payfast->setReturnUrl(route('events.show',$event));$payfast->setCancelUrl(route('interprovincial-trials.participation.show',[$event,$participation]));
+        $payfast->item_name=$event->name.' — regional team participation';$payfast->setTeamNotifyUrl(\App\Support\PayfastCallbackUrl::for('notify_team'));$payfast->setReturnUrl(route('events.show',$event));$payfast->setCancelUrl(route('interprovincial-trials.participation.show',[$event,$participation]));
         $payfast->getForm();
         $order=$payments->recordPayfastHandoff($order,request()->user(),(float)$order->payfast_amount_due);
         return view('frontend.interprovincial-trials.participation',compact('event','participation','order','payfast')+['programme'=>TrialProgramme::where('event_id',$event->id)->first(),'proofs'=>collect()]);

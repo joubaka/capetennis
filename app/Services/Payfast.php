@@ -85,8 +85,8 @@ class Payfast
     $this->payfast_key  = config('services.payfast.merchant_key');
     $this->sandbox_key  = config('services.payfast.sandbox_key');
 
-    $this->notify_url       = config('app.url') . '/notify';
-    $this->notify_url_team  = config('app.url') . '/notify_team';
+    $this->notify_url       = \App\Support\PayfastCallbackUrl::for('notify');
+    $this->notify_url_team  = \App\Support\PayfastCallbackUrl::for('notify_team');
     $this->cancel_url       = config('app.url') . '/cancel';
     $this->return_url       = config('app.url');
 

@@ -74,7 +74,7 @@ class ClothingOrderController extends Controller
     if (app()->environment(['local', 'testing'])) $payfast->setMode(0);
     $payfast->setReturnUrl(route('events.show', $event));
     $payfast->setCancelUrl(route('events.show', $event));
-    $payfast->setNotifyUrl(route('notify.clothing'));
+    $payfast->setNotifyUrl(\App\Support\PayfastCallbackUrl::for('notifyClothing'));
     $payfast->setItem('Clothing Order #' . $order->id);
     $payfast->setAmount((float) $order->payfast_amount_due);
     $payfast->custom_int1 = $team->id;

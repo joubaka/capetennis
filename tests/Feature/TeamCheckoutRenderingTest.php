@@ -14,6 +14,8 @@ class TeamCheckoutRenderingTest extends TestCase
     {
         $order = $this->order();
         $original = $order->fresh()->getAttributes();
+        config(['app.url' => 'https://canonical.example', 'services.payfast.notify_url' => 'https://individual.example/notify',
+            'services.payfast.notify_team_url' => '/notify_team']);
 
         foreach ([1, 2] as $visit) {
             $this->actingAs($order->user)->get(route('team.checkout', $order))
@@ -25,6 +27,8 @@ class TeamCheckoutRenderingTest extends TestCase
                 ->assertViewHas('autoSubmitPayfast', false)
                 ->assertSee('R490.00')
                 ->assertSee('R450.00')
+                ->assertSee('name="notify_url" value="https://canonical.example/notify_team"', false)
+                ->assertDontSee('https://individual.example/notify', false)
                 ->assertSee(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), false)
                 ->assertDontSee("document.getElementById('teamPayfastForm').submit();", false);
         }

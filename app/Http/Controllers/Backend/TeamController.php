@@ -605,7 +605,7 @@ class TeamController extends Controller
 
         // Configure urls (notify team, cancel and return)
         // notify team ITN route
-        $payfast->setTeamNotifyUrl(route('notify.team'));
+        $payfast->setTeamNotifyUrl(\App\Support\PayfastCallbackUrl::for('notify_team'));
         // cancel/return should use routes that exist in your app
         $cancelUrl = $selectionInvitation
           ? route('team-selection.invitations.show', $selectionInvitation)
@@ -614,7 +614,7 @@ class TeamController extends Controller
         $payfast->setReturnUrl(route('event.success', ['id' => $event->id]) . '?email=' . urlencode($user->email));
         Log::info('TEAM PAYFAST INIT', [
           'order_id' => $order->id,
-          'notify_url' => route('notify.team'),
+          'notify_url' => \App\Support\PayfastCallbackUrl::for('notify_team'),
           'amount' => $payfast->amount,
           'mode' => $isLocalTest ? 'sandbox' : 'live',
         ]);
@@ -1426,7 +1426,7 @@ class TeamController extends Controller
           'custom_wallet_reserved' => $walletApplied,
           'return_url' => route('team.checkout', ['order' => $orderId, 'type' => 'team']),
           'cancel_url' => route('team.hybrid.cancel', $orderId),
-          'notify_url' => route('notify.team'),
+          'notify_url' => \App\Support\PayfastCallbackUrl::for('notify_team'),
         ]);
       }
 

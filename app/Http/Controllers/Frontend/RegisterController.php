@@ -1668,7 +1668,7 @@ class RegisterController extends Controller
 
 
 
-        $request['notify_url'] = $payfast->notify_url . '_order';
+        $request['notify_url'] = \App\Support\PayfastCallbackUrl::for('notify_order');
         $request['cancel_url'] = $payfast->cancel_url;
 
         $request['amount'] = $amount;

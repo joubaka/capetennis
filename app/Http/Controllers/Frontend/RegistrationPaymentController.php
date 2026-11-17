@@ -152,7 +152,7 @@ class RegistrationPaymentController extends Controller
       'return_url' => route('frontend.registration.success', ['order' => $orderId]),
       // route parameter name must be match route definition (/registration/hybrid/cancel/{orderId})
       'cancel_url' => route('registration.hybrid.cancel', ['orderId' => $orderId]),
-      'notify_url' => route('notify'),
+      'notify_url' => \App\Support\PayfastCallbackUrl::for('notify'),
     ]);
 
     // Recheck the exact rendered amounts and payment state under the service's

@@ -71,7 +71,7 @@ class RegistrationPaymentRecoveryController extends Controller
             'payfast' => $payfast, 'amount' => (float) $order->payfast_amount_due, 'orderId' => $order->id,
             'return_url' => route('frontend.registration.success', $order),
             'cancel_url' => URL::temporarySignedRoute('registration.recovery.show', $recoveryService->nestedSignedLinkExpiry($recovery), ['recovery' => $recovery->id]),
-            'notify_url' => route('notify'),
+            'notify_url' => \App\Support\PayfastCallbackUrl::for('notify'),
         ]);
     }
 }

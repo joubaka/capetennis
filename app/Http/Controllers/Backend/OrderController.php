@@ -140,7 +140,7 @@ class OrderController extends Controller
 
 
     $pf = new Payfast();
-    $pf->setNotifyUrl('notify_hoodie');
+    $pf->setNotifyUrl(\App\Support\PayfastCallbackUrl::for('notify_hoodie'));
     $pf->setAmount($total);
     $pf->setItem('JTA Hoodie');
     $mode = 'live';
