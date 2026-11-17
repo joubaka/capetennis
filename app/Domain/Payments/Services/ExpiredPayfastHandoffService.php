@@ -57,7 +57,8 @@ class ExpiredPayfastHandoffService
             $individualReconciled = ! $team && $locked->status === 'completed' && $locked->pay_status && $locked->payfast_paid
                 && (string) $locked->payfast_pf_payment_id === $providerId
                 && Activity::where('subject_type', $locked->getMorphClass())->where('subject_id', $locked->id)
-                    ->whereIn('description', [IndividualPayfastReconciliationService::AUDIT, LateIndividualPayfastReconciliationService::AUDIT])
+                    ->whereIn('description', [IndividualPayfastReconciliationService::AUDIT, LateIndividualPayfastReconciliationService::AUDIT,
+                        OrdinaryDashboardPayfastReconciliationService::AUDIT])
                     ->where('properties->pf_payment_id', $providerId)->exists();
             $reconciled = $individualReconciled || ($team && ! $locked->withdrawn_at && $locked->pay_status && $locked->payfast_paid
                 && $locked->collection_status === 'paid' && (string) $locked->payfast_pf_payment_id === $providerId

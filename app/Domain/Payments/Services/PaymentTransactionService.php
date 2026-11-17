@@ -11,6 +11,31 @@ use Illuminate\Support\Facades\DB;
 
 class PaymentTransactionService
 {
+    /** One independently attested provider receipt for an entire ordinary original basket. */
+    public function recordAttestedOrdinaryRegistrationReceipt(\App\Models\RegistrationOrder $order, array $evidence, \Carbon\CarbonInterface $paidAt): Transaction
+    {
+        abort_unless(DB::transactionLevel() > 0 && FinanceMutationScope::allows('individual_payfast_reconciliation')
+            && $order->status === 'completed' && $order->pay_status && $order->payfast_paid
+            && (string) $order->payfast_pf_payment_id === (string) $evidence['provider_id'], 403);
+        abort_if(Transaction::where('pf_payment_id', $evidence['provider_id'])->lockForUpdate()->exists(), 422);
+        $anchors = $order->items->filter(fn ($item) => (int) $item->category_event_id === (int) $evidence['category_event_id']
+            && (int) $item->player_id === (int) $evidence['player_id']);
+        abort_unless($anchors->count() === 1, 422);
+        $anchor = $anchors->sole();
+        $receipt = $this->record(['pf_payment_id' => $evidence['provider_id'], 'amount_gross' => $evidence['gross'],
+            'custom_int1' => $anchor->category_event_id, 'custom_int2' => $anchor->player_id,
+            'custom_int3' => $anchor->category_event->event_id, 'custom_int4' => $order->user_id, 'custom_int5' => $order->id,
+            'item_name' => $anchor->category_event->event->name, 'cape_tennis_fee' => $evidence['cape_tennis_fee_snapshot']], null);
+        return FinanceMutationScope::run('payment_transaction_write', function () use ($receipt, $evidence, $paidAt): Transaction {
+            $receipt->amount_fee = $evidence['fee'];
+            $receipt->amount_net = $evidence['net'];
+            $receipt->is_test = false;
+            $receipt->created_at = $paidAt;
+            $receipt->save();
+            return $receipt;
+        });
+    }
+
     /** Classify an existing verified late receipt without rewriting provider receipt history. */
     public function classifyReconciledIndividualReceipt(Transaction $receipt, \App\Models\RegistrationOrder $order): void
     {

@@ -309,6 +309,17 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   authorizes deployment/live application. Verify the owning service and
   `IndividualPayfastReconciliationTest`; see the same confirmation guide.
 
+- On-time ordinary PayFast baskets with missing receipts use the separate
+  `OrdinaryDashboardPayfastReconciliationService`, not the Interpro or existing
+  late-receipt command. Fresh provider evidence binds one original anchor and
+  the complete unchanged original basket, with per-item creation provenance and
+  eligibility. Restore all original entries atomically and record one actual
+  provider receipt. Strict prior-attempt preservation is distinct from reopening;
+  a negative provider observation is time-bound and does not prevent future
+  settlement. See `docs/ordinary-dashboard-payment-reconciliation.md` and verify
+  its owning service/tests before use. This guidance does not authorize release
+  or production application.
+
 - Frontend dependency overrides do not patch an embedded copy inside a vendor
   bundle. Verify the actual emitted execution path and checked-in public assets;
   deployment does not run npm. See `docs/frontend-dependency-security.md` for

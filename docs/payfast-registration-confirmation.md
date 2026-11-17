@@ -61,6 +61,11 @@ alone does not bypass lifecycle guards. Ordinary single-player registrations
 with an existing verified late receipt have a separate explicit reviewed path in
 `docs/late-individual-payment-reconciliation.md`.
 
+On-time ordinary individual baskets with no saved receipt have a separate fresh
+dashboard review path in `docs/ordinary-dashboard-payment-reconciliation.md`.
+It restores every original basket item together and records one actual provider
+receipt; it does not broaden the Interpro command below.
+
 ## Explicit on-time Interpro reconciliation
 
 `IndividualPayfastReconciliationService` supports one original single-player,

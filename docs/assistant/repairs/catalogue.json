@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-062",
+      "title": "On-time ordinary PayFast basket expired without a saved receipt",
+      "scope": "Explicit super-user reconciliation of an original full-PayFast ordinary individual basket, one to twenty original paid items, with authenticated on-time provider evidence and canonical automatic expiry; no wallet or existing receipt.",
+      "symptoms": "PayFast confirms payment for the original order while the website has no receipt and its original unpaid entries were removed by expiry. One provider payment may cover several original players.",
+      "cause": "Missing settlement confirmation leaves the checkout unpaid-looking; automatic expiry closes it. The separate Interpro single-player and existing late-receipt recovery paths do not cover this starting state.",
+      "fix": "Use payments:reconcile-ordinary-dashboard with fresh authenticated evidence and read-only preview. Bind the exact provider anchor and gross to the complete original basket and integrity-verified pre-handoff item creation history. Check every original player/category, current eligibility and aggregate capacity. Apply the same actor-bound state fingerprint through canonical entry, payment and receipt services atomically, restoring original entries and writing one actual provider receipt for the whole basket. Preserve provider fee/net/date and separately disclose reviewed current per-item platform fees. Strict earlier cancelled attempts remain unchanged; a previously handed-off attempt additionally requires its own fresh exact-identity observed-negative provider search, never a claim of provider cancellation. Follow docs/ordinary-dashboard-payment-reconciliation.md.",
+      "verification": "Local isolated focused regression passed 11 tests and 128 assertions covering multi-player legacy receipt shape, exact amounts and metadata, authority and stale evidence/token, original record counts, no mail/wallet changes, whole-basket rollback after receipt storage failure, non-anchor eligibility, aggregate capacity, conflicting paid checkout rejection, strict prior-attempt preservation and later old signed ITN receipt-only reconciliation. Independent quality review found no material blocker. These are local results, not deployment or live allocation evidence.",
+      "limits": "Guide only. Fresh dashboard attestation is not a signed ITN. Do not fabricate notifications, use manual-paid replacements, reopen preserved attempts, reinterpret historical expiry windows or bypass a blocked guard. Earlier provider-negative observations are time-bound and future charges remain possible. Excludes Interpro, Masters, hybrid/wallet and existing late receipts. Commit, deployment, production application, refunds and communication retain their own authorization.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Payments/Services/OrdinaryDashboardPayfastReconciliationService.php", "app/Console/Commands/ReconcileOrdinaryDashboardPayfastPayment.php", "app/Domain/Payments/Services/PaymentTransactionService.php", "app/Domain/Payments/Services/ExpiredPayfastHandoffService.php", "docs/ordinary-dashboard-payment-reconciliation.md"],
+      "tests": ["tests/Feature/OrdinaryDashboardPayfastReconciliationTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-057",
       "title": "Frontend audit finds vulnerable vendor dependencies or embedded merge code",
       "scope": "npm frontend audit/build gate and checked-in browser vendor assets; no automatic dependency installation or release action.",
