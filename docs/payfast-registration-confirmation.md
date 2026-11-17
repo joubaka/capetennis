@@ -129,6 +129,11 @@ evidence. Existing finance projections may still use configured fee estimates.
 No new wallet debit, order, manual receipt or outbound confirmation is requested.
 Exact replay must be harmless; changed evidence or state must fail.
 
+Receipt identity uses the existing five custom IDs and the locked original order
+item's registration link. Do not require a `transactions_pf.registration_id`
+column: legacy live tables may omit that test-fixture field. Retain the original
+registration ID explicitly in the reconciliation audit and result.
+
 Deployment and a live apply each retain their applicable explicit authorization.
 The command is not an automatic ITN repair, does not cover genuinely late payments
 or hybrid/wallet orders, and does not fix upstream delivery.

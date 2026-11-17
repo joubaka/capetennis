@@ -6,7 +6,7 @@ use App\Domain\Payments\Services\{IndividualPayfastReconciliationService, Paymen
 use App\Models\{AuditEvent, CategoryEvent, CategoryEventRegistration, Event, EventNomination, EventType, InterprovincialTrialInvitation, InterprovincialTrialInvitationBatch, Player, RegistrationOrder, RegistrationOrderItems, Transaction, User};
 use App\Services\InterprovincialTrials\InvitationService;
 use Illuminate\Foundation\Testing\DatabaseTruncation;
-use Illuminate\Support\Facades\{DB, Mail};
+use Illuminate\Support\Facades\{DB, Mail, Schema};
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -47,9 +47,11 @@ class IndividualPayfastReconciliationTest extends TestCase
             || ($connection->getDriverName() === 'sqlite' && $connection->getDatabaseName() === ':memory:');
     }
 
-    public function test_preview_is_read_only_and_apply_restores_original_records_and_actual_provider_amounts_once(): void
+    public function test_preview_and_apply_restore_original_records_with_live_receipt_schema_and_replay_once(): void
     {
         [$actor, $order, $entry, $invitation, $evidence] = $this->scenario();
+        Schema::table('transactions_pf', fn ($table) => $table->dropColumn('registration_id'));
+        try {
         $before = $this->counts();
         $preview = $this->runRecovery($order, $actor, $evidence);
         $this->assertSame($before, $this->counts());
@@ -69,7 +71,9 @@ class IndividualPayfastReconciliationTest extends TestCase
         $this->assertEquals(450, $receipt->amount_gross);
         $this->assertEquals(18.86, $receipt->amount_fee);
         $this->assertEquals(431.14, $receipt->amount_net);
-        $this->assertSame($entry->registration_id, $receipt->registration_id);
+        $this->assertSame($order->id, (int) $receipt->custom_int5);
+        $this->assertSame($entry->registration_id, $order->items()->sole()->registration_id);
+        $this->assertSame($entry->registration_id, (int) \Spatie\Activitylog\Models\Activity::where('description', IndividualPayfastReconciliationService::AUDIT)->sole()->properties['registration_id']);
         $after = $this->counts();
         $this->assertSame($before['orders'], $after['orders']);
         $this->assertSame($before['items'], $after['items']);
@@ -87,6 +91,9 @@ class IndividualPayfastReconciliationTest extends TestCase
         $this->assertSame($after, $this->counts());
         Mail::assertNothingSent();
         Mail::assertNothingQueued();
+        } finally {
+            Schema::table('transactions_pf', fn ($table) => $table->unsignedBigInteger('registration_id')->nullable());
+        }
     }
 
     public function test_foreign_actor_cannot_preview_or_apply_or_reuse_another_actors_token(): void

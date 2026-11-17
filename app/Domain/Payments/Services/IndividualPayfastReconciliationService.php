@@ -118,7 +118,6 @@ final class IndividualPayfastReconciliationService
                     && (int) $receipt->event_id === (int) $event->id && (int) $receipt->custom_int3 === (int) $event->id
                     && (int) $receipt->category_event_id === (int) $category->id && (int) $receipt->custom_int1 === (int) $category->id
                     && (int) $receipt->player_id === (int) $item->player_id && (int) $receipt->custom_int2 === (int) $item->player_id
-                    && (int) $receipt->registration_id === (int) $registration->id
                     && $order->status === 'completed' && $order->pay_status && $order->payfast_paid
                     && (string) $order->payfast_pf_payment_id === $evidence['provider_id'] && ! $entry->trashed()
                     && $entry->status === 'active' && (int) $entry->payment_status_id === 1
@@ -176,7 +175,7 @@ final class IndividualPayfastReconciliationService
                 activity('payment')->performedOn($paid)->causedBy($actor)->withProperties(array_merge([
                     'evidence_source' => $evidence['source'], 'evidence_digest' => $digest, 'provider_evidence' => $evidence,
                     'reason' => $reason, 'handoff_audit_id' => $handoff->id, 'expiry_audit_id' => $expiry->id,
-                    'reset_audit_id' => $reset->id, 'entry_id' => $entry->id, 'invitation_id' => $invitation->id,
+                    'reset_audit_id' => $reset->id, 'entry_id' => $entry->id, 'registration_id' => $registration->id, 'invitation_id' => $invitation->id,
                     'reviewed_platform_fee' => $event->cape_tennis_fee, 'platform_fee_source' => 'current_event_configuration_at_review',
                     'pf_payment_id' => $evidence['provider_id'], 'new_charge' => false, 'wallet_debit' => false, 'mail' => false,
                     'preserved_expired_attempts' => $preserved['summary'], 'other_attempts_unchanged' => true,
