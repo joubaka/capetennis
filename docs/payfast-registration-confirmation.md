@@ -131,7 +131,9 @@ Exact replay must be harmless; changed evidence or state must fail.
 
 Receipt identity uses the existing five custom IDs and the locked original order
 item's registration link. Do not require a `transactions_pf.registration_id`
-column: legacy live tables may omit that test-fixture field. Retain the original
+column or a receipt `payment_status` column: legacy live tables omit these
+test-fixture fields. Completed settlement is retained on the canonical order and
+in reconciliation audit. Retain the original
 registration ID explicitly in the reconciliation audit and result.
 
 Deployment and a live apply each retain their applicable explicit authorization.

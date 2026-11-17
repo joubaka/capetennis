@@ -50,7 +50,7 @@ class IndividualPayfastReconciliationTest extends TestCase
     public function test_preview_and_apply_restore_original_records_with_live_receipt_schema_and_replay_once(): void
     {
         [$actor, $order, $entry, $invitation, $evidence] = $this->scenario();
-        Schema::table('transactions_pf', fn ($table) => $table->dropColumn('registration_id'));
+        Schema::table('transactions_pf', fn ($table) => $table->dropColumn(['registration_id', 'payment_status']));
         try {
         $before = $this->counts();
         $preview = $this->runRecovery($order, $actor, $evidence);
@@ -92,7 +92,10 @@ class IndividualPayfastReconciliationTest extends TestCase
         Mail::assertNothingSent();
         Mail::assertNothingQueued();
         } finally {
-            Schema::table('transactions_pf', fn ($table) => $table->unsignedBigInteger('registration_id')->nullable());
+            Schema::table('transactions_pf', function ($table) {
+                $table->unsignedBigInteger('registration_id')->nullable();
+                $table->string('payment_status')->nullable();
+            });
         }
     }
 

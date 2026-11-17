@@ -25,7 +25,6 @@ class PaymentTransactionService
         return FinanceMutationScope::run('payment_transaction_write', function () use ($receipt, $item, $evidence, $paidAt) {
             $receipt->amount_fee = $evidence['fee'];
             $receipt->amount_net = $evidence['net'];
-            $receipt->payment_status = 'COMPLETE';
             $receipt->is_test = false;
             $receipt->created_at = $paidAt;
             $receipt->save();
