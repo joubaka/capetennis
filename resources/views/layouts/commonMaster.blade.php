@@ -21,7 +21,7 @@
     {{ config('variables.templateSuffix') ?? 'TemplateSuffix' }}
   </title>
 
-  <meta name="description" content="{{ config('variables.templateDescription') ?? '' }}" />
+  <meta name="description" content="{{ trim($__env->yieldContent('meta-description', config('variables.templateDescription') ?? '')) }}" />
   <meta name="keywords" content="{{ config('variables.templateKeyword') ?? '' }}">
 
   <!-- CSRF -->

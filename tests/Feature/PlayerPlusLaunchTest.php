@@ -582,7 +582,7 @@ class PlayerPlusLaunchTest extends TestCase
         $this->actingAs($payer);
         $this->export('orders-empty', $this->get(route('player-plus.orders.index'))->assertOk());
         $this->history(['reason' => null, 'stale' => false, 'series' => ['ball-standard' => [['score' => 50]]]]);
-        $this->export('index', $this->get(route('player-plus.index'))->assertOk()->assertSee('data-plus-stepper', false)->assertSee('Who is Player Plus for?')->assertDontSee('data-player-plus-benefits', false));
+        $this->export('index', $this->get(route('player-plus.index'))->assertOk()->assertSee('data-plus-stepper', false)->assertSee('Choose your player')->assertDontSee('data-player-plus-benefits', false));
         $this->export('player', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('Saved progress is available'));
         SiteSetting::set(PlayerPlusService::MONTHLY_ENABLED_SETTING, '1');
         $this->export('player-monthly', $this->get(route('player-plus.player', $player))->assertOk()->assertSee('Monthly Player Plus'));

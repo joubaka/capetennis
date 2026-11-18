@@ -40,7 +40,7 @@ class CtrMarketingAccessTest extends TestCase
                 if ($expected) $this->assertSame($super === true, $response->getOriginalContent()->getData()['isSuperUser']);
                 $html = Blade::render('@if(app(\\App\\Services\\Performance\\PlayerRatingAccess::class)->allowsMarketing($user))<x-player-plus-pricing />@endif', ['user' => $user]);
                 if ($enabled) {
-                    $this->assertStringContainsString('R69.00', $html);
+                    $this->assertStringNotContainsString('R69.00', $html);
                     $this->assertStringContainsString('R699.00', $html);
                 } elseif ($expected) {
                     $this->assertStringNotContainsString('R69.00', $html);

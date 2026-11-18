@@ -20,14 +20,15 @@ class PlayerPlusPricingDisplayTest extends TestCase
         }
     }
 
-    public function test_offers_show_both_default_prices_and_disabled_monthly_status(): void
+    public function test_offers_show_only_available_plan_prices_and_distinguish_wallet_payment(): void
     {
         $html = Blade::render('<x-player-plus-benefits />');
-        $this->assertStringContainsString('R69.00', $html);
+        $this->assertStringNotContainsString('R69.00', $html);
         $this->assertStringContainsString('R699.00', $html);
-        $this->assertStringContainsString('per player / month', $html);
+        $this->assertStringNotContainsString('per player / month', $html);
         $this->assertStringContainsString('per player / year', $html);
-        $this->assertStringContainsString('Both plans renew automatically through PayFast until cancelled', $html);
+        $this->assertStringContainsString('PayFast plans renew automatically until cancelled', $html);
+        $this->assertStringContainsString('Annual wallet payments are once off.', $html);
         $this->assertStringContainsString('Monthly purchases are currently unavailable.', $html);
     }
 
@@ -38,6 +39,7 @@ class PlayerPlusPricingDisplayTest extends TestCase
         $this->assertStringNotContainsString('R69.00', $html);
         $this->assertStringNotContainsString('R699.00', $html);
         $this->assertStringContainsString('Pricing will be published when Player Plus launches.', $html);
+        $this->assertStringNotContainsString('plans renew automatically', $html);
         $this->assertStringNotContainsString('<form', $html);
     }
 
@@ -55,6 +57,7 @@ class PlayerPlusPricingDisplayTest extends TestCase
         Cache::put('site_setting.'.PlayerPlusService::PRICE_SETTING, (object) ['value' => '79995']);
         Cache::put('site_setting.'.PlayerPlusService::MONTHLY_ENABLED_SETTING, (object) ['value' => '1']);
         $html = Blade::render('<x-player-plus-pricing />');
+        $this->assertStringContainsString('R69.00', $html);
         $this->assertStringContainsString('R799.95', $html);
         $this->assertStringNotContainsString('currently unavailable', $html);
         $html = Blade::render('<x-player-plus-benefits :price-cents="6900" plan="monthly" />');

@@ -5,7 +5,7 @@ $configData = Helper::appClasses();
 
 @extends('layouts/blankLayout')
 
-@section('title', 'Register Page')
+@section('title', 'Create your Cape Tennis account')
 
 @section('page-style')
 {{-- Page Css files --}}
@@ -44,7 +44,13 @@ $configData = Helper::appClasses();
         <!-- Register Card -->
       
 
-        <x-player-plus-benefits class="mb-4" />
+        <h1 class="h4">Create your free account</h1>
+        <p>Enter events and follow your tennis in one place.</p>
+        <aside class="rounded border p-3 mb-4" aria-label="Optional Player Plus">
+          <strong>Go further with Player Plus</strong>
+          <p class="small mb-1">Explore ratings, progress reports and tournament guidance for one player. Plus is a separate, optional purchase; a rating needs eligible results.</p>
+          <a class="small d-inline-block py-2" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()) ? route('ctr.index') : route('player-plus.terms') }}">Explore Player Plus</a>
+        </aside>
 
         <form id="formAuthentication" class="mb-3" action="{{ route('register') }}" method="POST">
           @csrf

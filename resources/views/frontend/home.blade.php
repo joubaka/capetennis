@@ -187,19 +187,19 @@
       <div class="home-ctr-copy">
         @if($plusSalesOpen)
           <span class="home-ctr-open">Player Plus · Now open</span>
-          <h2 id="home-ctr-title">See your <span>game grow.</span></h2>
-          <p class="home-ctr-description">Get to know your Cape Tennis Rating (CTR) with Player Plus. Follow your progress and find the right challenge for your level.</p>
+          <h2 id="home-ctr-title">Know your game.<span class="d-none d-md-inline"><br>Find your next step.</span></h2>
+          <p class="home-ctr-description">Follow your rating, monthly reports and tournament options with Player Plus.</p>
         @else
           <x-player-plus-coming-soon />
-          <h2 id="home-ctr-title">Discover <span>CTR Ratings</span></h2>
-          <p class="home-ctr-description">Your Cape Tennis Rating (CTR) helps you understand your playing level and decide what to play next.</p>
+          <h2 id="home-ctr-title">Know your game.<span class="d-none d-md-inline"><br>Find your next step.</span></h2>
+          <p class="home-ctr-description">Player Plus brings together your rating, progress and tournament guidance.</p>
         @endif
-        <p class="home-ctr-mobile-summary">Know your playing level and find your next challenge.</p>
+        <p class="home-ctr-mobile-summary">Ratings, progress and next steps.</p>
         @include('frontend.partials.home-ctr-benefits')
         @unless($plusSalesOpen)
-          <p class="home-ctr-availability">CTR insights are part of Player Plus. New sign-ups are currently closed.</p>
+          <p class="home-ctr-availability">{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? 'Player Plus purchases are not open yet.' : 'New Player Plus purchases are currently paused.' }} Free accounts remain available.</p>
         @endunless
-        <a class="btn btn-warning" href="{{ route('ctr.index') }}">{{ $plusSalesOpen ? 'Upgrade to Plus now!' : 'Explore CTR Ratings' }} <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
+        <a class="btn btn-warning" href="{{ route('ctr.index') }}">{{ $plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus' }} <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
       </div>
       @include('frontend.partials.home-ctr-examples')
       <details class="home-ctr-mobile-details">

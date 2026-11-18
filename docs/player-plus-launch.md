@@ -9,13 +9,34 @@ An older, unhanded checkout below R5.00 cannot start a new PayFast handoff. Its 
 ## Customer package
 
 - Saved Cape Tennis Rating (CTR), with provisional and unavailable states preserved.
-- Twelve-month progress history and the recorded evidence behind eligible estimates.
+- Monthly tennis reports, recorded form and up to twelve months of rating history, with the recorded evidence behind eligible estimates.
 - Eligible published-series comparisons and CTR Top 10 lists, including available comparable ratings for eligible opponents from published fixtures or saved meetings. This does not grant access to the opponent's private history or guarantee a match outcome.
-- Tennis pathway guidance for primary-school and beginner players, from Red through Orange, Green and Yellow ball to exploring TSA events: ball-level progress, Red/Orange benchmarks and event options to discuss with a coach. CTR does not establish a Wilson division or TSA readiness; personalized competition recommendations remain withheld until externally validated thresholds have a reviewed policy. Guidance does not promote players or guarantee selection.
+- Tennis pathway guidance for junior and beginner players, from Red through Orange, Green and Yellow ball to exploring TSA events: ball-level progress, Red/Orange benchmarks and published event suggestions where available. A comparable, nonlocal Green/Yellow CTR maps to the configured Cape Tennis guide bands (default Wilson B at 50 or below, Wilson A above 50 through 75, TSA above 75). These are Cape Tennis guidance bands, not official qualification or externally calibrated readiness. Fresh suggestions retain evidence/freshness checks; saved stages awaiting an update stay labelled. Guidance does not promote players or guarantee selection or entry. See `PlayerPathwayService`, `PlayerPathwayEvents` and their focused tests.
 
-Marketing should lead with the player's questions: “What is my next tournament?”, “How am I progressing?”, “What is my rating?” and “How strong is my next opponent?”. The tournament question describes help choosing a suitable type or level of event, not a personalised calendar or a guaranteed next dated fixture. Event dates, availability and entry requirements must still be checked with the organiser. These are offer-positioning decisions; they do not expand rating access or eligibility.
+Marketing leads with “Know your game. Find your next step.” and four short questions: “What could I play next?”, “How am I progressing?”, “What is my rating?” and “How do I compare with my opponent?”. Tournament options help choose a suitable type or level of event, not a guaranteed next dated fixture. Event dates, availability and entry requirements must still be checked with the organiser. These are offer-positioning decisions; they do not expand rating access or eligibility.
 
-Essential tournament information remains free. Draw alerts remain a historical design concept and are excluded. The authoritative customer offer is `/player-plus`; the private backend membership preview is labelled historical.
+Essential tournament information remains free. Draw alerts remain a historical design concept and are excluded; customer copy must not promise a delivery date. The public customer offer is `/ctr`; `/player-plus` is the authenticated player-selection step. The private backend membership preview is labelled historical.
+
+## Marketing readiness
+
+The local offer uses the same benefits on the public landing, home promotion,
+signup introduction and My Tennis previews. Signup leads with a free account and
+a compact optional Plus introduction; the full offer stays on the landing page.
+Expanded explanations retain rating evidence, comparison and privacy limits.
+Samples remain explicitly fictional. Shared pricing advertises a monthly amount
+only when monthly purchases are enabled, distinguishes PayFast automatic renewal
+from once-off annual wallet payment, and hides prices while sales are paused.
+Purchase consent and payment terms retain their existing meaning and version.
+Coming-soon previews link to the public offer from nested feature cards as well
+as the hero and footer. Verify that state with an explicit My Tennis `tab=rating`
+request; the default Profile tab does not exercise the full rating preview.
+
+Local copy and responsive checks do not establish production launch readiness.
+Before enabling live sales, independently verify the exact deployed offer,
+configured prices/plans, linked-account access, representative saved data,
+payment-provider recurring capability, migrations, scheduler, and managed mail
+against the operational checklist below. This marketing work does not enable
+sales, deploy code, take payments or send announcements.
 
 The player purchase page shows a linked account only an availability summary (available, awaiting update, or no eligible evidence). It does not reveal a pre-purchase rating or private match history. Sponsors receive the general disclosures and no private availability summary. Page reads do not calculate ratings or request a refresh. A missing Plus schema disables purchases safely, without breaking the player-selection or order-list page.
 

@@ -16,7 +16,7 @@
     @media(max-width:575.98px) { #player-plus-page .plus-player-choice form .form-control { max-width:none !important; } }
   </style>
   @include('frontend.player-plus.styles')
-  <x-player-workspace-header :workspace="$workspace ?? null" title="Who is Player Plus for?" eyebrow="Player Plus · Step 2 of 4" subtitle="Choose one player, then review the available plans. Already covered? Open their membership to view their progress.">
+  <x-player-workspace-header :workspace="$workspace ?? null" title="Choose your player" eyebrow="Player Plus · Step 2 of 4" subtitle="Select one player to check membership and available plans.">
     <x-slot:navigation><nav class="d-flex flex-wrap gap-2" aria-label="Player Plus navigation"><a class="btn btn-outline-primary" href="{{ route('my.tennis', ['player' => $workspace['player']->id ?? null]) }}">My Tennis</a><a class="btn btn-outline-primary" href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">My Plus orders</a></nav></x-slot:navigation>
   </x-player-workspace-header>
   <x-player-plus-stepper :current="2" />

@@ -1,10 +1,10 @@
 @php
   $featureDescriptions = [
-    'record' => ['Your season. Your monthly tennis report.', 'See your month in matches, wins and events, revisit recent form and compare seasons. Explore the saved singles results behind your tennis story.'],
-    'opponents' => ['Opponent Insights', 'Explore recorded meetings with familiar opponents, per-season outcomes and recent encounters. Sparse results and estimated dates stay labelled; outcomes do not predict the next match.'],
-    'pathway' => ['Tennis pathway', 'Explore ball-level benchmarks, recorded event experience and development options to discuss with your coach. A membership does not guarantee a rating or a completed pathway stage.'],
+    'record' => ['Your season. Your monthly tennis report.', 'Review matches, wins, events and recent form in your monthly report. Compare your recorded seasons.'],
+    'opponents' => ['Opponent Insights', 'Revisit recorded meetings, season records and recent encounters. Past results do not predict the next match.'],
+    'pathway' => ['Tennis pathway', 'Explore ball-level progress and tournament options with your coach. Suggestions depend on suitable results and do not guarantee entry.'],
     'events' => ['Past-event ratings', 'Explore retrospective estimates at eligible event completion dates. These use published evidence available at each cutoff; they are not ratings originally published at the time.'],
-    'rating' => ['Player rating', 'Explore saved monthly CTR estimates, confidence and the eligible evidence behind them. Missing or non-comparable evidence remains clearly identified.'],
+    'rating' => ['Player rating', 'Follow your monthly CTR history and explore the results behind it. Ratings may be provisional or unavailable.'],
   ];
   $featureQuery = $previewFeature ?? request()->query('feature', 'rating');
   $requestedFeature = is_string($featureQuery) && array_key_exists($featureQuery, $featureDescriptions) ? $featureQuery : 'rating';
@@ -26,7 +26,7 @@
       @if(($showSample ?? false) && $requestedFeature === $featureKey)
         <div class="plus-sample" data-plus-sample>
           <strong>Fictional example · not this player’s results</strong>
-          <p class="small mb-0">These invented values demonstrate the feature; they are not a personal assessment or a forecast.</p>
+          <p class="small mb-0">Sample values only, not a personal assessment.</p>
           <dl>
             @foreach($samplePanels[$featureKey] as $label => $value)
               <div><dt>{{ $label }}</dt><dd>{{ $value }}</dd></div>
@@ -38,7 +38,7 @@
         @endif
       @endif
       <p class="small">Essential published tournament information remains free.</p>
-      <a @class(['btn', 'btn-primary' => $showSample ?? false, 'plus-cta' => !($showSample ?? false)]) href="{{ route('player-plus.player', $ratingPlayer) }}">View membership and availability for {{ $ratingPlayer->name }} →</a>
+      <a @class(['btn', 'btn-primary' => $showSample ?? false, 'plus-cta' => !($showSample ?? false)]) href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => $ratingPlayer->id]) : route('player-plus.player', $ratingPlayer) }}">View Plus for {{ $ratingPlayer->name }} →</a>
     </article>
   @endforeach
 </section>

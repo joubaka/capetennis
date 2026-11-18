@@ -19,17 +19,20 @@ class CtrLandingPresentationTest extends TestCase
         }
     }
 
-    public function test_landing_explains_both_plans_without_exposing_administrative_links(): void
+    public function test_landing_advertises_available_plans_without_exposing_administrative_links(): void
     {
         $source = file_get_contents(resource_path('views/frontend/ctr.blade.php'));
         preg_match("/@section\('page-style'\)(.*?)@endsection/s", $source, $style);
         preg_match("/@section\('content'\)(.*)@endsection/s", $source, $content);
         // Compile the actual page sections; the shared site shell is excluded from this isolated fixture.
         $html = Blade::render($style[1].$content[1], ['isSuperUser' => false]);
-        foreach (['R69.00', 'R699.00', 'Both plans renew automatically', 'Monthly purchases are currently unavailable.',
-            'No actual player data', 'Upgrade to Plus now!', 'Purchase details', 'Private history requires a linked account'] as $text) {
+        foreach (['R699.00', 'PayFast plans renew automatically until cancelled', 'Annual wallet payments are once off.',
+            'No actual player data', 'Choose your player', 'Purchase details', 'Private history requires a linked account'] as $text) {
             $this->assertStringContainsString($text, $html);
         }
+        $this->assertStringNotContainsString('R69.00', $html);
+        $this->assertStringContainsString('monthly reports', $html);
+        $this->assertStringContainsString('Draw alerts are not included.', $html);
         $this->assertStringNotContainsString('Open CTR ratings', $html);
         $this->assertStringNotContainsString('data-player-plus-benefits', $html);
         if (getenv('CT_CTR_LANDING_QA_HTML') === '1') {

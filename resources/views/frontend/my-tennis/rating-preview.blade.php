@@ -39,7 +39,7 @@
     <div>
       <span class="plus-eyebrow">Cape Tennis · Player Plus</span>
       <h2 id="rating-preview-title">Know their game.<br>Find their next step.</h2>
-      <p class="plus-intro">What should {{ $ratingPlayer->full_name }} play next? Player Plus helps primary-school players, beginners and their families explore the pathway from Red Ball through Orange, Green and Yellow Ball to TSA events, alongside their rating and progress.</p>
+      <p class="plus-intro">Follow {{ $ratingPlayer->name }}’s rating, understand their results and explore tournament options with their coach.</p>
       <a class="btn plus-cta" href="{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : route('player-plus.player', $ratingPlayer) }}">Explore Player Plus <span aria-hidden="true">→</span></a>
       <p class="small mt-2 mb-0">Essential tournament information remains free.</p>
     </div>
@@ -47,7 +47,7 @@
       <p class="plus-demo-label">Illustration only · not this player's rating or results</p>
       <div class="plus-demo-top">
         <div><span class="small">Example CTR</span><div><x-ctr-badge size="small" :score="54.2" :overall="true" title="Illustrative CTR score, not this player’s rating." /></div></div>
-        <span class="plus-change">Example progress +5.6</span>
+        <span class="plus-change">Illustrative change +5.6</span>
       </div>
       <svg class="plus-chart" viewBox="0 0 420 130" role="img" aria-label="Illustrative rating trend from 48.6 to 51.3 to 54.2. Actual ratings can rise or fall.">
         <path d="M12 30H408M12 70H408M12 110H408" fill="none" stroke="#e3ece8" />
@@ -56,16 +56,16 @@
         <g fill="#004177" stroke="#fff" stroke-width="3"><circle cx="12" cy="105" r="5"/><circle cx="210" cy="64" r="5"/><circle cx="408" cy="20" r="6"/></g>
       </svg>
       <div class="plus-chart-labels"><span>48.6 · Earlier</span><span>51.3</span><span>54.2 · Latest</span></div>
-      <p class="small mt-3 mb-0">12 months of perspective. Every change has context.</p>
+      <p class="small mt-3 mb-0">Explore up to 12 months of rating history.</p>
     </div>
   </div>
   <div class="plus-body">
     @include('frontend.my-tennis.feature-preview')
     <div class="plus-features">
-      <div><i class="ti ti-route plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">01 / PLAN</span><h3>What is my next tournament?</h3><p>Explore event types for their ball level and suggested development steps, including Wilson and TSA options. Plan with their coach, then check event dates and entry rules.</p></div>
-      <div><i class="ti ti-chart-line plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">02 / FOLLOW</span><h3>How am I progressing?</h3><p>Explore 12 months of saved rating history and the recorded singles results behind changes in playing strength.</p></div>
-      <div><x-ctr-mark size="heading" class="plus-feature-icon" /><span class="plus-feature-number">03 / UNDERSTAND</span><h3>What is my rating?</h3><p>See their saved Cape Tennis Rating (CTR), an estimate of singles playing strength, with evidence and confidence labels. Explore their age-group Top 10 and rating position where available.</p></div>
-      <div><i class="ti ti-list-details plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">04 / PREPARE</span><h3>How strong is tomorrow’s opponent?</h3><p>See available ratings for eligible opponents from published fixtures or saved meetings when both players share a comparable scale.</p></div>
+      <div><i class="ti ti-route plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">01 / PLAN</span><h3>What could I play next?</h3><p>Explore ball-level progress and event options from Red Ball to Wilson and TSA. Check dates and entry rules with the organiser.</p></div>
+      <div><i class="ti ti-chart-line plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">02 / FOLLOW</span><h3>How am I progressing?</h3><p>Follow monthly reports, recent form and up to 12 months of rating history.</p></div>
+      <div><x-ctr-mark size="heading" class="plus-feature-icon" /><span class="plus-feature-number">03 / UNDERSTAND</span><h3>What is my rating?</h3><p>See their Cape Tennis Rating (CTR), its supporting results and their age-group Top 10 where available.</p></div>
+      <div><i class="ti ti-list-details plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">04 / PREPARE</span><h3>How do I compare with my opponent?</h3><p>Compare available opponent ratings and revisit recorded meetings. Ratings must share a comparable scale.</p></div>
     </div>
     <div class="plus-offer">
       <div><div class="fw-semibold mb-1">Player Plus for {{ $ratingPlayer->full_name }}</div><x-player-plus-pricing /><p class="small mt-1 mb-0">One player. Shared with their linked parents or guardians.</p></div>
@@ -73,7 +73,7 @@
     </div>
     <div class="plus-terms">
       <p class="mb-1">Eligible results are needed for a rating; purchasing Plus does not guarantee one. Ratings can rise or fall and may be provisional or unavailable.</p>
-      <details><summary>How membership works</summary><p>Choose monthly or annual automatic renewal for one named player. Review availability and membership details before checkout. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Draw alerts are planned and are not included yet.</p></details>
+      <details><summary>How membership works</summary><p>Review available plans and renewal terms before paying. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Draw alerts are not included.</p></details>
     </div>
   </div>
 </section>

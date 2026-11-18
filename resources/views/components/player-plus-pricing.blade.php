@@ -5,12 +5,14 @@
 <div {{ $attributes->class(['d-flex flex-column gap-1']) }} data-player-plus-pricing>
   <x-player-plus-coming-soon />
   @if(\App\Services\Performance\PlayerPlusService::salesEnabled())
-    <div><strong>R{{ $monthlyPrice }}</strong> <span class="small">per player / month</span></div>
+    @if(\App\Services\Performance\PlayerPlusService::monthlyEnabled())
+      <div><strong>R{{ $monthlyPrice }}</strong> <span class="small">per player / month</span></div>
+    @endif
     <div><strong>R{{ $annualPrice }}</strong> <span class="small">per player / year</span></div>
+    <p class="small mb-0">PayFast plans renew automatically until cancelled. Annual wallet payments are once off. Manage renewal in My Plus orders.</p>
   @else
     <p class="small mb-0">Pricing will be published when Player Plus launches.</p>
   @endif
-  <p class="small mb-0">Both plans renew automatically through PayFast until cancelled. Stop future renewals from My Plus orders.</p>
   @if(! \App\Services\Performance\PlayerPlusService::salesEnabled())
     <p class="small mb-0" role="status">{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? 'Player Plus is coming soon. Purchases are not open yet.' : 'New purchases are currently paused.' }}</p>
   @elseif(! \App\Services\Performance\PlayerPlusService::monthlyEnabled())

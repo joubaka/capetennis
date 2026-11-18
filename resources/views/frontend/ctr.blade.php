@@ -1,5 +1,6 @@
 @extends('layouts/layoutMaster')
-@section('title', 'CTR Ratings · Cape Tennis Rating')
+@section('title', 'Player Plus · Ratings, progress and tournament guidance')
+@section('meta-description', 'Follow your Cape Tennis Rating, monthly reports and tournament options with Player Plus. For junior players, beginners and their families.')
 @section('page-style')
 <style>
 .ctr-intro{font-family:'Public Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:1180px;margin:1.5rem auto 3rem;color:#172e45}
@@ -115,14 +116,10 @@
     <div>
       <p class="ctr-eyebrow">{{ $plusSalesOpen ? 'Player Plus · Now open' : 'Cape Tennis · Player Plus' }}</p>
       <x-player-plus-coming-soon class="mb-3" />
-      @if($plusSalesOpen)
-        <h1 id="ctr-title">See your <span>game grow.</span></h1>
-      @else
-        <h1 id="ctr-title">Discover <span>CTR Ratings</span></h1>
-      @endif
-      <p class="ctr-hero-description">Get to know your Cape Tennis Rating (CTR), follow your progress and find the right tournament for your level. Player Plus helps players and families explore the pathway from Red Ball to TSA events.</p>
+      <h1 id="ctr-title">Know your game.<br><span>Find your next step.</span></h1>
+      <p class="ctr-hero-description">Follow your rating, understand your results and explore what to play next. For junior players, beginners and the families supporting them.</p>
       <div class="ctr-intro-actions">
-        <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Upgrade to Plus now!' : 'Discover Player Plus' }} <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
+        <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Choose your player' : 'Discover Player Plus' }} <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
         <a class="btn ctr-secondary" href="{{ route('my.tennis', ['tab' => 'rating']) }}">Preview in My Tennis</a>
       </div>
       <p class="ctr-hero-note">For one player and their linked parents or guardians.<br>Essential tournament information stays free.</p>
@@ -138,14 +135,14 @@
         <path d="M138 183C161 183 161 153 185 160S217 170 239 141S269 153 287 123S309 127 324 109" stroke="#004177" stroke-width="3" stroke-linecap="round"/>
         <circle cx="324" cy="109" r="6" fill="#f5f8fc" stroke="#004177" stroke-width="3"/><circle cx="379" cy="237" r="17" fill="#d8eaff"/><path d="M367 225Q386 231 391 249M367 249Q374 232 391 225" stroke="#315b85" stroke-width="1.5"/>
       </svg>
-      <div class="ctr-illustration-footer"><i class="ti ti-chart-line" aria-hidden="true"></i><div><strong>Every result adds context.</strong><span>Illustrative graphic · No actual player data</span></div></div>
+      <div class="ctr-illustration-footer"><i class="ti ti-chart-line" aria-hidden="true"></i><div><strong>Your progress, in perspective.</strong><span>Illustrative graphic · No actual player data</span></div></div>
     </div>
   </section>
 
-  <div class="ctr-section-intro"><h2>More context. A clearer next step.</h2><p>Useful insight for players and families, built on eligible recorded singles results.</p></div>
+  <div class="ctr-section-intro"><h2>Four ways to understand your tennis</h2><p>From your latest results to your next tournament options.</p></div>
   <div class="ctr-intro-features">
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>What is my next tournament?</h3><p>Explore event types for your ball level, from beginner and school events to Wilson and TSA options. Use development guidance to plan with your coach, then check event dates and entry rules.</p>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-route" aria-hidden="true"></i></span><h3>What could I play next?</h3><p>Explore tournament options from Red Ball to Wilson and TSA events. Plan with your coach and check each event’s entry rules.</p>
       <span class="ctr-feature-example">
         <span class="ctr-example-label">Example pathway · event options</span>
         <span class="ctr-example-row">
@@ -157,10 +154,10 @@
         </span>
       </span>
       <span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
-      <div class="ctr-feature-details"><p>Start with your current rated ball level in My Tennis. The pathway brings together your saved ball-level rating and eligible published singles participation, so you and your coach can discuss the next event types to explore.</p><p>Progression benchmarks need suitable, comparable evidence. They are guidance for that conversation, not automatic promotion or entry approval. Always check the event’s age, ball-level, nomination and entry requirements before registering.</p></div>
+      <div class="ctr-feature-details"><p>See your ball-level progress, development benchmarks and published event suggestions where available.</p><p>Suggestions depend on suitable results. Cape Tennis guidance does not guarantee promotion, selection or entry; confirm dates and requirements with the organiser.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow up to 12 months of saved rating history and see the eligible singles results behind each estimate.</p>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-chart-dots" aria-hidden="true"></i></span><h3>How am I progressing?</h3><p>Follow monthly reports, recent form and up to 12 months of rating history.</p>
       <span class="ctr-feature-example">
         <span class="ctr-example-label">Example monthly snapshots · Orange Ball</span>
         <span class="ctr-example-row">
@@ -170,10 +167,10 @@
         </span>
       </span>
       <span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
-      <div class="ctr-feature-details"><p>Your history follows the ball level of your latest saved rating across the available monthly snapshots. Select a month to review its estimate and the eligible evidence behind it. Months without enough evidence may have no rating.</p><p>Read the curve alongside confidence, result dates and comparison-group context. A change in opponents or comparison group can affect an estimate; a higher number alone does not prove improvement, and ratings from different ball levels are not interchangeable.</p></div>
+      <div class="ctr-feature-details"><p>Review matches, wins and events in your monthly report. Select a rating month to explore the recorded results behind it; some months may have no rating.</p><p>Ratings can rise or fall as evidence changes. Red, Orange and Green/Yellow ratings stay separate; changes in the comparison group can also affect the number.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><x-ctr-mark /></span><h3>What is my rating?</h3><p>Understand your saved Cape Tennis Rating, its evidence and confidence. See your age-group Top 10 and rating position where available.</p>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><x-ctr-mark /></span><h3>What is my rating?</h3><p>See your Cape Tennis Rating (CTR), the results behind it and your age-group position where available.</p>
       <span class="ctr-feature-example">
         <span class="ctr-example-label">Example badges · illustrative scores</span>
         <span class="ctr-example-row">
@@ -182,10 +179,10 @@
         </span>
       </span>
       <span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
-      <div class="ctr-feature-details"><p>CTR is an estimate of playing strength from eligible recorded evidence. Check the saved update date and confidence label together with the number: sparse or older evidence needs more care, and confidence is not a guarantee of accuracy.</p><p>A provisional within-group estimate is not calibrated against other groups. Missing or non-comparable evidence may leave a rating or position unavailable. Buying Player Plus does not create results, guarantee a rating, or change tournament rankings or selection.</p></div>
+      <div class="ctr-feature-details"><p>CTR estimates singles playing strength from recorded results. Its update date and confidence label help you judge how much evidence supports it.</p><p>See the age-group Top 10 where comparable ratings exist. Sparse, older or disconnected results may leave a rating provisional or unavailable. Plus does not change rankings or selection.</p></div>
     </details>
     <details class="ctr-intro-feature">
-      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How strong is tomorrow’s opponent?</h3><p>Use Opponent Insights to revisit recorded meetings, season results and recent encounters.</p>
+      <summary class="ctr-feature-summary"><span class="ctr-feature-icon"><i class="ti ti-trophy" aria-hidden="true"></i></span><h3>How do I compare with my opponent?</h3><p>Compare available opponent ratings and revisit your recorded head-to-head results.</p>
       <span class="ctr-feature-example">
         <span class="ctr-example-label">Example opponent record · fictional results</span>
         <span class="ctr-example-row">
@@ -194,17 +191,14 @@
         </span>
       </span>
       <span class="ctr-feature-toggle"><span class="ctr-feature-more">More details</span><span class="ctr-feature-less">Show less</span><span class="ctr-feature-chevron" aria-hidden="true"></span></span></summary>
-      <div class="ctr-feature-details"><p>Review eligible published results from recorded meetings. Dates may be estimated, and the available results may cover only part of the playing history.</p><p>Compare only ratings on the same comparable scale. A local or disconnected estimate cannot be compared directly with a player in another group, and some players may have no available rating. Opponent lookup does not link that player to your account or grant access to private records.</p></div>
+      <div class="ctr-feature-details"><p>Explore past meetings, season records and recent encounters. Some dates may be estimated and the record may be incomplete.</p><p>Opponent ratings appear only for eligible published fixtures or recorded meetings on a comparable scale. They do not predict the next result or unlock another player’s private history.</p></div>
     </details>
   </div>
 
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">
-    <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Their tennis journey.<br>Your choice of plan.</h2><p class="ctr-offer-copy">One named player. Shared with their linked parents or guardians. Review the available plans and payment options below.</p></div>
+    <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Player Plus.<br>One player. More insight.</h2><p class="ctr-offer-copy">One membership, shared with the player’s linked parents or guardians.</p></div>
     <div class="ctr-offer-pricing">
       <x-player-plus-pricing />
-      @if($plusSalesOpen && \App\Services\Performance\PlayerPlusService::monthlyReady())
-        <p class="ctr-offer-copy mt-2">You can also use your Cape Tennis wallet to pay once for 12 months. Wallet purchases have no automatic renewal.</p>
-      @endif
       <div class="ctr-intro-actions">
         @if($plusSalesOpen)
           <a class="btn ctr-primary" href="{{ route('player-plus.index') }}">Choose a player <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
@@ -215,7 +209,7 @@
       <div class="ctr-offer-links"><a href="{{ route('rankings.index') }}">View series rankings</a><a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></div>
     </div>
   </section>
-  <div class="ctr-disclosures"><p>Eligible results are needed; buying Plus does not guarantee a rating. Ratings may be provisional or unavailable. Only players on the shared rating scale can be compared. Membership does not change rankings or selection.</p><p>Private history requires a linked account and active membership. Paying does not link a player to your account. Draw alerts are planned and not included yet.</p></div>
+  <div class="ctr-disclosures"><p>A rating needs eligible results and may be provisional or unavailable. Buying Plus does not guarantee a rating or change rankings or selection.</p><p>Private history requires a linked account and active membership. Sponsoring a player does not create that link. Draw alerts are not included.</p></div>
   @if($isSuperUser)<aside class="ctr-admin"><p>Your CTR access is active.</p><a href="{{ route('backend.player-performance.ratings') }}">Open CTR ratings <i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i></a></aside>@endif
 </main>
 @endsection

@@ -9,23 +9,23 @@
     @endif
   </div>
   @if($plan === 'offer')<x-player-plus-pricing class="mt-2" />@endif
-  <p class="small mt-2 mb-2">@if($plan === 'monthly')Monthly access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual_recurring')Annual access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual')12 months for one named player. This existing once-off purchase has no automatic renewal.@else Choose monthly or annual automatic renewal for one named player when available.@endif Shared with the player and their linked parents or guardians.</p>
+  <p class="small mt-2 mb-2">@if($plan === 'monthly')Monthly access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual_recurring')Annual access for one named player, automatically renewed through PayFast until the payer cancels.@elseif($plan === 'annual')12 months for one named player. This existing once-off purchase has no automatic renewal.@else Review the available plans for one named player.@endif Shared with the player and their linked parents or guardians.</p>
   @endif
   <p class="fw-semibold mb-2">Know your game. Find your next step.</p>
-  <p class="small mb-2">For primary-school players and beginners finding their way from Red Ball through Orange, Green and Yellow Ball, with guidance on event options and the pathway to TSA tournaments.</p>
+  <p class="small mb-2">Ratings, progress and tournament guidance for junior players, beginners and their families.</p>
   <p class="small text-muted mb-3">Eligible results are needed for a rating; purchasing Plus does not guarantee one.</p>
     <ul class="small ps-3 mb-2">
-      <li><strong class="plus-benefit-title"><i class="ti ti-chart-line" aria-hidden="true"></i>How am I progressing?</strong>Open your player overview and monthly tennis report: recorded matches, wins, events and recent form. Explore 12 months of saved rating history and the results behind it.</li>
-      <li><strong class="plus-benefit-title"><x-ctr-mark class="me-1" />What is my rating?</strong>Understand your Cape Tennis Rating (CTR), an estimate of singles playing strength, with evidence and confidence labels. See your age-group Top 10 and rating position where available.</li>
-      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>How strong is tomorrow’s opponent?</strong>See available ratings for eligible opponents from published fixtures or saved meetings when both players share a comparable scale.</li>
-      <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>What is my next tournament?</strong>Explore event types for your ball level, development benchmarks and suggested next steps towards Wilson and TSA events. Use the guidance to discuss a suitable next event with your coach, then check its dates and entry rules.</li>
+      <li><strong class="plus-benefit-title"><i class="ti ti-chart-line" aria-hidden="true"></i>How am I progressing?</strong>Follow monthly reports, recent form and up to 12 months of rating history.</li>
+      <li><strong class="plus-benefit-title"><x-ctr-mark class="me-1" />What is my rating?</strong>See your Cape Tennis Rating (CTR), its supporting results and your age-group Top 10 where available.</li>
+      <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>How do I compare with my opponent?</strong>Compare available opponent ratings and revisit your recorded meetings. Ratings must share a comparable scale.</li>
+      <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>What could I play next?</strong>Explore ball-level progress and event options from Red Ball to Wilson and TSA. Plan with your coach and check entry rules.</li>
     </ul>
   <details>
     <summary class="small py-2" style="min-height:44px; cursor:pointer">How membership works</summary>
     <p class="small mb-2">Ratings can be provisional or unavailable. Membership does not change a rating, ranking, selection or tournament entry.</p>
     <p class="small mb-2">Pathway guidance supports discussion with a coach. It does not automatically promote a player or guarantee selection.</p>
     <p class="small mb-2">Paying for a player does not link them to your account or give you access to their private information.</p>
-    <p class="small mb-0">Draw alerts are planned and are not included yet. Account signup is free; Player Plus is a separate purchase when available. Essential tournament information remains free.</p>
+    <p class="small mb-0">Account signup and essential tournament information remain free. Plus is optional. Draw alerts are not included.</p>
   </details>
   <a class="small d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.terms') }}">Purchase details and payment support</a>
   <style>
