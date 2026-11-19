@@ -121,6 +121,9 @@ class CategoryAdjustmentService
         $event = Event::with('eventTypeModel')->lockForUpdate()->findOrFail($eventId);
         CategoryEvent::whereIn('id', [$entry->category_event_id, $target->id])->orderBy('id')->lockForUpdate()->get();
         $entry = CategoryEventRegistration::with('categoryEvent.event.eventTypeModel', 'registration.players')->lockForUpdate()->findOrFail($entry->id);
+        if (\Illuminate\Support\Facades\Schema::hasTable('individual_beneficiary_corrections') && \App\Models\IndividualBeneficiaryCorrection::where('entry_id', $entry->id)->exists()) {
+            $this->reject('This corrected participation requires separate review before changing category.');
+        }
         $target = CategoryEvent::with('event.eventTypeModel', 'category')->findOrFail($target->id);
         if ($admin) {
             abort_unless($actor->hasRole('super-user'), 403);

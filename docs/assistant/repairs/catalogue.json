@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-063",
+      "title": "Interpro payment registered the wrong published nominee",
+      "scope": "Explicit super-user correction of the current beneficiary of one active, unplayed, fully paid PayFast-only individual Interpro registration with unchanged fees.",
+      "symptoms": "An original payer selected a different published nominee and completed payment; the intended nominee remains unregistered.",
+      "cause": "Payer-sponsored registration permits selecting any otherwise eligible nominee. A mistaken selection does not invalidate the original payment or authorize rewriting its receipt identity.",
+      "fix": "Use entries:correct-individual-beneficiary through EntryService with the exact original paid order, target published nominee, super-user actor and specific reason. Review the actor-bound preview and unchanged payment/invitation/entry/competing-attempt fingerprint, then apply its fifteen-minute confirmation. Preserve original order, item, handoff, receipt, payer and fee/net; record immutable correction evidence and move only the existing registration's sole current participant and current invitation link. One entry retains one original-payer refund entitlement. Exact mapping validation acknowledges original signed paid replays without reattaching the mistaken player or reactivating later withdrawals/refunds. See docs/individual-beneficiary-correction.md.",
+      "verification": "Local isolated in-memory SQLite IndividualBeneficiaryCorrectionTest passed 11 tests and 67 assertions. Coverage includes preview/no writes, original evidence and paymentInfo preservation, unchanged counts, idempotent apply, signed original replay and amount rejection, stale/expired confirmation, role and cross-event denial, wrong receipt tuples/test receipts, original nominee registration, target paid-order reuse, preserved cancelled target checkout, pending-proof conflict rejection, corrupt mapping rejection, payer-only post-withdrawal refund with one wallet credit, category charge prevention and no extra-contact notifications. Local evidence is separate from deployment and live verification.",
+      "limits": "Guide only. Requires database/migrations/2026_11_19_120000_create_individual_beneficiary_corrections.php. Excludes wallet/hybrid/manual settlements, multiple items, changed fees, competition structure/results, category changes, refund history and unresolved or paid competing attempts. Never mark the original payment unpaid, manufacture an administrative receipt, reopen the intended player's expired checkout, change account links or send mail. Historical payment details retain the original player; the correction record identifies current participation. Release, migration and live apply authority remain separate.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Entries/Services/IndividualBeneficiaryCorrectionService.php", "app/Domain/Entries/Services/EntryService.php", "app/Models/IndividualBeneficiaryCorrection.php", "app/Console/Commands/CorrectIndividualBeneficiary.php", "app/Domain/Payments/Services/RegistrationPaymentService.php", "app/Services/InterprovincialTrials/InvitationService.php", "docs/individual-beneficiary-correction.md"],
+      "tests": ["tests/Feature/IndividualBeneficiaryCorrectionTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-062",
       "title": "On-time ordinary PayFast basket expired without a saved receipt",
       "scope": "Explicit super-user reconciliation of an original full-PayFast ordinary individual basket, one to twenty original paid items, with authenticated on-time provider evidence and canonical automatic expiry; no wallet or existing receipt.",

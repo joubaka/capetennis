@@ -335,6 +335,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   deployment does not run npm. See `docs/frontend-dependency-security.md` for
   Shepherd's narrowly checked merge remediation and its regressions.
 
+- Mistaken paid individual Interpro beneficiaries use the reviewed single-entry
+  correction mapping, never a second paid entry or a rewrite of the original
+  checkout/receipt identity. Preserve the payer, one refund entitlement and
+  safely cancelled attempts; require exact preview state and replay validation.
+  Category changes on corrected entries require separate review before charging.
+  See `docs/individual-beneficiary-correction.md`, RK-063 and
+  `IndividualBeneficiaryCorrectionTest`; local validation does not authorize
+  deployment, migration or live application.
+
 - Free individual administrative entries capture zero Cape Tennis fees using
   effective category pricing; an explicit paid category override remains paid.
   Zero payment amounts have zero PayFast estimates. Preserve explicit historical

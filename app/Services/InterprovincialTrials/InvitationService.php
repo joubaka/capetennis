@@ -505,6 +505,12 @@ class InvitationService
                 ->lockForUpdate()
                 ->get();
             $item = $items->count() === 1 ? $items->first() : null;
+            if ($item && app(\App\Domain\Entries\Services\IndividualBeneficiaryCorrectionService::class)->matches($lockedOrder, $item, $invitation)) {
+                return;
+            }
+            if (\Illuminate\Support\Facades\Schema::hasTable('individual_beneficiary_corrections') && \App\Models\IndividualBeneficiaryCorrection::where('order_id', $lockedOrder->id)->exists()) {
+                throw ValidationException::withMessages(['payment' => 'Corrected participation no longer matches its evidence.']);
+            }
             if ($item && app(\App\Domain\Entries\Services\CategoryAdjustmentInvitationService::class)
                 ->originalPaidItemMatchesCurrentInvitation($lockedOrder, $item, $invitation)) {
                 // The original receipt is immutable; its paid entry has already

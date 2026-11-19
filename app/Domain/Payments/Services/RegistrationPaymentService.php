@@ -493,6 +493,15 @@ class RegistrationPaymentService
                     ->findOrFail($order->id);
 
                 foreach ($lockedOrder->items as $item) {
+                    $currentInvitation = \App\Models\InterprovincialTrialInvitation::where('order_id', $lockedOrder->id)->first();
+                    if ($currentInvitation && app(\App\Domain\Entries\Services\IndividualBeneficiaryCorrectionService::class)->matches($lockedOrder, $item, $currentInvitation)) {
+                        // The entire corrected order is a single already-paid item.
+                        // A replay must not reattach its original player or send mail.
+                        return;
+                    }
+                    if (\Illuminate\Support\Facades\Schema::hasTable('individual_beneficiary_corrections') && \App\Models\IndividualBeneficiaryCorrection::where('order_id', $lockedOrder->id)->exists()) {
+                        throw ValidationException::withMessages(['payment' => 'Corrected participation no longer matches its evidence.']);
+                    }
                     $registration = Registration::find($item->registration_id);
                     if (!$registration) {
                         continue;

@@ -661,6 +661,12 @@ class RegistrationPaymentController extends Controller
 
     foreach ($order->items as $item) {
       $event = $item->category_event?->event;
+      if ($order->pay_status && $event?->isInterprovincialTrials()) {
+        $correctedInvitation = InterprovincialTrialInvitation::where('order_id', $order->id)->first();
+        if ($correctedInvitation && app(\App\Domain\Entries\Services\IndividualBeneficiaryCorrectionService::class)->matches($order, $item, $correctedInvitation)) {
+          continue;
+        }
+      }
       if ($order->pay_status && ($event?->isMasters() || $event?->isInterprovincialTrials())) {
         $invitationClass = $event->isMasters() ? MastersInvitation::class : InterprovincialTrialInvitation::class;
         $currentInvitation = $invitationClass::where('order_id', $order->id)

@@ -41,6 +41,11 @@ use Illuminate\Validation\ValidationException;
  */
 class EntryService
 {
+    public function correctIndividualBeneficiary(User $actor, int $orderId, int $targetPlayerId, string $reason, ?string $confirmation = null): array
+    {
+        return app(IndividualBeneficiaryCorrectionService::class)->run($actor, $orderId, $targetPlayerId, $reason, $confirmation);
+    }
+
     /** Explicit reviewed recovery of an ordinary unpaid entry removed by automatic expiry. */
     public function restoreReconciledLateIndividualEntry(CategoryEventRegistration $entry, User $actor): void
     {
@@ -725,6 +730,9 @@ class EntryService
         bool $adminOverride = false,
         ?int $capacityReservationId = null
     ): CategoryEventRegistration {
+        if (Schema::hasTable('individual_beneficiary_corrections') && \App\Models\IndividualBeneficiaryCorrection::where('entry_id', $entry->id)->exists()) {
+            throw ValidationException::withMessages(['category' => 'This corrected participation requires separate review before changing category.']);
+        }
         $this->eligibility->assertCanTransfer($entry, $targetCategory, $actingUser, $adminOverride);
 
         return DB::transaction(function () use ($entry, $targetCategory, $actingUser, $capacityReservationId) {
