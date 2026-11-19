@@ -245,6 +245,12 @@ class AdminRegistrationRefundController extends Controller
 
       try {
         $payfast = new \App\Services\Payfast();
+        if ((float) $walletPaid === 0.0) {
+          $registration = app(RefundExecutionService::class)->claimAdminRegistrationBankRefund($registration, $event, $request->user(), [
+            'refund_method' => 'bank', 'refund_gross' => $payfastGross,
+            'refund_fee' => round($payfastGross - $payfastNet, 2), 'refund_net' => $payfastNet,
+          ]);
+        }
         $result = $payfast->refundUsingAvailableMethod(
           $pfPaymentId,
           $payfastNet,

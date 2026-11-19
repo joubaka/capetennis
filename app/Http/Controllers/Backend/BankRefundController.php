@@ -101,6 +101,25 @@ class BankRefundController extends Controller
     return view('backend.refunds.bank-show', compact('registration'));
   }
 
+  public function walletConversionPreview(Request $request, \App\Models\Event $event, CategoryEventRegistration $registration,
+    \App\Domain\Refunds\Services\PendingBankWalletConversionService $service)
+  {
+    $data = $request->validate(['provider_id' => ['required', 'string', 'max:120'], 'reason' => ['required', 'string', 'min:10', 'max:1000'],
+      'verified_not_refunded' => ['required', 'accepted']]);
+    $walletConversionPreview = $service->preview($event, $registration, $request->user(), $data['provider_id'], $data['reason'], true);
+    $registration->load(['categoryEvent.event', 'players', 'registration', 'user']);
+    return view('backend.refunds.bank-show', compact('registration', 'walletConversionPreview'));
+  }
+
+  public function walletConversionComplete(Request $request, \App\Models\Event $event, CategoryEventRegistration $registration,
+    \App\Domain\Refunds\Services\PendingBankWalletConversionService $service)
+  {
+    $data = $request->validate(['preview_token' => ['required', 'string']]);
+    $result = $service->execute($event, $registration, $request->user(), $data['preview_token']);
+    return redirect()->route('admin.refunds.bank.show', $registration)->with('success',
+      'R'.number_format($result['amount'], 2).' credited to '.$result['payer_name']."'s wallet. The pending bank refund is closed.");
+  }
+
   /**
    * Query the PayFast status of a previously issued refund.
    */

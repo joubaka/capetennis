@@ -335,6 +335,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   deployment does not run npm. See `docs/frontend-dependency-security.md` for
   Shepherd's narrowly checked merge remediation and its regressions.
 
+- For original unadjusted, uncorrected single-item PayFast-only registrations,
+  a full pending bank refund can change to the original payer's wallet only
+  through the reviewed pending-bank conversion, with independent confirmation
+  of no paid or queued external refund, exact original single-item PayFast funding,
+  current-state review and atomic ledger/refund/audit completion. A query failure
+  is not evidence of nonpayment. Durable provider dispatch claims prevent a wallet
+  fallback after a refund POST or uncertain result; do not clear them by waiving or
+  resetting the refund. See `docs/pending-bank-wallet-conversion.md` and verify
+  `PendingBankWalletConversionTest`; deployment and live apply remain separate.
+
 - Removing a withdrawn Interpro nominee from current/public lists uses reversible
   nomination archive metadata, preserving the original nomination and all payment,
   invitation and withdrawal history. Use explicit current-selector filters rather

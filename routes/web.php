@@ -442,6 +442,14 @@ Route::middleware(['auth', 'role:super-user'])
       'show'
     ])->name('bank.show');
 
+    Route::post('events/{event}/bank/{registration}/wallet-conversion/preview', [
+      App\Http\Controllers\Backend\BankRefundController::class, 'walletConversionPreview'
+    ])->name('bank.wallet-conversion.preview');
+
+    Route::post('events/{event}/bank/{registration}/wallet-conversion/complete', [
+      App\Http\Controllers\Backend\BankRefundController::class, 'walletConversionComplete'
+    ])->name('bank.wallet-conversion.complete');
+
     Route::post('{registration}/complete', [
       App\Http\Controllers\Backend\BankRefundController::class,
       'complete'

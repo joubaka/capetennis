@@ -14,6 +14,18 @@ use Illuminate\Validation\ValidationException;
 
 class RefundExecutionService
 {
+    private function assertNoIndividualProviderClaim(Model $entity): void
+    {
+        if ($entity instanceof \App\Models\CategoryEventRegistration && \App\Models\IndividualProviderRefundAttempt::where('entry_id', $entity->id)
+            ->when(filled($entity->pf_transaction_id), fn ($query) => $query->orWhere('pf_payment_id', $entity->pf_transaction_id))->exists()) {
+            throw ValidationException::withMessages(['refund' => 'A provider refund was dispatched or remains unresolved. Reconcile it before crediting a wallet.']);
+        }
+        if ($entity instanceof \App\Models\CategoryEventRegistration && $entity->refund_status === 'pending' && $entity->refund_method === 'bank'
+            && $entity->payment_method === 'payfast' && ! $entity->wallet_transaction_id
+            && app(IndividualProviderRefundGuard::class)->protectsPendingBankEntry($entity) && ! FinanceMutationScope::allows('pending_bank_wallet_conversion')) {
+            throw ValidationException::withMessages(['refund' => 'Use the reviewed pending bank-to-wallet conversion before crediting this payment.']);
+        }
+    }
     public function assertNoCorrectedTeamRefund(Model $entity): void
     {
         if ($entity instanceof \App\Models\TeamPaymentOrder && \App\Models\WalletTransaction::where('source_type', 'team_replacement_refund_reversal')->where('source_id', $entity->id)->exists()) {
@@ -375,6 +387,8 @@ class RefundExecutionService
                 }
 
                 if ($locked instanceof \App\Models\CategoryEventRegistration) { $locked->lockCategoryFundingOrder(); }
+
+                $this->assertNoIndividualProviderClaim($locked);
 
                 if ($locked instanceof \App\Models\CategoryEventRegistration
                     && $locked->hasCategoryAdjustedFunding()) {
@@ -841,6 +855,7 @@ class RefundExecutionService
                 }
 
                 if ($walletAmount > 0) {
+                    $this->assertNoIndividualProviderClaim($locked);
                     if (! $wallet) {
                         throw new \RuntimeException('Wallet not found for split refund.');
                     }

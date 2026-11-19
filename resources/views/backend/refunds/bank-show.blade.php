@@ -189,10 +189,42 @@
     </div>
   </div>
 
-  @if($hasPayFastPayment)
+  @if(isset($walletConversionPreview))
+    <section class="card border-primary mb-4"><div class="card-body">
+      <h5>Review wallet refund</h5>
+      <dl class="row">
+        <dt class="col-sm-3">Original payer</dt><dd class="col-sm-9">{{ $walletConversionPreview['payer_name'] }} ({{ $walletConversionPreview['payer_email'] }})</dd>
+        <dt class="col-sm-3">Wallet credit</dt><dd class="col-sm-9 fw-bold">R{{ number_format($walletConversionPreview['amount_cents'] / 100, 2) }} · no deduction</dd>
+        <dt class="col-sm-3">Original PayFast payment</dt><dd class="col-sm-9">{{ $walletConversionPreview['provider_id'] }}</dd>
+        <dt class="col-sm-3">Reason</dt><dd class="col-sm-9">{{ $walletConversionPreview['reason'] }}</dd>
+      </dl>
+      <p>This credits the original payer's Cape Tennis wallet and closes this pending bank refund. The registration stays withdrawn. No refund is sent to PayFast or a bank.</p>
+      <form method="POST" action="{{ route('admin.refunds.bank.wallet-conversion.complete', [$registration->categoryEvent->event_id, $registration]) }}">
+        @csrf<input type="hidden" name="preview_token" value="{{ $walletConversionPreview['token'] }}">
+        <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary">Credit R{{ number_format($walletConversionPreview['amount_cents'] / 100, 2) }} to {{ $walletConversionPreview['payer_name'] }}'s wallet</button>
+          <a class="btn btn-outline-secondary" href="{{ route('admin.refunds.bank.show', $registration) }}">Cancel review</a></div>
+      </form>
+    </div></section>
+  @elseif($registration->refund_status === 'pending' && $registration->refund_method === 'bank' && $registration->payment_method === 'payfast'
+    && (float) $registration->refund_fee === 0.0 && (float) $registration->refund_gross === (float) $registration->refund_net)
+    <section class="card mb-4"><div class="card-body"><h6>Change this pending bank refund to wallet credit</h6>
+      <p>Review a full refund to the original payer's wallet after independently confirming that no external refund was paid or is pending.</p>
+      <form method="POST" action="{{ route('admin.refunds.bank.wallet-conversion.preview', [$registration->categoryEvent->event_id, $registration]) }}">
+        @csrf
+        <div class="mb-3"><label class="form-label" for="conversion-provider-id">Confirm the original PayFast payment reference</label><input id="conversion-provider-id" class="form-control" name="provider_id" value="{{ old('provider_id') }}" maxlength="120" required autocomplete="off"></div>
+        <div class="mb-3"><label class="form-label" for="conversion-reason">Reason and verification note</label><textarea id="conversion-reason" name="reason" class="form-control" minlength="10" maxlength="1000" rows="3" required>{{ old('reason') }}</textarea></div>
+        <div class="form-check mb-3"><input id="conversion-verified" name="verified_not_refunded" value="1" type="checkbox" class="form-check-input" required>
+          <label class="form-check-label" for="conversion-verified">I independently verified in PayFast that no refund was paid or is pending for this payment, and confirmed that no bank refund was paid.</label></div>
+        <p class="small text-muted">A failed or unavailable PayFast query does not confirm that no refund occurred.</p>
+        <button class="btn btn-outline-primary">Review wallet refund</button>
+      </form>
+    </div></section>
+  @endif
+
+  @if($hasPayFastPayment && !isset($walletConversionPreview))
   <section class="card mb-4"><div class="card-body"><h6>Check provider status</h6><p class="small text-muted">Check PayFast settlement separately from Cape Tennis processing records.</p><a href="{{ route('admin.refunds.bank.payfast-query', $registration) }}" class="btn btn-outline-secondary">Query PayFast Status</a></div></section>
   @endif
-  @if($registration->refund_status === 'pending')
+  @if($registration->refund_status === 'pending' && !isset($walletConversionPreview))
   <section class="card mb-4"><div class="card-body"><h6>{{ $hasPayFastPayment ? 'Submit refund to PayFast' : 'Record a manual bank payment' }}</h6><p class="small text-muted">{{ $hasPayFastPayment ? 'This submits a refund to the payment provider. The PayFast-funded portion is submitted to the provider; a wallet-funded portion is credited separately. Confirm the details before proceeding.' : 'Use only after you have paid the refund through your bank. This records that payment in Cape Tennis.' }}</p>
     <form method="POST" action="{{ route('admin.refunds.bank.complete', $registration) }}"
           onsubmit="return confirm({{ Js::from($hasPayFastPayment ? 'Submit this refund to PayFast? Confirm the player and refund amount before proceeding.' : 'Confirm you have already paid this bank refund. Record the manual payment?') }});">

@@ -603,6 +603,12 @@ class Payfast
    */
   public function refund(string $pf_payment_id, $amount, string $reason = 'Event withdrawal refund', array $extraBody = []): array
   {
+    return app(\App\Domain\Refunds\Services\IndividualProviderRefundGuard::class)->dispatch($pf_payment_id, (float) $amount,
+      fn () => $this->sendRefundRequest($pf_payment_id, $amount, $reason, $extraBody));
+  }
+
+  private function sendRefundRequest(string $pf_payment_id, $amount, string $reason, array $extraBody): array
+  {
     // PayFast requires amount in CENTS (integer), not rands
     $amountCents = (int) round((float) $amount * 100);
 

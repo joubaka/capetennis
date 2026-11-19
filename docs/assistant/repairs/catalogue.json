@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-065",
+      "title": "Replace a full pending individual bank refund with original-payer wallet credit",
+      "scope": "Super-user review of one withdrawn original unadjusted, uncorrected single-player, single-item PayFast-only registration with a full pending bank refund and no deduction.",
+      "symptoms": "A failed bank refund remains pending and the operator wants the same refund credited to the original payer wallet after independently verifying no external refund was paid or queued.",
+      "cause": "Pending bank claims cannot safely be reset, waived or followed by an unrelated wallet credit. Another provider dispatch or an uncertain earlier POST could otherwise produce a double refund.",
+      "fix": "Use the bank refund detail page's reviewed wallet conversion. Independently verify the exact PayFast reference has no paid or pending provider refund and no bank payment, record the reason, then review the original payer and full amount. The actor-bound fifteen-minute token binds current source funding and pending state. Confirmation atomically credits the original payer ledger, completes the existing claim as wallet and records prior state plus operator verification. Durable provider claims at the actual POST boundary reject in-flight, confirmed and uncertain attempts; never erase them to enable fallback. See docs/pending-bank-wallet-conversion.md.",
+      "verification": "PendingBankWalletConversionTest covers exact original payer and amount, unchanged source and other-event records, one-credit replay, role/event/reference/attestation/stale-state rejection, rollback and provider dispatch protection. Focused local tests are required before release; these checks are not production refund evidence.",
+      "limits": "Guide only. Requires database/migrations/2026_11_19_160000_create_individual_provider_refund_attempts.php. A failed status query is not proof of nonpayment. New durable provider claims require separate reconciliation and cannot be cleared by historical operator attestation. Hybrid, adjusted, corrected, multi-item and ambiguous funding retain their owning workflows and are ineligible for this conversion. Preserve paid history, withdrawal and nomination state. Deployment, migration and live financial application require separate authority.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Refunds/Services/PendingBankWalletConversionService.php", "app/Domain/Refunds/Services/IndividualProviderRefundGuard.php", "app/Domain/Refunds/Services/RefundExecutionService.php", "app/Models/IndividualProviderRefundAttempt.php", "app/Services/Payfast.php", "docs/pending-bank-wallet-conversion.md"],
+      "tests": ["tests/Feature/PendingBankWalletConversionTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-064",
       "title": "Withdrawn Interpro nominee must leave the current public list",
       "scope": "Reversible visibility archive of one exact Interpro nomination after all of that player's participation in that event is withdrawn; historical financial and invitation records remain intact.",

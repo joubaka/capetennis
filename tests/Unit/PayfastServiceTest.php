@@ -15,6 +15,16 @@ use Tests\TestCase;
  */
 class PayfastServiceTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // These tests own HTTP transport behavior; financial source protection is
+        // exercised with real database state in PendingBankWalletConversionTest.
+        $guard = \Mockery::mock(new \App\Domain\Refunds\Services\IndividualProviderRefundGuard());
+        $guard->shouldReceive('dispatch')->andReturnUsing(fn ($reference, $amount, $transport) => $transport());
+        $this->app->instance(\App\Domain\Refunds\Services\IndividualProviderRefundGuard::class, $guard);
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
