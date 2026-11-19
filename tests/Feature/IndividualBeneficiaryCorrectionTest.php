@@ -19,7 +19,25 @@ class IndividualBeneficiaryCorrectionTest extends TestCase
     {
         $this->assertTrue((DB::connection()->getDriverName() === 'mysql' && DB::connection()->getDatabaseName() === 'ct_testing')
             || (DB::connection()->getDriverName() === 'sqlite' && DB::connection()->getDatabaseName() === ':memory:'));
-        if (DB::connection()->getDriverName() === 'sqlite') \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+            \Illuminate\Foundation\Testing\RefreshDatabaseState::$inMemoryConnections = [];
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        $inMemory = $this->app && $this->app->bound('db') && DB::connection()->getDriverName() === 'sqlite'
+            && DB::connection()->getDatabaseName() === ':memory:';
+        try {
+            parent::tearDown();
+        } finally {
+            // Do not let truncation's migration flag outlive its in-memory database.
+            if ($inMemory) {
+                \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+                \Illuminate\Foundation\Testing\RefreshDatabaseState::$inMemoryConnections = [];
+            }
+        }
     }
 
     public function test_correction_preserves_money_original_evidence_counts_and_repeat_is_idempotent(): void

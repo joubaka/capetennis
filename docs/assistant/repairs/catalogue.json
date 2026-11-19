@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-064",
+      "title": "Withdrawn Interpro nominee must leave the current public list",
+      "scope": "Reversible visibility archive of one exact Interpro nomination after all of that player's participation in that event is withdrawn; historical financial and invitation records remain intact.",
+      "symptoms": "A withdrawn nominee still appears on the public trial nomination list, while ordinary removal is correctly blocked by registration or payment history.",
+      "cause": "Nomination visibility and registration withdrawal are separate. Hard deletion would discard the nomination identity used by retained invitation and payment history.",
+      "fix": "Use interpro:archive-nomination with exact event, category, nomination, reviewing super-user and reason. Preview then apply the actor-bound fifteen-minute confirmation after current-state review. The canonical service validates event/player/invitation/order tuples, requires withdrawn participation, rejects unresolved checkout or EFT proof and records archive metadata with an audit. Public/current registration, readiness and communication selectors exclude archived rows while historical readers retain access. Explicit --restore reviews visibility restoration only; withdrawal and payment stay unchanged. See docs/interpro-nomination-archive.md.",
+      "verification": "Isolated in-memory SQLite InterproNominationArchiveTest passed 8 tests and 54 assertions. Coverage includes public omission and other nominee retention, backend archive/readiness presentation, byte-for-byte payment/order/entry/invitation/account-link preservation including another event's paid registration, preview and idempotency, explicit visibility-only restoration, role/event/stale-state denial, active participation/proof/unresolved-order rejection, malformed invitation order rejection, old signed invitation and decline rejection, reminder audience exclusion, hard-delete protection and withdrawal-restoration rollback. These are local results, not production application evidence.",
+      "limits": "Guide only. Requires database/migrations/2026_11_19_130000_add_archive_to_event_nominations.php. Archive changes no payment, refund, wallet, player identity, ownership link, invitation response or other event registration. It does not transfer coverage, reverse a withdrawal, send messages or authorize live application/deployment. Preserve archived historical rows; do not introduce a global archive scope or remove the nomination via generic delete/sync routes.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/InterprovincialTrials/NominationArchiveService.php", "app/Console/Commands/ArchiveInterproNomination.php", "app/Models/EventNomination.php", "app/Services/InterprovincialTrials/InvitationService.php", "app/Http/Controllers/Frontend/EventController.php", "docs/interpro-nomination-archive.md"],
+      "tests": ["tests/Feature/InterproNominationArchiveTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-063",
       "title": "Interpro payment registered the wrong published nominee",
       "scope": "Explicit super-user correction of the current beneficiary of one active, unplayed, fully paid PayFast-only individual Interpro registration with unchanged fees.",

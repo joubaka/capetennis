@@ -167,7 +167,7 @@ class TrialCommunicationService
         $restrictIndividuals = $audience === 'all' && (! empty($options['nominee_ids']) || ! empty($options['slot_ids']));
         if (in_array($audience, ['nominations', 'all'], true)) {
             $individualIds = $audience === 'all' ? ($options['nominee_ids'] ?? []) : ($options['individual_ids'] ?? []);
-            $items = EventNomination::with(['player.user', 'player.users', 'categoryEvent'])->where('event_id', $event->id)
+            $items = EventNomination::unarchived()->with(['player.user', 'player.users', 'categoryEvent'])->where('event_id', $event->id)
                 ->when($restrictIndividuals && empty($individualIds), fn ($q) => $q->whereRaw('1 = 0'))
                 ->when(! empty($options['category_ids']), fn ($q) => $q->whereIn('category_event_id', $options['category_ids']))
                 ->when(! empty($individualIds), fn ($q) => $q->whereIn('id', $individualIds))->orderBy('id')->get();

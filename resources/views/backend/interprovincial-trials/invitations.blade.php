@@ -181,6 +181,16 @@
     @if($nominations->hasPages())<div class="mt-3">{{ $nominations->links() }}</div>@endif
   </div></div>
 
+  @if($archivedNominations->isNotEmpty())
+    <details class="card mb-4"><summary class="card-header fw-semibold">Archived nominations ({{ $archivedNominations->count() }})</summary>
+      <div class="card-body"><p class="text-muted small">Hidden from the public list and registration. Original entries, invitations and payments remain in history. Restoration requires a reviewed administrator action.</p>
+        @foreach($archivedNominations as $archivedNomination)
+          <div class="border-bottom py-2"><strong>{{ $archivedNomination->display_name }}</strong> <span class="badge bg-label-secondary">Archived</span><div class="small text-muted">{{ $archivedNomination->archived_at->format('d M Y H:i') }} · {{ $archivedNomination->archive_reason }}</div></div>
+        @endforeach
+      </div>
+    </details>
+  @endif
+
   @if($historicalInvitations && $historicalInvitations->count())
     <div class="card mb-4">
       <div class="card-header"><h5 class="mb-1">Historical invitations no longer in current nominations</h5><p class="text-muted small mb-0">Audit history is retained. These players are not part of the current nomination list.</p></div>

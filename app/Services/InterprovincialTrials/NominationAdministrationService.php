@@ -18,6 +18,7 @@ class NominationAdministrationService
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
             $category = CategoryEvent::whereKey($category->id)->lockForUpdate()->firstOrFail();
             $nomination = EventNomination::whereKey($nomination->id)->lockForUpdate()->firstOrFail();
+            abort_if($nomination->archived_at !== null, 404);
             abort_unless($event->isInterprovincialTrials() && (int) $category->event_id === (int) $event->id
                 && (int) $nomination->event_id === (int) $event->id
                 && (int) $nomination->category_event_id === (int) $category->id, 404);

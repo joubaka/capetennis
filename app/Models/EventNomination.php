@@ -11,6 +11,13 @@ class EventNomination extends Model
 
   protected $table = 'event_nominations';
 
+  protected $casts = ['archived_at' => 'datetime'];
+
+  public function scopeUnarchived($query)
+  {
+    return $query->whereNull('event_nominations.archived_at');
+  }
+
   protected $fillable = [
     'event_id',
     'category_event_id',

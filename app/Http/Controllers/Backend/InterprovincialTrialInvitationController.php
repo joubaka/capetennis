@@ -25,11 +25,12 @@ class InterprovincialTrialInvitationController extends Controller
         $batch = $this->latestBatchForEvent($event);
         $event->load(['categoryEvents' => fn ($query) => $query
             ->with('category')
-            ->withCount('nominations')
+            ->withCount(['nominations' => fn ($query) => $query->unarchived()])
             ->orderBy('ordering')
             ->orderBy('id')]);
         $categoryIds = $event->categoryEvents->pluck('id');
         $nominations = EventNomination::query()
+            ->unarchived()
             ->with(['player:id,name,surname', 'categoryEvent.category:id,name'])
             ->where('event_id', $event->id)
             ->whereIn('category_event_id', $categoryIds)
@@ -94,6 +95,7 @@ class InterprovincialTrialInvitationController extends Controller
         ];
         $invitationCounts = $batch
             ? $this->batchInvitationQuery($batch, $event)
+                ->whereHas('nomination', fn ($query) => $query->unarchived())
                 ->selectRaw('status, COUNT(*) as aggregate')
                 ->groupBy('status')
                 ->pluck('aggregate', 'status')
@@ -102,7 +104,7 @@ class InterprovincialTrialInvitationController extends Controller
             ->mapWithKeys(fn (string $status): array => [$status => (int) ($invitationCounts[$status] ?? 0)])
             ->filter(fn (int $count): bool => $count > 0);
         $invitationCount = (int) $invitationCounts->sum();
-        $readyRecipientCount = $batch ? $this->batchInvitationQuery($batch, $event)->whereNotNull('recipient_email')->count() : 0;
+        $readyRecipientCount = $batch ? $this->batchInvitationQuery($batch, $event)->whereHas('nomination', fn ($query) => $query->unarchived())->whereNotNull('recipient_email')->count() : 0;
         $readiness = [
             'category_count' => $event->categoryEvents->count(),
             'nomination_count' => $nominations->total(),
@@ -129,9 +131,11 @@ class InterprovincialTrialInvitationController extends Controller
                 ->when(! $request->user()->hasRole('super-user'), fn ($query) => $query->whereExists(fn ($admins) => $admins
                     ->selectRaw('1')->from('event_admins')->whereColumn('event_admins.event_id', 'events.id')->where('user_id', $request->user()->id))))
             ->orderByDesc('id')->limit(200)->get();
+        $archivedNominations = EventNomination::where('event_id', $event->id)->whereNotNull('archived_at')
+            ->with('player:id,name,surname')->orderByDesc('archived_at')->limit(100)->get();
         return view('backend.interprovincial-trials.invitations', compact(
             'event', 'batch', 'readiness', 'latestInvitationsByNomination', 'nominationPresentations',
-            'nominationFilterGroups', 'historicalInvitations', 'nominations', 'sourceCategories'
+            'nominationFilterGroups', 'historicalInvitations', 'nominations', 'sourceCategories', 'archivedNominations'
         ));
     }
 
@@ -299,6 +303,7 @@ class InterprovincialTrialInvitationController extends Controller
             && (int) $nomination->category_event_id === (int) $categoryEvent->id, 404);
         DB::transaction(function () use ($nomination, $categoryEvent): void {
             $locked = EventNomination::whereKey($nomination->id)->lockForUpdate()->firstOrFail();
+            abort_if($locked->archived_at !== null, 422, 'Archived nomination history must be retained.');
             $hasLifecycle = InterprovincialTrialInvitation::where('nomination_id', $locked->id)
                 ->where(function ($query): void {
                     $query->whereNotNull('order_id')->orWhereNotNull('registration_id')
@@ -344,6 +349,7 @@ class InterprovincialTrialInvitationController extends Controller
     private function categoryNominationPayload(CategoryEvent $categoryEvent, string $message, int $added = 0, int $alreadyNominated = 0): array
     {
         $nominationQuery = EventNomination::query()
+            ->unarchived()
             ->with('player:id,name,surname')
             ->where('event_id', $categoryEvent->event_id)
             ->where('category_event_id', $categoryEvent->id)
@@ -375,7 +381,7 @@ class InterprovincialTrialInvitationController extends Controller
 
         return [
             'message' => $message,
-            'total' => EventNomination::where('event_id', $categoryEvent->event_id)->count(),
+            'total' => EventNomination::unarchived()->where('event_id', $categoryEvent->event_id)->count(),
             'added' => $added,
             'already_nominated' => $alreadyNominated,
             'category_event_id' => $categoryEvent->id,

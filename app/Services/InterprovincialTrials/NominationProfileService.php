@@ -13,6 +13,7 @@ class NominationProfileService
 {
     public function authorize(EventNomination $nomination, User $user): void
     {
+        abort_if($nomination->archived_at !== null, 404);
         $nomination->loadMissing(['event.eventTypeModel', 'categoryEvent']);
         abort_unless($nomination->event?->isInterprovincialTrials()
             && (int) $nomination->categoryEvent?->event_id === (int) $nomination->event_id
@@ -39,6 +40,7 @@ class NominationProfileService
             \App\Models\Event::whereKey($nomination->event_id)->lockForUpdate()->firstOrFail();
             \App\Models\CategoryEvent::whereKey($nomination->category_event_id)->lockForUpdate()->firstOrFail();
             $nomination = EventNomination::whereKey($nominationId)->lockForUpdate()->firstOrFail();
+            abort_if($nomination->archived_at !== null, 404);
             $this->authorize($nomination, $user);
             $identity = app(PlayerIdentityService::class);
             $result = $identity->findOrCreate(array_merge($details, [

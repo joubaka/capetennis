@@ -335,6 +335,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   deployment does not run npm. See `docs/frontend-dependency-security.md` for
   Shepherd's narrowly checked merge remediation and its regressions.
 
+- Removing a withdrawn Interpro nominee from current/public lists uses reversible
+  nomination archive metadata, preserving the original nomination and all payment,
+  invitation and withdrawal history. Use explicit current-selector filters rather
+  than a global model scope; restoring visibility never restores participation.
+  See `docs/interpro-nomination-archive.md`, RK-064 and
+  `InterproNominationArchiveTest`; deployment and live apply need separate authority.
+
 - Mistaken paid individual Interpro beneficiaries use the reviewed single-entry
   correction mapping, never a second paid entry or a rewrite of the original
   checkout/receipt identity. Preserve the payer, one refund entitlement and

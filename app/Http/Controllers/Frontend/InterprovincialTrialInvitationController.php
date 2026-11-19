@@ -15,6 +15,7 @@ class InterprovincialTrialInvitationController extends Controller
     public function index(Request $request)
     {
         $invitations = InterprovincialTrialInvitation::with(['event', 'categoryEvent.category', 'player'])
+            ->whereHas('nomination', fn ($query) => $query->unarchived())
             ->whereIn('player_id', $request->user()->ownedPlayerIds())
             ->whereIn('status', ['queued', 'sent'])
             ->latest()
@@ -27,6 +28,7 @@ class InterprovincialTrialInvitationController extends Controller
     {
         $user = $request->user();
         $invitation->load(['event', 'categoryEvent.category', 'player', 'nomination', 'order']);
+        abort_if($invitation->nomination?->archived_at !== null, 404);
 
         $tupleIsCurrent = (int) $invitation->categoryEvent?->event_id === (int) $invitation->event_id
             && (int) $invitation->nomination?->event_id === (int) $invitation->event_id

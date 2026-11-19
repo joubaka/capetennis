@@ -95,6 +95,7 @@ class InvitationService
             $lockedEvent = Event::query()->with('eventTypeModel')->lockForUpdate()->findOrFail($event->id);
             $lockedCategory = CategoryEvent::query()->lockForUpdate()->findOrFail($categoryEvent->id);
             $lockedNomination = EventNomination::query()->lockForUpdate()->findOrFail($nomination->id);
+            abort_if($lockedNomination->archived_at !== null, 404);
 
             if ($lockedNomination->player_id === null) {
                 throw ValidationException::withMessages(['nomination' => 'Create the nominated player profile before registering.']);
@@ -322,6 +323,8 @@ class InvitationService
             $locked = InterprovincialTrialInvitation::query()
                 ->with(['event.eventTypeModel', 'categoryEvent', 'nomination', 'player'])
                 ->lockForUpdate()->findOrFail($invitation->id);
+            $currentNomination = EventNomination::whereKey($locked->nomination_id)->lockForUpdate()->firstOrFail();
+            abort_if($currentNomination->archived_at !== null, 404);
 
             if ($locked->player_id === null) {
                 throw ValidationException::withMessages(['nomination' => 'Create the nominated player profile before registering.']);
@@ -454,6 +457,7 @@ class InvitationService
             $locked = InterprovincialTrialInvitation::query()
                 ->with(['event.eventTypeModel', 'categoryEvent', 'nomination', 'player.users'])
                 ->lockForUpdate()->findOrFail($invitation->id);
+            abort_if($locked->nomination?->archived_at !== null, 404);
             $owned = (int) $locked->player?->userId === (int) $actor->id
                 || $locked->player?->users->contains(fn (User $linked): bool => (int) $linked->id === (int) $actor->id);
             abort_unless($owned, 403);
@@ -670,6 +674,10 @@ class InvitationService
                 ->where('category_event_id', $lockedEntry->category_event_id)
                 ->lockForUpdate()
                 ->first();
+
+            if ($invitation && EventNomination::whereKey($invitation->nomination_id)->whereNotNull('archived_at')->exists()) {
+                throw ValidationException::withMessages(['registration' => 'Restore the archived nomination before restoring participation.']);
+            }
 
             if (! $invitation) {
                 return;
@@ -1065,7 +1073,7 @@ class InvitationService
         if (! in_array($mode, ['new', 'profileless', 'not_registered', 'individual'], true)) {
             throw ValidationException::withMessages(['mode' => 'Choose a supported invitation send mode.']);
         }
-        $nominationQuery = $event->nominations()->with(['player.user', 'player.users', 'categoryEvent.category'])->orderBy('id');
+        $nominationQuery = $event->nominations()->unarchived()->with(['player.user', 'player.users', 'categoryEvent.category'])->orderBy('id');
         if ($lock) $nominationQuery->lockForUpdate();
         $nominations = $nominationQuery->get();
         $snapshotRows = collect($this->snapshotRows($event, $nominations))->keyBy('nomination_id');
@@ -1143,7 +1151,7 @@ class InvitationService
 
     private function snapshotRows(Event $event, $nominations): array
     {
-        return $nominations->map(function ($nomination) use ($event): array {
+        return $nominations->filter(fn ($nomination) => $nomination->archived_at === null)->map(function ($nomination) use ($event): array {
             abort_unless((int) $nomination->categoryEvent?->event_id === (int) $event->id, 422);
             $player = $nomination->player;
             $direct = $player?->user && filled($player->user->email) ? $player->user : null;

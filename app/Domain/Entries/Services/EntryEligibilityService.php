@@ -269,10 +269,14 @@ class EntryEligibilityService
     private function assertTrialNominationBeforeDraw(CategoryEvent $categoryEvent, int $playerId, bool $allowPaidAdminEntry = false): void
     {
         if (!$categoryEvent->event->isInterprovincialTrials()) { return; }
+        if (\App\Models\EventNomination::where('event_id', $categoryEvent->event_id)->where('category_event_id', $categoryEvent->id)
+            ->where('player_id', $playerId)->whereNotNull('archived_at')->exists()) {
+            throw new RuntimeException('Restore this archived Trials nomination before registering the player.');
+        }
         if (! $allowPaidAdminEntry && $categoryEvent->draws()->exists()) {
             throw new RuntimeException('Trials entries may only be added before the category draw is created.');
         }
-        if (! $allowPaidAdminEntry && !\App\Models\EventNomination::where('event_id', $categoryEvent->event_id)->where('category_event_id', $categoryEvent->id)->where('player_id', $playerId)->exists()) {
+        if (! $allowPaidAdminEntry && !\App\Models\EventNomination::unarchived()->where('event_id', $categoryEvent->event_id)->where('category_event_id', $categoryEvent->id)->where('player_id', $playerId)->exists()) {
             throw new RuntimeException('Only a current nominee in this Trials category may register.');
         }
     }
