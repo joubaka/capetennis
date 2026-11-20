@@ -161,7 +161,7 @@ class DrawControllerAuthorizationTest extends TestCase
         $this->actingAs($this->admin)
             ->postJson(route('draw.toggle.publish', $draw))
             ->assertUnprocessable()
-            ->assertJsonPath('message', 'Draw is not ready to publish: select a draw format before publishing.');
+            ->assertJsonPath('message', 'Draw is not ready to publish: select a draw format before showing the draw.');
 
         $this->assertFalse((bool) $draw->fresh()->published);
     }

@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Domain\Payments\Services\{TeamPaymentService, TeamReplacementPaymentCorrectionService};
+use App\Domain\Payments\Services\{CheckoutExpiryPolicy, TeamPaymentService, TeamReplacementPaymentCorrectionService};
 use App\Models\{CategoryEvent, Event, NoProfileTeamPlayer, Player, Team, TeamPaymentOrder, TeamPlayer, User, WalletTransaction};
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{DB, Event as Events, Http, Mail};
@@ -43,6 +43,8 @@ class TeamReplacementPaymentCorrectionTest extends TestCase
             'player_id' => $target->id, 'refund_action' => 'replacement', 'reason' => 'Original roster replacement'])->assertOk();
         $replacement = TeamPaymentOrder::where('team_id', $team->id)->where('player_id', $target->id)->sole();
         $this->travel(6)->minutes();
+        $this->assertFalse(app(TeamPaymentService::class)->expireUnpaidCheckout($replacement));
+        $this->travelTo($replacement->created_at->copy()->addMinutes(CheckoutExpiryPolicy::MINUTES + 1));
         $this->assertTrue(app(TeamPaymentService::class)->expireUnpaidCheckout($replacement));
         $this->travelBack();
         $wallet = $payer->wallet()->firstOrFail();
