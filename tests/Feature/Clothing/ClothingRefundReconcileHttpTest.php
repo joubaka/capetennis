@@ -30,11 +30,21 @@ class ClothingRefundReconcileHttpTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->assertMatchesRegularExpression('/^ct_testing(?:_[a-z0-9_]+)?$/', DB::connection()->getDatabaseName());
-        if (! self::$schemaReady) {
-            $command = DB::connection()->getDatabaseName() === 'ct_testing_clothing_reconcile_ui' ? 'migrate' : 'migrate:fresh';
+        $this->assertTrue(app()->environment('testing'));
+        $databaseName = DB::connection()->getDatabaseName();
+        $inMemory = DB::connection()->getDriverName() === 'sqlite';
+        if ($inMemory) {
+            $this->assertSame(':memory:', $databaseName);
+        } else {
+            $this->assertSame('mysql', DB::connection()->getDriverName());
+            $this->assertMatchesRegularExpression('/^ct_testing(?:_[a-z0-9_]+)?$/', $databaseName);
+        }
+        // Each application gets a new in-memory connection; persistent QA databases
+        // retain their existing one-time setup and non-destructive UI migration.
+        if ($inMemory || ! self::$schemaReady) {
+            $command = $databaseName === 'ct_testing_clothing_reconcile_ui' ? 'migrate' : 'migrate:fresh';
             $this->artisan($command, ['--force' => true])->assertExitCode(0);
-            self::$schemaReady = true;
+            self::$schemaReady = ! $inMemory;
         }
         Http::preventStrayRequests();
         $this->app->singleton(Payfast::class, function () { $gateway = new Payfast; $gateway->mode = 'live'; return $gateway; });

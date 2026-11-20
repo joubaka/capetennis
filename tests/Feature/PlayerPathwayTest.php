@@ -361,6 +361,10 @@ class PlayerPathwayTest extends TestCase
             ]]);
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
         $entitled = false;
+        $history->shouldReceive('recordSource')->once()->andReturnUsing(function () use (&$entitled) {
+            $this->assertTrue($entitled, 'Locked profiles must not read saved playing records.');
+            return ['reason' => 'No saved playing record in this badge fixture.'];
+        });
         Gate::define('player-premium-rating', function ($user, $candidate) use (&$entitled) { return $entitled && $candidate->id === 1; });
         $this->actingAs($this->actor(10, false));
         $locked = $this->get(route('my.tennis', ['player' => 1]))->assertOk()

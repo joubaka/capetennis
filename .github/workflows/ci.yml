@@ -280,4 +280,4 @@ jobs:
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php -d memory_limit=512M artisan test --testsuite=Feature
+          php -d memory_limit=512M vendor/bin/phpunit --testsuite=Feature
