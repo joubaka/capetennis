@@ -34,9 +34,16 @@ final class PracticeCampPlanner
             ]);
             $plan = PracticeCampPlan::lockForUpdate()->findOrFail($plan->id);
             if ($plan->event_id) {
+                $campType = EventType::where('type', EventType::CAMP)->orderBy('id')->first()
+                    ?? EventType::where(fn ($q) => $q->whereNull('type')->orWhere('type', 0))->whereRaw('LOWER(TRIM(name)) = ?', ['camp'])->orderBy('id')->first();
+                $event = $plan->event;
+                if ($campType && ! $event->isCamp() && ! $event->published && ! $event->signUp) {
+                    $event->update(['eventType' => $campType->id]);
+                }
                 return $plan;
             }
             $type = EventType::where('type', EventType::CAMP)->orderBy('id')->first()
+                ?? EventType::where(fn ($q) => $q->whereNull('type')->orWhere('type', 0))->whereRaw('LOWER(TRIM(name)) = ?', ['camp'])->orderBy('id')->first()
                 ?? EventType::where('type', EventType::INDIVIDUAL)->where('name', 'not like', '%trial%')->orderBy('id')->first();
             if (! $type) {
                 throw ValidationException::withMessages(['camp' => 'An ordinary camp or individual event type must be available.']);
@@ -112,8 +119,8 @@ final class PracticeCampPlanner
         $rows = $this->merge([], $rows->all());
 
         return ['rows' => $rows, 'fingerprint' => hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)),
-            'notice' => $imports->isEmpty() ? 'No managed selection history is available here. Original selections and declines may need separate records.'
-                : 'Historical declines are review candidates, not an automatic ranking cutoff. Manual sequence numbers are not merit rankings.'];
+            'notice' => ($imports->isEmpty() ? 'No managed selection history is available here. ' : 'Historical declines are review candidates; manual sequence numbers are not merit rankings. ')
+                .'This preview is not a complete merit-cutoff list: a player above the last participant may have no invitation record. Review the original published ranking and add any missing qualifying players manually.'];
     }
 
     public function add(User $actor, PracticeCampPlan $plan, Event $source, array $data): void

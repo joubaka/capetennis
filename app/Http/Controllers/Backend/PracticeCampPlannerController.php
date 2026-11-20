@@ -15,8 +15,11 @@ class PracticeCampPlannerController extends Controller
         $plans = PracticeCampPlan::with('event')->whereNotNull('event_id')
             ->when(! $request->user()->hasRole('super-user'), fn ($q) => $q->whereIn('event_id', EventAdmin::where('user_id', $request->user()->id)->select('event_id')))
             ->latest('id')->paginate(20);
+        $campEvents = Event::whereHas('eventTypeModel', fn ($q) => $q->where('type', 3)->orWhere(fn ($legacy) => $legacy->where(fn ($base) => $base->whereNull('type')->orWhere('type', 0))->whereRaw('LOWER(TRIM(name)) = ?', ['camp'])))
+            ->when(! $request->user()->hasRole('super-user'), fn ($q) => $q->whereIn('id', EventAdmin::where('user_id', $request->user()->id)->select('event_id')))
+            ->latest('start_date')->limit(50)->get(['id', 'name']);
 
-        return view('backend.practice-camps.index', compact('plans'));
+        return view('backend.practice-camps.index', compact('plans', 'campEvents'));
     }
 
     public function store(Request $request, PracticeCampPlanner $planner)

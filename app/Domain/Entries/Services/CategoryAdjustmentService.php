@@ -93,6 +93,7 @@ class CategoryAdjustmentService
                 $this->cancel($attempt, $actor, true, $admin);
             }
             app(\App\Services\DivisionCapacityService::class)->assertAvailable($target);
+            app(\App\Services\Camps\CampAdmission::class)->assertAvailable($target, (int) $entry->registration->players()->value('players.id'));
             $payment = $this->funding($entry);
             $origin = CategoryAdjustment::where('entry_id', $entry->id)->oldest('id')->value('original_order_item_id')
                 ?? RegistrationOrderItems::where('registration_id', $entry->registration_id)->where('category_event_id', $entry->category_event_id)->value('id');

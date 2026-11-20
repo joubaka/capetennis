@@ -6,14 +6,15 @@
 </style>
 @endsection
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y camp-planner">
+<div data-camp-workflow class="container-xxl flex-grow-1 container-p-y camp-planner">
   <a href="{{ route('backend.practice-camps.index') }}">Practice camp planning</a>
   <h1 class="h3 mt-3">{{ $plan->event->name }}</h1>
+  <a class="btn btn-outline-primary mb-3" href="{{ route('backend.camps.show', $plan) }}">Camp settings, coach nominations and invitations</a>
   <span class="badge bg-label-secondary mb-3">Private invitation draft</span>
   <div class="card mb-4"><div class="card-body">
     <div class="camp-meta">
       <span><strong>{{ $plan->event->start_date->format('j M Y') }} – {{ $plan->event->end_date->format('j M Y') }}</strong> · provisional</span>
-      <span>Venue not set</span><span>Fee not set</span><span>Capacity not set</span><span>Contact not set</span>
+      <span>{{ $plan->event->venue_notes ?: 'Venue not set' }}</span><span>{{ $plan->entry_fee===null?'Fee not set':'Default fee R'.number_format($plan->entry_fee,2) }}</span><span>{{ $plan->capacity===null?'Capacity not set':'Capacity '.$plan->capacity }}</span><span>{{ $plan->event->email ?: 'Contact not set' }}</span>
     </div>
     <p class="mt-3 mb-0">Choose source regions or teams, review the players, then add them to this camp’s draft. Team selection and camp entry remain separate.</p>
     <p class="small text-muted mb-0">No invitations are sent here. Coach nominations will require organiser approval before invitations.</p>
@@ -82,6 +83,7 @@
 </div>
 @endsection
 @section('page-script')
+@include('backend.practice-camps.feedback')
 <script>
 document.querySelectorAll('[data-camp-toggle]').forEach(button => button.addEventListener('click', () => {
   const selector = button.dataset.campToggle === 'teams' ? 'input[name="team_ids[]"]' : 'input[name="selected[]"][data-camp-roster="1"]';

@@ -305,12 +305,18 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   `EventStandingsService` with published data and omit groups without displayed
   positions, including groups whose draw rules differ.
 - Practice camp planning is separate from Cavaliers trials and Interpro selection.
-  The first-stage planner prepares a private candidate draft from managed source
-  events, regions and scoped team rosters; it does not send invitations, publish
-  nominations or open registration. Imported roster identities require matching
-  before actionable invitations, and historical declines need eligibility review.
-  Coach nominations require organiser approval before invitations in the next
-  stage. See `docs/practice-camp-planner.md` and `PracticeCampPlannerTest`.
+  Registration settings support open entry, approved nominees only, or open entry
+  with invitations independently of optional roster/manual/coach sources. Camps
+  without opted-in configuration keep their existing entry rules. Imported roster
+  identities require reviewed matching; coach submissions require organiser
+  approval before a separate exact mail review/send action. Settings never open
+  or publish the event. Camp admission uses canonical checkout/capacity services;
+  unresolved holds count and later settings must not strand verified settlement.
+  Keep the main UI to setup, player approval and invitation review; optional tools
+  stay folded away, known roster approvals can be grouped, and camp actions use
+  concise escaped toast feedback with persistent inline errors.
+  See `docs/practice-camp-planner.md`, `CampWorkflowTest`, `CampCheckoutTest` and
+  the disposable MySQL current-read regression in `tests/Support`.
 
 - Cavaliers nomination reports share saved private rosters rather than publish
   them. Explain the next five available candidates outside selected/reserves

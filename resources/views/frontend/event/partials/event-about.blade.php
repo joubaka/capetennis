@@ -1,3 +1,7 @@
+@php
+  $campEntryDeadline = $event->isCamp() ? app(\App\Services\Camps\CampAdmission::class)->configuration((int) $event->id)?->registration_closes_at : null;
+  if ($campEntryDeadline) $formatEntryLine = $campEntryDeadline->copy()->timezone('Africa/Johannesburg')->format('D d M Y H:i').' SAST';
+@endphp
 @if(
   $sDate ||
   $eDate ||

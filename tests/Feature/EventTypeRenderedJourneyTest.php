@@ -91,7 +91,7 @@ class EventTypeRenderedJourneyTest extends TestCase
     {
         return [
             'individual' => [1, 'Individual', 'individual', 1, 'individual', 'class="row individual-event-view"'],
-            'legacy camp family zero' => [2, 'camp', null, 0, 'default', 'Event documents'],
+            'legacy camp family zero' => [2, 'camp', null, 0, 'individual', 'class="row individual-event-view"'],
             'team' => [3, 'team event', 'team', 2, 'team', 'class="team-public-event col-xl-12"'],
             'high school' => [4, 'High School Team', 'team', 2, 'team', 'class="team-public-event col-xl-12"'],
             'cavaliers' => [5, 'Cavaliers Trials', 'individual', 1, 'cavaliers_trials', 'Nominations'],

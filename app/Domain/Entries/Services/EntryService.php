@@ -127,6 +127,7 @@ class EntryService
         }
 
         return DB::transaction(function () use ($categoryEvent, $playerId, $actingUser, $collectionStatus) {
+            app(\App\Services\Camps\CampAdmission::class)->lockEvents([(int) $categoryEvent->event_id]);
             // Serialize category mutations before checking for an existing active entry.
             $lockedCategoryEvent = CategoryEvent::query()
                 ->whereKey($categoryEvent->getKey())
@@ -139,6 +140,7 @@ class EntryService
             }
 
             app(\App\Services\DivisionCapacityService::class)->assertAvailable($lockedCategoryEvent);
+            app(\App\Services\Camps\CampAdmission::class)->assertAvailable($lockedCategoryEvent, $playerId);
             $adminPaymentStatus = $collectionStatus === 'paid_privately' ? 'paid' : 'unpaid';
             $capeTennisFee = $lockedCategoryEvent->registrationCapeTennisFee();
             // A draw-only entrant keeps its registration identity when becoming
@@ -735,9 +737,13 @@ class EntryService
         }
         $this->eligibility->assertCanTransfer($entry, $targetCategory, $actingUser, $adminOverride);
 
-        return DB::transaction(function () use ($entry, $targetCategory, $actingUser, $capacityReservationId) {
+        return DB::transaction(function () use ($entry, $targetCategory, $actingUser, $capacityReservationId, $adminOverride) {
+            app(\App\Services\Camps\CampAdmission::class)->lockEvents([(int) $targetCategory->event_id]);
             CategoryEvent::whereIn('id', [$entry->category_event_id, $targetCategory->id])->orderBy('id')->lockForUpdate()->get();
             $targetCategory = $targetCategory->fresh();
+            $campPlayerId = (int) $entry->registration->players()->value('players.id');
+            app(\App\Services\Camps\CampAdmission::class)->assertEligible($targetCategory, $campPlayerId, $adminOverride);
+            app(\App\Services\Camps\CampAdmission::class)->assertAvailable($targetCategory, $campPlayerId);
             if ($capacityReservationId !== null) {
                 // Only the exact pending move may consume its already-held place.
                 abort_unless(\App\Models\CategoryAdjustment::whereKey($capacityReservationId)

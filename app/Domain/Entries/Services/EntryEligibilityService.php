@@ -60,11 +60,12 @@ class EntryEligibilityService
             throw new RuntimeException('Player has an unpaid Trials checkout. Resume or cancel that checkout first.');
         }
 
-        $duplicate = $categoryEvent->categoryEventRegistrations()
+        $duplicateQuery = $categoryEvent->categoryEventRegistrations()
             ->where('status', 'active')
             ->where('payment_status_id', 1)
-            ->whereHas('registration.players', fn ($q) => $q->where('players.id', $playerId))
-            ->exists();
+            ->whereHas('registration.players', fn ($q) => $q->where('players.id', $playerId));
+        $duplicate = app(\App\Services\Camps\CampAdmission::class)->configuration((int) $categoryEvent->event_id)
+            ? $this->currentCampDuplicate($categoryEvent, $playerId) : $duplicateQuery->exists();
 
         if ($duplicate) {
             throw new RuntimeException('Player is already registered in this category.');
@@ -73,6 +74,7 @@ class EntryEligibilityService
 
     public function assertAdminCategoryEligible(CategoryEvent $categoryEvent, int $playerId, ?User $actor = null, bool $paidEntry = false): void
     {
+        app(\App\Services\Camps\CampAdmission::class)->assertEligible($categoryEvent, $playerId, true);
         $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
         $allowPaidAdminEntry = $paidEntry && $actor
             && ($actor->hasRole('super-user') || $actor->is_event_admin($categoryEvent->event_id));
@@ -101,6 +103,7 @@ class EntryEligibilityService
      */
     public function assertCanRegister(CategoryEvent $categoryEvent, int $playerId): void
     {
+        app(\App\Services\Camps\CampAdmission::class)->assertEligible($categoryEvent, $playerId);
         $this->disciplinaryEligibility->assertEligible($playerId, $categoryEvent->event_id);
         app(\App\Services\CavaliersNominationEligibility::class)->assertCanRegister($categoryEvent, $playerId);
         $this->assertTrialNominationBeforeDraw($categoryEvent, $playerId);
@@ -115,13 +118,14 @@ class EntryEligibilityService
             throw new RuntimeException('This category is no longer accepting entries.');
         }
 
-        $duplicate = $categoryEvent->categoryEventRegistrations()
+        $duplicateQuery = $categoryEvent->categoryEventRegistrations()
             ->where('payment_status_id', 1)
             ->whereNull('withdrawn_at')
             ->where(fn ($query) => $query->whereNull('status')
                 ->orWhereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled']))
-            ->whereHas('registration.players', fn ($q) => $q->where('players.id', $playerId))
-            ->exists();
+            ->whereHas('registration.players', fn ($q) => $q->where('players.id', $playerId));
+        $duplicate = app(\App\Services\Camps\CampAdmission::class)->configuration((int) $categoryEvent->event_id)
+            ? $this->currentCampDuplicate($categoryEvent, $playerId) : $duplicateQuery->exists();
 
         if ($duplicate) {
             throw new RuntimeException('You are already registered in this category.');
@@ -131,6 +135,18 @@ class EntryEligibilityService
     // -----------------------------------------------------------------------
     // WITHDRAWAL GUARDS
     // -----------------------------------------------------------------------
+
+    /** A locking JOIN must include new player associations, not a snapshot subquery. */
+    private function currentCampDuplicate(CategoryEvent $division, int $playerId): bool
+    {
+        return CategoryEventRegistration::query()
+            ->join('registrations as camp_registration', 'camp_registration.id', '=', 'category_event_registrations.registration_id')
+            ->join('player_registrations as camp_player', 'camp_player.registration_id', '=', 'camp_registration.id')
+            ->where('category_event_registrations.category_event_id', $division->id)->where('camp_player.player_id', $playerId)
+            ->where('category_event_registrations.payment_status_id', 1)->whereNull('category_event_registrations.withdrawn_at')
+            ->where(fn ($q) => $q->whereNull('category_event_registrations.status')->orWhereNotIn('category_event_registrations.status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled']))
+            ->lockForUpdate()->first(['category_event_registrations.id']) !== null;
+    }
 
     /**
      * Assert that the global withdrawal switch is on.
@@ -203,6 +219,7 @@ class EntryEligibilityService
     ): void {
         $playerId = $entry->registration?->players()->value('players.id');
         if ($playerId) {
+            app(\App\Services\Camps\CampAdmission::class)->assertEligible($targetCategory, (int) $playerId, $adminOverride);
             $this->disciplinaryEligibility->assertEligible((int) $playerId, $targetCategory->event_id);
         }
         if ($entry->status === 'withdrawn') {

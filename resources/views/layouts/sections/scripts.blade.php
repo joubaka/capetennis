@@ -39,6 +39,9 @@
 <script src="{{ asset('assets/vendor/libs/toastr/toastr.js') }}"></script>
 <script>
 toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton: true, progressBar: true };
+@if(request()->routeIs('backend.camps.*', 'backend.practice-camps.*', 'camp.*'))
+toastr.options.escapeHtml = true;
+@endif
 
 (function (root) {
   const storageKey = 'ct.feedback.afterReload';
@@ -139,9 +142,13 @@ toastr.options = { positionClass: 'toast-top-right', timeOut: 5000, closeButton:
   AppFeedback.warning(@json(session('warning')));
 @endif
 @if(isset($errors) && $errors->any())
+  @if(request()->routeIs('backend.camps.*', 'backend.practice-camps.*', 'camp.*'))
+    AppFeedback.error(@json($errors->first()));
+  @else
   @foreach($errors->all() as $message)
     AppFeedback.error(@json($message));
   @endforeach
+  @endif
 @endif
 </script>
 

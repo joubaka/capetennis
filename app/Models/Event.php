@@ -96,11 +96,23 @@ class Event extends Model
    */
   public function registrationClosesAt(): ?Carbon
   {
+    // Camp settings opt in independently; ordinary and unconfigured events keep
+    // their legacy day-offset deadline. This is a read-only projection only.
+    if ($this->exists && $this->isCamp() && \Illuminate\Support\Facades\Schema::hasTable('camp_configurations')) {
+      $configuration = $this->relationLoaded('campConfiguration') ? $this->getRelation('campConfiguration')
+        : CampConfiguration::where('event_id', $this->id)->first(['event_id', 'registration_closes_at']);
+      if ($configuration?->registration_closes_at) return $configuration->registration_closes_at->copy();
+    }
     if (!$this->start_date || $this->deadline === null) {
       return null;
     }
 
     return $this->start_date->copy()->subDays((int) $this->deadline)->endOfDay();
+  }
+
+  public function campConfiguration()
+  {
+    return $this->hasOne(CampConfiguration::class);
   }
 
   public function withdrawalDeadlineDaysBeforeStart(): ?int
@@ -351,7 +363,7 @@ class Event extends Model
   */
   public function isIndividual(): bool
   {
-    return (int) $this->eventTypeModel?->type === EventType::INDIVIDUAL;
+    return (int) $this->eventTypeModel?->type === EventType::INDIVIDUAL || $this->isCamp();
   }
 
   public function isMasters(): bool
@@ -366,7 +378,10 @@ class Event extends Model
 
   public function isCamp(): bool
   {
-    return (int) $this->eventTypeModel?->type === EventType::CAMP;
+    $type = $this->eventTypeModel;
+    return (int) $type?->type === EventType::CAMP
+      || (!(int) $type?->type && (strtolower(trim((string) $type?->name)) === 'camp'
+        || strtolower(trim((string) $type?->code)) === 'camp'));
   }
 
   /** Public directory scope only; existing order authorization is service-owned. */

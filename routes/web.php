@@ -131,13 +131,32 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreeme
 });
 // Campaigns remain draft-only. Host submissions queue operational review alerts only.
 Route::get('host-an-event', [\App\Http\Controllers\HostEventApplicationController::class, 'landing'])->name('host-events.index');
-Route::middleware(['auth', 'role:super-user|admin', 'throttle:60,1'])->prefix('backend/practice-camps')->name('backend.practice-camps.')->group(function () {
+Route::middleware(['auth', 'role:super-user|admin', 'throttle:60,1', \App\Http\Middleware\CampActionFeedback::class])->prefix('backend/practice-camps')->name('backend.practice-camps.')->group(function () {
   Route::get('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'index'])->name('index');
   Route::post('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'store'])->name('store');
   Route::get('/{plan}', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'show'])->name('show');
   Route::post('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'add'])->name('add');
   Route::delete('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'remove'])->name('remove');
 });
+
+Route::middleware(['auth', 'role:super-user|admin', 'throttle:60,1', \App\Http\Middleware\CampActionFeedback::class])->prefix('backend/camps')->name('backend.camps.')->group(function () {
+  $c = \App\Http\Controllers\Backend\CampManagementController::class;
+  Route::post('/events/{event}', [$c, 'attach'])->name('attach');
+  Route::get('/{plan}', [$c, 'show'])->name('show');
+  Route::put('/{plan}/settings', [$c, 'settings'])->name('settings');
+  Route::post('/{plan}/nominees', [$c, 'approve'])->name('approve');
+  Route::post('/{plan}/roster-approval', [$c, 'approveRoster'])->name('approve-roster');
+  Route::post('/{plan}/nominees/{nominee}/revoke', [$c, 'revokeNominee'])->name('revoke-nominee');
+  Route::post('/{plan}/coaches', [$c, 'coach'])->name('coach');
+  Route::post('/{plan}/coaches/{link}/revoke', [$c, 'revokeCoach'])->name('revoke-coach');
+  Route::post('/{plan}/submissions/{submission}', [$c, 'reviewCoach'])->name('review-coach');
+  Route::post('/{plan}/mail-review', [$c, 'mailReview'])->name('mail-review');
+  Route::post('/{plan}/mail-reviews/{review}/queue', [$c, 'mailQueue'])->name('mail-queue');
+});
+Route::get('/camp-coaches/{token}', [\App\Http\Controllers\Frontend\CampController::class, 'coach'])->middleware('throttle:30,1')->name('camp.coach.show');
+Route::post('/camp-coaches/{token}', [\App\Http\Controllers\Frontend\CampController::class, 'submit'])->middleware(['throttle:10,1', \App\Http\Middleware\CampActionFeedback::class])->name('camp.coach.submit');
+Route::get('/camp-invitations/{token}', [\App\Http\Controllers\Frontend\CampController::class, 'invitation'])->middleware('throttle:30,1')->name('camp.invitation.show');
+Route::post('/camp-invitations/{token}/decline', [\App\Http\Controllers\Frontend\CampController::class, 'decline'])->middleware(['auth', 'throttle:10,1', \App\Http\Middleware\CampActionFeedback::class])->name('camp.invitation.decline');
 
 Route::middleware('auth')->prefix('host-an-event')->name('host-events.')->group(function () {
     Route::get('create', [\App\Http\Controllers\HostEventApplicationController::class, 'create'])->name('create');

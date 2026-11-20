@@ -25,7 +25,7 @@ final class EventTypePresentation
         }
 
         if ($event->isCamp()) {
-            return 'default';
+            return 'individual';
         }
 
         return match ((int) $event->eventType) {

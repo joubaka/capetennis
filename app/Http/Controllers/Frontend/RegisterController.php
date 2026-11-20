@@ -284,6 +284,12 @@ class RegisterController extends Controller
     }
 
     $nomination = null;
+    if (request()->filled('camp_nominee') && app(\App\Services\Camps\CampAdmission::class)->configuration((int) $event->id)) {
+      $input = request()->validate(['camp_nominee' => 'required|integer|min:1']);
+      $nomination = \App\Models\CampNominee::with('player', 'categoryEvent.event')->where('event_id', $event->id)->where('status', 'approved')->findOrFail($input['camp_nominee']);
+      try { app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($nomination->categoryEvent, (int) $nomination->player_id); }
+      catch (\RuntimeException $e) { throw \Illuminate\Validation\ValidationException::withMessages(['camp_nominee' => $e->getMessage()]); }
+    }
     $cavaliersEligibility = app(\App\Services\CavaliersNominationEligibility::class);
     if ($cavaliersEligibility->applies($event) && request()->has('nomination')) {
       $input = request()->validate(['nomination' => 'required|integer|min:1']);
@@ -1427,8 +1433,10 @@ class RegisterController extends Controller
     // ----------------------------
     // Create order + registrations inside a single transaction
     // ----------------------------
-    $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart) {
+    $campEventIds = CategoryEvent::whereIn('id', $categoryIds)->pluck('event_id')->unique()->all();
+    $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart, $campEventIds) {
 
+      app(\App\Services\Camps\CampAdmission::class)->lockEvents($campEventIds);
       $lockedDivisions = CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
 
       // A decline/publication change may commit while the preflight waits for this
@@ -1437,8 +1445,9 @@ class RegisterController extends Controller
         [$lockedCategoryId, $lockedPlayerId] = array_map('intval', explode(':', $pair));
         $lockedDivision = $lockedDivisions->get($lockedCategoryId);
         abort_unless($lockedDivision, 404);
-        if ((int) $lockedDivision->event_id === \App\Services\CavaliersTrialCandidates::TRIALS_EVENT
-            && app(\App\Services\CavaliersNominationEligibility::class)->applies($lockedDivision->event)) {
+        if (app(\App\Services\Camps\CampAdmission::class)->configuration((int) $lockedDivision->event_id)
+            || ((int) $lockedDivision->event_id === \App\Services\CavaliersTrialCandidates::TRIALS_EVENT
+            && app(\App\Services\CavaliersNominationEligibility::class)->applies($lockedDivision->event))) {
           try { app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($lockedDivision, $lockedPlayerId); }
           catch (\RuntimeException $exception) { throw \Illuminate\Validation\ValidationException::withMessages(['msg' => $exception->getMessage()]); }
         }
@@ -1487,6 +1496,7 @@ class RegisterController extends Controller
       for ($i = 0; $i < count($playerIds); $i++) {
 
         $categoryEvent = CategoryEvent::findOrFail((int) $categoryIds[$i]);
+        app(\App\Services\Camps\CampAdmission::class)->assertAvailable($categoryEvent, (int) $playerIds[$i]);
         app(\App\Services\DivisionCapacityService::class)->assertAvailable($categoryEvent);
         $currentPlayerId = (int) $playerIds[$i];
 

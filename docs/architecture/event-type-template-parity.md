@@ -23,7 +23,7 @@ can have a team base family and still requires its dedicated policy.
 | Masters | Qualification, ranking order, invitations/reserves, deadlines, payment ownership and results publication | `MastersQualificationReviewTest`, `MastersRegistrationBoundaryTest`, `MastersPaymentReconciliationTest`, `MastersEntriesAlignmentTest` |
 | Cavaliers Trials (legacy ID 5) | Published category nominations and existing registration/draw behavior. The private category roster draft holds up to 32 selected players and five ordered reserves independently of published nominations. Event 252's U/13 Girls division (2157) has an approved limit of 33; other divisions retain 32. Both draft saving and publication enforce the division limit, and the editor receives the same server-defined limit. | `PublicEventPresentationTest`, `EventTypeRenderedJourneyTest`, `CavaliersTrialRosterDraftTest` |
 | Parent–Child Doubles (legacy ID 9) | Existing pairing/registration behavior, information, documents and results | `PublicEventPresentationTest`; extend paired registration coverage before migrating its specialized sections |
-| Camp / unknown type | Existing generic information, documents and published results; do not invent registration capabilities | `PublicEventPresentationTest`; explicit resolver matrix |
+| Camp | Recognised Camp family or exact legacy Camp with zero/missing family uses ordinary individual entry and payment. Optional camp workflow settings add independent entry methods, coach approval and reviewed invitations; unconfigured camps retain ordinary entry admission. Unknown types retain generic presentation. | `CampWorkflowTest`, `CampCheckoutTest`, resolver matrix |
 | Overberg Trials view | Existing delegation to the default public template; do not assume a persisted workflow identity from the filename | Explicit template resolution/delegation coverage |
 
 Step 1 of the Cavaliers roster draft previews published Inter-Districts
@@ -159,12 +159,14 @@ regressions. These are local implementation guarantees, not delivery evidence.
 
 ### Verified local inventory
 
-A read-only check of the loopback MySQL `ct` database on 2026-10-25 found:
+A read-only check of the loopback MySQL `ct` database on 2026-10-25 found the
+following stored identities. The effective template column reflects the current
+resolver, including the approved 2026-11-20 Camp workflow change:
 
 | ID | Stored name | Code | Base family value | Effective public template |
 | --- | --- | --- | --- | --- |
 | 1 | Individual | individual | 1 | individual |
-| 2 | camp | null | 0 | default |
+| 2 | camp | null | 0 | individual |
 | 3 | team event | team | 2 | team |
 | 4 | High School Team | team | 2 | team |
 | 5 | Cavaliers Trials | individual | 1 | cavaliers_trials |
@@ -179,9 +181,11 @@ A read-only check of the loopback MySQL `ct` database on 2026-10-25 found:
 An existing event also references type 0 without a matching type record. Retain
 the generic fallback. The repeated `individual` and `team` codes are existing
 family labels, not unique workflow identifiers. Do not infer a Trials policy from
-the name of type 12, repair the camp family, or remap existing events as part of
-presentation work. This local snapshot is not a production inventory. No rename,
-backfill or conversion is implied by extracting a presentation component.
+the name of type 12 or rewrite stored family values as part of presentation work.
+The approved Camp workflow recognises the exact legacy Camp name with zero/null
+family at runtime and uses ordinary individual registration; conflicting nonzero
+families still win. Its new settings opt in separately. This local snapshot is
+not a production inventory and does not authorise a stored type backfill.
 
 ## Shared template methodology
 

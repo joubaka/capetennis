@@ -1,7 +1,7 @@
 @extends('layouts.backend')
 @section('title', 'Practice camp planning')
 @section('content')
-<div class="container-xxl flex-grow-1 container-p-y">
+<div data-camp-workflow class="container-xxl flex-grow-1 container-p-y">
   <h1 class="h3">Practice camp planning</h1>
   <p>Prepare a private invitation list from existing regions, teams and rosters.</p>
   @if(session('status'))<div class="alert alert-success" role="status">{{ session('status') }}</div>@endif
@@ -16,6 +16,11 @@
     <p class="small text-muted mt-2 mb-0">Registration stays closed. This does not publish the event or send invitations.</p>
   </div></div>
   @endrole
+  <div class="card mb-4"><div class="card-body"><h2 class="h5">Manage another camp</h2>
+    <p>Existing camps keep their current entry behaviour until you save camp settings. Regional invitations are optional.</p>
+    <a class="btn btn-outline-primary mb-3" href="{{ route('backend.events.create') }}">Create a new event — choose Camp</a>
+    @foreach($campEvents as $campEvent)<form class="mb-2" method="POST" action="{{ route('backend.camps.attach', $campEvent) }}">@csrf<button class="btn btn-outline-secondary">{{ $campEvent->name }} · Camp settings</button></form>@endforeach
+  </div></div>
   @forelse($plans as $plan)
     <div class="card mb-3"><div class="card-body d-flex flex-wrap gap-3 justify-content-between align-items-center">
       <div><h2 class="h5 mb-1">{{ $plan->event->name }}</h2><span class="badge bg-label-secondary">Private draft</span></div>
@@ -24,4 +29,8 @@
   @empty<p>No camp drafts yet.</p>@endforelse
   {{ $plans->links() }}
 </div>
+@endsection
+
+@section('page-script')
+@include('backend.practice-camps.feedback')
 @endsection
