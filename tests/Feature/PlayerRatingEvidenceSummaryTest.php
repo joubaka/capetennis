@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Player;
-use App\Services\Performance\{AllAgeRatingModel, PlayerRatingHistoryService, PlayerRatingHistoryStore, PlayerSharedAbilityService};
+use App\Services\Performance\{AllAgeRatingModel, BallRatingModel, PlayerRatingHistoryService, PlayerRatingHistoryStore, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Tests\TestCase;
 
@@ -25,7 +25,7 @@ class PlayerRatingEvidenceSummaryTest extends TestCase
         $store = $this->createStub(PlayerRatingHistoryStore::class);
         $months = [];
         foreach ($ratings as $index => $rating) {
-            $months[] = ['date' => ['2026-09-30', '2026-10-31'][$index], 'cohorts' => [AllAgeRatingModel::COHORT => $rating === null ? [] : [1 => $rating]]];
+            $months[] = ['date' => ['2026-09-30', '2026-10-31'][$index], 'cohorts' => [BallRatingModel::COHORTS['standard'] => $rating === null ? [] : [1 => $rating]]];
         }
         $store->method('read')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-31', 'built_at' => '2026-10-31', 'evidence' => [], 'months' => $months]);
         $player = new Player;
@@ -39,6 +39,9 @@ class PlayerRatingEvidenceSummaryTest extends TestCase
     {
         [$history, $html] = $this->history([$this->rating(), $this->rating(['confidence_label' => 'High', 'last_direct_match' => '2026-10-30'])], 0);
         $this->assertSame('Medium', $history['point']['confidence_label']);
+        $this->assertStringContainsString('Scored singles matches carry more weight than published final placings.', $html);
+        $this->assertStringContainsString('Placings never count as played matches.', $html);
+        $this->assertStringNotContainsString('finishing orders and category baselines do not add points', $html);
         $this->assertStringContainsString('Evidence confidence: Medium', $html);
         $this->assertStringContainsString('as of 2026-09-30', $html);
         $this->assertStringContainsString('Last included singles result: 20 Sep 2026', $html);
@@ -67,9 +70,9 @@ class PlayerRatingEvidenceSummaryTest extends TestCase
         $this->assertStringContainsString('same comparison group', $same);
         $this->assertStringContainsString('older matches losing weight', $same);
         [, $changed] = $this->history([$this->rating(['score' => 40]), $this->rating(['group' => 'changed'])], 1);
-        $this->assertStringContainsString('The difference does not reliably show improvement or decline', $changed);
+        $this->assertStringContainsString('Comparison group changed. No like-for-like monthly change.', $changed);
         $this->assertStringNotContainsString('+22.3', $changed);
-        $this->assertStringContainsString('Dashed lines show a changed comparison group or reference', $changed);
+        $this->assertStringContainsString('Dashed lines mark changes in comparison group or reference.', $changed);
         [, $gap] = $this->history([null, $this->rating()], 1);
         $this->assertStringContainsString('No comparable previous-month estimate', $gap);
     }

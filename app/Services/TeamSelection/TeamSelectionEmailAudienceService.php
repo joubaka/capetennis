@@ -294,6 +294,7 @@ class TeamSelectionEmailAudienceService
         }
 
         $allowed = collect();
+        $eligibleRowIds = collect();
         foreach ($eventRegions as $eventRegion) {
             $source = $eventRegion->rankingSource;
             $runId = $this->publishedRunId((int) $source->series_id);
@@ -316,6 +317,9 @@ class TeamSelectionEmailAudienceService
             $rows = $rows->filter(fn (SeriesRanking $row) => $this->matchesRankingStatus(
                 $states->get((int) $row->player_id, 'unregistered'), $rankingStatus,
             ));
+            // Missing contacts do not put an otherwise valid ranking row outside
+            // the selected event, region, team category and published run.
+            $eligibleRowIds = $eligibleRowIds->concat($rows->pluck('id'));
             $allowed = $allowed->concat($rows->flatMap(function (SeriesRanking $row) use ($eventRegion, $source, $runId, $states) {
                 return $this->contacts->emails($row->player)->map(fn ($email) => [
                     'series_ranking_id' => (int) $row->id,
@@ -329,7 +333,7 @@ class TeamSelectionEmailAudienceService
                 ]);
             }));
         }
-        if ($allowed->pluck('series_ranking_id')->unique()->sort()->values()->all() !== $rowIds->all()) {
+        if ($eligibleRowIds->unique()->sort()->values()->all() !== $rowIds->all()) {
             throw ValidationException::withMessages(['series_ranking_ids' => 'One or more selected ranked players are outside the selected regions, teams, or current published ranking.']);
         }
 

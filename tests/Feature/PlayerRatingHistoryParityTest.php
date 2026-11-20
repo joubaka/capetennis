@@ -49,16 +49,19 @@ class PlayerRatingHistoryParityTest extends TestCase
             $fresh = $ability->historySnapshot($asOf, $freshSources);
             $this->assertSame($snapshot['cohorts'], $fresh['cohorts']);
             $this->assertSame($snapshot['all_age'], $fresh['all_age']);
-            $this->assertCount($count, $snapshot['cohorts']['u13 boys']['history_evidence']['matches']);
+            $this->assertSame([], $snapshot['cohorts']);
+            $this->assertSame($snapshot['ball_ratings']['standard'], $snapshot['all_age']);
             $this->assertCount($count, $snapshot['all_age']['history_evidence']['matches']);
-            $this->assertCount($count === 3 ? 1 : 0, $snapshot['cohorts']['u13 boys']['history_evidence']['fields']);
-            $this->assertNull($snapshot['cohorts']['u13 boys']['baseline']['metadata']);
+            $this->assertCount($count === 3 ? 1 : 0, $snapshot['ball_ratings']['standard']['history_evidence']['fields']);
+            $this->assertArrayNotHasKey('baseline', $snapshot['ball_ratings']['standard']);
             $this->assertSame(array_map(fn ($fixture) => 'match:'.$fixture->id, array_slice($fixtures, 0, $count)), $snapshot['source_matches']);
             $builder->append($snapshot, $sources, $count - 1);
         }
         $this->assertCount(1, $sources);
-        $rows = collect($builder->all())->where('cohort', \App\Services\Performance\AllAgeRatingModel::COHORT)->values();
+        $allRows = collect($builder->all())->where('cohort', \App\Services\Performance\AllAgeRatingModel::COHORT);
+        $rows = $allRows->where('kind', 'match')->values();
         $this->assertSame([7, 6, 4], $rows->pluck('months')->all());
+        $this->assertSame([4], $allRows->where('kind', 'finish')->pluck('months')->values()->all());
         $this->assertSame(['2026-03-02'], $rows->pluck('completed_at')->unique()->values()->all());
         $this->assertSame([], $ability->validationSnapshot(CarbonImmutable::parse('2026-02-01'))['source_matches'], 'Holdout validation must continue excluding overlapping events.');
         $event->update(['published' => false, 'results_published' => false]);
@@ -99,7 +102,8 @@ class PlayerRatingHistoryParityTest extends TestCase
             foreach ($core as &$data) unset($data['history_evidence']);
             unset($data);
             $this->assertSame($canonical['cohorts'], $core);
-            $used = $reused['cohorts']['u10 boys']['history_evidence'];
+            $this->assertSame($canonical['ball_ratings'], $reused['ball_ratings']);
+            $used = $reused['ball_ratings']['standard']['history_evidence'];
             $this->assertCount(1, $used['matches']);
             $this->assertSame([], $used['fields'], 'Finishing order covered by played connectivity must not be labelled retained likelihood.');
             $this->assertSame($canonical['source_matches'], $reused['source_matches']);

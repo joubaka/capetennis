@@ -44,7 +44,7 @@ class PlayerRatingHeaderPresentationTest extends TestCase
             'age_options' => ['u13' => 'U13 and younger'], 'filters' => ['rating_gender' => 'girls', 'rating_per_page' => 10],
             'as_of' => '2026-11-03', 'stale' => false, 'reason' => null,
             'summary' => ['age' => ['player' => ['score' => 72, 'position' => 2], 'total' => 5]],
-            'lists' => ['overall' => ['players' => [['id' => 42, 'name' => 'Example Player', 'position' => 2, 'score' => 72]]]],
+            'lists' => ['overall' => ['players' => [['id' => 42, 'name' => 'Example Player', 'position' => 2, 'score' => 72, 'confidence' => 'Medium']]]],
         ]]);
 
         $overview = $xpath->query('//*[@id="ctr-panel-compare" and contains(@class, "active")]')->item(0);

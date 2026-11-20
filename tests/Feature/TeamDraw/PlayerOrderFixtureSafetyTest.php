@@ -17,16 +17,16 @@ class PlayerOrderFixtureSafetyTest extends TestCase
         $this->actingAs(User::factory()->create()->assignRole('super-user'));
         $event = Event::factory()->create();
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
-        $team = Team::factory()->create(['category_event_id' => $category->id]);
+        $team = Team::factory()->create(['category_event_id' => $category->id, 'noProfile' => false]);
         $profile = TeamPlayer::create(['team_id' => $team->id, 'player_id' => Player::factory()->create()->id, 'rank' => 1, 'pay_status' => 1]);
-        $imported = NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Player', 'rank' => 2, 'pay_status' => 0]);
+        $imported = TeamPlayer::create(['team_id' => $team->id, 'player_id' => Player::factory()->create()->id, 'rank' => 2, 'pay_status' => 0]);
         return [$event, $team, $profile, $imported];
     }
 
-    private function reorder(Team $team, TeamPlayer $profile, NoProfileTeamPlayer $imported)
+    private function reorder(Team $team, TeamPlayer $profile, TeamPlayer $imported)
     {
         return $this->postJson(route('team.order.player.list'), ['team_id' => $team->id, 'order' => [
-            ['type' => 'noprofile', 'id' => $imported->id, 'position' => 1],
+            ['type' => 'profile', 'id' => $imported->id, 'position' => 1],
             ['type' => 'profile', 'id' => $profile->id, 'position' => 2],
         ]]);
     }
@@ -36,8 +36,9 @@ class PlayerOrderFixtureSafetyTest extends TestCase
         [$event, $team, $profile, $imported] = $this->roster();
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         $fixture = TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3, 'match_status' => 1]);
+        \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => $profile->player_id, 'team2_id' => $imported->player_id]);
         $before = $fixture->fresh()->getAttributes();
-        $this->reorder($team, $profile, $imported)->assertConflict()->assertJsonFragment(['message' => 'This event already has generated matches. Use the regional team selection playing order to review the affected matches and confirm a safe move. Existing bookings and played results have been retained.']);
+        $this->reorder($team, $profile, $imported)->assertUnprocessable()->assertJsonValidationErrors('roster');
         $this->assertSame(1, (int) $profile->fresh()->rank);
         $this->assertSame(2, (int) $imported->fresh()->rank);
         $this->assertSame(1, (int) $profile->fresh()->pay_status);
@@ -51,7 +52,7 @@ class PlayerOrderFixtureSafetyTest extends TestCase
         [$event, $team, $profile, $imported] = $this->roster();
         $draw = Draw::factory()->create(['event_id' => $event->id]);
         TeamTie::create(['draw_id' => $draw->id, 'home_team_id' => $team->id, 'away_team_id' => $team->id, 'round_nr' => 1, 'tie_nr' => 1, 'status' => 'draft']);
-        $this->reorder($team, $profile, $imported)->assertConflict();
+        $this->reorder($team, $profile, $imported)->assertUnprocessable()->assertJsonValidationErrors('roster');
         $this->assertSame(1, (int) $profile->fresh()->rank);
         $this->assertDatabaseCount('team_ties', 1);
     }

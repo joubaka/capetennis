@@ -15,12 +15,32 @@ class TeamPayfastDeadlockTest extends TestCase
     // Retries must own the outermost transaction, as in an actual HTTP request.
     use DatabaseTruncation;
 
+    private bool $safeTestDatabase = false;
+
+    protected function beforeTruncatingDatabase(): void
+    {
+        $this->assertTrue(app()->environment('testing'));
+        $connection = DB::connection();
+        if ($connection->getDriverName() === 'sqlite') {
+            $this->assertSame(':memory:', $connection->getDatabaseName());
+            // DatabaseTruncation cannot reuse a previous application's memory database.
+            \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
+        } else {
+            $this->assertSame('mysql', $connection->getDriverName());
+            $this->assertSame('ct_testing', $connection->getDatabaseName());
+        }
+        $this->safeTestDatabase = true;
+    }
+
     protected function tearDown(): void
     {
         try {
             // Leave no committed fixtures for tests using RefreshDatabase next.
-            $this->truncateTablesForAllConnections();
+            if ($this->safeTestDatabase) {
+                $this->truncateTablesForAllConnections();
+            }
         } finally {
+            \Illuminate\Foundation\Testing\RefreshDatabaseState::$migrated = false;
             parent::tearDown();
         }
     }
@@ -105,7 +125,6 @@ class TeamPayfastDeadlockTest extends TestCase
 
     private function scenario(): array
     {
-        $this->assertSame('ct_testing', DB::connection()->getDatabaseName());
         Events::fake([PaymentCompleted::class]);
         config(['services.payfast.sandbox' => false, 'services.payfast.merchant_id' => 'test-merchant', 'services.payfast.passphrase_live' => 'test-passphrase']);
         $event = Event::factory()->create();

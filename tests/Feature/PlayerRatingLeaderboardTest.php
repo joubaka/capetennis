@@ -10,6 +10,14 @@ use Tests\TestCase;
 
 class PlayerRatingLeaderboardTest extends TestCase
 {
+    protected function setUp(): void
+    {
+        parent::setUp();
+        if (\Illuminate\Support\Facades\DB::getDriverName() === 'sqlite') {
+            \Illuminate\Support\Facades\DB::getPdo()->sqliteCreateFunction('YEAR', fn ($date) => $date === null ? null : (int) substr($date, 0, 4));
+        }
+    }
+
     public function test_event_ball_pools_have_distinct_rows_positions_badges_and_detail_links(): void
     {
         $this->admin();

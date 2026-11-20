@@ -78,7 +78,9 @@ class EventAdminController extends Controller
     $access = app(\App\Services\TeamSelection\RegionManagerAccessService::class);
     $isRegionalPreview = $previewRegion !== null;
     $regionalScoped = $isRegionalPreview || !$access->isEventManager(request()->user(), $event);
-    $rosterOnly = false;
+    // A regional preview shows only its scoped roster and order. The real
+    // super-user's event-wide permissions must not render other regions' setup.
+    $rosterOnly = $isRegionalPreview;
     $event->load(['event_admins', 'regions', 'eventCategories.category']);
     $eventRegions = \App\Models\EventRegion::with(['events', 'region'])->where('event_id', $event->id)
       ->when($previewRegion, fn ($query) => $query->whereKey($previewRegion->id))->get();

@@ -21,7 +21,7 @@ class PlayerPlusFeaturePreviewTest extends TestCase
             $response = $this->actingAs($user)->get(route('my.tennis.feature-preview', ['player' => $player, 'feature' => $feature]))
                 ->assertOk()->assertSee($title)->assertSee('Fictional example')->assertDontSee('Sample value hidden')
                 ->assertSee('data-plus-sample', false)
-                ->assertSee('View membership and availability')->assertDontSee('data-plus-preview-link', false)
+                ->assertSee('View Plus for '.$player->name)->assertDontSee('data-plus-preview-link', false)
                 ->assertHeader('Cache-Control', 'no-store, private');
             $this->assertMatchesRegularExpression('/<article[^>]*data-plus-feature-panel="'.$feature.'"(?![^>]* hidden)[^>]*>/', $response->getContent());
         }

@@ -35,7 +35,7 @@ class RegionalRosterTest extends TestCase
         [$event, $region, $team, $manager] = $this->roster();
         $this->actingAs($manager)->get(route('admin.events.teams', $event))->assertOk()
             ->assertViewIs('backend.adminPage.show')->assertSee('Players &amp; invitations', false)
-            ->assertSee('Setup &amp; history', false)->assertDontSee('data-region-organizers', false);
+            ->assertSee('Campaigns &amp; settings', false)->assertDontSee('data-region-organizers', false);
         $this->get(route('admin.events.teams', [$event, 'roster_region' => $team->region_id]))->assertOk()->assertSee('Add player');
         EventAdmin::create(['event_id' => $event->id, 'user_id' => $manager->id]);
         $this->get(route('admin.events.teams', $event))->assertOk()->assertViewIs('backend.adminPage.show');

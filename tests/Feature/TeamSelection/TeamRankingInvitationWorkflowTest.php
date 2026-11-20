@@ -147,6 +147,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertNotNull($document->getElementById('tab-players'));
         $this->assertNotNull($document->getElementById('tab-order'));
         $this->assertSame(0, $xpath->query('//*[@id="team-workspace-content"]/ancestor::nav')->length);
+        $this->withSession(['_old_input' => ['roster_tab' => 'invitations']])
+            ->get(route('backend.team-selection.manager.preview', [$source->event, $source->eventRegion,
+                'roster_tab' => 'invitations', 'selected_region' => $otherRegion->id]))
+            ->assertOk()->assertSee($team->name)->assertDontSee('Other private region')
+            ->assertDontSee('id="tab-result-rank"', false)->assertDontSee('name="_token"', false);
+        $this->get(route('backend.team-selection.manager.preview', [$source->event, $source->eventRegion,
+            'roster_region' => $otherRegion->id]))->assertNotFound();
         $this->assertSame($assignments, EventRegionManager::count());
         $this->assertSame($logs, DB::table('activity_log')->count());
         $this->assertSame($orders, TeamPaymentOrder::count());
@@ -207,9 +214,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-pending-activated', [$source->event, $import]))
             ->assertOk()->assertSee('Replacement invitation')->assertSee('following another player')->assertDontSee('Original clothing announcement');
         $this->actingAs($manager)->withHeaders(['Accept' => 'application/json'])->post(route('backend.team-selection.invitations.email.resend', [$source->event, $import, $reserve]), ['confirm_recipients' => '1'])
-            ->assertOk()->assertViewIs('backend.event.communications.compose')
-            ->assertViewHas('options', fn ($options) => $options['scope'] === 'individual' && $options['individual_key'] === 'player:'.$player->id)
-            ->assertSee('Replacement invitation')->assertSee('Please register by:')->assertSee('Venue: Replacement invitation tennis club')
+            ->assertOk()->assertViewIs('backend.event.communications.preview')
+            ->assertViewHas('batch', fn ($batch) => $batch->options['source'] === 'team_selection_lifecycle'
+                && $batch->options['invitation_id'] === $reserve->id && $batch->options['lifecycle_action'] === 'pending')
+            ->assertSee('Replacement invitation')->assertSee('How to register')->assertSee('Venue: Replacement invitation tennis club')
             ->assertDontSee('Legacy venue description')->assertSee('#team-registration-'.$team->id.'-'.$player->id);
         $this->assertSame($logCount, BulkEmailLog::query()->count());
         $this->assertNull($reserve->fresh()->invited_at);
@@ -2140,9 +2148,16 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]))->assertNotFound();
         Queue::assertNothingPushed();
 
+        // The newer import supersedes the old campaign even when no invitation
+        // is bound to it; remove this synthetic foreign context for the valid review.
+        $this->actingAs($manager)->postJson(route('backend.team-selection.invitations.email.send-restored', [
+            $source->event, $selectionImport, $restored,
+        ]))->assertUnprocessable();
+        $foreignImport->delete();
+
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
             $source->event, $selectionImport, $restored,
-        ]))->assertOk()->assertSee('Write email');
+        ]))->assertOk()->assertViewIs('backend.event.communications.preview')->assertSee('Review emails');
 
         $this->assertSame($logsBeforeManualSend, BulkEmailLog::query()->count());
         $this->assertNull($restored->fresh()->invited_at);
@@ -2203,7 +2218,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ]);
         $this->actingAs($manager)->post(route('backend.team-selection.invitations.email.send-restored', [
             $source->event, $selectionImport, $restored,
-        ]))->assertOk();
+        ]))->assertRedirect()->assertSessionHasErrors();
         $this->assertNull($restored->fresh()->invited_at);
         $this->assertSame($emailLogCount, BulkEmailLog::query()->count());
         Queue::assertNothingPushed();
@@ -3066,7 +3081,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($admin)->get(route('backend.team-selection.index', $event))
             ->assertOk()
-            ->assertSee('Teams · Invitations', false)
+            ->assertSee('Players &amp; invitations', false)
             ->assertSee('West Coast Primary Schools 2026')
             ->assertSee('Cape Winelands Primary Schools 2026')
             ->assertSee('data-region-tabs', false)
@@ -3081,7 +3096,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             ->assertSee('Messages</button>', false)
             ->assertDontSee('Messages &amp; clothing', false)
             ->assertDontSee('>Incomplete clothing reminder</button>', false)
-            ->assertDontSee('>Clothing setup</a>', false)
+            ->assertSee('>Clothing setup</a>', false)
             ->assertDontSee('<strong>Manage clothing</strong>', false)
             ->assertSee('data-open-region-task="setup"', false)
             ->assertSee('data-bs-toggle="tab"', false)
@@ -3278,7 +3293,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame($organizer->id, $access->defaultManager($eventRegion)->id);
         $this->assertTrue($access->canManageRoster($organizer, $eventRegion));
         $this->actingAs($organizer)->get(route('backend.team-selection.index', $event))
-            ->assertRedirect(route('admin.events.teams', $event));
+            ->assertOk()->assertSee('Default Manager Region');
     }
 
     public function test_event_manager_retains_region_setup_import_order_communications_and_restart(): void
@@ -4156,7 +4171,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
 
         $this->actingAs($admin)->get(route('admin.events.teams', $source->event_id))
             ->assertOk()
-            ->assertSee('Selection & reserves', false)
+            ->assertSee('Players &amp; invitations', false)
             ->assertSee('data-roster-panel', false)
             ->assertDontSee('Historical region team that must stay hidden');
         $this->get(route('admin.events.teams', $source->event_id).'?roster_region='.$team->region_id)
@@ -4835,7 +4850,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         }
         $this->assertNull($replacement->fresh()->withdrawn_at);
 
-        $this->travelTo(now()->addYear());
+        $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES - 1)->minutes();
         try {
             $service->ensureOrder($firstSponsor, $team, $player, $source->event, 600.00);
             $this->fail('Expected elapsed time not to expire PayFast handoff protection.');
@@ -4897,6 +4912,10 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'merchant_id' => 'test-merchant',
             'payment_status' => 'COMPLETE',
             'custom_int5' => $replacement->id,
+            'custom_str5' => 'TeamOrder',
+            'custom_int2' => $player->id,
+            'custom_int3' => $source->event_id,
+            'custom_int4' => $secondSponsor->id,
             'pf_payment_id' => 'PF-STALE-CALLBACK',
             'amount_gross' => '600.00',
         ];
@@ -5757,137 +5776,55 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         Queue::fake();
         [$source, $team] = $this->selectionSource();
         $manager = User::factory()->create();
-        $teamType = DB::table('eventtypes')->insertGetId([
-            'name' => 'Custom replacement invitation event', 'type' => 2, 'code' => 'custom-replacement-invitation-event',
-            'created_at' => now(), 'updated_at' => now(),
-        ]);
-        $source->event->update(['eventType' => $teamType]);
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $manager->id]);
-        $selectionImport = app(TeamRankingImportService::class)->import($source, $manager);
-        app(TeamSelectionInvitationService::class)->send($selectionImport, [
-            'response_deadline' => now()->addDay(),
-            'payment_deadline' => now()->addDays(2),
-            'replacement_payment_deadline' => now()->addDays(3),
-            'email_subject' => 'Normal saved subject',
-            'email_message' => 'Normal saved message.',
-        ], $manager);
-        $team->update(['num_team_members' => 4]);
+        $import = app(TeamRankingImportService::class)->import($source, $manager);
         $service = app(TeamSelectionInvitationService::class);
-        $first = Player::factory()->create(['name' => 'Dental', 'surname' => 'One', 'email' => 'dental-one@example.test']);
-        $second = Player::factory()->create(['name' => 'Dental', 'surname' => 'Two', 'email' => 'dental-two@example.test']);
-        $firstReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $first, $manager, 'Dental replacement');
-        $secondReserve = $service->addSystemPlayerAsReserve($selectionImport->fresh(), $team, $second, $manager, 'Dental replacement');
-        foreach ([$firstReserve, $secondReserve] as $reserve) {
-            $this->actingAs($manager)->post(route('backend.team-selection.invitations.activate', [
-                $source->event, $selectionImport, $reserve,
-            ]))->assertRedirect();
-        }
-        $baselineLogs = BulkEmailLog::query()->count();
-        $payload = [
-            'invitation_ids' => [$firstReserve->id],
-            'email_subject' => 'Dental replacement invitation',
-            'email_message' => 'Please use your personal registration link below.',
-        ];
-        $previewRoute = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $selectionImport]);
-        $sendRoute = route('backend.team-selection.invitations.email.custom-send', [$source->event, $selectionImport]);
-
-        $this->actingAs(User::factory()->create())->post($previewRoute, $payload)->assertForbidden();
-        $preview = $this->actingAs($manager)->post($previewRoute, $payload)
-            ->assertOk()
-            ->assertSee('Review all 1 recipients')
-            ->assertSee('Dental One')
-            ->assertDontSee('Dental Two')
-            ->assertSee('Platteland team invitation')
-            ->assertSee('Please use your personal registration link below.')
-            ->assertDontSee('Your replacement deadline')
-            ->assertDontSee('Your response deadline')
-            ->assertDontSee('24 hours from this invitation')
-            ->assertDontSee('Respond by:');
-        $previewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $previewToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
-        $this->assertIsString($previewHash);
-        $this->assertIsString($previewToken);
-        $this->assertSame($baselineLogs, BulkEmailLog::query()->count());
-        Queue::assertPushed(\App\Jobs\SendTeamSelectionInvitationEmailJob::class, 2); // Original campaign only.
-
-        $foreignInvitation = $selectionImport->invitations()->where('status', TeamSelectionInvitation::RESERVE)
-            ->whereNotIn('id', [$firstReserve->id, $secondReserve->id])->firstOrFail();
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$payload, 'invitation_ids' => [$foreignInvitation->id], 'preview_hash' => $previewHash, 'preview_token' => $previewToken, 'confirm_recipients' => 1,
-        ])->assertSessionHasErrors('invitation_ids');
-        $this->assertSame($baselineLogs, BulkEmailLog::query()->count());
-
-        BulkEmailLog::create([
-            'mail_type' => 'team_selection_invitation',
-            'related_type' => TeamSelectionInvitation::class,
-            'related_id' => $firstReserve->id,
-            'recipient_email' => 'dental-one@example.test',
-            'recipient_name' => 'Dental One',
-            'status' => 'sent',
-            'payload' => ['kind' => 'historical_invitation'],
-            'queued_at' => now()->subDay(),
-            'sent_at' => now()->subDay(),
-        ]);
-        $logsWithHistoricalDelivery = $baselineLogs + 1;
-
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$payload, 'preview_hash' => $previewHash, 'preview_token' => $previewToken, 'confirm_recipients' => 1,
-        ])->assertRedirect(route('backend.team-selection.index', $source->event))->assertSessionHas('success');
-        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
-        $customLog = BulkEmailLog::query()->latest('id')->firstOrFail();
-        $this->assertSame($firstReserve->id, (int) $customLog->related_id);
-        $this->assertSame('Dental replacement invitation', data_get($customLog->payload, 'campaign.subject'));
-        $this->assertSame('Please use your personal registration link below.', data_get($customLog->payload, 'campaign.message'));
-        $this->assertSame('custom_invitation', data_get($customLog->payload, 'kind'));
-        $this->assertNull(data_get($customLog->payload, 'campaign.response_deadline'));
-        $this->assertNotNull($firstReserve->fresh()->invited_at);
-        $this->assertNull($secondReserve->fresh()->invited_at);
-        $this->assertSame('Normal saved subject', $selectionImport->fresh()->email_subject);
-        $this->assertSame('Normal saved message.', $selectionImport->fresh()->email_message);
-
-        $this->actingAs($manager)->withSession([
-            'team_selection_custom_email_previews.'.$selectionImport->id => $previewHash,
-            'team_selection_custom_email_preview_tokens.'.$selectionImport->id => $previewToken,
-        ])->post($sendRoute, [
-            ...$payload, 'preview_hash' => $previewHash, 'preview_token' => $previewToken, 'confirm_recipients' => 1,
-        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 0'));
-        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
-
+        $service->send($import, ['response_deadline' => now()->addDay(), 'payment_deadline' => now()->addDays(2),
+            'email_subject' => 'Normal saved subject', 'email_message' => 'Normal saved message.'], $manager);
+        $team->update(['num_team_members' => 4]);
+        $first = Player::factory()->create(['name' => 'Dental', 'surname' => 'One', 'email' => 'dental-one@example.test', 'userId' => null]);
+        $second = Player::factory()->create(['name' => 'Dental', 'surname' => 'Two', 'email' => 'dental-two@example.test', 'userId' => null]);
+        $firstReserve = $service->addSystemPlayerAsReserve($import->fresh(), $team, $first, $manager, 'Replacement');
+        $secondReserve = $service->addSystemPlayerAsReserve($import->fresh(), $team, $second, $manager, 'Replacement');
+        foreach ([$firstReserve, $secondReserve] as $reserve) $service->activateReserveInOpenPlace($reserve, $manager);
+        Queue::fake();
+        $baseline = BulkEmailLog::count();
+        $before = [$firstReserve->fresh()->getAttributes(), $secondReserve->fresh()->getAttributes()];
+        $payload = ['invitation_ids' => [$firstReserve->id], 'email_subject' => 'Dental replacement update',
+            'email_message' => 'Please review the organiser update.'];
+        $url = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $import]);
+        $this->actingAs(User::factory()->create())->post($url, $payload)->assertForbidden();
+        $preview = $this->actingAs($manager)->post($url, $payload)->assertOk()
+            ->assertViewIs('backend.event.communications.preview')->assertSee('Dental One')->assertDontSee('Dental Two')
+            ->assertSee('Dental replacement update')->assertSee('Please review the organiser update.');
+        $batch = $preview->viewData('batch');
+        $this->assertSame(['dental-one@example.test'], array_column($batch->recipients, 'email'));
+        $this->assertSame(['player:'.$first->id], $batch->recipients[0]['player_keys']);
+        $this->assertStringNotContainsString('>Register<', $batch->recipients[0]['html']);
+        $this->assertStringNotContainsString('Decline invitation', $batch->recipients[0]['html']);
+        $this->assertSame($baseline, BulkEmailLog::count());
+        Queue::assertNothingPushed();
+        $send = route('backend.event-communications.send', $source->event);
+        $this->actingAs(User::factory()->create())->post($send, ['token' => $batch->token, 'confirm_send' => 1])->assertForbidden();
+        $this->actingAs($manager)->post($send, ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($baseline + 1, BulkEmailLog::count());
+        $log = BulkEmailLog::latest('id')->firstOrFail();
+        $this->assertSame('dental-one@example.test', $log->recipient_email);
+        $this->assertSame('Dental replacement update', $log->payload['subject']);
+        $this->assertSame($batch->id, $log->payload['event_communication_batch_id']);
+        $this->post($send, ['token' => $batch->token, 'confirm_send' => 1])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($baseline + 1, BulkEmailLog::count());
+        $this->assertSame($before, [$firstReserve->fresh()->getAttributes(), $secondReserve->fresh()->getAttributes()]);
+        $this->assertSame('Normal saved subject', $import->fresh()->email_subject);
+        $this->assertSame('Normal saved message.', $import->fresh()->email_message);
         $secondPayload = [...$payload, 'invitation_ids' => [$secondReserve->id]];
-        $this->actingAs($manager)->post($previewRoute, $secondPayload)->assertOk();
-        $secondPreviewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $secondPreviewToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
+        $stale = $this->post($url, $secondPayload)->assertOk()->viewData('batch');
         $second->update(['email' => 'changed-dental-two@example.test']);
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$secondPayload, 'preview_hash' => $secondPreviewHash, 'preview_token' => $secondPreviewToken, 'confirm_recipients' => 1,
-        ])->assertSessionHasErrors('email_preview');
-        $this->assertSame($logsWithHistoricalDelivery + 1, BulkEmailLog::query()->count());
+        $this->post($send, ['token' => $stale->token, 'confirm_send' => 1])->assertSessionHasErrors('preview');
+        $this->assertSame($baseline + 1, BulkEmailLog::count());
         $this->assertNull($secondReserve->fresh()->invited_at);
-
-        $this->actingAs($manager)->post($previewRoute, $secondPayload)->assertOk();
-        $expiredPreviewHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $expiredPreviewToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
-        $secondReserve->update([
-            'response_deadline_override' => now()->subHours(2),
-            'payment_deadline_override' => now()->subHour(),
-        ]);
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$secondPayload, 'preview_hash' => $expiredPreviewHash, 'preview_token' => $expiredPreviewToken, 'confirm_recipients' => 1,
-        ])->assertRedirect(route('backend.team-selection.index', $source->event))
-            ->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
-        $this->assertSame($logsWithHistoricalDelivery + 2, BulkEmailLog::query()->count());
-        $this->assertNotNull($secondReserve->fresh()->invited_at);
-        $this->assertFalse((bool) data_get($secondReserve->fresh()->snapshot_json, 'activation.pending_manual_invitation'));
-
-        $staleDeadlineLog = BulkEmailLog::query()->latest('id')->firstOrFail();
-        $receiptRenderer = Mail::mailer('array');
-        Mail::shouldReceive('render')->andReturnUsing(fn ($view, $data = []) => $receiptRenderer->render($view, $data));
-        Mail::shouldReceive('mailer')->andReturnSelf();
-        Mail::shouldReceive('to')->once()->with($staleDeadlineLog->recipient_email)->andReturnSelf();
-        Mail::shouldReceive('sendNow')->once()->andReturn($this->transportReceipt());
-        Mail::shouldReceive('getSymfonyTransport')->once()->andReturn(new \Illuminate\Mail\Transport\ArrayTransport);
-        (new SendTeamSelectionInvitationEmailJob($staleDeadlineLog->id, $source->event_id))->handle();
-        $this->assertSame('sent', $staleDeadlineLog->fresh()->status);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_custom_checked_player_email_supports_each_active_roster_status_and_team_scoped_controls(): void
@@ -5947,43 +5884,30 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ];
         $previewRoute = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $selectionImport]);
         $sendRoute = route('backend.team-selection.invitations.email.custom-send', [$source->event, $selectionImport]);
-        $mixedPreview = $this->actingAs($manager)->post($previewRoute, $payload)
-            ->assertOk()->assertSee('Review all 3 recipients')
-            ->assertSee('Platteland team invitation')
-            ->assertSee('Example email')
-            ->assertSee('Approve and send 3 emails');
-        $this->assertSame(1, substr_count($mixedPreview->getContent(), '<iframe'));
-        $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $token = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
-        $before = $active->mapWithKeys(fn ($invitation) => [$invitation->id => [
-            $invitation->status, $invitation->invited_at?->toISOString(), $invitation->snapshot_json,
-        ]]);
-
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$payload, 'preview_hash' => $hash, 'preview_token' => $token, 'confirm_recipients' => 1,
-        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 3'));
-
-        $logs = BulkEmailLog::query()->whereIn('related_id', $active->pluck('id'))->latest('id')->take(3)->get();
-        $this->assertEqualsCanonicalizing(
-            ['custom_invitation', 'custom_status_update', 'custom_paid_update'],
-            $logs->pluck('payload.kind')->all(),
-        );
-        foreach (TeamSelectionInvitation::query()->whereIn('id', $active->pluck('id'))->get() as $invitation) {
-            $this->assertSame($before[$invitation->id][0], $invitation->status);
-            $this->assertSame($before[$invitation->id][1], $invitation->invited_at?->toISOString());
-            if ($invitation->status === TeamSelectionInvitation::INVITED) {
-                $beforeSnapshot = $before[$invitation->id][2] ?? [];
-                $afterSnapshot = $invitation->snapshot_json ?? [];
-                data_forget($afterSnapshot, 'activation.custom_campaign_hash');
-                if (($afterSnapshot['activation'] ?? null) === []) {
-                    unset($afterSnapshot['activation']);
-                }
-                $this->assertSame($beforeSnapshot, $afterSnapshot);
-                $this->assertNotEmpty(data_get($invitation->snapshot_json, 'activation.custom_campaign_hash'));
-            } else {
-                $this->assertSame($before[$invitation->id][2], $invitation->snapshot_json);
-            }
+        $baseline = BulkEmailLog::count();
+        $before = $active->mapWithKeys(fn ($invitation) => [$invitation->id => $invitation->fresh()->getAttributes()]);
+        $mixedPreview = $this->actingAs($manager)->post($previewRoute, $payload)->assertOk()
+            ->assertViewIs('backend.event.communications.preview')->assertSee('Dental player update')
+            ->assertSee('A custom update for this team.');
+        $batch = $mixedPreview->viewData('batch');
+        $expectedEmails = $active->flatMap(fn ($invitation) => app(\App\Services\TeamSelection\TeamSelectionContactService::class)->emails($invitation->player->fresh()))
+            ->unique()->sort()->values()->all();
+        $actualEmails = collect($batch->recipients)->pluck('email')->sort()->values()->all();
+        $this->assertSame($expectedEmails, $actualEmails);
+        $this->assertSame($active->pluck('player_id')->sort()->values()->all(), collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'])
+            ->unique()->map(fn ($key) => (int) substr($key, 7))->sort()->values()->all());
+        foreach ($batch->recipients as $recipient) {
+            $this->assertStringNotContainsString('>Register<', $recipient['html']);
+            $this->assertStringNotContainsString('Decline invitation', $recipient['html']);
         }
+        $this->assertSame($baseline, BulkEmailLog::count());
+        $this->post(route('backend.event-communications.send', $source->event), ['token' => $batch->token, 'confirm_send' => 1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($baseline + count($expectedEmails), BulkEmailLog::count());
+        foreach (TeamSelectionInvitation::whereIn('id', $active->pluck('id'))->get() as $invitation) {
+            $this->assertSame($before[$invitation->id], $invitation->getAttributes());
+        }
+
         $statusHtml = (new \App\Mail\TeamSelectionInvitationMail($active[1]->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_status_update', ['message' => 'Update']))->render();
         $this->assertStringContainsString('Team player update', $statusHtml);
         $this->assertStringNotContainsString('How to register', $statusHtml);
@@ -5999,22 +5923,24 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertStringContainsString('View invitation', $paidHtml);
         $this->assertStringNotContainsString('>Register<', $paidHtml);
         $this->assertStringNotContainsString('Decline invitation', $paidHtml);
-        $this->assertDatabaseHas('activity_log', [
-            'subject_type' => TeamSelectionImport::class,
-            'subject_id' => $selectionImport->id,
-            'description' => 'regional manager sent custom team selection player emails',
-        ]);
-
         $invited = $active[0]->fresh();
         $unrelated = User::factory()->create();
         $ordersBefore = TeamPaymentOrder::query()->count();
+        try {
+            app(TeamSelectionInvitationService::class)->decline($invited, $unrelated, 'Unavailable');
+            $this->fail('An expired invitation must not allow a decline.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('invitation', $exception->errors());
+        }
+        $this->assertSame(TeamSelectionInvitation::INVITED, $invited->fresh()->status);
+        $invited->update(['response_deadline_override' => now()->addDay()]);
         app(TeamSelectionInvitationService::class)->decline($invited, $unrelated, 'Unavailable');
         $this->assertSame(TeamSelectionInvitation::DECLINED, $invited->fresh()->status);
         $this->assertSame($unrelated->id, $invited->fresh()->declined_by_user_id);
         $this->assertSame($ordersBefore, TeamPaymentOrder::query()->count());
     }
 
-    public function test_custom_payment_update_keeps_payment_grace_after_registration_closes_and_skips_after_deadline(): void
+    public function test_legacy_custom_payment_update_keeps_payment_grace_after_registration_closes_and_skips_after_deadline(): void
     {
         Queue::fake();
         [$source] = $this->selectionSource();
@@ -6042,14 +5968,12 @@ class TeamRankingInvitationWorkflowTest extends TestCase
             'email_subject' => 'Payment grace update',
             'email_message' => 'Your existing payment window remains available.',
         ];
-        $previewRoute = route('backend.team-selection.invitations.email.custom-preview', [$source->event, $selectionImport]);
-        $sendRoute = route('backend.team-selection.invitations.email.custom-send', [$source->event, $selectionImport]);
-        $this->actingAs($manager)->post($previewRoute, $payload)->assertOk();
-        $hash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $token = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$payload, 'preview_hash' => $hash, 'preview_token' => $token, 'confirm_recipients' => 1,
-        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
+        // Historical queued lifecycle mail retains its deadline checks. New team
+        // custom mail uses the managed batch workflow covered above.
+        $service = app(TeamSelectionInvitationService::class);
+        $preview = $service->previewCustomPendingActivatedInvitations($selectionImport->fresh(), $payload['invitation_ids'], $payload['email_subject'], $payload['email_message']);
+        $stats = $service->sendCustomPendingActivatedInvitations($selectionImport, $manager, $payload['invitation_ids'], $payload['email_subject'], $payload['email_message'], $preview['hash'], $preview['preview_token']);
+        $this->assertSame(1, $stats['queued']);
 
         $log = BulkEmailLog::query()->where('related_id', $accepted->id)
             ->where('payload->kind', 'custom_payment_update')->latest('id')->firstOrFail();
@@ -6063,18 +5987,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->assertSame('sent', $log->fresh()->status);
 
         $accepted->update(['payment_deadline_override' => now()->subMinute()]);
-        $expiredPreview = $this->actingAs($manager)->post($previewRoute, $payload)
-            ->assertOk()
-            ->assertSee('Team player update')
-            ->assertDontSee('How to register')
-            ->assertDontSee('>Register<', false)
-            ->assertDontSee('Decline invitation')
-            ->assertDontSee('Respond by:');
-        $expiredHash = session('team_selection_custom_email_previews.'.$selectionImport->id);
-        $expiredToken = session('team_selection_custom_email_preview_tokens.'.$selectionImport->id);
-        $this->actingAs($manager)->post($sendRoute, [
-            ...$payload, 'preview_hash' => $expiredHash, 'preview_token' => $expiredToken, 'confirm_recipients' => 1,
-        ])->assertRedirect()->assertSessionHas('success', fn (string $message) => str_contains($message, 'Queued 1'));
+        $expiredPreview = $service->previewCustomPendingActivatedInvitations($selectionImport->fresh(), $payload['invitation_ids'], $payload['email_subject'], $payload['email_message']);
+        $this->assertSame('custom_status_update', $expiredPreview['recipients'][0]['kind']);
+        $expiredHtml = (new \App\Mail\TeamSelectionInvitationMail($accepted->fresh(['selectionImport.event', 'region', 'team', 'player']), 'custom_status_update', $expiredPreview['campaign']))->render();
+        $this->assertStringContainsString('Team player update', $expiredHtml);
+        foreach (['How to register', '>Register<', 'Decline invitation', 'Respond by:'] as $action) $this->assertStringNotContainsString($action, $expiredHtml);
+        $stats = $service->sendCustomPendingActivatedInvitations($selectionImport, $manager, $payload['invitation_ids'], $payload['email_subject'], $payload['email_message'], $expiredPreview['hash'], $expiredPreview['preview_token']);
+        $this->assertSame(1, $stats['queued']);
         $statusLog = BulkEmailLog::query()->where('related_id', $accepted->id)
             ->where('payload->kind', 'custom_status_update')->latest('id')->firstOrFail();
         $accepted->update(['status' => TeamSelectionInvitation::PAID_CONFIRMED, 'paid_at' => now()]);
@@ -6293,11 +6212,11 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         ];
         $this->actingAs(User::factory()->create())->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)->assertForbidden();
         $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)
-            ->assertRedirect()->assertSessionHas('success');
+            ->assertOk()->assertViewIs('backend.event.communications.preview');
         $this->assertSame(0, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
         Queue::assertNotPushed(\App\Jobs\SendBulkEmailJob::class);
         $this->actingAs($manager)->post(route('backend.team-selection.final-reminders.send', [$event, $eventRegion]), $payload)
-            ->assertRedirect()->assertSessionHas('success');
+            ->assertOk()->assertViewIs('backend.event.communications.preview');
         $this->assertSame(0, BulkEmailLog::where('mail_type', 'team_selection_registration_clothing_reminder')->count());
         Queue::assertNotPushed(\App\Jobs\SendBulkEmailJob::class);
     }
@@ -6306,6 +6225,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
     {
         Queue::fake();
         [$source, $team] = $this->selectionSource();
+        $source->event->update(['signUp' => false]);
         $admin = User::factory()->create();
         EventAdmin::create(['event_id' => $source->event_id, 'user_id' => $admin->id]);
         $import = app(TeamRankingImportService::class)->import($source, $admin);

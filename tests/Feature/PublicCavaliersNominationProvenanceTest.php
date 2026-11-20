@@ -45,7 +45,11 @@ class PublicCavaliersNominationProvenanceTest extends TestCase
         $xpath = new \DOMXPath($document);
         $rows = $xpath->query('//ul[contains(@class,"list-group-flush")]/li');
         $names = [];
-        foreach ($rows as $row) $names[] = preg_replace('/ Register$/', '', trim(preg_replace('/\s+/', ' ', $row->textContent)));
+        foreach ($rows as $row) {
+            // Registration/decline controls are actions, not part of the nominee's name.
+            foreach (iterator_to_array($xpath->query('./div', $row)) as $actions) $row->removeChild($actions);
+            $names[] = trim(preg_replace('/\s+/', ' ', $row->textContent));
+        }
         $this->assertSame(['Beth Example', 'Cara Example', 'Dora Example', 'Eva Example', 'Faye Example',
             'Amy Example Registered', 'Zoe Example Registered'], $names);
         $highlighted = $xpath->query('//ul[contains(@class,"list-group-flush")]/li[contains(@class,"cavaliers-registered-nominee")]');

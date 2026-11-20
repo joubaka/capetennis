@@ -62,7 +62,7 @@ class PlayerRatingYoungerDirectoryTest extends TestCase
         $this->assertSame(1, substr_count($age->getContent(), '<h2 class="h5">'));
         $shared = $this->get($url.'?age_group=u9&age_scope=younger&sort=shared')->assertOk();
         $this->assertSame([1, 2, 3, 4, 5, 6, null], $shared->viewData('players')->getCollection()->pluck('position')->all());
-        $reference = $this->get($url.'?age_group=u9&age_scope=younger&comparison_group=reference&gender=boys')->assertOk();
+        $reference = $this->get($url.'?ball_type=standard&age_group=u9&age_scope=younger&comparison_group=reference&gender=boys')->assertOk();
         $this->assertSame([1, 2, 3, 4], $reference->viewData('players')->getCollection()->pluck('position')->all());
         $this->get($url.'?age_group=u18&age_scope=younger')->assertOk()->assertSee('TooOld Synthetic')->assertDontSee('Adult Synthetic');
         foreach (range(1, 8) as $number) $add('Extra'.$number, $number % 2 ? '2018-01-01' : '2019-01-01', 1, 30 - $number);

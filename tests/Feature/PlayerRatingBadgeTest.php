@@ -213,8 +213,10 @@ class PlayerRatingBadgeTest extends TestCase
             ->assertJsonPath('ratings.p:'.$playerId.'.0.comparable', false)
             ->assertJsonPath('ratings.p:'.$playerId.'.0.played', 0);
         $ability = $service->forPlayer(Player::findOrFail($playerId));
-        $this->assertNull($ability['headline']);
-        $this->assertGreaterThan(50, $ability['cohorts']->first()['score']);
+        $this->assertFalse($ability['headline']['comparable']);
+        $this->assertSame('finish_only', $ability['headline']['evidence_basis']);
+        $this->assertSame(0, $ability['headline']['played']);
+        $this->assertGreaterThan(50, $ability['ball_ratings']['standard']['score']);
         $this->get(route('backend.player-performance.show', $playerId))->assertOk()->assertSee('Unrated')->assertSee('Age-specific comparison evidence');
         \Illuminate\Support\Facades\DB::table('events')->where('id', $event->id)->update(['results_published' => false]);
         app()->forgetInstance(PlayerRatingBadgeService::class);

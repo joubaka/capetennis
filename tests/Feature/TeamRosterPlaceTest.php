@@ -337,7 +337,7 @@ class TeamRosterPlaceTest extends TestCase
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 1, 'name' => 'Current', 'surname' => 'Player', 'pay_status' => 0]);
         NoProfileTeamPlayer::create(['team_id' => $this->team->id, 'rank' => 4, 'name' => 'Queued', 'surname' => 'Reserve', 'pay_status' => 0]);
         $panel = $this->get(route('admin.events.teams', $this->event).'?roster_region='.$this->team->region_id)->assertOk()
-            ->assertSee('Add player to Rank 2')->assertSee('Add player to Rank 3')->assertSee('Change name')
+            ->assertSee('Add player to Rank 2')->assertSee('Add player to Rank 3')->assertSee('Correct the player’s name')
             ->assertSeeInOrder(['Choose a team reserve', 'Add Queued Reserve', 'Existing player profile', 'Player without a profile'])
             ->assertSee('name="target_rank" value="2"', false);
         if (getenv('CT_ROSTER_PLACE_QA') === '1') {
@@ -459,6 +459,7 @@ class TeamRosterPlaceTest extends TestCase
         $this->fill(['player_id' => $probePlayer->id])->assertUnprocessable()
             ->assertJsonPath('errors.roster.0', 'Use the selection workflow for this team.');
         $import->update(['status' => 'cancelled']);
+        $this->event->update(['signUp' => false]);
         $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
         $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
         \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => 0, 'team2_id' => 0]);

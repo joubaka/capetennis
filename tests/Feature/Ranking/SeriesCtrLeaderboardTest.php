@@ -45,8 +45,10 @@ class SeriesCtrLeaderboardTest extends TestCase
         foreach ($scores as $id => $score) {
             $ratings[$id] = ['component' => 'shared', 'comparable' => true, 'score' => $score, 'confidence_label' => 'Low'];
         }
-        return array_replace_recursive(['reason' => null, 'all_age' => ['reference_component' => 'shared',
+        $snapshot = array_replace_recursive(['reason' => null, 'all_age' => ['reference_component' => 'shared',
             'components' => ['shared' => ['members' => array_keys($scores), 'converged' => true]], 'ratings' => $ratings]], $overrides);
+        $snapshot['ball_ratings']['standard'] = $snapshot['all_age'];
+        return $snapshot;
     }
 
     public function test_guests_and_nonmembers_never_load_or_render_private_ctr_even_with_requested_membership_parameters(): void
@@ -71,14 +73,18 @@ class SeriesCtrLeaderboardTest extends TestCase
         $other = User::factory()->create();
         $player = Player::factory()->create();
         $series = $this->ranking($player);
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($this->snapshot([$player->id => 72.4]));
         $active = true;
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->twice()->andReturnUsing(function () use ($player, &$active) {
+            $this->assertTrue($active);
+            return $this->snapshot([$player->id => 72.4]);
+        });
         Gate::define('player-premium-rating-discovery', function (User $user) use ($member, &$active) { return $active && $user->id === $member->id; });
         $url = route('frontend.ranking.show', $series);
-        $this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false);
+        // An explicit discovery entitlement is independent of the public sales switch.
+        $this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertSee('data-ctr-rating', false);
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
-        $this->actingAs($other)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false);
-        $this->actingAs($member)->get($url)->assertOk()->assertSee('Top 10 CTR')->assertSee('CTR 72.4')->assertHeader('Cache-Control', 'no-store, private');
+        $this->actingAs($other)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
+        $this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertSee('data-ctr-rating', false)->assertSee('CTR 72.4')->assertHeader('Cache-Control', 'no-store, private');
         $this->assertFalse(app(PlayerRatingAccess::class)->allows($member, $player));
         $this->assertDatabaseMissing('user_players', ['user_id' => $member->id, 'player_id' => $player->id]);
         $active = false;
@@ -101,13 +107,15 @@ class SeriesCtrLeaderboardTest extends TestCase
         $snapshot = $this->snapshot([$public->id => 72.4, $draft->id => 99.9, $outsider->id => 98.8, $local->id => 93.1]);
         $snapshot['all_age']['ratings'][$local->id] = ['component' => 'local', 'comparable' => false, 'score' => 93.1];
         $snapshot['all_age']['components']['local'] = ['members' => [$local->id], 'converged' => true];
+        $snapshot['ball_ratings']['standard'] = $snapshot['all_age'];
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->once()->andReturn($snapshot);
         $before = SeriesRanking::orderBy('id')->get()->toArray();
         $response = $this->actingAs($this->superUser())->get(route('frontend.ranking.show', $series))->assertOk()
-            ->assertSee('Top 10 CTR')->assertSee('U11 · born 2015 · Boys')->assertSee('CTR 72.4')
+            ->assertDontSee('data-ctr-top-ten', false)->assertSee('data-ctr-rating', false)->assertSee('CTR 72.4')
             ->assertDontSee('CTR 93.1')->assertDontSee('99.9/100')->assertDontSee('98.8/100')
             ->assertHeader('Cache-Control', 'no-store, private');
         $this->assertCount(1, $response->viewData('ctr')['ratings']);
+        $this->assertSame('U11 · born 2015 · Boys', $response->viewData('ctr')['groups']['u11|boys']['label']);
         $this->assertSame([$public->id], array_column($response->viewData('ctr')['groups']['u11|boys']['players'], 'id'));
         $this->assertSame($before, SeriesRanking::orderBy('id')->get()->toArray());
         if (getenv('CT_CTR_QA_HTML') === '1') file_put_contents(storage_path('framework/testing/ctr-top-ten.html'), $response->getContent());

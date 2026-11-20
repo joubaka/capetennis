@@ -78,19 +78,21 @@ class TeamWorkspaceTest extends TestCase
         }
     }
 
-    public function test_reserve_add_rejects_regional_only_manager_managed_selection_and_fixture_history(): void
+    public function test_reserve_add_rejects_other_region_manager_managed_selection_and_fixture_history(): void
     {
         $this->team->update(['noProfile' => true]);
         $payload = ['event_id' => $this->event->id, 'team_id' => $this->team->id, 'name' => 'Reserve', 'surname' => 'Example', 'reserve' => 1];
         $manager = User::factory()->create();
-        $eventRegion = \App\Models\EventRegion::where('event_id', $this->event->id)->where('region_id', $this->region->id)->firstOrFail();
-        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $this->region->id, 'user_id' => $manager->id]);
+        $otherRegion = \App\Models\TeamRegion::create(['region_name' => 'Other managed region']);
+        $eventRegion = \App\Models\EventRegion::forceCreate(['event_id' => $this->event->id, 'region_id' => $otherRegion->id, 'ordering' => 2]);
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $otherRegion->id, 'user_id' => $manager->id]);
         $this->actingAs($manager)->postJson(route('backend.team.addPlayers'), $payload)->assertForbidden();
         $this->actingAs($this->actor);
         $import = \App\Models\TeamSelectionImport::create(['event_id' => $this->event->id, 'region_id' => $this->region->id, 'source_id' => 1, 'series_id' => 1, 'ranking_run_id' => 'reserve-restriction', 'status' => 'draft']);
         \App\Models\TeamSelectionInvitation::create(['import_id' => $import->id, 'event_id' => $this->event->id, 'region_id' => $this->region->id, 'team_id' => $this->team->id, 'player_id' => Player::factory()->create()->id, 'ranking_list_id' => 1, 'ranking_position' => 1, 'queue_position' => 1]);
         $this->postJson(route('backend.team.addPlayers'), $payload)->assertUnprocessable();
         $import->update(['status' => 'cancelled']);
+        $this->event->update(['signUp' => false]);
         $draw = \App\Models\Draw::factory()->create(['event_id' => $this->event->id]);
         $fixture = \App\Models\TeamFixture::create(['draw_id' => $draw->id, 'fixture_type' => 1, 'match_nr' => 1, 'round_nr' => 1, 'numSets' => 3]);
         \App\Models\TeamFixturePlayer::create(['team_fixture_id' => $fixture->id, 'team1_id' => 0, 'team2_id' => 0]);

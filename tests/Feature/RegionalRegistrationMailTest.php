@@ -235,21 +235,22 @@ class RegionalRegistrationMailTest extends TestCase
 
     public function test_event_sender_selection_is_deterministic_and_preserves_name_and_email_pair(): void
     {
+        config(['mail.from.address' => 'verified-sender@example.test']);
         [$event, $firstAdmin] = $this->scenario();
         Role::findOrCreate('super-user', 'web');
         $firstAdmin->assignRole('super-user');
         $other = User::factory()->create(['name' => 'Second event admin', 'email' => 'second-admin@example.test']);
         $other->adminEvents()->attach($event);
         $event->update(['email' => $other->email]);
-        $this->assertSame(['from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $this->assertSame(['from_address' => 'verified-sender@example.test', 'from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
         $event->update(['email' => 'event-contact@example.test']);
-        $this->assertSame(['from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $this->assertSame(['from_address' => 'verified-sender@example.test', 'from_name' => $other->name, 'reply_to' => $other->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
         $event->admins()->detach();
         $event->update(['organizer' => 'Event contact person']);
-        $this->assertSame(['from_name' => 'Event contact person', 'reply_to' => 'event-contact@example.test'], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $this->assertSame(['from_address' => 'verified-sender@example.test', 'from_name' => 'Event contact person', 'reply_to' => 'event-contact@example.test'], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
         $event->update(['email' => null, 'organizer' => null]);
-        $this->assertSame(['from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
-        $this->assertSame(['from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::resolve([], $firstAdmin));
+        $this->assertSame(['from_address' => 'verified-sender@example.test', 'from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::eventDefaults($event, $firstAdmin));
+        $this->assertSame(['from_address' => 'verified-sender@example.test', 'from_name' => $firstAdmin->name, 'reply_to' => $firstAdmin->email], \App\Services\CommunicationSender::resolve([], $firstAdmin));
     }
 
     public function test_profile_imported_and_linked_reserves_and_their_parents_are_excluded_and_rank_changes_invalidate_review(): void

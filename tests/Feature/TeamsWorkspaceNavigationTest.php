@@ -38,13 +38,13 @@ class TeamsWorkspaceNavigationTest extends TestCase
         $invitations = $this->get($invitationUrl)->assertOk();
         foreach ([$roster, $invitations] as $response) {
             $response->assertSee('aria-label="Teams workspace"', false)
-                ->assertSeeInOrder(['Players', 'Invitations', 'Player order', 'Setup', 'Result ranks'])
-                ->assertSee($invitationUrl, false);
+                ->assertSeeInOrder(['Players &amp; invitations', 'Player order', 'Communications', 'Campaigns &amp; settings', 'Setup', 'Result ranks'], false)
+                ->assertSee(route('admin.events.teams', [$event, 'roster_tab' => 'players']).'#tab-players', false);
         }
         foreach (['tab-players', 'tab-order', 'tab-regions', 'tab-result-rank'] as $panel) {
             $roster->assertSee('id="'.$panel.'"', false);
         }
-        $invitations->assertSee('Import &amp; send', false)->assertSee('Selection &amp; reserves', false);
+        $invitations->assertSee('Campaigns &amp; settings', false)->assertSee('Players &amp; invitations', false);
         $otherEvent = Event::factory()->create(['eventType' => 3]);
         $this->get(route('admin.events.teams', $otherEvent))->assertForbidden();
         $this->get(route('backend.team-selection.index', $otherEvent))->assertForbidden();
@@ -62,13 +62,12 @@ class TeamsWorkspaceNavigationTest extends TestCase
         }
     }
 
-    public function test_scorekeeper_can_view_the_roster_without_an_inaccessible_invitations_link(): void
+    public function test_scorekeeper_cannot_access_the_private_roster_or_invitations_workspace(): void
     {
         [$event] = $this->teamEvent();
         $scorekeeper = User::factory()->create();
         EventConvenor::create(['event_id' => $event->id, 'user_id' => $scorekeeper->id, 'role' => 'score-keeper']);
-        $this->actingAs($scorekeeper)->get(route('admin.events.teams', $event))->assertOk()
-            ->assertSee('aria-label="Teams workspace"', false)
+        $this->actingAs($scorekeeper)->get(route('admin.events.teams', $event))->assertForbidden()
             ->assertDontSee(route('backend.team-selection.index', [$event, 'workspace' => 'invitations']), false);
         $this->get(route('backend.team-selection.index', $event))->assertForbidden();
     }
@@ -81,10 +80,10 @@ class TeamsWorkspaceNavigationTest extends TestCase
         $manager = User::factory()->create();
         EventRegionManager::create(['event_id' => $event->id, 'event_region_id' => $eventRegion->id, 'region_id' => $eventRegion->region_id, 'user_id' => $manager->id, 'assigned_by' => $admin->id]);
         $response = $this->actingAs($manager)->get(route('backend.team-selection.index', [$event, 'workspace' => 'invitations']))->assertOk()
-            ->assertSee('Invitations</button>', false)->assertSee('Players</button>', false)
+            ->assertSee('Players &amp; invitations', false)->assertSee('Player order')
             ->assertSee('Synthetic North Region')->assertDontSee('Private South Region')
-            ->assertDontSee(route('admin.events.teams', $event), false);
-        $this->get(route('admin.events.teams', $event))->assertForbidden();
+            ->assertDontSee('Private South Region');
+        $this->get(route('admin.events.teams', $event))->assertOk()->assertSee('Synthetic North Region')->assertDontSee('Private South Region');
         $this->actingAs(User::factory()->create())->get(route('backend.team-selection.index', $event))->assertForbidden();
         if (getenv('TEAMS_QA_EXPORT')) file_put_contents(storage_path('framework/testing/teams-qa/regional.html'), preg_replace('~http://localhost/(assets|css|js|build)/~', 'http://localhost/ct/public/$1/', $response->getContent()));
     }

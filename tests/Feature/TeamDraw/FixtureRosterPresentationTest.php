@@ -132,7 +132,7 @@ class FixtureRosterPresentationTest extends TestCase
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $admin = User::factory()->create()->assignRole('super-user');
         $this->actingAs($admin);
-        $this->get(route('backend.team-fixtures.index', ['draw_id' => $draw->id]))->assertOk()
+        $this->get(route('backend.team-fixtures.index', ['draw_id' => $draw->id, 'sort' => 'play_order']))->assertOk()
             ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->getCollection()->modelKeys() === $expected);
         $response = $this->get(route('draw.show', $draw))->assertOk()
             ->assertViewHas('fixtures', fn ($fixtures) => $fixtures->modelKeys() === $expected);

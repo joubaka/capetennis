@@ -313,10 +313,10 @@ class PlayerPerformancePilotTest extends TestCase
         $fixture = $this->match($field, [[7,6]]);
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
         $player = $field['rows'][0]['players']->first(); $asOf = CarbonImmutable::parse('2026-10-06');
-        $close = $service->forPlayer($player, $asOf)['cohorts']->first();
+        $close = $service->forPlayer($player, $asOf)['headline'];
         $fingerprint = $service->fingerprint();
         $fixture->fixtureResults()->update(['registration1_score' => 6, 'registration2_score' => 0]);
-        $wide = $service->forPlayer($player, $asOf)['cohorts']->first();
+        $wide = $service->forPlayer($player, $asOf)['headline'];
         $this->assertGreaterThan($close['score'], $wide['score']);
         $this->assertSame($close['played'], $wide['played']);
         $this->assertSame($close['confidence_index'], $wide['confidence_index']);
@@ -497,10 +497,8 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertNull($service->forPlayer($player, $asOf)['headline']);
     }
 
-    public function test_shared_ability_connects_regional_fields_through_shared_open_event_entrants(): void
+    public function test_shared_open_entrants_do_not_connect_different_ball_pools(): void
     {
-        // Contextual/ordinal diagnostics remain separate from the played-only all-age headline.
-        // The canonical all-age pipeline is covered by AllAgeRatingPipelineTest.
         $regional = $this->field(Category::factory()->create(['name' => 'u/10 Boys']), [1,2], ['name' => 'Regional trial']);
         $player = $regional['rows'][0]['players']->first();
         $anchor = $regional['rows'][1]['players']->first();
@@ -509,15 +507,15 @@ class PlayerPerformancePilotTest extends TestCase
         $openB = $this->field(Category::factory()->create(['name' => 'U10 Boys B division']), [1,2], [], 1, $openA['event']);
         $other = $openB['rows'][1]['players']->first();
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
-        $first = $service->forPlayer($player, $asOf)['cohorts']->first();
-        $second = $service->forPlayer($other, $asOf)['cohorts']->first();
-        $this->assertSame('u10 boys', $first['cohort']);
-        $this->assertSame($first['component'], $second['component']);
-        $this->assertGreaterThan($second['score'], $first['score']);
+        $first = $service->forPlayer($player, $asOf)['headline'];
+        $second = $service->forPlayer($other, $asOf);
+        $this->assertSame(\App\Services\Performance\AllAgeRatingModel::COHORT, $first['cohort']);
+        $this->assertNull($second['headline']);
+        $this->assertArrayHasKey('orange', $second['ball_ratings']);
+        $this->assertNull($second['ball_ratings']['standard']);
         $this->assertSame(0, $first['played']);
-        $this->assertStringContainsString('Limited', $first['confidence']);
-        $this->assertSame(1, $first['division_links']);
-        $this->assertTrue($first['anchors']->contains('id', $anchor->id));
+        $this->assertSame('Low', $first['confidence_label']);
+        $this->assertSame(0, $first['division_links']);
     }
 
     public function test_shared_cache_immediately_removes_unpublished_finish_and_draw_sources_without_timestamp_changes(): void
@@ -525,16 +523,16 @@ class PlayerPerformancePilotTest extends TestCase
         $field = $this->field(Category::factory()->create(['name' => 'u10 Boys A division']));
         $fixture = $this->match($field); $player = $field['rows'][0]['players']->first();
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
-        $first = $service->forPlayer($player, $asOf)['cohorts']->first();
-        $this->assertSame(1, $first['played']); $this->assertSame(1, $first['inferred']);
+        $first = $service->forPlayer($player, $asOf)['headline'];
+        $this->assertSame(1, $first['played']); $this->assertSame(0, $first['inferred'], 'Played-connected finishing order must not duplicate evidence.');
         \Illuminate\Support\Facades\DB::table('events')->where('id',$field['event']->id)->update(['results_published' => false]);
-        $second = $service->forPlayer($player, $asOf)['cohorts']->first();
+        $second = $service->forPlayer($player, $asOf)['headline'];
         $this->assertSame(1, $second['played']); $this->assertSame(0, $second['inferred']);
         \Illuminate\Support\Facades\DB::table('draws')->where('id',$fixture->draw_id)->update(['published' => false]);
-        $this->assertNull($service->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($player, $asOf)['headline']);
     }
 
-    public function test_contextual_ability_keeps_ball_age_gender_doubles_and_disconnected_groups_separate(): void
+    public function test_shared_standard_pool_connects_ages_but_excludes_doubles_and_disconnected_groups(): void
     {
         $base = $this->field(Category::factory()->create(['name' => 'u10 Boys']));
         $player = $base['rows'][0]['players']->first();
@@ -547,21 +545,26 @@ class PlayerPerformancePilotTest extends TestCase
         $disconnected = $this->field(Category::factory()->create(['name' => 'u10 Boys']));
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
         $estimate = $service->forPlayer($player,$asOf);
-        $this->assertCount(4,$estimate['cohorts']);
-        $this->assertSame(4,$estimate['cohorts']->pluck('component')->unique()->count());
-        $u10 = $estimate['cohorts']->firstWhere('cohort','u10 boys');
-        $other = $service->forPlayer($disconnected['rows'][0]['players']->first(),$asOf)['cohorts']->first();
+        $this->assertCount(0,$estimate['cohorts']);
+        $u10 = $estimate['headline'];
+        $this->assertSame(4, $u10['inferred']);
+        $this->assertSame(0, $u10['played']);
+        $this->assertSame(5, $u10['component_players']);
+        $other = $service->forPlayer($disconnected['rows'][0]['players']->first(),$asOf)['headline'];
         $this->assertNotSame($u10['component'],$other['component']);
-        $this->assertSame(1,$u10['comparators']->count());
+        $this->assertSame($u10, array_diff_key($estimate['ball_ratings']['standard'], ['ball_type' => true]));
     }
 
     public function test_shared_placement_uses_latest_correction_and_ignores_unranked_entries(): void
     {
         $field = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [3,2]);
         CategoryResult::create(['event_id'=>$field['event']->id,'category_id'=>$field['ce']->category_id,'registration_id'=>$field['rows'][0]['reg']->id,'position'=>1]);
-        CategoryEventRegistration::factory()->create(['category_event_id'=>$field['ce']->id]);
+        $unranked = CategoryEventRegistration::factory()->create(['category_event_id'=>$field['ce']->id]);
         $player=$field['rows'][0]['players']->first();
-        $estimate=app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player,CarbonImmutable::parse('2026-10-06'))['cohorts']->first();
+        $estimate=app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player,CarbonImmutable::parse('2026-10-06'))['headline'];
+        $this->assertNull($estimate, 'An incomplete finishing field cannot manufacture a final placing.');
+        $unranked->delete();
+        $estimate=app(\App\Services\Performance\PlayerSharedAbilityService::class)->forPlayer($player,CarbonImmutable::parse('2026-10-06'))['headline'];
         $this->assertSame(1,$estimate['inferred']);
         $this->assertSame(2,$estimate['component_players']);
         $this->assertGreaterThan(50,$estimate['score']);
@@ -577,22 +580,22 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertStringContainsString('No partial rating',$estimate['reason']);
     }
 
-    public function test_shared_division_link_requires_unique_complete_disjoint_fields_and_has_no_event_name_bonus(): void
+    public function test_independent_ball_fields_have_no_division_or_event_name_bonus(): void
     {
         $a=$this->field(Category::factory()->create(['name'=>'u10 Boys A division']));
         $b=$this->field(Category::factory()->create(['name'=>'u10 Boys B division']),[1,2],[],1,$a['event']);
         $service=app(\App\Services\Performance\PlayerSharedAbilityService::class);$asOf=CarbonImmutable::parse('2026-10-06');
         $player=$a['rows'][0]['players']->first();
-        $first=$service->forPlayer($player,$asOf)['cohorts']->first();
-        $this->assertSame(1,$first['division_links']);
+        $first=$service->forPlayer($player,$asOf)['headline'];
+        $this->assertSame(0,$first['division_links']);
         $a['event']->update(['name'=>'Wilson international event name']);
-        $this->assertSame($first['score'],$service->forPlayer($player,$asOf)['cohorts']->first()['score']);
+        $this->assertSame($first['score'],$service->forPlayer($player,$asOf)['headline']['score']);
         $b['rows'][0]['reg']->players()->sync([$player->id]);
         \Illuminate\Support\Facades\Cache::store('array')->flush();
-        $this->assertSame(0,$service->forPlayer($player,$asOf)['cohorts']->first()['division_links']);
+        $this->assertSame(0,$service->forPlayer($player,$asOf)['headline']['division_links']);
         $b['rows'][0]['reg']->players()->sync([$b['rows'][0]['players']->first()->id]);
         CategoryEvent::factory()->create(['event_id'=>$a['event']->id,'category_id'=>Category::factory()->create(['name'=>'u10 Boys A afdeling'])->id]);
-        $this->assertSame(0,$service->forPlayer($player,$asOf)['cohorts']->first()['division_links']);
+        $this->assertSame(0,$service->forPlayer($player,$asOf)['headline']['division_links']);
     }
     public function test_confidence_uses_own_same_cohort_dates_daily_cache_and_conservative_ongoing_date(): void
     {
@@ -600,25 +603,26 @@ class PlayerPerformancePilotTest extends TestCase
         $fixture = $this->match($field);
         $player = $field['rows'][0]['players']->first();
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
-        $first = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['cohorts']->first();
+        $first = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['headline'];
         $this->assertSame('2026-01-01', $first['last_direct_match']);
         $this->assertSame(1, $first['proxy_dated_matches']);
         $this->assertSame(0, $first['recent_played']);
-        $next = $service->forPlayer($player, CarbonImmutable::parse('2026-10-07'))['cohorts']->first();
+        $next = $service->forPlayer($player, CarbonImmutable::parse('2026-10-07'))['headline'];
         $this->assertSame('2026-10-07', $next['confidence_as_of']);
         $this->assertLessThan($first['effective_played'], $next['effective_played']);
         \App\Models\OrderOfPlay::create(['fixture_id' => $fixture->id, 'draw_id' => $fixture->draw_id, 'venue_id' => 1, 'time' => '2026-10-05 10:00:00']);
-        $scheduled = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['cohorts']->first();
+        $scheduled = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['headline'];
         $this->assertSame('2026-10-05', $scheduled['last_direct_match']);
         $this->assertSame(0, $scheduled['proxy_dated_matches']);
-        $historical = $service->forPlayer($player, CarbonImmutable::parse('2026-10-01'))['cohorts']->first();
+        $historical = $service->forPlayer($player, CarbonImmutable::parse('2026-10-01'))['headline'];
         $this->assertNull($historical);
         $other = $this->field(Category::factory()->create(['name' => 'u12 Boys']), [1,2], ['start_date' => '2026-10-01', 'end_date' => '2026-10-02']);
         $other['rows'][0]['reg']->players()->sync([$player->id]);
         $this->match($other);
-        $cohorts = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'))['cohorts'];
-        $this->assertSame('2026-10-05', $cohorts->firstWhere('cohort', 'u10 boys')['last_direct_match']);
-        $this->assertSame('2026-10-01', $cohorts->firstWhere('cohort', 'u12 boys')['last_direct_match']);
+        $combined = $service->forPlayer($player, CarbonImmutable::parse('2026-10-06'));
+        $this->assertSame('2026-10-05', $combined['headline']['last_direct_match']);
+        $this->assertSame(2, $combined['headline']['played']);
+        $this->assertCount(0, $combined['cohorts']);
     }
 
     public function test_connected_opponent_activity_does_not_refresh_inactive_player_confidence(): void
@@ -626,10 +630,10 @@ class PlayerPerformancePilotTest extends TestCase
         $old = $this->field(Category::factory()->create(['name' => 'u10 Boys']), [1,2], ['start_date' => '2025-11-30', 'end_date' => '2025-11-30', 'results_published' => false]);
         $this->match($old); $player = $old['rows'][0]['players']->first(); $opponent = $old['rows'][1]['players']->first();
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $date = CarbonImmutable::parse('2026-10-06');
-        $before = $service->forPlayer($player, $date)['cohorts']->first();
+        $before = $service->forPlayer($player, $date)['headline'];
         $recent = $this->field($old['ce']->category, [1,2], ['start_date' => '2026-10-01', 'end_date' => '2026-10-02', 'results_published' => false]);
         $recent['rows'][0]['reg']->players()->sync([$opponent->id]); $this->match($recent);
-        $after = $service->forPlayer($player, $date)['cohorts']->first();
+        $after = $service->forPlayer($player, $date)['headline'];
         $this->assertSame($before['confidence_index'], $after['confidence_index']);
         $this->assertSame($before['effective_played'], $after['effective_played']);
         $this->assertSame('2025-11-30', $after['last_direct_match']);
@@ -642,16 +646,16 @@ class PlayerPerformancePilotTest extends TestCase
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
         $scores = [];
         foreach ($field['rows'] as $row) {
-            $estimate = $service->forPlayer($row['players']->first(), $asOf)['cohorts']->first();
+            $estimate = $service->forPlayer($row['players']->first(), $asOf)['headline'];
             $scores[] = $estimate['score']; $this->assertSame(0, $estimate['played']); $this->assertLessThanOrEqual(15, $estimate['confidence_index']);
         }
         for ($i=0; $i<6; $i++) { $this->assertGreaterThan($scores[$i+1], $scores[$i]); }
         $this->assertSame(50.0, $scores[3]);
         $pair = $this->field(Category::factory()->create(['name' => 'u12 Boys']), [1,2]);
         $fixture = $this->match($pair); $player = $pair['rows'][0]['players']->first();
-        $withFinish = $service->forPlayer($player, $asOf)['cohorts']->first()['score'];
+        $withFinish = $service->forPlayer($player, $asOf)['headline']['score'];
         \Illuminate\Support\Facades\DB::table('events')->where('id', $pair['event']->id)->update(['results_published' => false]);
-        $this->assertSame($withFinish, $service->forPlayer($player, $asOf)['cohorts']->first()['score']);
+        $this->assertSame($withFinish, $service->forPlayer($player, $asOf)['headline']['score']);
     }
 
     public function test_legacy_pending_individual_score_counts_only_when_verified_without_changing_records(): void
@@ -661,22 +665,22 @@ class PlayerPerformancePilotTest extends TestCase
         $fixture->draw->settings->update(['num_sets' => 3]);
         $player = $field['rows'][0]['players']->first(); $asOf = CarbonImmutable::parse('2026-10-06');
         $shared = app(\App\Services\Performance\PlayerSharedAbilityService::class);
-        $estimate = $shared->forPlayer($player, $asOf)['cohorts']->first();
-        $this->assertSame('u13 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
+        $estimate = $shared->forPlayer($player, $asOf)['headline'];
+        $this->assertSame(\App\Services\Performance\AllAgeRatingModel::COHORT, $estimate['cohort']); $this->assertSame(1, $estimate['played']);
         $this->assertSame(0, $fixture->fresh()->match_status);
         $history = app(PlayerPerformancePilotService::class);
         $this->assertSame(1, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
         $this->assertNull($fixture->fresh()->winner_registration);
         $fixture->fixtureResults()->where('set_nr',2)->delete();
-        $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
         $this->assertSame(0, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
         \App\Models\FixtureResult::create(['fixture_id' => $fixture->id, 'set_nr' => 2, 'registration1_score' => 6, 'registration2_score' => 3]);
         $fixture->update(['winner_registration' => $field['rows'][1]['reg']->id]);
-        $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
         $this->assertSame('Saved winner disagrees with the score', $history->forPlayer($player, $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
         $fixture->update(['winner_registration' => $field['rows'][0]['reg']->id]);
         \Illuminate\Support\Facades\DB::table('draws')->where('id', $fixture->draw_id)->update(['published' => false]);
-        $this->assertNull($shared->forPlayer($player, $asOf)['cohorts']->first());
+        $this->assertNull($shared->forPlayer($player, $asOf)['headline']);
         $this->assertSame(0, $history->forPlayer($player, $asOf)['disciplines']['singles']['match_count']);
     }
 
@@ -702,20 +706,20 @@ class PlayerPerformancePilotTest extends TestCase
     {
         $data = $this->legacyTeamField();
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $date = CarbonImmutable::parse('2026-10-06');
-        $close = $service->forPlayer($data['first'], $date)['cohorts']->first();
+        $close = $service->forPlayer($data['first'], $date)['headline'];
         $data['fixture']->teamResults()->update(['team1_score' => 6, 'team2_score' => 0]);
-        $wide = $service->forPlayer($data['first'], $date)['cohorts']->first();
+        $wide = $service->forPlayer($data['first'], $date)['headline'];
         $this->assertGreaterThan($close['score'], $wide['score']);
         $this->assertSame($close['played'], $wide['played']);
         $this->assertSame($close['confidence_index'], $wide['confidence_index']);
         $this->assertSame(0, $data['fixture']->fresh()->match_status);
     }
 
-    public function test_shared_team_legacy_identity_links_require_event_region_year_unique_roster_and_exact_cohort(): void
+    public function test_shared_team_legacy_identity_requires_event_region_year_unique_roster_independent_of_demographic_context(): void
     {
         $data = $this->legacyTeamField(); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
-        $estimate = $service->forPlayer($data['first'], $asOf)['cohorts']->first();
-        $this->assertSame('u10 boys', $estimate['cohort']); $this->assertSame(1, $estimate['played']);
+        $estimate = $service->forPlayer($data['first'], $asOf)['headline'];
+        $this->assertSame(\App\Services\Performance\AllAgeRatingModel::COHORT, $estimate['cohort']); $this->assertSame(1, $estimate['played']);
         $this->assertSame(0, $data['fixture']->fresh()->match_status);
         $history = app(PlayerPerformancePilotService::class);
         $this->assertSame(1, $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_count']);
@@ -725,54 +729,56 @@ class PlayerPerformancePilotTest extends TestCase
         ]);
         $data['row']->update(['team1_no_profile_id' => $imported->id]);
         $this->assertSame('Team match side has missing or competing identity identifiers', $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         $data['row']->update(['team1_no_profile_id' => null]);
         $data['away']->update(['name' => 'u12 Girls']);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        $this->assertSame(0, $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_count']);
         $data['away']->update(['name' => 'u10 Boys', 'year' => 2025]);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         $this->assertSame('Team match player cannot be verified against this event/side', $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_evidence']->first()['reason']);
         $data['away']->update(['year' => 2026]);
         $duplicate = \App\Models\Team::factory()->create(['name' => 'u10 Boys', 'year' => 2026, 'region_id' => $data['home']->region_id, 'category_event_id' => null]);
         \App\Models\TeamPlayer::create(['team_id' => $duplicate->id, 'player_id' => $data['first']->id, 'rank' => 1]);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         $this->assertSame(0, $history->forPlayer($data['first'], $asOf)['disciplines']['singles']['match_count']);
         $duplicate->delete();
         $data['field']['event']->regions()->detach($data['away']->region_id);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
     }
 
     public function test_shared_team_actual_event_category_fallback_and_publication_correction_are_read_only(): void
     {
         $data = $this->legacyTeamField(false); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
-        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['cohorts']->first()['played']);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
         $this->assertNull($data['draw']->fresh()->category_event_id);
         \Illuminate\Support\Facades\DB::table('draws')->where('id', $data['draw']->id)->update(['published' => false]);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         \Illuminate\Support\Facades\DB::table('draws')->where('id', $data['draw']->id)->update(['published' => true]);
         $tie = \App\Models\TeamTie::factory()->published()->create(['draw_id' => $data['draw']->id, 'home_team_id' => $data['home']->id, 'away_team_id' => $data['away']->id]);
         $data['fixture']->update(['team_tie_id' => $tie->id, 'fixture_type' => 1]);
-        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['cohorts']->first()['played']);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
         \Illuminate\Support\Facades\DB::table('team_ties')->where('id',$tie->id)->update(['published_at' => null]);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
     }
 
     public function test_shared_null_type_team_singles_uses_nonpersisted_canonical_best_of_three_and_rejects_partial_future_play(): void
     {
         $data = $this->legacyTeamField(); $service = app(\App\Services\Performance\PlayerSharedAbilityService::class); $asOf = CarbonImmutable::parse('2026-10-06');
         $data['fixture']->update(['numSets' => null]);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         \App\Models\TeamFixtureResult::create(['team_fixture_id' => $data['fixture']->id, 'set_nr' => 2, 'team1_score' => 6, 'team2_score' => 3]);
-        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['cohorts']->first()['played']);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
         $this->assertNull($data['fixture']->fresh()->fixture_type); $this->assertSame(0, $data['fixture']->fresh()->match_status);
         $data['fixture']->teamResults()->where('set_nr',2)->update(['team1_score' => 4, 'team2_score' => 6]);
         \App\Models\TeamFixtureResult::create(['team_fixture_id' => $data['fixture']->id, 'set_nr' => 3, 'team1_score' => 10, 'team2_score' => 4]);
-        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['cohorts']->first()['played']);
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
         $data['draw']->update(['drawName' => 'u10 Boys Doubles']);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
         $data['draw']->update(['drawName' => 'u10 Boys Singles']);
         $data['field']['event']->update(['end_date' => '2026-12-31']);
         $data['fixture']->update(['scheduled_at' => '2026-10-10 10:00:00']);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertNull($service->forPlayer($data['first'], $asOf)['headline']);
     }
 
     public function test_shared_team_source_overflow_withholds_all_other_valid_field_evidence(): void
@@ -783,21 +789,23 @@ class PlayerPerformancePilotTest extends TestCase
         $this->assertNull($snapshot['headline']); $this->assertNotNull($snapshot['reason']); $this->assertCount(0,$snapshot['cohorts']);
     }
 
-    public function test_shared_legacy_team_region_prefix_is_normalized_only_for_exact_proven_region(): void
+    public function test_shared_legacy_team_identity_uses_proven_region_not_demographic_name_labels(): void
     {
         $data = $this->legacyTeamField(); $asOf = CarbonImmutable::parse('2026-10-06');
         $data['home']->regions()->update(['region_name' => 'Home region Primary Schools 2026']);
         $data['home']->update(['name' => 'Home region u/10 Boys']);
         $service = app(\App\Services\Performance\PlayerSharedAbilityService::class);
-        $this->assertSame('u10 boys', $service->forPlayer($data['first'], $asOf)['cohorts']->first()['cohort']);
+        $this->assertSame(\App\Services\Performance\AllAgeRatingModel::COHORT, $service->forPlayer($data['first'], $asOf)['headline']['cohort']);
         $data['home']->update(['name' => 'Unknown region u/10 Boys']);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
         $data['home']->update(['name' => 'Home region u/10 Boys']);
         $data['draw']->update(['drawName' => 'u12 Girls Singles']);
-        $this->assertNull($service->forPlayer($data['first'], $asOf)['cohorts']->first());
+        $this->assertSame(1, $service->forPlayer($data['first'], $asOf)['headline']['played']);
+        $personal = app(PlayerPerformancePilotService::class)->forPlayer($data['first'], $asOf);
+        $this->assertSame(0, $personal['disciplines']['singles']['match_count']);
     }
 
-    public function test_latest_completed_valid_main_trial_is_selected_per_cohort_not_by_id_or_event_name(): void
+    public function test_trial_types_and_names_do_not_invent_a_category_baseline(): void
     {
         \Illuminate\Support\Facades\DB::table('eventtypes')->updateOrInsert(['id'=>5],['name'=>'Cavaliers Trials','code'=>'individual']);
         $category=Category::factory()->create(['name'=>'u13 Boys']);
@@ -808,23 +816,23 @@ class PlayerPerformancePilotTest extends TestCase
         $ongoing=$this->field($category,[1,2],['eventType'=>5,'start_date'=>'2026-10-01','end_date'=>'2026-12-02','results_published'=>false]);$this->match($ongoing);
         $named=$this->field($category,[1,2],['name'=>'Cavaliers Trials','eventType'=>1,'start_date'=>'2026-10-02','end_date'=>'2026-10-03','results_published'=>false]);$this->match($named);
         $service=app(\App\Services\Performance\PlayerSharedAbilityService::class);$asOf=CarbonImmutable::parse('2026-10-06');
-        $estimate=$service->forPlayer($player,$asOf)['cohorts']->first();
-        $this->assertSame($latest['event']->id,$estimate['baseline_source']['event_id']);
-        $this->assertSame('Direct main-trial baseline',$estimate['baseline_status']);
-        $this->assertNull($service->forPlayer($older['rows'][0]['players']->first(),$asOf)['cohorts']->first()['baseline_source']);
+        $estimate=$service->forPlayer($player,$asOf)['headline'];
+        $this->assertNull($estimate['baseline_source']);
+        $this->assertSame('Recent shared played-match reference',$estimate['baseline_status']);
+        $this->assertNull($service->forPlayer($older['rows'][0]['players']->first(),$asOf)['headline']['baseline_source']);
         \Illuminate\Support\Facades\DB::table('eventtypes')->where('id',5)->update(['name'=>'Other trials']);
-        $this->assertNull($service->forPlayer($player,$asOf)['cohorts']->first()['baseline_source']);
+        $this->assertNull($service->forPlayer($player,$asOf)['headline']['baseline_source']);
     }
 
     public function test_same_event_extra_match_logging_does_not_increase_ability_but_actual_confidence_counts_remain(): void
     {
         $field=$this->field(Category::factory()->create(['name'=>'u10 Boys']),[1,2],['results_published'=>false]);
         $this->match($field);$player=$field['rows'][0]['players']->first();$service=app(\App\Services\Performance\PlayerSharedAbilityService::class);$asOf=CarbonImmutable::parse('2026-10-06');
-        $first=$service->forPlayer($player,$asOf)['cohorts']->first();
+        $first=$service->forPlayer($player,$asOf)['headline'];
         for($i=0;$i<5;$i++){ $this->match($field); }
-        $more=$service->forPlayer($player,$asOf)['cohorts']->first();
+        $more=$service->forPlayer($player,$asOf)['headline'];
         $this->assertSame($first['score'],$more['score']);$this->assertSame(6,$more['played']);
-        $this->assertSame('No connected main-trial baseline',$more['baseline_status']);
+        $this->assertSame('Recent shared played-match reference',$more['baseline_status']);
         $this->assertNull($more['baseline_source']);
     }
 

@@ -16,6 +16,11 @@ class PracticeCampPlannerTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'database.connections.sqlite.url' => null]);
         DB::purge('sqlite');
         (require database_path('migrations/2013_01_01_000000_create_base_schema_for_testing.php'))->up();
+        Schema::table('players', function ($t) {
+            $t->char('identity_name_hash', 64)->nullable();
+            $t->char('identity_email_dob_hash', 64)->nullable();
+            $t->char('identity_cell_dob_hash', 64)->nullable();
+        });
         Schema::table('category_event_registrations', fn ($t) => $t->softDeletes());
         (require database_path('migrations/2026_11_20_120000_create_practice_camp_plans.php'))->up();
         Schema::create('eventtypes', function ($t) { $t->id(); $t->string('name'); $t->integer('type'); });

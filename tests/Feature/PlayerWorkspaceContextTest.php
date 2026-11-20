@@ -15,7 +15,7 @@ class PlayerWorkspaceContextTest extends TestCase
 
     private function history(): array
     {
-        return ['reason' => null, 'as_of' => '2026-11-03', 'points' => [
+        return ['reason' => null, 'as_of' => '2026-11-03', 'ball_stage' => 'standard', 'points' => [
             ['index' => 11, 'date' => '2026-11-03', 'score' => 66.6, 'group' => 'a', 'confidence_label' => 'Medium']]];
     }
 
@@ -70,13 +70,14 @@ class PlayerWorkspaceContextTest extends TestCase
 
     public function test_public_terms_remain_available_and_standard_feature_query_is_safe_and_useful(): void
     {
+        \App\Models\SiteSetting::set(\App\Services\Performance\PlayerRatingAccess::COMING_SOON_SETTING, '1');
         $this->get(route('player-plus.terms'))->assertOk();
         $user = User::factory()->create(); $player = Player::factory()->create(['userId' => $user->id]);
         $this->mock(PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
         $response = $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id, 'feature' => 'opponents']))->assertOk();
         $this->export('standard', $response);
         $response->assertSee('id="plus-feature-opponents"', false)
-            ->assertSee(route('player-plus.player', $player), false);
+            ->assertSee(route('ctr.index', ['player' => $player->id]), false);
         $this->assertMatchesRegularExpression('/id="plus-feature-opponents"[^>]+data-plus-feature-panel="opponents"\s*>/', $response->getContent());
         $this->actingAs($user)->get(route('my.tennis', ['player' => $player->id, 'feature' => ['invalid']]))->assertOk();
     }
@@ -116,7 +117,11 @@ class PlayerWorkspaceContextTest extends TestCase
         $user = User::factory()->create(); $player = Player::factory()->create(['name' => 'Example', 'surname' => 'Player', 'userId' => $user->id]);
         PlayerPlusAccessOverride::create(['player_id' => $player->id, 'mode' => 'grant', 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->times(5)->andReturn($this->history());
-        $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic saved record unavailable.']);
+        $this->mock(\App\Services\Performance\PlayerPlusRecordService::class)->shouldReceive('forPlayer')->once()->andReturn([
+            'reason' => 'Synthetic saved record unavailable.', 'year' => '', 'years' => [], 'as_of' => null,
+            'stale' => false, 'opponent' => null, 'comparison' => ['first_year' => '', 'second_year' => ''],
+            'coverage_start' => null, 'played' => 0, 'wins' => 0, 'events' => 0, 'form' => [], 'opponent_count' => 0,
+        ]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistory::class)->shouldReceive('forPlayer')->once()->andReturn(['reason' => 'Synthetic event history unavailable.', 'events' => [], 'pages' => 1]);
         $this->mock(\App\Services\Performance\PlayerEventRatingHistoryRefresh::class)->shouldReceive('status')->once()->andReturn(['state' => 'idle', 'message' => 'No update requested.']);
         $this->mock(\App\Services\Performance\PlayerPlusReadiness::class)->shouldReceive('forPlayer')->once()->andReturn(null);
@@ -167,13 +172,13 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->mock(\App\Services\Performance\PlayerUpcomingMatchInsights::class)->shouldReceive('forPlayer')->once()->andReturn([
             'rows' => [['date' => '2026-11-07 09:00:00', 'event' => 'Example Saturday Open', 'draw' => 'Singles', 'venue' => 'Example Courts',
                 'court' => '2', 'team' => null, 'opponents' => [['id' => 700, 'name' => 'Taylor Example']], 'url' => '/example-draw']],
-            'ratings' => [$player->id => ['score' => 74.0, 'confidence' => 'Medium'], 700 => ['score' => 71.5, 'confidence' => 'Low']],
+            'ratings' => [$player->id => ['stage' => 'standard', 'score' => 74.0, 'confidence_label' => 'Medium'], 700 => ['stage' => 'standard', 'score' => 71.5, 'confidence_label' => 'Low']],
             'total' => 1, 'page' => 1, 'pages' => 1,
         ]);
         $response = $this->actingAs($user)->get(route('my.tennis.record', ['player' => $player, 'section' => 'opponents', 'opponent' => 700]))->assertOk();
         $response->assertSeeInOrder(['Upcoming matches', 'Example Saturday Open', 'Past opponents', '6-3 6-4'])
-            ->assertSee('66.6')->assertSee('Overall CTR 74.0')->assertDontSee('data-rating-snapshot', false);
-        $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>Opponents\s*<\/a>/', $response->getContent());
+            ->assertSee('66.6')->assertSee('CTR 71.5')->assertDontSee('CTR 74.0')->assertDontSee('data-rating-snapshot', false);
+        $this->assertMatchesRegularExpression('/aria-current="page"[^>]*>\s*<span>Opponents<\/span>\s*<\/a>/', $response->getContent());
         $this->export('opponents', $response);
     }
 }

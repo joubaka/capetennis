@@ -29,7 +29,7 @@ class PlayerRatingHistoryPendingTest extends TestCase
         $this->assertSame($manifest, $saved['publication_manifest']);
     }
 
-    public function test_super_admin_keeps_legacy_calculation_visible_while_sources_change(): void
+    public function test_super_admin_keeps_saved_standard_calculation_visible_while_sources_change(): void
     {
         $user = Mockery::mock(User::class)->makePartial();
         $user->shouldReceive('hasRole')->with('super-user')->andReturn(true);
@@ -44,7 +44,7 @@ class PlayerRatingHistoryPendingTest extends TestCase
         $html = view('frontend.my-tennis.rating', ['ratingPlayer' => $player, 'ratingHistory' => $history])->render();
         $this->assertStringContainsString('61.5', $html);
         $this->assertStringContainsString('<svg', $html);
-        $this->assertStringContainsString('Showing the latest saved calculation', $html);
+        $this->assertStringContainsString('Latest saved update for this player:', $html);
         $this->assertStringNotContainsString('source results or publication changed', $html);
     }
 
@@ -84,7 +84,7 @@ class PlayerRatingHistoryPendingTest extends TestCase
         $store = Mockery::mock(PlayerRatingHistoryStore::class);
         $months = [];
         for ($index = 0; $index < 12; $index++) {
-            $months[] = ['date' => '2026-10-01', 'cohorts' => ['u13 boys' => [42 => ['score' => 61.5, 'group' => 'same', 'component' => 'a']]]];
+            $months[] = ['date' => '2026-10-01', 'cohorts' => [\App\Services\Performance\BallRatingModel::COHORTS['standard'] => [42 => ['score' => 61.5, 'group' => 'same', 'component' => 'a']]]];
         }
         $store->shouldReceive('read')->once()->andReturn($extra + ['source_fingerprint' => 'before', 'as_of' => '2026-10-01',
             'built_at' => '2026-10-01T03:00:00+02:00', 'months' => $months, 'evidence' => []]);
