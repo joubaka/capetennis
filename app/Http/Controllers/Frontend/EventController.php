@@ -476,6 +476,10 @@ class EventController extends Controller
         ->groupBy('category_id');
     }
 
+    if ($user) {
+      app(\App\Services\PlusMorningDigestService::class)->markEventSeen($user, $event);
+    }
+
 return view('frontend.event.show', compact(
       'matchProgress',
       'fixturesPerVenueGrouped',

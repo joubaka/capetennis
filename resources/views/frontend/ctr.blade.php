@@ -195,6 +195,8 @@
     </details>
   </div>
 
+  <x-player-plus-morning-updates class="my-4" />
+
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">
     <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Player Plus.<br>One player. More insight.</h2><p class="ctr-offer-copy">One membership, shared with the player’s linked parents or guardians.</p></div>
     <div class="ctr-offer-pricing">

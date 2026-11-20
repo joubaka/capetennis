@@ -116,6 +116,8 @@ Route::get('/player-plus/purchase-details', [\App\Http\Controllers\Frontend\Play
 
 // Payers must be able to review billing and stop renewal without unrelated player-profile gates.
 Route::prefix('player-plus')->name('player-plus.')->middleware(['auth'])->group(function () {
+  Route::get('/notifications', [\App\Http\Controllers\Frontend\PlusNotificationPreferencesController::class, 'show'])->name('notifications');
+  Route::patch('/notifications', [\App\Http\Controllers\Frontend\PlusNotificationPreferencesController::class, 'update'])->middleware('throttle:20,1')->name('notifications.update');
   Route::get('/orders', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'orders'])->name('orders.index');
   Route::get('/orders/{order}', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'show'])->name('orders.show');
   Route::get('/orders/{order}/return', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'paymentReturn'])->name('orders.return');
@@ -405,6 +407,8 @@ Route::get('events/ajax/series', [RankingController::class, 'seriesAllAjax'])->n
 Route::resource('events', EventController::class)->only(['index', 'show']);
 Route::get('announcement-inbox', \App\Http\Controllers\Frontend\AnnouncementInboxController::class)
   ->middleware('auth')->name('announcement-inbox');
+Route::post('announcement-reads', \App\Http\Controllers\Frontend\AnnouncementReadController::class)
+  ->middleware(['auth', 'throttle:60,1'])->name('announcement-reads');
 Route::get('events/{event}/documents/{file}', [FileController::class, 'publicShow'])
   ->name('events.documents.show');
 Route::resource('events', EventController::class)

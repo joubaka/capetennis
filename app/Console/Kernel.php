@@ -18,6 +18,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('player-plus:refresh-derived --resume --scheduled')->everyMinute()->between('03:07', '06:57')->timezone('Africa/Johannesburg')->withoutOverlapping(480)->runInBackground();
         $schedule->command('player-plus:notifications --apply')->dailyAt('08:32')->timezone('Africa/Johannesburg')->withoutOverlapping();
         $schedule->command('player-plus:publication-notifications')->everyMinute()->withoutOverlapping();
+        // Separate from the 03:02 ratings start; host ticks are :02/:07/:12 etc.
+        // Capture in bounded pages overnight, then prepare on/after the first 06:00 tick.
+        $schedule->command('player-plus:morning-digest')->everyMinute()->between('03:12', '08:57')
+            ->timezone('Africa/Johannesburg')->withoutOverlapping();
         $schedule->command('teamsheet:sync-tennis')->hourly()->withoutOverlapping(30)->runInBackground()
             ->when(fn () => app(\App\Services\Performance\TeamSheetTennisImportService::class)->origin() !== null
                 && app(\App\Services\Performance\TeamSheetTennisImportService::class)->ready());

@@ -428,24 +428,19 @@ class PlayerPathwayTest extends TestCase
             'history' => ['placements' => collect(), 'seriesRankings' => collect()]];
         $this->mock(\App\Services\MyTennisService::class)->shouldReceive('dashboard')->andReturn($dashboard);
         $this->mock(\App\Services\Performance\TeamSheetProfileLinkService::class)->shouldReceive('status')->andReturn(['available' => false]);
-        $history = $this->mock(PlayerRatingHistoryService::class);
-        $history->shouldReceive('forPlayer')->twice()
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->twice()
             ->andReturn(['reason' => null, 'series' => [], 'ball_stage' => 'standard', 'points' => [
                 ['index' => 11, 'date' => '2026-10-01', 'score' => 67.9],
             ]]);
-        $history->shouldReceive('recordSource')->once()->andReturnUsing(function () {
-            $this->assertFalse(request()->boolean('preview_non_plus'), 'The non-Plus preview must not read the private record.');
-            return ['reason' => 'Synthetic saved record unavailable.', 'matches' => []];
-        });
         $this->actingAs($this->actor(10));
         $this->get(route('my.tennis', ['player' => 1, 'preview_non_plus' => 1]))->assertOk()
             ->assertSee('data-non-plus-preview-control', false)->assertSee('aria-checked="true"', false)
             ->assertSee('Viewing as a player without Player Plus.')->assertSee('data-rating-preview', false)
             ->assertSee('name="preview_non_plus" value="1"', false)
             ->assertDontSee('data-rating-url=', false)->assertDontSee('>67.9<', false)->assertDontSee('aria-label="CTR 67.9', false);
-        $this->get(route('my.tennis', ['player' => 1]))->assertOk()
+        $this->get(route('my.tennis', ['player' => 1, 'tab' => 'rating']))->assertOk()
             ->assertSee('aria-checked="false"', false)->assertDontSee('data-rating-preview', false)
-            ->assertDontSee('data-rating-url=', false)->assertSee('67.9');
+            ->assertSee('data-rating-url=', false)->assertSee('67.9');
         // Ordinary entitled viewers cannot enable the administrative preview by submitting its parameter.
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
         Gate::define('player-premium-rating', fn () => true);

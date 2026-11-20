@@ -1,6 +1,7 @@
 @once
   <div class="modal fade" id="announcement-inbox" tabindex="-1" aria-labelledby="announcement-inbox-title"
-       aria-hidden="true" data-announcement-inbox="{{ route('announcement-inbox') }}" data-account-id="{{ auth()->id() }}">
+       aria-hidden="true" data-announcement-inbox="{{ route('announcement-inbox') }}" data-account-id="{{ auth()->id() }}"
+       data-read-url="{{ route('announcement-reads') }}">
     <div class="modal-dialog modal-dialog-scrollable">
       <div class="modal-content">
         <div class="modal-header">

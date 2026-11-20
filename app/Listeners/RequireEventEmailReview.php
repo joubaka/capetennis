@@ -19,6 +19,22 @@ class RequireEventEmailReview
 
     public function handle(MessageSending $mail): ?bool
     {
+        if (($mail->data['morningDigestDelivery'] ?? null) instanceof \App\Models\PlusDigestDelivery) {
+            $delivery = $mail->data['morningDigestDelivery']->fresh();
+            $service = app(\App\Services\PlusMorningDigestService::class);
+            if (! ($delivery && $delivery->status === 'sending' && $delivery->claimed_at && $service->current($delivery))) throw new \App\Exceptions\MorningDigestAuthorizationException('Morning digest is no longer authorized.');
+            $message = new \App\Mail\PlusMorningDigestMail($delivery);
+            $allowed = count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $delivery->recipient
+                && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
+                && $mail->message->getTextBody() === null && $mail->message->getSubject() === $message->subjectLine()
+                && $message->canonicalHtml((string) $mail->message->getHtmlBody()) === $message->canonicalHtml($message->body())
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                && $mail->message->getFrom()[0]->getName() === config('mail.from.name')
+                && count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === config('mail.from.address')
+                && $mail->message->getReplyTo()[0]->getName() === config('mail.from.name');
+            if (! $allowed) throw new \App\Exceptions\MorningDigestAuthorizationException('Morning digest content is no longer authorized.');
+            return null;
+        }
         if (isset($mail->data['cavaliers_report_log_id'])) {
             $log = \App\Models\BulkEmailLog::find($mail->data['cavaliers_report_log_id']);
             $message = $log ? app(\App\Services\CavaliersRosterReport::class)->authorizedMailable($log) : null;

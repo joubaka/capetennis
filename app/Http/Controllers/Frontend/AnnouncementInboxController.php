@@ -28,6 +28,14 @@ class AnnouncementInboxController extends Controller
                 'postedAt' => $post->created_at?->getTimestampMs(),
             ]);
 
+        $seen = app(\App\Services\PlusMorningDigestService::class)->seenRevisions(
+            request()->user(), $posts->map(fn ($post) => 'announcement:'.explode(':', $post['revision'], 2)[0])->all()
+        );
+        $posts = $posts->map(function ($post) use ($seen) {
+            $key = 'announcement:'.explode(':', $post['revision'], 2)[0];
+            return $post + ['read' => ($seen[$key] ?? null) === $post['revision']];
+        });
+
         return response()->json($posts)->header('Cache-Control', 'private, no-store');
     }
 }

@@ -105,12 +105,15 @@ class PlayerPathwayEventsTest extends TestCase
     public function test_known_age_gender_exclusions_are_applied_without_claiming_eligibility_for_unknowns(): void
     {
         $good = $this->event('U/13 Boys A', ['eventType' => 2]);
-        $this->event('U/9 Boys A', ['eventType' => 2]);
+        $orange = $this->event('U/9 Boys A', ['eventType' => 2]);
         $this->event('U/13 Girls A', ['eventType' => 2]);
         $this->assertSame([$good], $this->ids('Wilson A'));
         $unknown = $this->player()->setRawAttributes(['id' => 1]);
-        // Unknown age/gender does not turn the Orange U9 division into a Wilson A event.
-        $this->assertCount(2, app(PlayerPathwayEvents::class)->forPlayer($unknown, $this->pathway('Wilson A'))['events']);
+        $unknownEvents = app(PlayerPathwayEvents::class)->forPlayer($unknown, $this->pathway('Wilson A'))['events'];
+        $this->assertCount(2, $unknownEvents);
+        $this->assertNotContains($orange, array_column($unknownEvents, 'id'));
+        $unknownOrange = app(PlayerPathwayEvents::class)->forPlayer($unknown, $this->pathway('orange'))['events'];
+        $this->assertSame([$orange], array_column($unknownOrange, 'id'));
     }
 
     public function test_court_metadata_precedence_mixed_context_and_cross_event_allocations_are_respected(): void

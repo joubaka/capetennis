@@ -1,6 +1,12 @@
 @if($event->announcements->isNotEmpty())
+  @php
+    $accountSeen = auth()->check()
+      ? app(\App\Services\PlusMorningDigestService::class)->seenRevisions(auth()->user(), $event->announcements->map(fn ($post) => 'announcement:'.$post->id)->all())
+      : [];
+  @endphp
   <section id="event-announcements" class="card event-section-card event-announcements mb-4" data-event-announcements
-    data-storage-key="ct:announcements:{{ $event->id }}:{{ auth()->id() ?? 'guest' }}">
+    data-storage-key="ct:announcements:{{ $event->id }}:{{ auth()->id() ?? 'guest' }}"
+    @auth data-read-url="{{ route('announcement-reads') }}" @endauth>
     <div class="card-body p-3">
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <i class="ti ti-speakerphone event-announcement-icon fs-4" aria-hidden="true"></i>
@@ -17,6 +23,8 @@
           </div>
           @foreach($event->announcements as $announcement)
             <details id="event-announcement-{{ $announcement->id }}" class="event-announcement border rounded p-3 mb-2" data-announcement
+              data-announcement-id="{{ $announcement->id }}"
+              data-account-read="{{ ($accountSeen['announcement:'.$announcement->id] ?? null) === $announcement->readRevision() ? 'true' : 'false' }}"
               data-posted-at="{{ $announcement->created_at?->getTimestampMs() }}"
               data-revision="{{ $announcement->readRevision() }}">
               <summary class="event-announcement-title">

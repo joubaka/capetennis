@@ -391,6 +391,7 @@ class PlayerPlusRecordTest extends TestCase
         $this->assertMatchesRegularExpression('/id="matchup-heading"[^>]*>(?:(?!<\/h2>).)*aria-label="CTR 87.6 · Green\/Yellow ball"/s', $html);
         $this->assertSame(3, substr_count($html, 'aria-label="CTR 71.4 · CTR · Green/Yellow · all ages"'));
         $this->assertStringContainsString('aria-label="View matchup: Example Player vs Example Opponent, CTR 71.4"', $html);
+        $this->assertStringNotContainsString('all ball levels', $html);
         $this->assertMatchesRegularExpression('/<strong>Unrated Opponent<\/strong>\s*<\/span>/', $html);
     }
 

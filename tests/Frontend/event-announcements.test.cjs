@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function page(storage = new Map(), key = 'event:1:user:1', revisions = ['1:original', '2:original'], broken = false, postedAt = [], posts, hash = '') {
+function page(storage = new Map(), key = 'event:1:user:1', revisions = ['1:original', '2:original'], broken = false, postedAt = [], posts, hash = '', accountReads = false) {
   function element() {
     const classes = new Set(['d-none']);
     return {
@@ -25,13 +25,14 @@ function page(storage = new Map(), key = 'event:1:user:1', revisions = ['1:origi
     const item = element();
     item.id = 'event-announcement-' + (index + 1);
     item.scrollIntoView = () => { item.scrolled = true; };
-    item.dataset = {revision, postedAt: postedAt[index]};
+    item.dataset = {revision, postedAt: postedAt[index], announcementId: String(index + 1)};
     item.badge = element();
     item.viewed = element();
     item.querySelector = selector => selector.includes('badge') ? item.badge : item.viewed;
     return item;
   });
   const root = Object.assign(element(), {dataset: {storageKey: key}, querySelectorAll: () => items, querySelector(selector) { return nodes[selector.replace('[data-announcement-', '').replace(']', '')]; }});
+  if (accountReads) root.dataset.readUrl = '/announcement-reads';
   const menuBadges = [element(), element()];
   const inbox = {};
   ['status', 'clear', 'list', 'item', 'close'].forEach(name => inbox[name] = element());
@@ -46,17 +47,52 @@ function page(storage = new Map(), key = 'event:1:user:1', revisions = ['1:origi
   }};
   let now = 2 * 60 * 60 * 1000;
   let expiry;
+  const requests = [];
   vm.runInNewContext(fs.readFileSync('public/assets/js/event-announcements.js', 'utf8'), {
-    document: {querySelector: () => posts ? modal : null, querySelectorAll: selector => selector === '[data-event-announcements]' ? (revisions.length ? [root] : []) : menuBadges},
+    document: {querySelector: selector => selector === 'meta[name="csrf-token"]' ? {content: 'test-csrf'} : (posts ? modal : null), querySelectorAll: selector => selector === '[data-event-announcements]' ? (revisions.length ? [root] : []) : menuBadges},
     window: {location: {hash}, addEventListener() {}},
-    fetch: async () => ({ok: true, json: async () => posts}),
+    fetch: async (url, options) => { requests.push({url, options}); return {ok: true, json: async () => posts}; },
     Date: {now: () => now},
     setTimeout(fn, delay) { expiry = () => { now += delay; fn(); }; },
     clearTimeout() { expiry = undefined; },
     localStorage: {getItem(k) {if (broken) throw Error('blocked'); return storage.get(k);}, setItem(k, v) {if (broken) throw Error('blocked'); storage.set(k, v);}}
   });
-  return {nodes, items, storage, root, menuBadges, inbox, expire() { expiry(); }};
+  return {nodes, items, storage, root, menuBadges, inbox, requests, expire() { expiry(); }};
 }
+
+test('account read tracking posts exact revisions only after explicit read actions', async () => {
+  const p = page(undefined, undefined, undefined, false, [], undefined, '', true);
+  p.nodes.reader.open = true;
+  p.nodes.close.events.click();
+  assert.equal(p.requests.length, 0);
+  p.items[0].viewed.events.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(p.requests.length, 1);
+  assert.equal(p.requests[0].url, '/announcement-reads');
+  assert.equal(p.requests[0].options.method, 'POST');
+  assert.equal(p.requests[0].options.headers['X-CSRF-TOKEN'], 'test-csrf');
+  assert.deepEqual(JSON.parse(p.requests[0].options.body), {entries: [{id: 1, revision: '1:original'}]});
+});
+
+test('server read revisions hydrate the inbox without creating another read request', async () => {
+  const p = page(undefined, undefined, [], false, [], [
+    {eventId: 1, revision: '1:read', read: true, postedAt: 1, title: 'Read notice'},
+    {eventId: 1, revision: '2:unread', read: false, postedAt: 1, title: 'New notice'}
+  ]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(p.inbox.list.rows.length, 1);
+  assert.equal(p.requests.length, 1);
+  assert.equal(p.requests[0].url, '/announcement-inbox');
+  assert.deepEqual(JSON.parse(p.storage.get('ct:announcements:1:1')), ['1:read']);
+});
+
+test('mark all splits large event read lists into accepted bounded requests', async () => {
+  const revisions = Array.from({length: 101}, (_, index) => (index + 1) + ':revision');
+  const p = page(undefined, undefined, revisions, false, [], undefined, '', true);
+  p.nodes['mark-all'].events.click();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(p.requests.map(request => JSON.parse(request.options.body).entries.length), [100, 1]);
+});
 
 test('closing preserves unread state; marking viewed closes and persists only that revision', () => {
   const p = page();

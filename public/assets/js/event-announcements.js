@@ -4,6 +4,25 @@
   var reads = new Map();
   var hour = 60 * 60 * 1000;
 
+  function persistReads(root, entries) {
+    if (!root.dataset.readUrl || !entries.length) return;
+    var token = document.querySelector('meta[name="csrf-token"]');
+    var batches = [];
+    for (var offset = 0; offset < entries.length; offset += 100) batches.push(entries.slice(offset, offset + 100));
+    return batches.reduce(function (previous, batch) {
+      return previous.then(function () {
+        return fetch(root.dataset.readUrl, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token ? token.content : ''},
+          body: JSON.stringify({entries: batch})
+        }).then(function (response) {
+          if (!response.ok) throw new Error('Read status could not be saved');
+        });
+      });
+    }, Promise.resolve());
+  }
+
   function savedReads(key) {
     if (!reads.has(key)) reads.set(key, new Set());
     var viewed = reads.get(key);
@@ -43,6 +62,9 @@
     var markAll = root.querySelector('[data-announcement-mark-all]');
     var items = Array.from(root.querySelectorAll('[data-announcement]'));
     var key = root.dataset.storageKey;
+    var accountReads = items.filter(function (item) { return item.dataset.accountRead === 'true'; })
+      .map(function (item) { return item.dataset.revision; });
+    if (accountReads.length) saveReads(key, accountReads);
     var viewed = savedReads(key);
     var onlyNew = true;
     var recencyTimer;
@@ -83,6 +105,12 @@
     }
     function markRead(entries) {
       saveReads(key, entries.map(function (item) { return item.dataset.revision; }));
+      var saving = persistReads(root, entries.map(function (item) {
+        return {id: Number(item.dataset.announcementId), revision: item.dataset.revision};
+      }));
+      if (saving) saving.catch(function () {
+        root.querySelector('[data-announcement-storage-note]').textContent = 'Read status was saved in this browser only. Your morning email may still include these updates.';
+      });
       entries.forEach(function (item) { item.open = false; });
       closeReader();
       refreshInbox();
@@ -183,7 +211,14 @@
   });
   clear.addEventListener('click', function () {
     var byEvent = new Map();
-    unreadPosts().forEach(function (post) {
+    var unread = unreadPosts();
+    var saving = persistReads(inbox, unread.map(function (post) {
+      return {id: Number(post.revision.split(':')[0]), revision: post.revision};
+    }));
+    if (saving) saving.catch(function () {
+      status.textContent = 'Read status was saved in this browser only. Your morning email may still include these updates.';
+    });
+    unread.forEach(function (post) {
       var key = eventKey(post);
       if (!byEvent.has(key)) byEvent.set(key, []);
       byEvent.get(key).push(post.revision);
@@ -201,6 +236,9 @@
     })
     .then(function (result) {
       posts = result;
+      posts.filter(function (post) { return post.read; }).forEach(function (post) {
+        saveReads(eventKey(post), [post.revision]);
+      });
       loaded = true;
       refreshInbox();
     })

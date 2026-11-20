@@ -20,6 +20,10 @@
       <li><strong class="plus-benefit-title"><i class="ti ti-trophy" aria-hidden="true"></i>How do I compare with my opponent?</strong>Compare available opponent ratings and revisit your recorded meetings. Ratings must share a comparable scale.</li>
       <li><strong class="plus-benefit-title"><i class="ti ti-route" aria-hidden="true"></i>What could I play next?</strong>Explore ball-level progress and event options from Red Ball to Wilson and TSA. Plan with your coach and check entry rules.</li>
     </ul>
+  <x-player-plus-morning-updates class="my-3" />
+  @auth
+    <a class="d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.notifications') }}">Manage your Plus morning emails</a>
+  @endauth
   <details>
     <summary class="small py-2" style="min-height:44px; cursor:pointer">How membership works</summary>
     <p class="small mb-2">Ratings can be provisional or unavailable. Membership does not change a rating, ranking, selection or tournament entry.</p>

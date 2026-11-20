@@ -8,6 +8,18 @@ use Tests\TestCase;
 
 class PlayerPlusScheduleTest extends TestCase
 {
+    public function test_morning_digest_has_a_separate_overnight_window_and_host_tick_catch_up(): void
+    {
+        foreach (['03:07' => false, '03:12' => true, '06:02' => true, '08:57' => true, '08:58' => false] as $time => $due) {
+            $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-20 '.$time.':00', 'Africa/Johannesburg'));
+            $this->app->forgetInstance(Schedule::class);
+            $event = collect(app(Schedule::class)->events())->first(fn ($event) => str_contains($event->command ?? '', 'player-plus:morning-digest'));
+            $this->assertNotNull($event); $this->assertSame('* * * * *', $event->expression);
+            $this->assertSame('Africa/Johannesburg', $event->timezone); $this->assertTrue($event->withoutOverlapping);
+            $this->assertSame($due, $event->filtersPass($this->app), $time);
+        }
+    }
+
     public function test_one_ordered_base_and_bounded_overnight_resume_replace_daytime_rating_builders(): void
     {
         $all = collect(app(Schedule::class)->events());
