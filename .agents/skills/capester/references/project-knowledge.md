@@ -268,6 +268,14 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - Team wrap-ups use the public combined positions within each age group. Use
   `EventStandingsService` with published data and omit groups without displayed
   positions, including groups whose draw rules differ.
+- Practice camp planning is separate from Cavaliers trials and Interpro selection.
+  The first-stage planner prepares a private candidate draft from managed source
+  events, regions and scoped team rosters; it does not send invitations, publish
+  nominations or open registration. Imported roster identities require matching
+  before actionable invitations, and historical declines need eligibility review.
+  Coach nominations require organiser approval before invitations in the next
+  stage. See `docs/practice-camp-planner.md` and `PracticeCampPlannerTest`.
+
 - Cavaliers nomination reports share saved private rosters rather than publish
   them. Explain the next five available candidates outside selected/reserves
   (excluding declines), plus all eligible Inter-Districts candidates outside the

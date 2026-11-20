@@ -32,6 +32,9 @@ $configData = Helper::appClasses();
         <div>Account statement</div>
       </a>
     </li>
+    @hasanyrole('super-user|admin')
+    <li class="menu-item {{ request()->routeIs('backend.practice-camps.*') ? 'active' : '' }}"><a class="menu-link" href="{{ route('backend.practice-camps.index') }}"><i class="menu-icon tf-icons ti ti-ball-tennis"></i><div>Practice camp planning</div></a></li>
+    @endhasanyrole
     @role('super-user')
     <li class="menu-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}"><a href="{{ route('superadmin.account-statements.index') }}" class="menu-link" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="menu-icon tf-icons ti ti-users"></i><div>User account statements</div></a></li>
     @endrole

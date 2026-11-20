@@ -127,6 +127,14 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreeme
   Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
   Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
 });
+Route::middleware(['auth', 'role:super-user|admin', 'throttle:60,1'])->prefix('backend/practice-camps')->name('backend.practice-camps.')->group(function () {
+  Route::get('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'index'])->name('index');
+  Route::post('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'store'])->name('store');
+  Route::get('/{plan}', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'show'])->name('show');
+  Route::post('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'add'])->name('add');
+  Route::delete('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'remove'])->name('remove');
+});
+
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/player-plus')->name('superadmin.player-plus.')->group(function () {
   Route::get('/manage', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'index'])->name('manage.index');
   Route::get('/manage/players/{player}', [\App\Http\Controllers\Backend\PlayerPlusManagementController::class, 'show'])->name('manage.show');
