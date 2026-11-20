@@ -107,6 +107,21 @@ candidate cap and run all canonical publication and roster checks on the remaini
 IDs on every read; demographics never grant access. Super-user browsing and
 match-player projections retain their separate scopes. This reduces discovery
 work, not the exact saved-history fingerprint or publication validation.
+For a selected super-user preview, discover candidates only from the requested
+ball pool and Green/Yellow for the existing age/overall summaries. Other ball
+pools remain separate and are loaded only when requested; the unselected
+cross-pool directory still projects all three independent lists.
+
+Public individual participants are resolved as one set from published finishing
+results and both sides of published fixtures, then fetched from the player
+directory. Each branch retains its exact event, division and registration
+membership, including the soft-deleted membership exclusion. Published historical
+participation is independent of current payment or withdrawal state; do not add
+active/paid gates to this path. Doubles members retain their existing visibility.
+The separate active-paid first-member entry path and canonical public team-lineup
+fallback are unchanged. This avoids repeating the same correlated result/fixture
+subqueries separately for every candidate player. The set is still bounded by
+the comparable candidate IDs and checked again on each request.
 
 Results opens with a saved Results overview: season totals, win rate, latest-five
 form and a wins/losses activity chart. The selected year controls both totals and
@@ -129,12 +144,19 @@ cause; inspect the actual target environment only with current authority.
 
 The My Tennis controller opens a private HTTP-GET read scope for one response.
 Within it, the exact global source fingerprint and the validated history file
-are read once and reused by the header, graph and record projections. The full
-fingerprint calculation and history validation are unchanged. Actor-specific
-entitlement, publication and opponent projections are not memoized. The scope
-is removed in `finally`; the next request checks current sources again. POSTs
+are read once and reused by the header, graph and record projections. Identical
+publication manifests, the exact external-evidence fingerprint and historical
+match contexts for the same date and reader limits also share their validated
+result inside that one response. Different manifests or historical cutoffs get
+independent checks. The full fingerprint calculation, manifest checks and history
+validation are unchanged; actor-specific entitlement and opponent projections
+are not memoized. The scope is removed in `finally`; the next request checks
+current sources and publication again. POSTs
 and unrouted command/builder contexts retain fresh reads, including before/after
 builder checks. There is no cross-request TTL or persisted availability cache.
+`PlayerRatingReadScopeTest` verifies the query reduction and next-request
+publication revocation, while `PlayerRatingTopTenTest` preserves pool, summary
+and public-participant boundaries.
 
 Tab navigation pauses outgoing Rating fragments/status reads, stage-info GETs
 and Results polling before requesting the selected workspace. The old panel

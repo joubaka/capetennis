@@ -10,6 +10,108 @@ use Tests\TestCase;
 
 class PlayerRatingTopTenTest extends TestCase
 {
+    public function test_set_based_public_history_preserves_exact_event_division_membership_and_both_fixture_sides(): void
+    {
+        foreach (range(1, 14) as $id) $this->player($id, 'Historical player '.$id);
+        DB::table('fixtures')->delete();
+        DB::table('draws')->update(['published' => false]);
+        DB::table('events')->where('id', 1)->update(['results_published' => true]);
+        DB::table('events')->insert(['id' => 2, 'published' => false, 'results_published' => true]);
+        DB::table('category_events')->insert(['id' => 20, 'event_id' => 2, 'category_id' => 1]);
+        foreach ([1, 2, 7, 8, 10, 11, 13] as $id) DB::table('draws')->where('id', $id)->update(['published' => true]);
+        DB::table('draws')->where('id', 7)->update(['category_event_id' => 20]);
+        DB::table('draws')->where('id', 10)->update(['event_id' => 2, 'category_event_id' => 20]);
+        DB::table('draws')->where('id', 13)->update(['category_event_id' => null]);
+        foreach ([1, 7, 8, 9, 10, 11, 13] as $id) DB::table('fixtures')->insert(['draw_id' => $id, 'registration1_id' => $id]);
+        DB::table('fixtures')->insert(['draw_id' => 2, 'registration2_id' => 2]);
+        DB::table('player_registrations')->insert(['registration_id' => 1, 'player_id' => 3]);
+        DB::table('category_event_registrations')->where('registration_id', 8)->update(['deleted_at' => '2026-11-01']);
+        DB::table('category_event_registrations')->where('registration_id', 12)->update(['category_event_id' => 20]);
+        DB::table('category_event_registrations')->whereIn('registration_id', [1, 14])
+            ->update(['status' => 'withdrawn_pending_refund', 'withdrawn_at' => '2026-11-01']);
+        DB::table('registrations')->where('id', 11)->delete();
+        foreach ([[4, 1, 1], [5, 2, 1], [6, 1, 999], [12, 1, 1], [14, 1, 1]] as [$registration, $event, $category]) {
+            DB::table('category_results')->insert(['registration_id' => $registration, 'event_id' => $event, 'category_id' => $category]);
+        }
+        $scores = array_combine(range(1, 14), range(99, 86));
+        $snapshot = $this->snapshot($scores);
+        $result = $this->build($snapshot, selected: \App\Models\Player::findOrFail(1), filters: ['rating_age' => '', 'rating_gender' => '']);
+        $actual = array_column($result['lists']['overall']['players'], 'id');
+        $this->assertSame([1, 2, 3, 4, 13, 14], $actual);
+        $this->assertSame($this->legacyPublicIndividualIds(array_keys($scores)), $actual, 'The rewritten set projection preserves the former public-history audience.');
+        $this->assertDatabaseCount('players', 14);
+        $this->assertDatabaseCount('category_event_registrations', 14);
+        $this->assertDatabaseHas('category_event_registrations', ['registration_id' => 1, 'payment_status_id' => 0, 'status' => 'withdrawn_pending_refund']);
+        DB::table('events')->where('id', 1)->update(['results_published' => false]);
+        $afterResultsRevocation = $this->build($snapshot, selected: \App\Models\Player::findOrFail(1), filters: ['rating_age' => '', 'rating_gender' => '']);
+        $this->assertSame([1, 2, 3, 13], array_column($afterResultsRevocation['lists']['overall']['players'], 'id'));
+        DB::table('events')->where('id', 1)->update(['published' => false]);
+        $afterEventRevocation = $this->build($snapshot, selected: \App\Models\Player::findOrFail(1), filters: ['rating_age' => '', 'rating_gender' => '']);
+        $this->assertSame([], $afterEventRevocation['lists']['overall']['players']);
+    }
+
+    private function legacyPublicIndividualIds(array $ids): array
+    {
+        $visible = fn ($event) => $event->visibleTo(null);
+        $draw = fn ($query) => $query->where('published', true)->whereHas('event', $visible)
+            ->whereHas('event.eventCategories', fn ($field) => $field
+                ->where(fn ($category) => $category->whereNull('draws.category_event_id')->orWhereColumn('category_events.id', 'draws.category_event_id'))
+                ->whereHas('categoryEventRegistrations', fn ($entry) => $entry->whereColumn('registration_id', 'registrations.id')));
+        $results = \App\Models\CategoryResult::query()->select('registration_id')->whereHas('event', fn ($event) => $event
+            ->visibleTo(null)->where('results_published', true)->whereHas('eventCategories', fn ($field) => $field
+                ->whereColumn('category_events.category_id', 'category_results.category_id')
+                ->whereHas('categoryEventRegistrations', fn ($entry) => $entry->whereColumn('registration_id', 'category_results.registration_id'))));
+        return \App\Models\Player::query()->whereIntegerInRaw('id', $ids)->whereHas('registrations', fn ($registrations) => $registrations
+            ->where(fn ($entry) => $entry->whereIn('registrations.id', $results)->orWhereHas('fixturesAsOne.draw', $draw)->orWhereHas('fixturesAsTwo.draw', $draw)))
+            ->orderBy('id')->pluck('id')->all();
+    }
+
+    public function test_legacy_text_fixture_registration_ids_keep_the_existing_comparison_semantics(): void
+    {
+        foreach (range(1, 4) as $id) $this->player($id, 'Legacy player '.$id);
+        Schema::drop('fixtures');
+        Schema::create('fixtures', function (Blueprint $table) {
+            $table->id(); $table->integer('draw_id');
+            $table->string('registration1_id')->nullable(); $table->string('registration2_id')->nullable();
+        });
+        DB::table('fixtures')->insert([
+            ['draw_id' => 1, 'registration1_id' => '001', 'registration2_id' => '2'],
+            ['draw_id' => 3, 'registration1_id' => 'not-registration', 'registration2_id' => null],
+            ['draw_id' => 4, 'registration1_id' => '999', 'registration2_id' => null],
+        ]);
+        $result = $this->build($this->snapshot([1 => 90, 2 => 80, 3 => 70, 4 => 60]), selected: \App\Models\Player::findOrFail(1));
+        $actual = array_column($result['lists']['overall']['players'], 'id');
+        $this->assertSame([1, 2], $actual);
+        $this->assertSame($this->legacyPublicIndividualIds([1, 2, 3, 4]), $actual);
+    }
+
+    public function test_selected_admin_page_checks_only_requested_pool_and_green_yellow_summary_candidates(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-20'));
+        foreach (range(1, 3) as $id) $this->player($id, 'Example '.$id);
+        DB::table('players')->update(['dateOfBirth' => '2015-01-01', 'gender' => 'Male']);
+        $selected = \App\Models\Player::findOrFail(1);
+        $snapshot = $this->snapshot([1 => 80]);
+        $snapshot['ball_ratings']['red'] = $this->snapshot([2 => 90])['ball_ratings']['red'];
+        $snapshot['ball_ratings']['orange'] = $this->snapshot([3 => 95])['ball_ratings']['orange'];
+        DB::enableQueryLog();
+        $ctr = $this->build($snapshot, selected: $selected);
+        $queries = DB::getQueryLog();
+        DB::flushQueryLog();
+        $red = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'red']);
+        $redQueries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $publicationQuery = fn ($queries) => collect($queries)->first(fn ($query) => str_contains($query['query'], ' union ')
+            && str_contains($query['query'], '"player_registrations" as "public_members"'))['query'] ?? '';
+        $this->assertStringContainsString('"public_members"."player_id" in (1)', $publicationQuery($queries));
+        $this->assertMatchesRegularExpression('/"public_members"\."player_id" in \((?:1, 2|2, 1)\)/', $publicationQuery($redQueries));
+        $this->assertSame(['overall'], array_keys($ctr['lists']));
+        $this->assertSame([1], array_column($ctr['lists']['overall']['players'], 'id'));
+        $this->assertSame(['red'], array_keys($red['lists']));
+        $this->assertSame([2], array_column($red['lists']['red']['players'], 'id'));
+        $this->assertSame($ctr['summary'], $red['summary'], 'Green/Yellow age and overall summaries remain identical while the requested Red list changes.');
+    }
+
     public function test_member_discovery_checks_publication_only_for_its_age_and_gender_candidates(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-16'));
@@ -34,11 +136,11 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([2, 1], array_column($result['lists']['overall']['players'], 'id'));
         $this->assertSame(2, $result['summary']['age']['total']);
         $this->assertSame(2, $result['summary']['age']['player']['position']);
-        $publicationQuery = collect($queries)->first(fn ($query) => str_contains($query['query'], 'exists')
-            && str_starts_with($query['query'], 'select "id", "name", "surname"'));
+        $publicationQuery = collect($queries)->first(fn ($query) => str_contains($query['query'], ' union ')
+            && str_contains($query['query'], '"player_registrations" as "public_members"'));
         $this->assertNotNull($publicationQuery);
-        $this->assertStringContainsString('"id" in (1, 2, 3)', $publicationQuery['query']);
-        $this->assertStringNotContainsString('"id" in (1, 2, 3, 4, 5)', $publicationQuery['query']);
+        $this->assertStringContainsString('"public_members"."player_id" in (1, 2, 3)', $publicationQuery['query']);
+        $this->assertStringNotContainsString('"public_members"."player_id" in (1, 2, 3, 4, 5)', $publicationQuery['query']);
         // A later publication revocation still takes effect on the next read.
         DB::table('draws')->where('id', 2)->update(['published' => false]);
         $after = app(PlayerRatingTopTen::class)->build($user, $selected);

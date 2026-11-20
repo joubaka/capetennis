@@ -2,10 +2,11 @@
 
 namespace App\Services\Performance;
 
-use App\Models\{CategoryEventRegistration, CategoryResult, Player, TeamFixture, User};
+use App\Models\{CategoryEventRegistration, Event, Player, TeamFixture, User};
 use App\Services\TeamFixtureLineupPresenter;
 use App\Support\EventTypePresentation;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\DB;
 
 /** Discovery projection: public event participants with comparable saved ratings. */
 class PlayerRatingTopTen
@@ -71,6 +72,9 @@ class PlayerRatingTopTen
         $snapshot = $this->snapshots->current();
         foreach (['red' => 'Red', 'orange' => 'Orange', 'overall' => 'CTR'] as $key => $label) {
             if ((!$result['can_browse'] || $matchIds !== null) && $key !== 'overall') continue;
+            // A selected player's page renders one requested pool. Its age and
+            // overall summaries still need Green/Yellow, never unrelated pools.
+            if ($selected && $matchIds === null && !in_array($key, [$level, 'overall'], true)) continue;
             $result['lists'][$key] = ['label' => $label, 'players' => []];
         }
         if (!array_key_exists('reason', $snapshot) || $snapshot['reason'] !== null) {
@@ -162,22 +166,10 @@ class PlayerRatingTopTen
         if (!$ids) return [];
 
         $visibleEvent = fn ($event) => $event->visibleTo(null);
-        $publishedDraw = fn ($draw) => $draw->where('published', true)->whereHas('event', $visibleEvent)
-            ->whereHas('event.eventCategories', fn ($field) => $field
-                ->where(fn ($category) => $category->whereNull('draws.category_event_id')->orWhereColumn('category_events.id', 'draws.category_event_id'))
-                ->whereHas('categoryEventRegistrations', fn ($membership) => $membership->whereColumn('registration_id', 'registrations.id')));
-        $publicResults = CategoryResult::query()->select('registration_id')
-            ->whereHas('event', fn ($event) => $event->visibleTo(null)->where('results_published', true)
-                ->whereHas('eventCategories', fn ($field) => $field->whereColumn('category_events.category_id', 'category_results.category_id')
-                    ->whereHas('categoryEventRegistrations', fn ($membership) => $membership->whereColumn('registration_id', 'category_results.registration_id'))));
         $columns = ['id', 'name', 'surname', 'dateOfBirth', 'gender'];
-
-        $individuals = Player::query()->whereIntegerInRaw('id', $ids)
-            ->whereHas('registrations', fn ($registrations) => $registrations->where(fn ($participation) => $participation
-                ->whereIn('registrations.id', $publicResults)
-                ->orWhereHas('fixturesAsOne.draw', $publishedDraw)
-                ->orWhereHas('fixturesAsTwo.draw', $publishedDraw)))
-            ->get($columns)->keyBy('id');
+        // Resolve the public ID set once. A per-player OR of correlated result
+        // and fixture subqueries repeatedly walks the same historical rows.
+        $individuals = Player::query()->whereIntegerInRaw('id', $this->publicIndividualIds($ids))->get($columns)->keyBy('id');
 
         $remaining = array_fill_keys(array_diff($ids, $individuals->keys()->all()), true);
         if (!$remaining) return $individuals;
@@ -225,6 +217,32 @@ class PlayerRatingTopTen
         });
 
         return $individuals->union(Player::query()->whereIntegerInRaw('id', $confirmed)->get($columns)->keyBy('id'));
+    }
+
+    private function publicIndividualIds(array $ids): array
+    {
+        $members = fn () => DB::table('player_registrations as public_members')
+            ->join('registrations as public_registrations', 'public_registrations.id', '=', 'public_members.registration_id')
+            ->whereIntegerInRaw('public_members.player_id', $ids);
+        $entries = fn ($join) => $join->on('public_entries.category_event_id', '=', 'public_fields.id')
+            ->on('public_entries.registration_id', '=', 'public_registrations.id');
+        $results = $members()->join('category_results as public_results', 'public_results.registration_id', '=', 'public_registrations.id')
+            ->join('category_events as public_fields', fn ($join) => $join->on('public_fields.event_id', '=', 'public_results.event_id')
+                ->on('public_fields.category_id', '=', 'public_results.category_id'))
+            ->join('category_event_registrations as public_entries', $entries)->whereNull('public_entries.deleted_at')
+            ->whereIn('public_results.event_id', Event::query()->visibleTo(null)->where('results_published', true)->select('id'))
+            ->select('public_members.player_id');
+        $fixtures = fn (string $side) => $members()->join('fixtures as public_fixtures', 'public_fixtures.'.$side, '=', 'public_registrations.id')
+            ->join('draws as public_draws', 'public_draws.id', '=', 'public_fixtures.draw_id')
+            ->join('category_events as public_fields', fn ($join) => $join->on('public_fields.event_id', '=', 'public_draws.event_id')
+                ->where(fn ($field) => $field->whereNull('public_draws.category_event_id')->orWhereColumn('public_fields.id', 'public_draws.category_event_id')))
+            ->join('category_event_registrations as public_entries', $entries)->whereNull('public_entries.deleted_at')
+            ->where('public_draws.published', true)
+            ->whereIn('public_draws.event_id', Event::query()->visibleTo(null)->select('id'))->select('public_members.player_id');
+        // UNION removes duplicate fixtures/results and doubles memberships, but
+        // never adds a player outside the already bounded comparable candidates.
+        return $results->union($fixtures('registration1_id'))->union($fixtures('registration2_id'))
+            ->pluck('player_id')->map(fn ($id) => (int) $id)->all();
     }
 
     private function matchesAgeScope(string $playerAge, string $selectedAge): bool

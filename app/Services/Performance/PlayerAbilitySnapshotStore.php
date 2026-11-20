@@ -199,6 +199,14 @@ class PlayerAbilitySnapshotStore
 
     public function published(array $manifest): bool
     {
+        // The same saved manifest is used by rating, pathway and record readers.
+        // Share its exact validation only inside this authorised GET response.
+        return app(PlayerRatingReadScope::class)->remember('published-manifest:'.static::class.':'.hash('sha256', serialize($manifest)),
+            fn () => $this->publishedFresh($manifest));
+    }
+
+    protected function publishedFresh(array $manifest): bool
+    {
         if (!empty($manifest['historical_identity_recoveries']) && !is_array($manifest['historical_recovery_sources'] ?? null)) { return false; }
         foreach ($manifest as $table => $captured) {
             if ($table === 'finish_context') {

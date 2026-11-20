@@ -30,6 +30,12 @@ class PlayerMatchHistoricalContext
 
     public function capture(string $asOf): array
     {
+        $key = implode(':', ['historical-match-context', static::class, self::VERSION, static::MAX_ROWS, static::MAX_BYTES, $asOf]);
+        return app(PlayerRatingReadScope::class)->remember($key, fn () => $this->captureFresh($asOf));
+    }
+
+    protected function captureFresh(string $asOf): array
+    {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/D', $asOf)
             || CarbonImmutable::parse($asOf)->toDateString() !== $asOf) throw new \UnexpectedValueException('Invalid historical context date.');
         $hash = hash_init('sha256'); $rows = 0; $bytes = 0;

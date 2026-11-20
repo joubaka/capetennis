@@ -2,11 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Services\Performance\{PlayerRatingHistoryStore, PlayerRatingReadScope, PlayerSharedAbilityService};
+use App\Services\Performance\{PlayerAbilitySnapshotStore, PlayerMatchHistoricalContext, PlayerRatingHistoryStore, PlayerRatingReadScope, PlayerSharedAbilityService, TeamSheetTennisEvidence};
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Routing\Route;
-use Illuminate\Support\Facades\{DB, File, Route as Routes};
+use Illuminate\Support\Facades\{DB, File, Route as Routes, Schema};
 use Tests\TestCase;
 
 class PlayerRatingReadScopeTest extends TestCase
@@ -145,6 +146,78 @@ class PlayerRatingReadScopeTest extends TestCase
         $next = $this->getJson('/_test/my-tennis-read-probe')->assertOk()->json();
         $this->assertNotSame($first['first'], $next['first']);
         $this->assertSame(2, $ability->reads);
+    }
+
+    public function test_publication_validation_runs_once_for_an_exact_manifest_and_rechecks_revocation_next_get(): void
+    {
+        Schema::create('events', function (Blueprint $table) {
+            $table->id(); $table->string('name'); $table->boolean('published');
+        });
+        DB::table('events')->insert(['id' => 1, 'name' => 'Published example', 'published' => true]);
+        $manifest = ['events' => [['id' => 1, 'name' => 'Published example', 'published' => 1]]];
+        $changed = ['events' => [['id' => 1, 'name' => 'A different saved title', 'published' => 1]]];
+        $scope = app(PlayerRatingReadScope::class);
+        $store = app(PlayerAbilitySnapshotStore::class);
+        DB::enableQueryLog();
+        $scope->run($this->request(), function () use ($store, $manifest, $changed) {
+            foreach (range(1, 3) as $_) $this->assertTrue($store->published($manifest));
+            $this->assertFalse($store->published($changed), 'A different manifest never reuses a positive validation.');
+        });
+        $this->assertCount(2, DB::getQueryLog(), 'Three identical checks use one database query; a distinct manifest uses its own.');
+        DB::disableQueryLog();
+        DB::table('events')->where('id', 1)->update(['published' => false]);
+        $scope->run($this->request(), fn () => $this->assertFalse($store->published($manifest), 'The next GET observes publication revocation.'));
+    }
+
+    public function test_offline_and_post_publication_checks_never_reuse_previous_results(): void
+    {
+        Schema::create('events', function (Blueprint $table) { $table->id(); $table->boolean('published'); });
+        $store = app(PlayerAbilitySnapshotStore::class);
+        $manifest = ['events' => [['id' => 1, 'published' => 1]]];
+        foreach ([$this->request('POST'), $this->request('GET', false)] as $request) {
+            $this->app->instance('request', $request);
+            DB::table('events')->updateOrInsert(['id' => 1], ['published' => true]);
+            app(PlayerRatingReadScope::class)->run($request, function () use ($store, $manifest) {
+                $this->assertTrue($store->published($manifest));
+                DB::table('events')->where('id', 1)->update(['published' => false]);
+                $this->assertFalse($store->published($manifest));
+            });
+        }
+    }
+
+    public function test_external_fingerprint_and_historical_context_are_reused_only_for_the_exact_get_input(): void
+    {
+        $external = new class extends TeamSheetTennisEvidence {
+            public int $reads = 0;
+            protected function exactFingerprint(): string { return hash('sha256', (string) ++$this->reads); }
+        };
+        $history = new class extends PlayerMatchHistoricalContext {
+            public int $reads = 0;
+            protected function captureFresh(string $asOf): array {
+                return ['version' => self::VERSION, 'as_of' => $asOf, 'fingerprint' => hash('sha256', (string) ++$this->reads)];
+            }
+        };
+        $scope = app(PlayerRatingReadScope::class);
+        $scope->run($this->request(), function () use ($external, $history) {
+            $this->assertSame($external->fingerprint(), $external->fingerprint());
+            $first = $history->capture('2026-11-19');
+            $this->assertSame($first, $history->capture('2026-11-19'));
+            $this->assertNotSame($first, $history->capture('2026-11-20'), 'Different historical cutoffs require distinct reads.');
+            $this->assertSame(1, $external->reads);
+            $this->assertSame(2, $history->reads);
+        });
+        $scope->run($this->request(), function () use ($external, $history) {
+            $external->fingerprint(); $history->capture('2026-11-19');
+            $this->assertSame(2, $external->reads);
+            $this->assertSame(3, $history->reads);
+        });
+        foreach ([$this->request('POST'), $this->request('GET', false)] as $request) {
+            $this->app->instance('request', $request);
+            $scope->run($request, function () use ($external, $history) {
+                $this->assertNotSame($external->fingerprint(), $external->fingerprint());
+                $this->assertNotSame($history->capture('2026-11-19'), $history->capture('2026-11-19'));
+            });
+        }
     }
 }
 

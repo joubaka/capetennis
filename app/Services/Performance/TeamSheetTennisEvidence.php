@@ -10,6 +10,12 @@ class TeamSheetTennisEvidence
 {
     public function fingerprint(): string
     {
+        return app(PlayerRatingReadScope::class)->remember('teamsheet-source-fingerprint:'.static::class,
+            fn () => $this->exactFingerprint());
+    }
+
+    protected function exactFingerprint(): string
+    {
         $import = app(TeamSheetTennisImportService::class);
         if (!$import->ready()) return 'unavailable';
         $hash = hash_init('sha256');
