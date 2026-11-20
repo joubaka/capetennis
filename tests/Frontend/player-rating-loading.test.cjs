@@ -33,10 +33,10 @@ function harness() {
     if (name === 'DOMContentLoaded') ready = callback;
     if (name === 'my-tennis:unmounting') unmount = callback;
   },
-    activeElement: focused,
+    activeElement: focused, dispatchEvent() {},
     getElementById(id) {return id === focused.id ? focused : id.endsWith('-tab') ? {id} : panel;}, querySelector() {return null;}};
-  const context = {document, window: {CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: ''}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {constructor(panel, callback) {refresh = callback;} sync() {}}},
-    URL, URLSearchParams, AbortController,
+  const context = {document, window: {addEventListener() {}, history: {pushState() {}}, CapeLoading: {show() {dialog.showModal(); return {close() {dialog.close();}};}}, location: {hash: '', href: 'https://ct.test/my-tennis?player=7&tab=rating'}, PlayerPathwayUI: class {}, PlayerRatingHistoryRefreshUI: class {constructor(panel, callback) {refresh = callback;} sync() {}}},
+    URL, URLSearchParams, AbortController, CustomEvent: class { constructor(type) { this.type = type; } },
     setTimeout(callback, delay) {assert.equal(delay, 30000); timer = callback; return 1;}, clearTimeout() {timer = null;},
     FormData: class {constructor(form) {this.values = Object.entries(form.values);} [Symbol.iterator]() {return this.values[Symbol.iterator]();}},
     bootstrap: {Tab: {getOrCreateInstance() {return {show() {sectionRestored = true;}};}}},

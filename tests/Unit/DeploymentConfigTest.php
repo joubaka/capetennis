@@ -19,6 +19,27 @@ class DeploymentConfigTest extends TestCase
         preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
         $this->assertContains('database/migrations/2026_11_19_160000_create_individual_provider_refund_attempts.php', preg_split('/\s+/', trim($match[1] ?? '')));
     }
+    public function test_host_court_plan_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_19_180000_add_court_plan_to_host_event_applications.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
+    public function test_host_application_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_19_170000_create_host_event_applications.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
+    public function test_marketing_portal_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_19_150000_create_marketing_portal_tables.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
     public function test_nomination_archive_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

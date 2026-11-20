@@ -61,6 +61,11 @@
 
     @csrf
 
+    @if(isset($hostApplication) && $hostApplication)
+      <input type="hidden" name="host_application_id" value="{{ $hostApplication->id }}">
+      <div class="alert alert-info">Preparing approved hosting proposal #{{ $hostApplication->id }}. Saving creates an unpublished event with registration closed. Configure the requested categories, fees, courts and deadlines before explicitly publishing through event settings. <a href="{{ route('superadmin.marketing.applications.show', $hostApplication) }}">Review the proposal</a></div>
+    @endif
+
     @if ($isCopy)
       <input type="hidden" name="source_event_id" value="{{ $sourceEvent?->id }}">
     @endif
@@ -81,7 +86,7 @@
               <label for="event-field-1" class="form-label">Event Name <span class="text-danger">*</span></label>
               <input id="event-field-1" name="name"
                      class="form-control @error('name') is-invalid @enderror"
-                     value="{{ old('name', $isCopy ? (($sourceEvent?->name ?? '') . ' (Copy)') : '') }}"
+                     value="{{ old('name', $isCopy ? (($sourceEvent?->name ?? '') . ' (Copy)') : ($sourceEvent?->name ?? '')) }}"
                      required>
               @error('name')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
@@ -257,6 +262,7 @@
                      type="checkbox"
                      name="published"
                      value="1"
+                     @disabled(isset($hostApplication) && $hostApplication)
                      @checked(old('published', false))>
               <label class="form-check-label">Published</label>
             </div>
@@ -267,6 +273,7 @@
                      type="checkbox"
                      name="signUp"
                      value="1"
+                     @disabled(isset($hostApplication) && $hostApplication)
                      @checked(old('signUp', false))>
               <label class="form-check-label">Registration open</label>
             </div>

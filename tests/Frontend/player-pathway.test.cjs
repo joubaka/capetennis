@@ -152,3 +152,27 @@ test('More info immediately opens the shared modal and always closes it after ti
     assert.match(card.content.textContent, /try again/);
   } finally {global.fetch = oldFetch; global.CapeLoading = oldLoader; global.setTimeout = oldTimer; global.clearTimeout = oldClear;}
 });
+
+test('navigation can abort stage-info GETs and a renewed signal makes the retained panel retryable', async () => {
+  const oldFetch = global.fetch;
+  let reads = new AbortController();
+  const requests = [];
+  global.fetch = (url, options) => {
+    requests.push({url, options});
+    return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new Error('Cancelled read'))));
+  };
+  try {
+    const h = harness(), card = infoCard();
+    h.ui.readSignal = () => reads.signal;
+    const pending = h.ui.info(card.button);
+    reads.abort();
+    await pending;
+    assert.equal(requests[0].options.signal.aborted, true);
+    assert.equal(card.button.disabled, false);
+    assert.equal(card.content.innerHTML, '');
+    reads = new AbortController();
+    global.fetch = async () => ({ok: true, text: async () => '<div data-pathway-stage-details="red">Retried guidance</div>'});
+    await h.ui.info(card.button);
+    assert.equal(card.content.dataset.loaded, 'true');
+  } finally { global.fetch = oldFetch; }
+});

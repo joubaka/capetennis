@@ -19,6 +19,11 @@ class PlayerRatingHistoryStore
 
     public function read(): ?array
     {
+        return app(PlayerRatingReadScope::class)->remember('validated-history:'.$this->path(), fn () => $this->readFresh());
+    }
+
+    private function readFresh(): ?array
+    {
         try {
             if (!File::exists($this->path()) || File::size($this->path()) > 20 * 1024 * 1024) return null;
             if (! app(PlayerRatingReadBudget::class)->ensure()) return null;

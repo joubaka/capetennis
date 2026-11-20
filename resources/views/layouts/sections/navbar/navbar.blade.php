@@ -399,6 +399,7 @@ $navbarDetached = ($navbarDetached ?? '');
             </a>
           </li>
           @role('super-user')
+          <li><a class="dropdown-item" href="{{ route('superadmin.marketing.index') }}"><i class="ti ti-speakerphone me-2"></i>CTR marketing</a></li>
           <li><a class="dropdown-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}" href="{{ route('superadmin.account-statements.index') }}" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="ti ti-users me-2"></i>User account statements</a></li>
           @endrole
           @endauth

@@ -52,6 +52,46 @@ class MyTennisRatingNavigationTest extends TestCase
         $this->get($direct.'&player=999999')->assertOk()->assertViewHas('ratingPlayer', fn ($actual) => $actual->id === $player->id);
     }
 
+    public function test_fresh_profile_and_all_rating_routes_project_the_same_current_saved_match_graph(): void
+    {
+        $player = $this->member();
+        $date = now('Africa/Johannesburg')->toDateString();
+        $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')
+            ->andReturn(['series' => [], 'reason' => 'Monthly history pending.']);
+        app(PlayerRatingHistoryService::class)->shouldReceive('recordSource')->once()
+            ->andReturn(['reason' => 'Saved record pending.']);
+        $this->mock(\App\Services\Performance\PlayerSharedAbilityService::class)->shouldReceive('fingerprint')
+            ->times(5)->andReturn(str_repeat('a', 64));
+        $this->mock(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->shouldReceive('current')
+            ->times(5)->andReturn(['reason' => null, 'snapshot_as_of' => $date, 'snapshot_version' => str_repeat('b', 64),
+                'all_age' => ['ratings' => [$player->id => ['score' => 65.8]]]]);
+        $this->mock(\App\Services\Performance\PlayerRatingTopTen::class)->shouldReceive('build')->times(4)
+            ->andReturn(['reason' => 'Comparison unavailable in this fixture.']);
+        $this->mock(\App\Services\Performance\PlayerMatchProgressStore::class)->shouldReceive('read')
+            ->times(5)->with((int) $player->id)->andReturn([
+                'player_id' => (int) $player->id, 'as_of' => $date, 'snapshot_version' => str_repeat('b', 64),
+                'source_fingerprint' => str_repeat('a', 64), 'current_score' => 65.8, 'own_catalog' => [],
+                'rows' => [['source_id' => 'match:fixture', 'date' => $date, 'time' => $date.' 09:00:00',
+                    'opponent' => 'Fictional Saved Opponent', 'score' => '6-3', 'won' => true,
+                    'before_score' => 64.6, 'after_score' => 65.8, 'delta' => 1.2, 'reason' => null,
+                    'evidence_refs' => [], 'omitted_matches' => 0]],
+            ]);
+        $profile = $this->get(route('my.tennis', ['player' => $player->id, 'tab' => 'profile']))->assertOk()
+            ->assertSee('data-profile-match-pair', false)->assertDontSee('data-profile-match-pending', false);
+        $expected = $profile->viewData('profileMatchProgress');
+        $this->assertNull($expected['reason']);
+        $this->assertSame(65.8, $expected['rows'][0]['after_score']);
+        $direct = route('my.tennis.rating', $player);
+        foreach ([
+            [route('my.tennis', ['player' => $player->id, 'tab' => 'rating']), []], [$direct, []],
+            [$direct, ['X-Requested-With' => 'XMLHttpRequest']],
+            [$direct, ['X-Requested-With' => 'XMLHttpRequest', 'X-My-Tennis-Navigation' => '1']],
+        ] as [$url, $headers]) {
+            $response = $this->get($url, $headers)->assertOk()->assertSee('Fictional Saved Opponent');
+            $this->assertSame($expected, $response->viewData('matchProgress'));
+        }
+    }
+
     public function test_invalid_filters_and_unlinked_players_never_read_private_history(): void
     {
         $player = $this->member();

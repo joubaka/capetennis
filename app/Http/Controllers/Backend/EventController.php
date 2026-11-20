@@ -169,8 +169,23 @@ class EventController extends Controller
     return response()->json(['success' => true]);
   }
 
-  public function create()
+  public function create(Request $request)
   {
+    $hostApplication = null;
+    $sourceEvent = null;
+    if ($request->filled('host_application')) {
+      abort_unless($request->user()->hasRole('super-user'), 403);
+      $request->validate(['host_application' => 'required|integer']);
+      $hostApplication = \App\Models\HostEventApplication::findOrFail($request->integer('host_application'));
+      abort_unless($hostApplication->status === 'approved', 409, 'Approve the hosting proposal before preparing its event.');
+      if ($hostApplication->event_id) return redirect()->route('backend.events.edit', $hostApplication->event_id);
+      $sourceEvent = new Event([
+        'name' => $hostApplication->event_name, 'start_date' => $hostApplication->start_date,
+        'end_date' => $hostApplication->end_date, 'email' => $hostApplication->email,
+        'organizer' => $hostApplication->academy, 'eventType' => EventType::INDIVIDUAL,
+        'venue_notes' => $hostApplication->venue.', '.$hostApplication->town,
+      ]);
+    }
     $eventTypes = EventType::orderBy('name')->get();
     $users = User::orderBy('name')->get();
 
@@ -178,7 +193,8 @@ class EventController extends Controller
       'eventTypes'  => $eventTypes,
       'users'       => $users,
       'adminIds'    => [],
-      'sourceEvent' => null,
+      'sourceEvent' => $sourceEvent,
+      'hostApplication' => $hostApplication,
       'isCopy'      => false,
       'logoFiles'   => $this->availableEventLogos(),
     ]);
@@ -242,7 +258,14 @@ class EventController extends Controller
       'admins'              => 'nullable|array',
       'admins.*'            => 'integer|exists:users,id',
       'source_event_id'     => 'nullable|integer|exists:events,id',
+      'host_application_id' => 'nullable|integer',
     ]);
+
+    if (!empty($data['host_application_id'])) {
+      abort_unless($request->user()->hasRole('super-user'), 403);
+      abort_if(!empty($data['source_event_id']), 422, 'Create a hosting proposal event without copying another event.');
+      abort_unless(EventType::whereKey($data['eventType'])->exists(), 422, 'Select a valid event type.');
+    }
 
     $sourceEvent = null;
     if (!empty($data['source_event_id'])) {
@@ -277,6 +300,12 @@ class EventController extends Controller
     }
 
     $event = DB::transaction(function () use ($data, $request, $logo, $sourceEvent, $newAdmins) {
+      $hostApplication = null;
+      if (!empty($data['host_application_id'])) {
+        $hostApplication = \App\Models\HostEventApplication::lockForUpdate()->findOrFail($data['host_application_id']);
+        abort_unless($hostApplication->status === 'approved', 409, 'Approve the hosting proposal before creating its event.');
+        if ($hostApplication->event_id) return Event::lockForUpdate()->findOrFail($hostApplication->event_id);
+      }
       $event = Event::create([
         'name'                => $data['name'],
         'start_date'          => $data['start_date'] ?? null,
@@ -290,8 +319,8 @@ class EventController extends Controller
         'email'               => $data['email'] ?? null,
         'organizer'           => $data['organizer'] ?? null,
         'logo'                => $logo,
-        'published'           => $request->boolean('published'),
-        'signUp'              => $request->boolean('signUp'),
+        'published'           => $hostApplication ? false : $request->boolean('published'),
+        'signUp'              => $hostApplication ? false : $request->boolean('signUp'),
       ]);
 
       if ($sourceEvent) {
@@ -304,6 +333,7 @@ class EventController extends Controller
       }
 
       $event->admins()->sync($newAdmins);
+      if ($hostApplication) $hostApplication->update(['event_id' => $event->id]);
 
       return $event;
     });

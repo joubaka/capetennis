@@ -68,3 +68,20 @@ test('a nightly update already running is shown and reloaded on actual completio
   assert.equal(h.reloads(), 1);
   assert.equal(h.calls[0].url, '/history/status');
 });
+
+test('paused workspace ignores late status and resumes without posting another update', async () => {
+  const h = harness([{state: 'running', message: 'Existing build'}, {state: 'completed', message: 'Finished'}]);
+  let active = true;
+  h.ui.isActive = () => active;
+  await h.ui.sync();
+  active = false;
+  await h.ui.sync();
+  await h.ui.apply({state: 'failed', message: 'Late old state'});
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.label.textContent, 'Existing build');
+  active = true;
+  await h.ui.sync();
+  assert.equal(h.calls.length, 2);
+  assert.equal(h.reloads(), 1);
+  assert.ok(h.calls.every(call => !call.options.method), 'Resuming uses GET status, never replays a POST');
+});

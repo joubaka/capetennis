@@ -22,9 +22,13 @@ with at most five separate oldest-to-newest pairs on a fixed 0–100 scale.
 Before/after values, signed changes, results and unavailable reasons are also
 available as readable rows. Narrow screens retain a keyboard-scrollable chart.
 The Profile link opens the detailed explanations on Rating; that full timeline
-remains available there. Missing, stale or mismatched artifacts show a pending
-state, never zero-valued pairs. Non-Plus and unrelated Profile views do not read
-this private projection. Profile GETs never build, fit or queue reconstructions.
+remains available there. Missing, stale or mismatched artifacts never show
+zero-valued pairs. Active Plus players see the overnight-update state. An
+authorized Super User preview of a player outside the active Plus audience
+instead explains that an administrator must generate the graph separately;
+waiting for the nightly job will not generate it. Ordinary non-Plus and unrelated
+Profile views do not read this private projection. Profile GETs never build, fit
+or queue reconstructions.
 Verify `MyTennisOverviewTest`, `PlayerMatchProgressTest` and
 `tests/Browser/profile-match-progress.cjs` when changing this placement.
 
@@ -137,11 +141,29 @@ policy, snapshot context and build date. Generation uses a consistent source
 read, a lock, freshness revalidation and atomic private replacement. It changes
 no source results, ratings, rankings, player links, entitlements or payments.
 
+Version 6 additionally captures a bounded raw [historical-input context](match-graph-historical-context.md).
+Future event signups and unreferenced player creation do not invalidate that
+context. Historical result, schedule, identity, ball or publication changes still
+withhold the graph. Existing version 5 files retain their original strict global
+source-fingerprint check; page reads never upgrade or rewrite them.
+
 Ordinary member requests require the existing player relationship and Plus
 entitlement; Super User preview remains separate. Page requests only validate and
 project that player's saved rows. They never fit a model, write or enqueue work.
 Stale or mismatched artifacts are withheld. Nightly work uses bounded, resumable
 batches; page requests never start a calculation.
+
+For a missing admin-preview graph, first check the canonical active-player
+resolver, private artifact and saved pipeline status. A successful overnight
+run does not mean that players outside its entitled audience were processed.
+Do not add a membership, grant or account link to repair a preview. A targeted
+operator refresh may generate its artifact without changing entitlement. The
+builder requires matching current saved ability and monthly history; when source
+fingerprints have changed, refresh those prerequisites through their canonical
+commands before rebuilding the graph. Production recalculation requires explicit
+authorization, and rebuilding the shared base can invalidate other derived
+artifacts until they too are rebuilt. Preserve last-good data and all current
+publication, identity, chronology and policy checks.
 
 The separate [leave-one-match-out tool](match-influence.md) remains an offline
 sensitivity analysis. Its without/with comparison must not be relabelled as a

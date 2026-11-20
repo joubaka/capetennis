@@ -23,6 +23,7 @@
       this.reload = reload;
       this.csrf = options.csrf || '';
       this.signal = options.signal;
+      this.readSignal = options.readSignal;
       this.pending = false;
       // Delegate from the persistent panel: its contents are replaced after month/filter changes.
       panel.addEventListener('submit', event => {
@@ -38,6 +39,8 @@
     }
 
     async info(button) {
+      const readSignal = this.readSignal?.() || this.signal;
+      if (readSignal?.aborted) return;
       const card = button.closest('li');
       const content = card?.querySelector('[data-pathway-info-content]');
       if (!content || button.disabled) return;
@@ -53,7 +56,7 @@
       const loading = root.CapeLoading?.show({ title: 'Loading pathway details', message: 'Please wait while we load this stage’s guidance.' });
       const controller = new AbortController();
       const abort = () => controller.abort();
-      this.signal?.addEventListener('abort', abort, { once: true });
+      readSignal?.addEventListener('abort', abort, { once: true });
       const timeout = root.setTimeout(() => controller.abort(), 30000);
       try {
         const response = await root.fetch(button.dataset.pathwayInfo, {
@@ -62,13 +65,14 @@
         if (!response.ok || response.redirected) throw new Error('Stage details are unavailable. Select More info to try again.');
         const html = await response.text();
         if (!html.includes('data-pathway-stage-details=')) throw new Error('Stage details are unavailable. Select More info to try again.');
+        if (readSignal?.aborted) return;
         content.innerHTML = html;
         content.dataset.loaded = 'true';
       } catch (error) {
-        content.textContent = 'Stage details are unavailable. Select More info to try again.';
+        content.textContent = readSignal?.aborted ? 'Select More info to load stage details.' : 'Stage details are unavailable. Select More info to try again.';
       } finally {
         root.clearTimeout(timeout);
-        this.signal?.removeEventListener('abort', abort);
+        readSignal?.removeEventListener('abort', abort);
         content.removeAttribute('aria-busy');
         button.disabled = false;
         loading?.close();

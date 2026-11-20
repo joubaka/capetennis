@@ -1,5 +1,7 @@
 <?php
 
+
+
 use App\Http\Controllers\Backend\AnnouncementController;
 use App\Http\Controllers\Backend\CategoryEventController;
 use App\Http\Controllers\Backend\ChartController;
@@ -127,12 +129,43 @@ Route::prefix('player-plus')->name('player-plus.')->middleware(['auth', 'agreeme
   Route::post('/orders/{order}/pay', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'pay'])->middleware('throttle:10,1')->name('orders.pay');
   Route::post('/orders/{order}/cancel', [\App\Http\Controllers\Frontend\PlayerPlusController::class, 'cancel'])->name('orders.cancel');
 });
+// Campaigns remain draft-only. Host submissions queue operational review alerts only.
+Route::get('host-an-event', [\App\Http\Controllers\HostEventApplicationController::class, 'landing'])->name('host-events.index');
 Route::middleware(['auth', 'role:super-user|admin', 'throttle:60,1'])->prefix('backend/practice-camps')->name('backend.practice-camps.')->group(function () {
   Route::get('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'index'])->name('index');
   Route::post('/', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'store'])->name('store');
   Route::get('/{plan}', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'show'])->name('show');
   Route::post('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'add'])->name('add');
   Route::delete('/{plan}/candidates', [\App\Http\Controllers\Backend\PracticeCampPlannerController::class, 'remove'])->name('remove');
+});
+
+Route::middleware('auth')->prefix('host-an-event')->name('host-events.')->group(function () {
+    Route::get('create', [\App\Http\Controllers\HostEventApplicationController::class, 'create'])->name('create');
+    Route::post('suggestions', [\App\Http\Controllers\HostEventApplicationController::class, 'suggestions'])->middleware('throttle:30,1,host-capacity')->name('suggestions');
+    Route::post('/', [\App\Http\Controllers\HostEventApplicationController::class, 'store'])->middleware('throttle:5,60,host-proposals')->name('store');
+    Route::get('{application}', [\App\Http\Controllers\HostEventApplicationController::class, 'show'])->name('show');
+});
+
+Route::middleware(['auth', 'role:super-user', 'throttle:60,1'])->prefix('superadmin/marketing')->name('superadmin.marketing.')->group(function () {
+    Route::get('applications', [\App\Http\Controllers\Backend\HostEventReviewController::class, 'index'])->name('applications.index');
+    Route::get('applications/{application}', [\App\Http\Controllers\Backend\HostEventReviewController::class, 'show'])->name('applications.show');
+    Route::post('applications/{application}/review', [\App\Http\Controllers\Backend\HostEventReviewController::class, 'review'])->name('applications.review');
+    $controller = \App\Http\Controllers\Backend\MarketingPortalController::class;
+    Route::get('/', [$controller, 'index'])->name('index');
+    Route::get('contacts', [$controller, 'contacts'])->name('contacts.index');
+    Route::get('contacts/create', [$controller, 'contactForm'])->name('contacts.create');
+    Route::post('contacts', [$controller, 'saveContact'])->name('contacts.store');
+    Route::get('contacts/{contact}/edit', [$controller, 'contactForm'])->name('contacts.edit');
+    Route::put('contacts/{contact}', [$controller, 'saveContact'])->name('contacts.update');
+    Route::delete('contacts/{contact}', [$controller, 'deleteContact'])->name('contacts.destroy');
+    Route::get('campaigns', [$controller, 'campaigns'])->name('campaigns.index');
+    Route::get('campaigns/create', [$controller, 'campaignForm'])->name('campaigns.create');
+    Route::post('campaigns', [$controller, 'saveCampaign'])->name('campaigns.store');
+    Route::get('campaigns/{campaign}/edit', [$controller, 'campaignForm'])->name('campaigns.edit');
+    Route::put('campaigns/{campaign}', [$controller, 'saveCampaign'])->name('campaigns.update');
+    Route::delete('campaigns/{campaign}', [$controller, 'deleteCampaign'])->name('campaigns.destroy');
+    Route::get('calculator', [$controller, 'calculator'])->name('calculator');
+    Route::post('calculator', [$controller, 'calculator'])->name('calculate');
 });
 
 Route::middleware(['auth', 'role:super-user', 'throttle:30,1'])->prefix('superadmin/player-plus')->name('superadmin.player-plus.')->group(function () {

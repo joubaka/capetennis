@@ -7,6 +7,7 @@
       this.csrf = options.csrf || '';
       this.setTimer = options.setTimer || root.setTimeout.bind(root);
       this.clearTimer = options.clearTimer || root.clearTimeout.bind(root);
+      this.isActive = options.isActive || (() => true);
       this.waiting = false;
       this.checking = false;
       this.posting = false;
@@ -19,6 +20,7 @@
     controls() { return this.panel.querySelector('[data-history-refresh-controls]'); }
 
     render(state, message) {
+      if (!this.isActive()) return;
       const controls = this.controls();
       if (!controls) return;
       controls.querySelector('[data-history-refresh-status]').textContent = message;
@@ -28,6 +30,7 @@
     }
 
     async apply(status) {
+      if (!this.isActive()) return;
       if (!['idle', 'pending', 'running', 'completed', 'failed'].includes(status.state)) throw new Error('Invalid update status');
       const active = ['pending', 'running'].includes(status.state);
       const completed = status.state === 'completed' && this.waiting;
@@ -39,6 +42,7 @@
     }
 
     async start() {
+      if (!this.isActive()) return;
       const controls = this.controls();
       if (!controls || this.waiting || this.posting) return;
       this.posting = true;
@@ -59,6 +63,7 @@
     }
 
     async sync() {
+      if (!this.isActive()) return;
       const controls = this.controls();
       if (!controls || this.checking || this.posting) return;
       this.checking = true;

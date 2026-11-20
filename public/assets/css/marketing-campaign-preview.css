@@ -1,0 +1,42 @@
+.marketing-editor-column{min-width:0}
+.marketing-eyebrow{font-size:.69rem;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:#49627f}
+.marketing-copy-input{font-size:.85rem;line-height:1.6;resize:vertical}
+.marketing-preview-workspace{padding:1.25rem;border-radius:1rem;background:#edf2f8;border:1px solid #dce5ef;min-width:0}
+.marketing-preview-workspace [hidden]{display:none!important}
+.marketing-email-envelope{padding:.9rem 1rem;margin-bottom:.8rem;background:#fff;border-radius:.7rem;overflow-wrap:anywhere}
+.marketing-email-sheet{background:#fff;border-radius:.8rem;overflow:hidden;box-shadow:0 8px 28px #14365412;color:#20344c}
+.marketing-brand-header{display:flex;gap:.85rem;align-items:center;padding:1rem 1.25rem;border-bottom:1px solid #e4eaf1}
+.marketing-brand-logo{display:inline-flex;flex-shrink:0;align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;overflow:hidden;background:white}
+.marketing-brand-logo img{width:46px;height:46px;object-fit:cover;border-radius:50%}
+.marketing-brand-header strong{display:block;color:#102e4f;font-size:.85rem;letter-spacing:.1em}
+.marketing-brand-header span:not(.marketing-brand-logo){display:block;color:#63768b;font-size:.72rem;margin-top:.25rem}
+.marketing-email-hero{background:#102e4f;padding:1.7rem 1.5rem;color:white}
+.marketing-email-hero .marketing-eyebrow,.marketing-social-card .marketing-eyebrow{color:#b8d6f3}
+.marketing-email-hero h2,.marketing-social-card h2{color:#fff;font-size:1.5rem;font-weight:750;line-height:1.2;overflow-wrap:anywhere;margin:.7rem 0 1rem}
+.marketing-preview-workspace .marketing-email-hero h2,.marketing-preview-workspace .marketing-social-card h2{color:#fff!important}
+.marketing-orange-rule{height:4px;width:44px;border-radius:3px;background:#f58a28}
+.marketing-message-copy{overflow-wrap:anywhere;line-height:1.65;font-size:.88rem}
+.marketing-message-copy p{margin:0 0 .9rem;white-space:pre-wrap}
+.marketing-message-copy h3{font-size:1.05rem;color:#102e4f;font-weight:750;margin:1.35rem 0 .65rem}
+.marketing-email-copy{padding:1.5rem}
+.marketing-preview-table{max-width:100%;overflow:auto;position:relative;margin:.9rem 0 1.25rem;border:1px solid #dce5ef;border-radius:.55rem}
+.marketing-preview-table table{width:100%;border-collapse:collapse;font-size:.77rem;line-height:1.45}
+.marketing-preview-table th{background:#eaf1f9;color:#163a60;text-align:left;font-weight:750}
+.marketing-preview-table td,.marketing-preview-table th{padding:.65rem .6rem;border-bottom:1px solid #e2e8f0;min-width:4rem}
+.marketing-preview-table tr:last-child td{border-bottom:0;background:#f5f8fc;font-weight:700}
+.marketing-email-footer{font-size:.72rem;color:#6c7b8e;padding:1rem 1.5rem;background:#f5f8fc;border-top:3px solid #f58a28}
+.marketing-phone{max-width:390px;margin:auto;border:6px solid #17334f;border-radius:1.4rem;overflow:hidden;background:#e8efed;box-shadow:0 8px 28px #14365412}
+.marketing-phone-header{display:flex;gap:.75rem;align-items:center;padding:.8rem;background:#102e4f;color:white}
+.marketing-phone-header strong,.marketing-phone-header span:not(.marketing-brand-logo){display:block}
+.marketing-phone-header span:not(.marketing-brand-logo){font-size:.7rem;color:#c4d8e9}
+.marketing-phone-chat{padding:.85rem;background:linear-gradient(135deg,#edf1ed,#e1e9e7)}
+.marketing-whatsapp-bubble{background:white;border-radius:.7rem;overflow:hidden;color:#20344c;box-shadow:0 2px 4px #14365412}
+.marketing-social-card{padding:1.25rem;background:#153a60;border-bottom:5px solid #f58a28}
+.marketing-social-card h2{font-size:1.4rem}
+.marketing-social-card>span:last-child{display:block;color:#fff;font-size:.75rem;margin-top:.8rem;letter-spacing:.05em}
+.marketing-whatsapp-copy{padding:1rem 1rem .2rem;font-size:.82rem}
+.marketing-whatsapp-copy p{margin-bottom:.65rem}
+.marketing-bubble-footer{padding:0 .8rem .65rem;font-size:.65rem;text-align:right;color:#7b8997}
+.marketing-preview-empty{color:#77889b;font-style:italic}
+.marketing-preview-campaign{overflow-wrap:anywhere}
+@media(max-width:575px){.marketing-preview-workspace{padding:.8rem}.marketing-email-copy{padding:1rem}.marketing-email-hero{padding:1.3rem 1rem}.marketing-brand-header{padding:1rem}.marketing-brand-header strong{font-size:.75rem}.marketing-phone-chat{padding:.5rem}.marketing-phone{border-width:4px}.marketing-preview-table td,.marketing-preview-table th{padding:.5rem}.marketing-email-hero h2{font-size:1.3rem}}

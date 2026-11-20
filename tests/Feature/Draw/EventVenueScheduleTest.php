@@ -304,7 +304,9 @@ class EventVenueScheduleTest extends TestCase
         $ids = $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all();
         $service->prepare($draw->fresh());
         $this->assertSame($ids, $draw->drawFixtures()->where('stage', '!=', 'RR')->orderBy('id')->pluck('id')->all());
-        $preview = app(EventVenueScheduleService::class)->preview($event->fresh(), array_replace($this->schedulingOptions(), ['end' => '2026-09-10 20:00:00']));
+        $options = array_replace($this->schedulingOptions(), ['end' => '2026-09-10 20:00:00']);
+        $scheduler = app(EventVenueScheduleService::class);
+        $preview = $scheduler->preview($event->fresh(), $options);
         $matches = collect($preview['matches']);
         $playoffs = $matches->whereIn('fixture_id', $created->pluck('id'));
 
@@ -313,8 +315,18 @@ class EventVenueScheduleTest extends TestCase
         $this->assertSame([4], $playoffs->pluck('wave')->unique()->values()->all());
         $this->assertSame(['Group A #1', 'Group A #2'], $playoffs->firstWhere('stage', 'MAIN')['participants']);
         $this->assertSame(['Group A #3', 'Group A #4'], $playoffs->firstWhere('stage', 'PLATE')['participants']);
-        // Until positions are resolved, each fixture reserves all possible group entrants.
-        $this->assertSame(['2026-09-10 14:45:00', '2026-09-10 17:00:00'], $playoffs->pluck('scheduled_at')->sort()->values()->all());
+        // Disjoint source positions can use separate courts after qualifying and rest.
+        $this->assertSame(['2026-09-10 14:45:00', '2026-09-10 14:45:00'], $playoffs->pluck('scheduled_at')->sort()->values()->all());
+        $this->assertSame(['1', '2'], $playoffs->pluck('court')->sort()->values()->all());
+        $afterRoundRobinRest = \Carbon\Carbon::parse($matches->where('stage', 'RR')->max('scheduled_at'))
+            ->addMinutes($options['duration'] + $options['player_rest'])->toDateTimeString();
+        $this->assertGreaterThanOrEqual($afterRoundRobinRest, $playoffs->min('scheduled_at'));
+
+        // Reusing A2 removes the disjointness proof even though a second court is free.
+        $created->firstWhere('stage', 'PLATE')->update(['registration1_source_position' => 2]);
+        $overlapping = collect($scheduler->preview($event->fresh(), $options)['matches'])
+            ->whereIn('fixture_id', $created->pluck('id'));
+        $this->assertSame(['2026-09-10 14:45:00', '2026-09-10 17:00:00'], $overlapping->pluck('scheduled_at')->sort()->values()->all());
     }
 
     public function test_unresolved_flexible_monrad_fixtures_show_their_numbered_source_paths(): void
@@ -784,7 +796,8 @@ class EventVenueScheduleTest extends TestCase
             ->assertSee('id="schedule-review-step"', false)
             ->assertSee('id="continue-to-draws"', false)
             ->assertSee('Continue to tournament draws')
-            ->assertSee('Schedule already saved. Continue to the tournament draws.')
+            ->assertSee('Saved times were kept fixed. Continue to the tournament draws to review them.')
+            ->assertSee('The selected matches already have saved times. Keep them as they are, or choose to replan saved matches and preview again.')
             ->assertSee('Save allocations & timing', false)
             ->assertSee('Save & next: timing', false)
             ->assertSee('Include already scheduled matches and start a fresh reschedule')

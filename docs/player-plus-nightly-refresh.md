@@ -14,6 +14,12 @@ hosting scheduler is installed or running.
    resolver, generate chronological before/after match data, then refresh that
    player's past-event rating history before advancing to the next player.
 
+Super User preview permission does not place a player in this active Plus
+audience. A player without an active entitlement can have readable saved ratings
+and results but no per-player match graph. Its preview must explain the separate
+administrator generation requirement rather than promise an overnight update.
+See the [match reconstruction procedure](performance/match-ctr-timeline.md#private-saved-data-and-refresh).
+
 Do not run dependent stages when a prerequisite fails. Builders retain their
 existing locks, publication/identity rules and last-good saved data. The pipeline
 does not grant access, publish events, send mail, change results or mutate payment

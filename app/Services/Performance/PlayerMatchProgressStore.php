@@ -8,7 +8,8 @@ use Illuminate\Support\Facades\File;
 /** Separate private chronology artifact; cannot be mistaken for leave-one-out influence. */
 class PlayerMatchProgressStore
 {
-    public const VERSION = 5;
+    public const VERSION = 6;
+    public const LEGACY_VERSION = 5;
     public const EVIDENCE_LIMIT = 100;
     public const MAX_BYTES = 524288;
 
@@ -18,9 +19,10 @@ class PlayerMatchProgressStore
         return storage_path('app/private/player-match-progress/player-'.$player.'.json');
     }
 
-    public function policyHash(): string
+    public function policyHash(int $version = self::VERSION): string
     {
-        return hash('sha256', self::VERSION.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':overall:strictly-before-scheduled-prefix:full-historical-window:simultaneous-unrelated-excluded:participant-ties-unavailable');
+        return hash('sha256', $version.':'.app(PlayerAbilitySnapshotStore::class)->policyHash().':overall:strictly-before-scheduled-prefix:full-historical-window:simultaneous-unrelated-excluded:participant-ties-unavailable'
+            .($version === self::VERSION ? ':historical-input-context-v'.PlayerMatchHistoricalContext::VERSION : ''));
     }
 
     public function read(int $player): ?array
@@ -45,12 +47,13 @@ class PlayerMatchProgressStore
 
     private function valid(mixed $saved, int $player): bool
     {
-        if (!is_array($saved) || ($saved['version'] ?? null) !== self::VERSION || ($saved['player_id'] ?? null) !== $player
-            || ($saved['basis'] ?? null) !== 'scheduled_match_order' || ($saved['policy_hash'] ?? null) !== $this->policyHash()
+        if (!is_array($saved) || !in_array($saved['version'] ?? null, [self::VERSION, self::LEGACY_VERSION], true) || ($saved['player_id'] ?? null) !== $player
+            || ($saved['basis'] ?? null) !== 'scheduled_match_order' || ($saved['policy_hash'] ?? null) !== $this->policyHash($saved['version'])
             || !$this->hash($saved['source_fingerprint'] ?? null) || !$this->hash($saved['snapshot_version'] ?? null)
             || !$this->date($saved['as_of'] ?? null) || $saved['as_of'] > CarbonImmutable::today('Africa/Johannesburg')->toDateString()
             || !is_string($saved['built_at'] ?? null) || !$this->score($saved['current_score'] ?? null)
             || !is_array($saved['rows'] ?? null) || !array_is_list($saved['rows']) || count($saved['rows']) > PlayerMatchProgressCalculator::LIMIT) return false;
+        if ($saved['version'] === self::VERSION && !app(PlayerMatchHistoricalContext::class)->valid($saved['historical_context'] ?? null, $saved['as_of'])) return false;
         if (!is_array($saved['own_catalog'] ?? null) || count($saved['own_catalog']) > (self::EVIDENCE_LIMIT + 1) * PlayerMatchProgressCalculator::LIMIT) return false;
         foreach ($saved['own_catalog'] as $id => $detail) {
             if (!is_string($id) || $id === '' || strlen($id) > 150 || !is_array($detail) || count($detail) !== 4

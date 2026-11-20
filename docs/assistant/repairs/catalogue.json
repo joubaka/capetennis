@@ -2,6 +2,42 @@
   "version": 1,
   "repairs": [
     {
+        "id": "RK-067",
+        "title": "Saved last-five graph disappears after global source changes",
+        "scope": "Private saved match graph validation shared by authorized Profile and Rating projections.",
+        "symptoms": "A valid same-day saved graph exists but both projections are pending after the global source fingerprint changes.",
+        "cause": "Legacy graph validation requires exact global input equality, so even later-dated unrelated event registrations can invalidate historical reconstruction. A mismatch alone does not prove the triggering change harmless.",
+        "fix": "Generate version 6 artifacts only through the canonical offline builder, capturing a bounded raw historical-input context before reconstruction and checking it again afterward. Preserve original exact global build consistency and snapshot, publication, identity, date, score and policy gates. On reads compare all historical event roots and their canonical score, chronology, identity and roster dependencies; later-dated unrelated registrations may then leave a graph available. Keep version 5 strict without retrofitting a context. See docs/performance/match-graph-historical-context.md.",
+        "verification": "Isolated local historical-context, saved-progress and Profile/Rating route regressions passed 26 tests and 505 assertions. Actual private-file tests preserve available states after future signup and withhold both projections after historical score changes without rewriting the file. Raw team score, identity, publication, chronology, ball and bounds checks are covered. A real local read-only capture completed within the configured bounds; this does not establish live latency.",
+        "limits": "Guide only. Never drop stale-source checks, bless a legacy artifact, rebuild on GET or infer that arbitrary global drift is safe. Global definition and external-source dependencies remain conservative. Raw input validation has bounded read cost. Deployment, production regeneration and artifact replacement require separate authorization.",
+        "assistant_action": "guide_only",
+        "sources": [
+            "app/Services/Performance/PlayerMatchHistoricalContext.php",
+            "app/Services/Performance/PlayerMatchProgress.php",
+            "app/Services/Performance/PlayerMatchProgressStore.php",
+            "docs/performance/match-graph-historical-context.md"
+        ],
+        "tests": [
+            "tests/Feature/PlayerMatchHistoricalContextTest.php",
+            "tests/Feature/PlayerMatchProgressTest.php",
+            "tests/Feature/MyTennisRatingNavigationTest.php",
+            "tests/Unit/Assistant/AssistantRepairLibraryTest.php"
+        ]
+    },
+    {
+      "id": "RK-066",
+      "title": "Admin preview match graph waits forever despite saved ratings and results",
+      "scope": "Player Plus before/after match graph status for authorized Super User previews outside the active Plus overnight audience; no entitlement or source-result changes.",
+      "symptoms": "Saved ratings and results are readable, but the match graph promises a nightly update while no valid per-player artifact exists and the player is not in the canonical active Plus audience.",
+      "cause": "Super User preview access is broader than the entitlement-based materialization audience. A successful overnight run does not build previews outside that audience; the previous generic unavailable message incorrectly promised overnight processing.",
+      "fix": "Check the canonical active-player resolver, private graph validity and saved pipeline status before diagnosing a failed refresh. Show separate administrator generation wording for unavailable non-entitled admin previews, retain the normal overnight message for active Plus players and preserve valid saved preview graphs. An explicitly authorized targeted offline refresh can generate a preview without granting Plus access. It requires matching current saved ability/history first; rebuild those prerequisites through canonical commands only with the applicable authorization. Preserve current source, publication, identity, chronology and policy validation, atomic replacement and last-good retention. See docs/performance/match-ctr-timeline.md.",
+      "verification": "Local focused saved-progress and presentation regressions passed 15 tests and 329 assertions. Coverage includes missing/stale admin previews, active Plus admin status, unchanged valid saved projection, eligibility lookup failure, ordinary member status and authorization before private reads. Live read-only inspection confirmed the missing-artifact/audience distinction. Production graph generation and message deployment remain unverified.",
+      "limits": "Guide only. Never repair a preview by granting membership, linking an account, expanding the nightly audience, calculating on GET or bypassing stale-source checks. Shared base refresh can invalidate other derived artifacts until rebuilt. Production recalculation and deployment require their own authorization; this record does not execute a repair.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Performance/PlayerMatchProgress.php", "app/Services/Performance/PlayerPlusEntitlement.php", "app/Services/Performance/PlayerRatingAccess.php", "app/Services/Performance/PlayerPlusDerivedRefresh.php", "docs/performance/match-ctr-timeline.md", "docs/player-plus-nightly-refresh.md"],
+      "tests": ["tests/Feature/PlayerMatchProgressTest.php", "tests/Feature/PlayerMatchProgressPresentationTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-065",
       "title": "Replace a full pending individual bank refund with original-payer wallet credit",
       "scope": "Super-user review of one withdrawn original unadjusted, uncorrected single-player, single-item PayFast-only registration with a full pending bank refund and no deduction.",
@@ -110,22 +146,27 @@
       "title": "My Tennis Rating tabs time out or lose history navigation",
       "scope": "Authorized My Tennis tab loading, Rating history/filter navigation and saved-data reads only.",
       "symptoms": "A selected history month disappears on reload, sharing loses evidence filters, or a direct player rating link opens a fragment without the My Tennis layout. Rating may also spin until a retry banner appears while the previous panel remains visible.",
-      "cause": "Workspace reads omitted history filters, ordinary deep links returned a bare fragment, and successful fragment navigation did not synchronize browser history or the warmed workspace cache. Eager five-tab prefetch competed with the selected request, which waited for speculative work; Rating also built unused global discovery lists.",
-      "fix": "Use shared bounded filter validation in workspace and fragment reads. Ordinary rating requests render the full authorized workspace for the route-bound player. Fragment responses retain private no-store headers. Commit only successful selections to a server-generated workspace URL, preserve month, scope, scale and section, invalidate visited-tab caches, and abort stale reads on unmount or Back/Forward. Preserve entitlement and relationship gates; never recalculate ratings on a page read. Cache successful visits without speculative all-tab reads. Selected navigation starts immediately with bounded timeout, explicit retry and a normal full-page fallback. Use canonical PlayerRatingTopTen::context metadata when discovery lists are not displayed; keep actual match comparison privacy projection unchanged. For member lists that display comparisons, prefilter candidate IDs with the same age/gender predicates before canonical public-participation checks. Preserve the original global cap, all publication and roster validation, and the separate super-user and match-player paths; demographics never grant access.",
-      "verification": "On 2026-11-15 authenticated local browser checks verified chart selection, reload, scope, month and scale preservation, Back/Forward, keyboard activation, full-layout direct links and phone-width filtering. Independent checks passed 15 frontend tests and 39 isolated PHP tests with 543 assertions across navigation, history, snapshots, Top 10 and templates. Repair-library tests passed 3 tests with 349 assertions. These are local checks, not deployment or production evidence. The local loading follow-up independently passed 35 PHP tests and 572 assertions, with phone/desktop rendered browser checks for zero speculative requests, timeout cleanup, retry, full-page fallback, visited caching and retained history/live-results behavior. Screenshots alone did not establish the live failure cause. The 2026-11-16 member-discovery optimization passed 26 isolated SQLite tests with 360 assertions, independently repeated: publication queries received three relevant candidates instead of five while preserving ranking, hidden-player exclusion, filter tamper protection and next-read publication revocation. This measures bounded candidate reduction, not live request duration; exact history fingerprint checks remain unchanged.",
+      "cause": "Workspace reads omitted history filters, ordinary deep links returned a bare fragment, and successful fragment navigation did not synchronize browser history or the warmed workspace cache. Eager five-tab prefetch competed with the selected request, which waited for speculative work; Rating also built unused global discovery lists. A single My Tennis GET repeated exact source scans and history decoding; departing-tab background reads continued until replacement, and a transient pending Profile graph could be replayed from the visited cache.",
+      "fix": "Use shared bounded filter validation in workspace and fragment reads. Ordinary rating requests render the full authorized workspace for the route-bound player. Fragment responses retain private no-store headers. Commit only successful selections to a server-generated workspace URL, preserve month, scope, scale and section, invalidate visited-tab caches, and abort stale reads on unmount or Back/Forward. Preserve entitlement and relationship gates; never recalculate ratings on a page read. Cache successful visits without speculative all-tab reads. Selected navigation starts immediately with bounded timeout, explicit retry and a normal full-page fallback. Use canonical PlayerRatingTopTen::context metadata when discovery lists are not displayed; keep actual match comparison privacy projection unchanged. For member lists that display comparisons, prefilter candidate IDs with the same age/gender predicates before canonical public-participation checks. Preserve the original global cap, all publication and roster validation, and the separate super-user and match-player paths; demographics never grant access. Reuse exact global fingerprints and validated history only inside PlayerRatingReadScope for one routed GET; clear the scope on exit and keep next-request, POST and offline reads fresh. Pause departing-panel GET reads before foreground navigation and resume only if navigation stops without replacement; never abort or replay POST saves. Do not cache transient Profile match-graph placeholders, and never substitute another graph or generate artifacts on GET.",
+      "verification": "On 2026-11-15 authenticated local browser checks verified chart selection, reload, scope, month and scale preservation, Back/Forward, keyboard activation, full-layout direct links and phone-width filtering. Independent checks passed 15 frontend tests and 39 isolated PHP tests with 543 assertions across navigation, history, snapshots, Top 10 and templates. Repair-library tests passed 3 tests with 349 assertions. These are local checks, not deployment or production evidence. The local loading follow-up independently passed 35 PHP tests and 572 assertions, with phone/desktop rendered browser checks for zero speculative requests, timeout cleanup, retry, full-page fallback, visited caching and retained history/live-results behavior. Screenshots alone did not establish the live failure cause. The 2026-11-16 member-discovery optimization passed 26 isolated SQLite tests with 360 assertions, independently repeated: publication queries received three relevant candidates instead of five while preserving ranking, hidden-player exclusion, filter tamper protection and next-read publication revocation. This measures bounded candidate reduction, not live request duration; exact history fingerprint checks remain unchanged. On 2026-11-19 independent checks passed six request-scope tests with 32 assertions and 30 focused frontend cases, plus fictional 320px/1440px browser checks for pending-Profile cache bypass, ready caching, retry and GET lifecycle. This verifies request-only read reuse and cancellation, not live latency or a particular player artifact.",
       "limits": "Guide only. Shared URLs do not grant player access. Do not alter ratings, source results, subscriptions, entitlements or publication to repair navigation. Preserve unrelated worktree changes and independently verify the target environment after an explicitly authorized release.",
       "assistant_action": "guide_only",
       "sources": [
         "app/Http/Controllers/Frontend/MyTennisController.php",
         "docs/player-plus-launch.md",
-        "app/Services/Performance/PlayerRatingTopTen.php"
+        "app/Services/Performance/PlayerRatingTopTen.php",
+        "app/Services/Performance/PlayerRatingReadScope.php",
+        "app/Services/Performance/PlayerRatingHistoryStore.php",
+        "app/Services/Performance/PlayerSharedAbilityService.php"
       ],
       "tests": [
         "tests/Feature/MyTennisRatingNavigationTest.php",
         "tests/Frontend/my-tennis-rating-navigation.test.cjs",
         "tests/Unit/Assistant/AssistantRepairLibraryTest.php",
         "tests/Feature/PlayerRatingTopTenTest.php",
-        "tests/Browser/my-tennis-navigation.cjs"
+        "tests/Browser/my-tennis-navigation.cjs",
+        "tests/Feature/PlayerRatingReadScopeTest.php",
+        "tests/Browser/my-tennis-read-navigation.cjs"
       ]
     },
     {

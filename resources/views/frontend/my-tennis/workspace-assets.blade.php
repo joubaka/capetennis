@@ -35,18 +35,50 @@ function mountMyTennisRating() {
   let loadingHandle = null;
   let controller = null;
   const lifetime = new AbortController();
+  let reads = new AbortController();
+  let paused = false;
+  let readGeneration = 0;
+  let resumeRatingUrl = null;
   const stopRatingReads = () => {
     lifetime.abort();
+    reads.abort();
     controller?.abort();
     loadingHandle?.close();
   };
   window.addEventListener('popstate', stopRatingReads, { signal: lifetime.signal });
   document.addEventListener('my-tennis:unmounting', () => {
     lifetime.abort();
+    reads.abort();
     controller?.abort();
     clearTimeout(refreshUI.timer);
     loadingHandle?.close();
   }, { once: true });
+  document.addEventListener('my-tennis:navigating', () => {
+    if (loading) resumeRatingUrl = lastUrl;
+    paused = true;
+    readGeneration++;
+    reads.abort();
+    controller?.abort();
+    clearTimeout(refreshUI.timer);
+    loadingHandle?.close();
+    loadingHandle = null;
+    loading = refreshPending = false;
+    pendingUrl = null;
+    panel.removeAttribute('aria-busy');
+    panel.querySelector('[data-rating-load-status]')?.remove();
+  }, { signal: lifetime.signal });
+  document.addEventListener('my-tennis:navigation-stopped', () => {
+    if (!panel.isConnected || lifetime.signal.aborted) return;
+    paused = false;
+    reads = new AbortController();
+    setTimeout(() => {
+      if (paused || lifetime.signal.aborted) return;
+      const resumeUrl = resumeRatingUrl;
+      resumeRatingUrl = null;
+      if (resumeUrl) load(resumeUrl);
+      else refreshUI.sync();
+    }, 0);
+  }, { signal: lifetime.signal });
   let focusId = null;
   const recordNavigation = (url) => {
     const workspaceUrl = new URL(panel.dataset.ratingWorkspaceUrl || window.location.href, window.location.href);
@@ -68,15 +100,16 @@ function mountMyTennisRating() {
     return load(lastUrl);
   }, {
     csrf: document.querySelector('meta[name="csrf-token"]')?.content || '',
-    fetch: (url, options) => window.fetch(url, { ...options, signal: lifetime.signal }),
-    setTimer: (callback, delay) => lifetime.signal.aborted ? null : setTimeout(callback, delay),
+    fetch: (url, options) => window.fetch(url, { ...options, signal: options.method === 'POST' ? lifetime.signal : reads.signal }),
+    isActive: () => !paused && !lifetime.signal.aborted,
+    setTimer: (callback, delay) => paused || lifetime.signal.aborted ? null : setTimeout(callback, delay),
   });
   new window.PlayerPathwayUI(panel, () => {
     if (loading) { refreshPending = true; return; }
     return load(lastUrl);
-  }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '', signal: lifetime.signal });
+  }, { csrf: document.querySelector('meta[name="csrf-token"]')?.content || '', signal: lifetime.signal, readSignal: () => reads.signal });
   const load = async (url) => {
-    if (lifetime.signal.aborted) return;
+    if (paused || lifetime.signal.aborted) return;
     if (loading) {
       if (url) { lastUrl = url; pendingUrl = url; }
       return;
@@ -84,6 +117,7 @@ function mountMyTennisRating() {
     lastUrl = url;
     const requestUrl = lastUrl;
     loading = true;
+    const generation = ++readGeneration;
     if (!loadingHandle) {
       focusId = panel.contains(document.activeElement) ? document.activeElement.id : button.id;
       loadingHandle = window.CapeLoading.show({title: 'Loading ratings', message: 'Please wait while we load your saved rating history.'});
@@ -97,13 +131,14 @@ function mountMyTennisRating() {
     spinner.className = 'spinner-border spinner-border-sm flex-shrink-0';
     spinner.setAttribute('aria-hidden', 'true');
     status.append(spinner, 'Loading saved rating history…');
-    controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const request = new AbortController();
+    controller = request;
+    const timeout = setTimeout(() => request.abort(), 30000);
     try {
-      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: controller.signal });
+      const response = await fetch(requestUrl, { headers: { Accept: 'text/html', 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store', signal: request.signal });
       if (!response.ok || response.redirected) throw new Error('Unavailable');
       const html = await response.text();
-      if (lifetime.signal.aborted || pendingUrl) return;
+      if (lifetime.signal.aborted || paused || generation !== readGeneration || pendingUrl) return;
       const requestedSection = new URL(requestUrl, window.location.href).searchParams.get('rating_section');
       const activeSection = {history: 'progress', method: 'understand', overview: 'compare'}[requestedSection]
         || panel.querySelector('[data-rating-section].active')?.dataset.ratingSection || 'compare';
@@ -120,12 +155,12 @@ function mountMyTennisRating() {
       refreshUI.sync();
       recordNavigation(requestUrl);
     } catch (error) {
-      if (lifetime.signal.aborted || pendingUrl) return;
+      if (lifetime.signal.aborted || paused || generation !== readGeneration || pendingUrl) return;
       status.textContent = 'Rating history could not be loaded. ';
       const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'btn btn-sm btn-outline-primary'; retry.dataset.ratingRetry = ''; retry.textContent = 'Try again'; status.append(retry);
     } finally {
       clearTimeout(timeout);
-      if (lifetime.signal.aborted) return;
+      if (lifetime.signal.aborted || generation !== readGeneration) return;
       loading = false;
       panel.removeAttribute('aria-busy');
       if (pendingUrl) { const nextUrl = pendingUrl; pendingUrl = null; refreshPending = false; load(nextUrl); }
@@ -192,7 +227,11 @@ function mountMyTennisControls() {
   if (!workspace) return;
   const lifetime = new AbortController();
   if (workspace.matches('[data-player-pathway-page]')) {
-    new window.PlayerPathwayUI(workspace, () => {}, { signal: lifetime.signal });
+    let infoReads = new AbortController();
+    new window.PlayerPathwayUI(workspace, () => {}, { signal: lifetime.signal, readSignal: () => infoReads.signal });
+    document.addEventListener('my-tennis:navigating', () => infoReads.abort(), { signal: lifetime.signal });
+    document.addEventListener('my-tennis:navigation-stopped', () => { infoReads = new AbortController(); }, { signal: lifetime.signal });
+    lifetime.signal.addEventListener('abort', () => infoReads.abort(), { once: true });
   }
   document.addEventListener('my-tennis:unmounting', () => {
     lifetime.abort();

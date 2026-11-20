@@ -93,6 +93,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   reports. Reuse `PlayerMatchProgress::forPlayer()`; keep the full explanations
   on Rating and retain scheduled-order, fixed-scale and missing-artifact states.
   This extra Profile projection never authorizes a build or refresh on GET.
+  Version 6 graphs validate bounded raw historical-input context on read;
+  future-event signups need not invalidate historical evidence. Historical
+  changes fail closed; version 5 retains exact global validation without retrofit.
+  See `docs/performance/match-graph-historical-context.md` and RK-067.
   Verify `MyTennisOverviewTest` and `tests/Browser/profile-match-progress.cjs`.
 - Automatic Plus materialization uses one ordered overnight pipeline: current
   ability, monthly history, then each active Plus player's match and event
@@ -102,6 +106,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   outcomes. Verify current host ticks before changing the 03:02 SAST start;
   local schedule tests never establish production cron execution. See
   `docs/player-plus-nightly-refresh.md` and `PlayerPlusDerivedRefreshTest`.
+- Super User preview access does not include a player in the active Plus nightly
+  audience. Missing or stale match graphs for non-entitled previews must explain
+  separate administrator generation, not promise overnight processing. Never
+  repair a preview by granting entitlement or fitting on GET. Targeted offline
+  generation still requires matching saved base/history and current source,
+  policy and publication checks; shared base refresh can invalidate other derived
+  artifacts. See `docs/performance/match-ctr-timeline.md`.
 
 ## Player Plus, identity and offers
 
@@ -216,7 +227,11 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Render the initial authorized Rating panel with its tab response. Use the
   rating fragment endpoint for subsequent filters and refreshes.
   Cache visited tabs without speculative all-tab fetches; selected navigation must
-  not wait for a background Rating request. Use lightweight canonical
+  not wait for a background Rating request. Do not retain transient Profile
+  match-graph placeholders in that cache. My Tennis GETs may reuse the exact source
+  fingerprint and validated history only inside `PlayerRatingReadScope`; new
+  requests, writes and offline work require fresh checks, never a persistent TTL.
+  Use lightweight canonical
   `PlayerRatingTopTen::context()` only when discovery lists are not displayed.
   The Rating panel renders positions and Top 10 lists and must use `build()`;
   metadata-only context is not evidence of an empty comparable population.
@@ -234,6 +249,27 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   A local fallback or HTTP success is not installed-PWA, phone or live-flow QA.
 
 ## Assistant capability and durable repairs
+
+- The CTR marketing portal keeps campaign drafts inert: coach contacts, branded
+  previews and the Stage One financial projection do not send campaigns or certify
+  events. Host proposals separately queue operational super-user alerts after
+  commit through managed mail. Proposal review, canonical unpublished event
+  creation, publication and organiser access are separate decisions; approval
+  never grants account permissions. Stage One defaults originate from Panarottis
+  and remain assumptions, not provider tariffs or a validated court schedule.
+  Host proposals suggest entries automatically from assigned full-size courts:
+  16 Red players per court using four mini courts, four players per court for
+  Orange/Green/Yellow. Assignments share the available court count; submitted
+  limits are recomputed server-side. Keep campaign financial examples aligned
+  with the corresponding full-size court allocation and documented assumptions.
+  Live host-form finances assume filled requested entry limits, use fixed campaign
+  deductions and rent assigned courts only; editable costs remain proposal budget
+  assumptions. Recompute the saved projection rather than trusting client totals.
+  Earlier time-based snapshots remain historical; neither model is a schedule. See
+  `docs/marketing-portal.md`, `HostEventApplicationController`,
+  `HostEventReviewController`, `EventController`, `MarketingPortalTest` and
+  `HostEventApplicationTest`, `HostCourtCapacityPlanner` and
+  `HostProposalProjection` before extending these workflows.
 
 - The application assistant, a CLI Codex run, this desktop chat and the Capester
   handoff queue are distinct systems. Do not imply automatic access to chat

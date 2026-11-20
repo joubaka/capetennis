@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\{Player, User};
-use App\Services\Performance\{AllAgeRatingModel, PlayerAbilitySnapshotStore, PlayerMatchChronologySources, PlayerMatchProgress, PlayerMatchProgressCalculator, PlayerMatchProgressStore, PlayerRatingAccess, PlayerRatingHistoryStore, PlayerSharedAbilityService};
+use App\Services\Performance\{AllAgeRatingModel, PlayerAbilitySnapshotStore, PlayerMatchChronologySources, PlayerMatchProgress, PlayerMatchProgressCalculator, PlayerMatchProgressStore, PlayerPlusEntitlement, PlayerRatingAccess, PlayerRatingHistoryStore, PlayerSharedAbilityService};
 use Illuminate\Support\Facades\{Artisan, DB, File, Schema};
 use Mockery;
 use Tests\TestCase;
@@ -39,7 +39,7 @@ class PlayerMatchProgressTest extends TestCase
     private function artifact(PlayerMatchProgressStore $store): array
     {
         $date = now('Africa/Johannesburg')->toDateString();
-        return ['version' => PlayerMatchProgressStore::VERSION, 'basis' => 'scheduled_match_order', 'player_id' => 1, 'policy_hash' => $store->policyHash(), 'source_fingerprint' => str_repeat('a', 64),
+        return ['version' => PlayerMatchProgressStore::LEGACY_VERSION, 'basis' => 'scheduled_match_order', 'player_id' => 1, 'policy_hash' => $store->policyHash(PlayerMatchProgressStore::LEGACY_VERSION), 'source_fingerprint' => str_repeat('a', 64),
             'snapshot_version' => str_repeat('b', 64), 'as_of' => $date, 'built_at' => now()->toIso8601String(), 'current_score' => 52.6,
             'own_catalog' => ['match:1' => ['date' => $date, 'opponent' => 'Authorized peer', 'score' => '6-1', 'won' => true]],
             'rows' => [['source_id' => 'match:1', 'date' => $date, 'time' => $date.' 09:00:00', 'opponent' => 'Authorized peer', 'score' => '6-1', 'won' => true,
@@ -48,7 +48,14 @@ class PlayerMatchProgressTest extends TestCase
                 'explanation' => ['network_before' => 10, 'network_after' => 11, 'own_before' => 6, 'own_after' => 7, 'opponents_before' => 2, 'opponents_after' => 2]]]];
     }
     private function player(): Player { $p = new Player; $p->id = 1; return $p; }
-    private function user(): User { $u = Mockery::mock(User::class)->makePartial(); $u->id = 10; $u->shouldReceive('hasRole')->with('super-user')->andReturnFalse(); return $u; }
+    private function user(bool $super = false): User { $u = Mockery::mock(User::class)->makePartial(); $u->id = 10; $u->shouldReceive('hasRole')->with('super-user')->andReturn($super); return $u; }
+    private function activePlus(bool $active): void
+    {
+        $query = Mockery::mock(\Illuminate\Database\Eloquent\Builder::class);
+        $query->shouldReceive('whereKey')->once()->with(1)->andReturnSelf();
+        $query->shouldReceive('exists')->once()->andReturn($active);
+        $this->mock(PlayerPlusEntitlement::class)->shouldReceive('activePlayers')->once()->andReturn($query);
+    }
     private function readerService(PlayerMatchProgressStore $store, $snapshots, $ability, bool $allowed = true): PlayerMatchProgress
     {
         $calculator = Mockery::mock(PlayerMatchProgressCalculator::class); $calculator->shouldNotReceive('latest', 'pair');
@@ -78,8 +85,64 @@ class PlayerMatchProgressTest extends TestCase
     public function test_access_is_checked_before_reading_private_artifacts(): void
     {
         [$snapshots, $ability] = $this->readers(); $store = Mockery::mock(PlayerMatchProgressStore::class); $store->shouldNotReceive('read');
+        $this->mock(PlayerPlusEntitlement::class)->shouldNotReceive('activePlayers');
         $this->expectException(\Symfony\Component\HttpKernel\Exception\HttpException::class);
         $this->readerService($store, $snapshots, $ability, false)->forPlayer($this->user(), $this->player());
+    }
+    public function test_missing_authorized_member_graph_keeps_nightly_status_without_admin_details(): void
+    {
+        [$snapshots, $ability] = $this->readers(); $store = $this->store();
+        $this->mock(PlayerPlusEntitlement::class)->shouldNotReceive('activePlayers');
+        $result = $this->readerService($store, $snapshots, $ability)->forPlayer($this->user(), $this->player());
+        $this->assertStringContainsString('awaiting a nightly saved update', $result['reason']);
+        $this->assertStringNotContainsString('preview', $result['reason']);
+        $this->assertFileDoesNotExist($store->path(1));
+    }
+    public function test_missing_or_stale_non_plus_admin_preview_does_not_promise_an_overnight_graph(): void
+    {
+        foreach (['missing', 'stale'] as $case) {
+            [$snapshots, $ability] = $this->readers(); $store = $this->store();
+            if ($case === 'stale') {
+                $saved = $this->artifact($store); $saved['snapshot_version'] = str_repeat('d', 64);
+                $store->replace(1, $saved, str_repeat('a', 64));
+            }
+            $this->activePlus(false);
+            $result = $this->readerService($store, $snapshots, $ability)->forPlayer($this->user(true), $this->player());
+            $this->assertSame([], $result['rows']);
+            $this->assertStringContainsString('not included in the overnight match-graph refresh', $result['reason']);
+            $this->assertStringContainsString('An administrator must generate a saved graph', $result['reason']);
+            $this->assertStringNotContainsString('awaiting', $result['reason']);
+            if ($case === 'missing') $this->assertFileDoesNotExist($store->path(1));
+            else $this->assertSame($saved, $store->read(1));
+        }
+    }
+    public function test_missing_active_plus_admin_preview_keeps_the_nightly_refresh_status(): void
+    {
+        [$snapshots, $ability] = $this->readers(); $store = $this->store(); $this->activePlus(true);
+        $result = $this->readerService($store, $snapshots, $ability)->forPlayer($this->user(true), $this->player());
+        $this->assertStringContainsString('awaiting a nightly saved update', $result['reason']);
+        $this->assertStringContainsString('03:02 SAST', $result['reason']);
+        $this->assertFileDoesNotExist($store->path(1));
+    }
+    public function test_current_admin_preview_projects_its_saved_graph_without_requiring_plus(): void
+    {
+        [$snapshots, $ability] = $this->readers(); $store = $this->store(); $saved = $this->artifact($store);
+        $store->replace(1, $saved, str_repeat('a', 64));
+        $this->mock(PlayerPlusEntitlement::class)->shouldNotReceive('activePlayers');
+        $result = $this->readerService($store, $snapshots, $ability)->forPlayer($this->user(true), $this->player());
+        $this->assertNull($result['reason']); $this->assertCount(1, $result['rows']);
+        $this->assertSame(50.0, $result['rows'][0]['before_score']);
+        $this->assertSame($saved, $store->read(1));
+    }
+    public function test_unavailable_admin_eligibility_does_not_expose_errors_or_promise_an_overnight_graph(): void
+    {
+        [$snapshots, $ability] = $this->readers(); $store = $this->store();
+        $this->mock(PlayerPlusEntitlement::class)->shouldReceive('activePlayers')->once()->andThrow(new \RuntimeException('PRIVATE_ELIGIBILITY_FAILURE'));
+        $result = $this->readerService($store, $snapshots, $ability)->forPlayer($this->user(true), $this->player());
+        $this->assertSame([], $result['rows']);
+        $this->assertStringContainsString('check this player\'s saved graph and overnight refresh eligibility', $result['reason']);
+        $this->assertStringNotContainsString('PRIVATE_ELIGIBILITY_FAILURE', $result['reason']);
+        $this->assertStringNotContainsString('awaiting', $result['reason']);
     }
     public function test_current_comparison_permission_denial_or_failure_withholds_only_opponent_numbers(): void
     {
@@ -150,6 +213,8 @@ class PlayerMatchProgressTest extends TestCase
     public function test_offline_builder_uses_full_historical_day_window_and_orients_selected_side_two_scores(): void
     {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-15', 'Africa/Johannesburg'));
+        $context = ['version' => 1, 'as_of' => '2026-11-15', 'fingerprint' => str_repeat('d', 64)];
+        $this->mock(\App\Services\Performance\PlayerMatchHistoricalContext::class)->shouldReceive('capture')->twice()->with('2026-11-15')->andReturn($context);
         Schema::create('player_ability_snapshots', fn ($t) => [$t->string('snapshot_key'), $t->string('source_fingerprint')]); DB::table('player_ability_snapshots')->insert(['snapshot_key' => 'current', 'source_fingerprint' => str_repeat('a', 64)]);
         $target = ['source_id' => 'match:9', 'winner' => 2, 'loser' => 1, 'confidence_date' => '2026-10-15'];
         $older = ['source_id' => 'match:old', 'winner' => 1, 'loser' => 2, 'confidence_date' => '2024-11-01'];
@@ -171,6 +236,7 @@ class PlayerMatchProgressTest extends TestCase
         ]]);
         $service = new PlayerMatchProgress($calculator, $chronology, $this->store(), $snapshots, $history, $ability, Mockery::mock(PlayerRatingAccess::class));
         $result = $service->build($this->player()); $this->assertSame('1-6', $result['rows'][0]['score']); $this->assertFalse($result['rows'][0]['won']);
+        $this->assertSame(6, $result['version']); $this->assertSame($context, $result['historical_context']);
         $this->assertSame('scheduled_match_order', $result['basis']); $this->assertSame(54.0, $result['rows'][0]['before_score']); $this->assertSame(52.6, $result['rows'][0]['after_score']);
         $this->assertSame('6-4', $result['own_catalog']['match:old']['score']); $this->assertTrue($result['own_catalog']['match:old']['won']);
         $this->assertSame('1-6', $result['own_catalog']['match:9']['score']); $this->assertFalse($result['own_catalog']['match:9']['won']);

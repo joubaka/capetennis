@@ -125,6 +125,35 @@ calculation. See `PlayerPlusRecordTest` and `tests/Browser/results-overview.cjs`
 spinner or retry message does not establish a production request's status or
 cause; inspect the actual target environment only with current authority.
 
+### Avoid repeated work while rendering a tab
+
+The My Tennis controller opens a private HTTP-GET read scope for one response.
+Within it, the exact global source fingerprint and the validated history file
+are read once and reused by the header, graph and record projections. The full
+fingerprint calculation and history validation are unchanged. Actor-specific
+entitlement, publication and opponent projections are not memoized. The scope
+is removed in `finally`; the next request checks current sources again. POSTs
+and unrouted command/builder contexts retain fresh reads, including before/after
+builder checks. There is no cross-request TTL or persisted availability cache.
+
+Tab navigation pauses outgoing Rating fragments/status reads, stage-info GETs
+and Results polling before requesting the selected workspace. The old panel
+remains until success. On failure or cancellation it resumes read controls,
+including an interrupted rating filter; late responses from aborted reads cannot
+replace the retained content. Early pause does not abort or replay POST actions.
+
+A Profile page containing a transient last-five pending placeholder is not
+stored as a successfully visited tab for the normal 60-second cache lifetime.
+Returning to it therefore checks the server again. This does not create a graph
+or replace it with monthly history: Profile and Rating still share the same
+saved last-five reader, while Rating's monthly-history chart is separate data.
+Missing, stale or inaccessible match artifacts remain unavailable.
+
+Verify `PlayerRatingReadScopeTest`, the focused My Tennis frontend tests and
+the read-navigation browser regression. These tests establish bounded duplicate
+work and request lifecycle behavior, not measured production latency or that a
+particular player's saved artifact is available.
+
 ## Player overview and monthly report
 
 The default Profile tab keeps player details and editing available beneath the

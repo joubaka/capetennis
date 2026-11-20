@@ -13,6 +13,9 @@ class MyTennisController extends Controller
     public function __construct(private readonly MyTennisService $myTennis)
     {
         $this->middleware('auth');
+        $this->middleware(function (Request $request, \Closure $next) {
+            return app(\App\Services\Performance\PlayerRatingReadScope::class)->run($request, fn () => $next($request));
+        });
     }
 
     public function index(Request $request)

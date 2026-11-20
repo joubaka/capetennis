@@ -187,6 +187,11 @@ class PlayerSharedAbilityService
     /** Exact result/publication values also detect external edits without timestamps. */
     public function fingerprint(): string
     {
+        return app(PlayerRatingReadScope::class)->remember('exact-source-fingerprint', fn () => $this->exactFingerprint());
+    }
+
+    protected function exactFingerprint(): string
+    {
         $hash = hash_init('sha256');
         hash_update($hash, 'teamsheet:'.app(TeamSheetTennisEvidence::class)->fingerprint());
         if (Schema::hasTable('historical_identity_recoveries')) {

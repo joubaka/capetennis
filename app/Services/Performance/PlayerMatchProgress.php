@@ -15,10 +15,10 @@ class PlayerMatchProgress
     public function forPlayer(User $user, Player $player): array
     {
         abort_unless($this->access->allows($user, $player), 403);
-        $empty = ['rows' => [], 'as_of' => null, 'restricted' => 0, 'reason' => 'Before/after reconstruction is awaiting a nightly saved update. The overnight refresh starts at 03:02 SAST.'];
         $saved = $this->store->read((int) $player->id);
-        if (!$saved || $saved['player_id'] !== (int) $player->id) return $empty;
-        try { if (!$this->current($saved)) return $empty; } catch (\Throwable) { return $empty; }
+        if (!$saved || $saved['player_id'] !== (int) $player->id) return $this->unavailable($user, $player);
+        try { $current = $this->current($saved); } catch (\Throwable) { $current = false; }
+        if (!$current) return $this->unavailable($user, $player);
         $rows = []; $restricted = 0; $permitted = [];
         $opponentIds = [];
         foreach ($saved['rows'] as $row) foreach ($row['evidence_refs'] as $ref) $opponentIds[] = $ref['opponent_id'];
@@ -41,6 +41,22 @@ class PlayerMatchProgress
         return ['rows' => $rows, 'as_of' => $saved['as_of'], 'restricted' => $restricted, 'reason' => null];
     }
 
+    private function unavailable(User $user, Player $player): array
+    {
+        $reason = 'Before/after reconstruction is awaiting a nightly saved update. The overnight refresh starts at 03:02 SAST.';
+        if ($user->hasRole('super-user')) {
+            try {
+                if (!app(PlayerPlusEntitlement::class)->activePlayers()->whereKey($player->id)->exists()) {
+                    $reason = 'This player has no active Plus access and is not included in the overnight match-graph refresh. An administrator must generate a saved graph for this preview.';
+                }
+            } catch (\Throwable) {
+                $reason = 'Before/after reconstruction is unavailable. An administrator needs to check this player\'s saved graph and overnight refresh eligibility.';
+            }
+        }
+
+        return ['rows' => [], 'as_of' => null, 'restricted' => 0, 'reason' => $reason];
+    }
+
     /** Expensive historical reconstruction: explicit offline command only. */
     public function build(Player $player): array
     {
@@ -50,6 +66,7 @@ class PlayerMatchProgress
             || !hash_equals($fingerprint, $history['source_fingerprint'])
             || !hash_equals($fingerprint, (string) DB::table('player_ability_snapshots')->where('snapshot_key', 'current')->value('source_fingerprint'))
             || !isset($history['publication_manifest']) || !$this->snapshots->published($history['publication_manifest'])) throw new \RuntimeException('Current matching saved ratings and history are required.');
+        $historicalContext = app(PlayerMatchHistoricalContext::class)->capture($asOf);
         $currentScore = $snapshot['all_age']['ratings'][$player->id]['score'] ?? null;
         if (!is_numeric($currentScore) || ($snapshot['all_age']['ratings'][$player->id]['comparable'] ?? false) !== true) throw new \RuntimeException('A comparable current Overall CTR is required.');
         $matches = $snapshot['all_age']['history_evidence']['matches'] ?? [];
@@ -109,9 +126,11 @@ class PlayerMatchProgress
                 'opponent' => $side !== false ? (string) ($detail['names'][$side] ?? 'Opponent') : 'Match details unavailable', 'score' => $score] + $pair;
         }
         if (!hash_equals($fingerprint, $this->ability->fingerprint())) throw new \RuntimeException('Sources changed during reconstruction.');
+        if ($historicalContext !== app(PlayerMatchHistoricalContext::class)->capture($asOf)) throw new \RuntimeException('Historical inputs changed during reconstruction.');
         return ['version' => PlayerMatchProgressStore::VERSION, 'basis' => 'scheduled_match_order', 'player_id' => (int) $player->id,
             'policy_hash' => $this->store->policyHash(), 'source_fingerprint' => $fingerprint, 'snapshot_version' => $snapshot['snapshot_version'],
-            'as_of' => $asOf, 'built_at' => CarbonImmutable::now('Africa/Johannesburg')->toIso8601String(), 'current_score' => round((float) $currentScore, 1), 'own_catalog' => $catalog, 'rows' => $rows];
+            'as_of' => $asOf, 'built_at' => CarbonImmutable::now('Africa/Johannesburg')->toIso8601String(), 'current_score' => round((float) $currentScore, 1), 'own_catalog' => $catalog, 'rows' => $rows,
+            'historical_context' => $historicalContext];
     }
 
     public function current(array $saved, bool $freshSnapshot = false): bool
@@ -119,7 +138,17 @@ class PlayerMatchProgress
         $snapshot = $freshSnapshot ? $this->snapshots->freshCurrent() : $this->snapshots->current();
         return ($snapshot['reason'] ?? null) === null && $saved['as_of'] === CarbonImmutable::today('Africa/Johannesburg')->toDateString()
             && $saved['as_of'] === ($snapshot['snapshot_as_of'] ?? null) && hash_equals($saved['snapshot_version'], $snapshot['snapshot_version'] ?? '')
-            && hash_equals($saved['source_fingerprint'], $this->ability->fingerprint())
+            && $this->inputsCurrent($saved)
             && (float) $saved['current_score'] === round((float) ($snapshot['all_age']['ratings'][$saved['player_id']]['score'] ?? -1), 1);
+    }
+
+    private function inputsCurrent(array $saved): bool
+    {
+        if (($saved['version'] ?? PlayerMatchProgressStore::LEGACY_VERSION) === PlayerMatchProgressStore::LEGACY_VERSION) {
+            return hash_equals($saved['source_fingerprint'], $this->ability->fingerprint());
+        }
+        $contexts = app(PlayerMatchHistoricalContext::class);
+        return $contexts->valid($saved['historical_context'] ?? null, $saved['as_of'])
+            && $saved['historical_context'] === $contexts->capture($saved['as_of']);
     }
 }

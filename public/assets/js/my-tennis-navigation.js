@@ -113,6 +113,12 @@
 
   function remember(target, key, page) {
     if (scope === target && target.keys.has(key)) {
+      // A nightly graph may become available while another tab is open.
+      // Never replay a transient Profile placeholder as a successfully visited tab.
+      if (page.workspace.querySelector('[data-profile-match-pending]')) {
+        target.ready.delete(key);
+        return;
+      }
       // Warm the Results tab without retaining scores whose visibility may change.
       if (page.workspace.querySelector(liveResultsSelector)) {
         const workspace = page.workspace.cloneNode(true);
@@ -196,6 +202,8 @@
     const request = new AbortController();
     request.key = key;
     pending = request;
+    stopLiveResults?.();
+    workspace.dispatchEvent(new CustomEvent('my-tennis:navigating', {bubbles: true}));
     const timeout = window.setTimeout(() => request.abort(), 30000);
     workspace.setAttribute('aria-busy', 'true');
     const status = showStatus(workspace, 'Loading My Tennis…');
@@ -271,6 +279,10 @@
         tab?.removeAttribute('data-my-tennis-tab-pending');
         pending = null;
         workspace.removeAttribute('aria-busy');
+        if (workspace.isConnected) {
+          workspace.dispatchEvent(new CustomEvent('my-tennis:navigation-stopped', {bubbles: true}));
+          mountLiveResults(workspace);
+        }
       }
     }
   }
