@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\{BulkEmailLog, Event, EventMailIssue, TeamRegion, User};
+use App\Models\{BulkEmailLog, Event, EventMailIssue, EventType, TeamRegion, User};
 use App\Services\EventMailLogService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -255,7 +255,8 @@ class EventMailLogTest extends TestCase
 
     public function test_regional_manager_sees_only_proven_region_and_revocation_blocks_access(): void
     {
-        $event = Event::factory()->create();
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Regional team event', 'type' => EventType::TEAM]);
+        $event = Event::factory()->create(['eventType' => $type]);
         $this->manager($event);
         $actor = User::factory()->create();
         $region = TeamRegion::create(['region_name' => 'One region']);

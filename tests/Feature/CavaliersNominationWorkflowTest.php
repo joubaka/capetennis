@@ -267,7 +267,13 @@ class CavaliersNominationWorkflowTest extends TestCase
         $event->update(['signUp' => true]); $this->actingAs($sponsor);
         $armed = true;
         DB::listen(function (QueryExecuted $query) use (&$armed, $nomination) {
-            if ($armed && str_contains($query->sql, 'from `category_events`') && str_contains($query->sql, 'for update')) {
+            $sql = strtolower(str_replace(['`', '"'], '', $query->sql));
+            $categoryRead = str_contains($sql, 'from category_events');
+            // SQLite emits no FOR UPDATE; exercise the category read inside its transaction.
+            $lockedRead = $query->connection->getDriverName() === 'sqlite'
+                ? $query->connection->transactionLevel() > 0
+                : str_contains($sql, 'for update');
+            if ($armed && $categoryRead && $lockedRead) {
                 $armed = false; DB::table('event_nominations')->where('id', $nomination->id)->delete();
             }
         });

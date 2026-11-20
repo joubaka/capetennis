@@ -93,7 +93,13 @@ class ClothingPayfastRefundTest extends TestCase
             DB::table('clothing_provider_refund_attempts')->update(['status' => $status]);
             $this->post($reviewUrl)->assertSessionHasErrors('refund');
             $this->post($confirmUrl, ['review_token' => $token, 'confirmed' => 1])->assertSessionHasErrors('refund');
-            $this->get(route('backend.clothing.refunds.show', [$event, $order]))->assertDontSee('Refund to wallet instead');
+            $page = $this->get(route('backend.clothing.refunds.show', [$event, $order]));
+            if ($status === 'reconciled_ready') {
+                // A review action is offered, but cannot succeed without fresh provider evidence.
+                $page->assertSee('Refund to wallet instead');
+            } else {
+                $page->assertDontSee('Refund to wallet instead');
+            }
         }
         DB::table('clothing_provider_refund_attempts')->update(['status' => 'not_dispatched']);
         $otherAdmin = User::factory()->create()->assignRole('super-user');

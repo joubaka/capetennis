@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Player;
-use App\Services\Performance\{AllAgeRatingModel, PlayerRatingHistoryService, PlayerRatingHistoryStore, PlayerSharedAbilityService};
+use App\Services\Performance\{BallRatingModel, PlayerRatingHistoryService, PlayerRatingHistoryStore, PlayerSharedAbilityService};
 use Tests\TestCase;
 
 class AllAgeHistoricalPresentationTest extends TestCase
@@ -13,7 +13,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $saved = $this->savedHistory();
         $latest = $saved['months'][0];
         $latest['date'] = '2026-11-01';
-        $latest['cohorts'][AllAgeRatingModel::COHORT][1] = ['score' => 93.1, 'group' => 'local', 'component' => 'local', 'connection_status' => 'disconnected'];
+        $latest['cohorts'][BallRatingModel::COHORTS['standard']][1] = ['score' => 93.1, 'group' => 'local', 'component' => 'local', 'connection_status' => 'disconnected'];
         $saved['months'][] = $latest;
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
@@ -31,7 +31,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
     private function savedHistory(): array
     {
         return ['source_fingerprint' => 'same', 'as_of' => '2026-10-01', 'built_at' => '2026-10-01', 'evidence' => [],
-            'months' => [['date' => '2026-10-01', 'cohorts' => [AllAgeRatingModel::COHORT => [1 => [
+            'months' => [['date' => '2026-10-01', 'cohorts' => [BallRatingModel::COHORTS['standard'] => [1 => [
                 'score' => 61.5, 'group' => 'shared', 'component' => 'shared', 'connection_status' => 'historical',
                 'historical_connection' => true, 'connection_age_days' => 500, 'connection_reference_date' => '2025-05-19',
             ]]]]]];
@@ -70,7 +70,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
     public function test_disconnected_numeric_rating_is_visible_with_an_explicit_low_confidence_warning(): void
     {
         $saved = $this->savedHistory();
-        $saved['months'][0]['cohorts'][AllAgeRatingModel::COHORT][1] = [
+        $saved['months'][0]['cohorts'][BallRatingModel::COHORTS['standard']][1] = [
             'score' => 61.5, 'group' => 'local', 'component' => 'local', 'connection_status' => 'disconnected',
             'historical_connection' => false, 'connection_age_days' => null, 'connection_reference_date' => null,
         ];

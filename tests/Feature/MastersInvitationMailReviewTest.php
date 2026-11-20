@@ -131,10 +131,11 @@ class MastersInvitationMailReviewTest extends TestCase
         Mail::fake();
         $log = $this->signedQueuedLog();
         $log->update(['related_id' => $log->related_id + 9999]);
+        $before = $log->fresh()->getAttributes();
 
         (new SendMastersInvitationEmailJob($log->id, $this->event->id))->handle();
 
-        $this->assertSame('skipped', $log->fresh()->status);
+        $this->assertSame($before, $log->fresh()->getAttributes());
         Mail::assertNothingSent();
     }
 

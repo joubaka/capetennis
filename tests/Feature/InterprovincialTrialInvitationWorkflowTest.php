@@ -651,7 +651,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $this->actingAs($payer)->post($route)->assertSessionHasErrors('invitation');
 
         $this->event->update(['start_date' => now()->addMonth()->toDateString(), 'deadline' => 1]);
-        $this->event->update(['status' => 'closed']);
+        $this->event->update(['signUp' => false]);
         $this->actingAs($payer)->post($route)->assertSessionHasErrors('invitation');
 
         $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
@@ -1011,7 +1011,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $firstHandoffAt = $order->fresh()->payfast_handed_off_at;
         $orderCount = RegistrationOrder::count();
         $itemCount = RegistrationOrderItems::count();
-        $this->travel(31)->minutes();
+        $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES - 1)->minutes();
 
         $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
             'type' => 'registration', 'custom_int5' => $order->id,

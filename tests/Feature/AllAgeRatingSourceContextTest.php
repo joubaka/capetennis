@@ -22,6 +22,7 @@ class AllAgeRatingSourceContextTest extends TestCase
         $payload = ['cohorts' => [], 'all_age' => ['ratings' => [], 'components' => [], 'players' => [], 'reference_component' => null], 'names' => [], 'reason' => null,
             'built_at' => '2026-10-01 00:01:00 SAST', 'source_events' => [$event->id], 'source_matches' => ['match:'.$fixture->id, 'team-match:'.$team->id]];
         $payload['ball_ratings'] = (new BallRatingModel)->fit([], CarbonImmutable::parse('2026-10-01'));
+        $payload['all_age'] = $payload['ball_ratings']['standard'];
         return compact('event', 'draw', 'fixture', 'team', 'payload');
     }
 

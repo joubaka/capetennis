@@ -2,6 +2,27 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-068",
+      "title": "Historical identity preview shows empty rating comparisons",
+      "scope": "Private super-user hypothetical historical identity previews using current independent ball-level snapshots; not documentary evidence application.",
+      "symptoms": "A validated proposal passes canonical source checks but its preview contains no comparison rows, or a failed model is not rejected.",
+      "cause": "The preview read retired age-cohort graphs after the canonical builder deliberately changed cohorts to an empty array and moved estimates to independent ball_ratings.",
+      "fix": "Require all three current ball graphs and compare each only with the corresponding Red, Orange or Green/Yellow graph. Label comparisons explicitly, omit pools empty on both sides, and never fall back to legacy cohorts or all_age. Reject nonconverged components and the model nonconvergence exclusion key even when its count is zero. Preserve super-user authorization, exact event/proposal identity and fingerprint checks, publication gates, consistent read-only source capture and preview-only persistence rejection.",
+      "verification": "On 2026-11-20 the isolated local historical identity review class passed 23 tests and 175 assertions; the final zero-row nonconvergence and direct-component guards passed 2 tests and 12 assertions. Coverage includes independent pool membership, poisoned legacy aliases, missing-pool rejection, disconnected component comparisons and unchanged source records. No production or live verification is established.",
+      "limits": "Guide only. A hypothetical comparison grants no ownership, identity attestation, publication, saved rating replacement or production access. Documentary recovery and deployment require their own authorization.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Performance/HistoricalIdentityReviewService.php",
+        "app/Services/Performance/BallRatingModel.php",
+        "app/Services/Performance/PlayerSharedAbilityService.php",
+        "docs/historical-rating-recovery.md"
+      ],
+      "tests": [
+        "tests/Feature/HistoricalIdentityReviewTest.php",
+        "tests/Unit/Assistant/AssistantRepairLibraryTest.php"
+      ]
+    },
+    {
         "id": "RK-067",
         "title": "Saved last-five graph disappears after global source changes",
         "scope": "Private saved match graph validation shared by authorized Profile and Rating projections.",

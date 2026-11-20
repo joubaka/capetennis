@@ -19,7 +19,8 @@ class AdminTeamWithdrawalTest extends TestCase
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('super-user');
         $payer = User::factory()->create();
-        $event = Event::factory()->create(['withdrawal_deadline' => now()->addDays(3)]);
+        $event = Event::factory()->create(['signUp' => true, 'deadline' => 0, 'start_date' => now()->addWeek(),
+            'withdrawal_deadline' => now()->addDays(3)]);
         $team = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id, 'noProfile' => 0]);
         $player = Player::factory()->create();
         $slot = TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 1]);

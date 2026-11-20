@@ -1623,14 +1623,15 @@ class FlexibleMonradTest extends TestCase
             'registration1_id' => $aliases[$i]->id, 'registration2_id' => $aliases[$i + 1]->id,
             'parent_fixture_id' => $final->id, 'loser_parent_fixture_id' => $plate->id]);
         $this->postJson(route('backend.trials.auto', $legacy), ['start' => '2026-09-05 08:00:00', 'duration' => 60, 'gap' => 15])->assertOk();
-        foreach ([$final, $plate] as $match) {
-            $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $match->id, 'time' => '2026-09-05 09:15:00']);
-        }
+        // Legacy feeder paths share possible players until their results are known.
+        // Unlike a proven flexible topology, spare courts cannot make them concurrent.
+        $this->assertSame(['2026-09-05 09:15:00', '2026-09-05 10:30:00'],
+            DB::table('order_of_plays')->whereIn('fixture_id', [$final->id, $plate->id])->orderBy('time')->pluck('time')->all());
         $before = DB::table('order_of_plays')->where('draw_id', $legacy->id)->orderBy('id')->get()->toJson();
         for ($run = 0; $run < 2; $run++) {
             $this->postJson(route('backend.individual-schedule.auto', $draw), ['start' => '2026-09-05 09:15:00', 'duration' => 60])->assertOk();
             foreach (['main_a', 'main_b'] as $key) {
-                $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $record->fixture_map[$key], 'time' => '2026-09-05 10:30:00']);
+                $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $record->fixture_map[$key], 'time' => '2026-09-05 11:45:00']);
             }
         }
         $this->postJson(route('backend.individual-schedule.save', $draw), ['fixture_id' => $record->fixture_map['main_a'],
@@ -1671,7 +1672,7 @@ class FlexibleMonradTest extends TestCase
         return [$legacy, $final, $plate, $venue, $monrad, $record, $monradVenue];
     }
 
-    public function test_all_legacy_scheduling_paths_respect_monrad_without_serializing_winner_and_loser_matches(): void
+    public function test_all_legacy_scheduling_paths_respect_monrad_and_reserve_unresolved_legacy_paths(): void
     {
         foreach (['manual', 'full', 'trials', 'filtered', 'round'] as $mode) {
             [$legacy, $final, $plate, $venue, $monrad] = $this->setupReverseSchedulingDraws();
@@ -1682,7 +1683,7 @@ class FlexibleMonradTest extends TestCase
                     $save = ['fixture_id' => $fixture->id, 'venue_id' => $venue, 'court_label' => $i + 1];
                     $this->postJson(route('backend.individual-schedule.save', $legacy), $save + ['scheduled_at' => '2026-09-05 09:00:00'])->assertUnprocessable();
                     $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $fixture->id, 'time' => '2026-09-05 12:00:00']);
-                    $this->postJson(route('backend.individual-schedule.save', $legacy), $save + ['scheduled_at' => '2026-09-05 11:00:00'])->assertOk();
+                    $this->postJson(route('backend.individual-schedule.save', $legacy), $save + ['scheduled_at' => $i === 0 ? '2026-09-05 11:00:00' : '2026-09-05 12:00:00'])->assertOk();
                 }
             } elseif ($mode === 'round') {
                 app(\App\Services\ScheduleEngine::class)->scheduleRound($legacy->id, 2, $venue, $payload['start'], '1', 60);
@@ -1690,10 +1691,8 @@ class FlexibleMonradTest extends TestCase
                 if ($mode === 'filtered') $payload['rounds'] = [2];
                 $this->postJson(route($mode === 'full' ? 'backend.individual-schedule.auto' : 'backend.trials.auto', $legacy), $payload)->assertOk();
             }
-            $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $final->id, 'time' => '2026-09-05 11:00:00']);
-            $this->assertDatabaseHas('order_of_plays', ['fixture_id' => $plate->id,
-                'time' => $mode === 'round' ? '2026-09-05 12:00:00' : '2026-09-05 11:00:00']);
-            if ($mode !== 'round') $this->assertNotEquals($final->fresh()->orderOfPlay->court, $plate->fresh()->orderOfPlay->court);
+            $this->assertSame(['2026-09-05 11:00:00', '2026-09-05 12:00:00'],
+                DB::table('order_of_plays')->whereIn('fixture_id', [$final->id, $plate->id])->orderBy('time')->pluck('time')->all(), $mode);
             $this->assertSame($before, DB::table('order_of_plays')->where('draw_id', $monrad->id)->orderBy('id')->get()->toJson());
             $this->assertSame(4, $legacy->drawFixtures()->where('scheduled', 1)->count());
         }

@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Player;
-use App\Services\Performance\{AllAgeRatingModel, PlayerAbilitySnapshotStore, PlayerPathwayEvidence, PlayerRatingEvidenceBuilder};
+use App\Services\Performance\{AllAgeRatingModel, BallRatingModel, PlayerAbilitySnapshotStore, PlayerPathwayEvidence, PlayerRatingEvidenceBuilder};
 use Carbon\CarbonImmutable;
 use Tests\TestCase;
 
@@ -24,6 +24,7 @@ class PlayerPathwayEvidenceTest extends TestCase
             $id = $index + 1;
             $row = array_replace(['source_id' => 'match:'.$id, 'event_id' => $id, 'kind' => 'match', 'cohort' => AllAgeRatingModel::COHORT,
                 'players' => [1, 2], 'winner_side' => 1, 'score' => '6-4 6-3', 'date' => '2026-10-01', 'months' => 2048, 'ball_type' => 'red'], $changes);
+            $row['cohort'] = $changes['cohort'] ?? BallRatingModel::COHORTS[BallRatingModel::forMatch($row)];
             $event = $row['event_id'];
             $saved['evidence'][] = $row;
             if ($event > 0) {

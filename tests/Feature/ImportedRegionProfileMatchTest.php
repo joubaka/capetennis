@@ -144,7 +144,7 @@ class ImportedRegionProfileMatchTest extends TestCase
         $one->update(['email' => 'changed@example.test']);
         $this->postJson($this->url('store'), $payload)->assertUnprocessable();
         $this->postJson($this->url('store'), $this->payload([$one->id => $player->id, $two->id => $player->id]))->assertUnprocessable();
-        $this->get($this->url('index', TeamRegion::create(['region_name' => 'Test region'])))->assertNotFound();
+        $this->get($this->url('index', TeamRegion::create(['region_name' => 'Test region'])))->assertForbidden();
         $this->actingAs(User::factory()->create())->get($this->url())->assertForbidden();
         $this->assertNull($one->fresh()->player_profile); $this->assertNull($two->fresh()->player_profile);
     }

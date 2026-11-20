@@ -224,10 +224,10 @@ class PublicFixtureEmptyStateTest extends TestCase
             ->assertSee('Hidden Home')->assertDontSee('ForeignSource')->assertSee('TBD');
     }
 
-    public function test_draw_publication_shows_assigned_players_ranks_and_results_before_operational_tie_publication(): void
+    public function test_existing_published_draw_shows_assigned_players_ranks_and_results_before_operational_tie_publication(): void
     {
         $draw = $this->draw(true);
-        $draw->update(['published' => false, 'team_category_id' => 1]);
+        $draw->update(['team_category_id' => 1]);
         $fixture = $this->tie($draw, false);
         $tie = $fixture->teamTie;
         $draw->teams_in_draw()->attach([$tie->home_team_id, $tie->away_team_id]);
@@ -239,7 +239,8 @@ class PublicFixtureEmptyStateTest extends TestCase
         $venue = new \App\Models\Venue;
         $venue->forceFill(['name' => 'Public schedule courts'])->save();
         $fixture->update(['venue_id' => $venue->id, 'court_label' => '1']);
-        app(\App\Domain\Draws\Services\DrawPublicationService::class)->publish($draw);
+        // This is an already-published legacy draw. New publication must not bypass
+        // the scoring gate by enabling an unpublished tie that already has results.
         app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($draw->event, ['draw_id' => $draw->id]);
         // Working schedule revisions must not replace the published snapshot.
         $fixture->update(['scheduled_at' => '2026-10-10 17:30:00']);

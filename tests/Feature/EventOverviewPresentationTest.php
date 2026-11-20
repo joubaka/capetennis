@@ -39,7 +39,7 @@ class EventOverviewPresentationTest extends TestCase
             $this->assertStringContainsString(route($route, $event), $html);
         }
         $this->assertStringContainsString('Needs attention', $html);
-        $this->assertStringContainsString('Draws not ready to publish', $html);
+        $this->assertStringContainsString('Draws not ready to display', $html);
         $this->assertLessThan(strpos($html, 'event-kpi-grid">'), strpos($html, 'Needs attention'));
         $this->assertStringContainsString('Team Stats', $html);
         $this->assertLessThan(strpos($html, '<summary>Setup tools'), strpos($html, 'Team Stats'));

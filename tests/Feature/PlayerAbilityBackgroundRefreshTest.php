@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\Performance\{PlayerAbilityRefreshState, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
+use App\Services\Performance\{BallRatingModel, PlayerAbilityRefreshState, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\{DB, Schema};
@@ -16,7 +16,8 @@ class PlayerAbilityBackgroundRefreshTest extends TestCase
 
     private function payload(): array
     {
-        return ['cohorts' => [], 'names' => [], 'reason' => null,
+        $graphs = (new BallRatingModel)->fit([], CarbonImmutable::today('Africa/Johannesburg'));
+        return ['cohorts' => [], 'all_age' => $graphs['standard'], 'ball_ratings' => $graphs, 'names' => [], 'reason' => null,
             'built_at' => CarbonImmutable::now('Africa/Johannesburg')->format('Y-m-d H:i:s').' SAST',
             'source_events' => [], 'source_matches' => []];
     }

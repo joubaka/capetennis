@@ -62,6 +62,9 @@ jobs:
       - name: Test team event migrations and complete preset workflows on MySQL
         run: php vendor/bin/phpunit tests/Feature/TeamDraw/TeamEventAdditiveMigrationTest.php tests/Feature/TeamDraw/TeamFullPresetAcceptanceTest.php --fail-on-skipped
 
+      - name: Verify nomination admission is rechecked under MySQL locks
+        run: php vendor/bin/phpunit tests/Feature/CavaliersNominationWorkflowTest.php --filter=test_closed_unpublished_and_unlisted_admissions_fail_and_nomination_is_rechecked_after_lock --fail-on-skipped
+
   # ---------------------------------------------------------------
   # Code quality gate — runs fast, blocks all other jobs if it fails
   # ---------------------------------------------------------------
@@ -83,6 +86,9 @@ jobs:
 
       - name: Check deployment migration allowlist and approval safeguards
         run: php vendor/bin/phpunit tests/Unit/DeploymentConfigTest.php --fail-on-skipped
+
+      - name: Check complete feature-shard coverage and isolated runtime guards
+        run: php vendor/bin/phpunit tests/Unit/FeatureSuiteShardsTest.php --fail-on-skipped
 
       - name: Check for dd() / dump() / var_dump()
         run: php scripts/check-debug-calls.php app database routes
@@ -256,12 +262,19 @@ jobs:
   # ---------------------------------------------------------------
   # Full remaining feature tests
   # ---------------------------------------------------------------
-  test-feature:
-    name: Feature Tests (remaining)
+  test-feature-shards:
+    name: Feature shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     # Run the complete suite even when a specialised bucket fails, so one run
     # reports downstream regressions. Specialised jobs still report failures.
     needs: migrations
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      APP_ENV: testing
     steps:
       - uses: actions/checkout@v4
 
@@ -276,8 +289,27 @@ jobs:
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 
-      - name: Run all feature tests
+      - name: Run complete feature-suite partition
         env:
           APP_KEY: base64:YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWE=
         run: |
-          php -d memory_limit=512M vendor/bin/phpunit --testsuite=Feature
+          php -d memory_limit=512M scripts/feature-suite-shards.php --shard=${{ matrix.shard }} --shards=4
+
+      - name: Save shard inventory and test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-shard-${{ matrix.shard }}
+          path: storage/framework/testing/feature-shards/
+          if-no-files-found: warn
+
+  test-feature:
+    name: Feature Tests (remaining)
+    runs-on: ubuntu-latest
+    needs: test-feature-shards
+    if: always()
+    steps:
+      - name: Require every feature shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.test-feature-shards.result }}
+        run: test "$SHARD_RESULT" = success

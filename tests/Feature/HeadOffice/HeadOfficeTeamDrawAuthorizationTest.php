@@ -215,7 +215,7 @@ class HeadOfficeTeamDrawAuthorizationTest extends TestCase
         $this->assertTrue($draw->needsWorkflowChoice());
         $this->assertFalse(Gate::forUser($this->admin)->allows('team-draw.generateTies', $draw));
 
-        $response->assertJsonPath('setup_url', route('draw.setup.show', $draw));
+        $response->assertJsonPath('setup_url', route('draw.guide.show', [$this->teamEvent, $draw]));
         $this->actingAs($this->admin)->get(route('draw.setup.show', $draw))->assertOk();
     }
 

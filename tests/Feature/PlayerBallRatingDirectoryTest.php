@@ -55,7 +55,8 @@ class PlayerBallRatingDirectoryTest extends TestCase
         [$invalid] = $this->finishingField('Invalid Orange');
         CategoryResult::where('event_id', $invalid->id)->where('position', 3)->update(['position' => 2]);
         $snapshot = $this->savedSnapshot();
-        $this->assertSame([], $snapshot['all_age']['ratings']);
+        $this->assertSame($snapshot['ball_ratings']['standard']['ratings'], $snapshot['all_age']['ratings']);
+        $this->assertEqualsCanonicalizing($green->pluck('id')->all(), array_keys($snapshot['all_age']['ratings']));
         $url = route('backend.player-performance.ratings');
         foreach (['red' => $red, 'orange' => $orange, 'standard' => $green] as $ball => $players) {
             $response = $this->get($url.'?ball_type='.$ball)->assertOk()->assertSee('Published final placings only')
@@ -171,7 +172,7 @@ class PlayerBallRatingDirectoryTest extends TestCase
             'category' => 'Red Ball Boys', 'rating_ball_type' => 'red'];
         $graph = (new AllAgeRatingModel)->fit([
             $match($players[0]->id, $players[1]->id, 1), $match($players[3]->id, $players[4]->id, 2),
-        ], CarbonImmutable::today('Africa/Johannesburg'), ordinalFields: [$field]);
+        ], CarbonImmutable::today('Africa/Johannesburg'), ordinalFields: [$field], ballStage: 'red');
         $finishOnly = $graph['ratings'][$players[2]->id];
         $this->assertSame('finish_only', $finishOnly['evidence_basis']);
         $this->assertFalse($finishOnly['comparable']);

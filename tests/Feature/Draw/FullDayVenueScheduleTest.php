@@ -29,7 +29,7 @@ class FullDayVenueScheduleTest extends TestCase
         $response = $this->actingAs($admin)->get(route('backend.event-venue-schedule.calendar', $scope + ['page'=>11]))->assertOk();
         $response->assertViewHas('savedCount', 1001)->assertViewHas('publicationCounts', fn ($counts) => $counts['Private'] === 1001)
             ->assertViewHas('rows', fn ($rows) => $rows->count() === 1)->assertSee('1001 private')
-            ->assertSee('Edit saved times - this draw and day')->assertSee('Back to this draw')
+            ->assertSee('Edit saved times - this draw and day')->assertSee('Back to '.$draws[0]->drawName.' · Schedule')
             ->assertSee(e(route('backend.event-venue-schedule.calendar.full-day', $scope)), false);
         $last = TeamFixture::where('draw_id', $draws[0]->id)->whereNotNull('scheduled_at')->latest('id')->first();
         $this->get(route('backend.event-venue-schedule.calendar', $scope + ['focus'=>'team:'.$last->id]))->assertOk()

@@ -24,14 +24,16 @@ class AllAgeConnectionDirectoryTest extends TestCase
         $second = Player::factory()->create(['name' => 'Disconnected', 'surname' => 'Player']);
         $rating = ['cohort' => AllAgeRatingModel::COHORT, 'component' => 'reference', 'score' => 60.0,
             'confidence_label' => 'Low', 'last_played' => '2026-10-01'];
-        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
+        $snapshot = [
             'reason' => null, 'snapshot_stale' => false, 'built_at' => '2026-10-29 10:00:00', 'snapshot_as_of' => '2026-10-29',
             'all_age' => ['reference_component' => 'reference',
                 'components' => ['reference' => ['members' => [$first->id]], 'disconnected' => ['members' => [$second->id]]],
                 'players' => [$first->id => ['age_groups' => ['u13 boys']], $second->id => ['age_groups' => ['u13 girls']]],
                 'ratings' => [$first->id => $rating, $second->id => array_replace($rating, ['score' => null, 'component' => 'disconnected'])]],
-        ]);
-        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn([
+        ];
+        $snapshot['ball_ratings']['standard'] = $snapshot['all_age'];
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn($snapshot);
+        $this->mock(PlayerSharedAbilityService::class)->shouldReceive('ballBadgeSnapshot')->with('standard')->andReturn([
             $first->id => $rating, $second->id => array_replace($rating, ['score' => null, 'component' => 'disconnected', 'reason' => 'Awaiting connecting evidence.']),
         ]);
         $url = route('backend.player-performance.ratings');

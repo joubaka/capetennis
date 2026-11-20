@@ -42,8 +42,8 @@ class ScheduleWorkspaceRenderingTest extends TestCase
         $this->get(route('backend.event-venue-schedule.index', ['event' => $this->event, 'manual' => 1, 'draw_ids' => [$draw->id]]))
             ->assertOk()->assertSee('Step 4 of 5 · Schedule')
             ->assertSee(route('draw.guide.show', [$this->event, $draw]), false)
-            ->assertSee('Review setup &amp; publication · Selected schedule draw', false)
-            ->assertDontSee('Review setup &amp; publication · Other schedule draw', false)
+            ->assertSee('Back to Selected schedule draw · Schedule')
+            ->assertDontSee('Back to Other schedule draw · Schedule')
             ->assertSee('draw_id='.$draw->id, false)
             ->assertDontSee('@if($guideSelection', false);
     }

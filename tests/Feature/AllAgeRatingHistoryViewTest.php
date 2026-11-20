@@ -24,7 +24,8 @@ class AllAgeRatingHistoryViewTest extends TestCase
         $this->assertStringNotContainsString('u13 boys', $html);
         $this->assertStringNotContainsString('ctr-cohort', $html);
         $this->assertStringNotContainsString('name="cohort"', $html);
-        $this->assertStringContainsString('All ages · singles', $html);
+        $this->assertSame([], $history['points']);
+        $this->assertNull($history['ball_stage']);
         $this->assertStringNotContainsString('75.0', $html);
     }
 }

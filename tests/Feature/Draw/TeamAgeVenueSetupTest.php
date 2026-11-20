@@ -188,7 +188,12 @@ class TeamAgeVenueSetupTest extends TestCase
         [$event,$draws,$venue,$other,$options]=$this->draftPreviewScenario();
         $before=[];
         foreach(['team_fixtures','event_venue_schedule_drafts','draw_audit_logs','published_schedule_assignments','order_of_plays'] as $table) $before[$table]=DB::table($table)->get()->toJson();
-        $writes=[];DB::listen(function($query)use(&$writes){if(preg_match('/^\s*(insert|update|delete|replace|alter|create|drop)\b/i',$query->sql))$writes[]=$query->sql;});
+        $writes=[];DB::listen(function($query)use(&$writes){
+            $sql = strtolower(str_replace(['`', '"'], '', $query->sql));
+            // Request telemetry may append an audit event; schedule data must remain untouched.
+            if (preg_match('/^\s*insert into audit_events\b/', $sql)) return;
+            if(preg_match('/^\s*(insert|update|delete|replace|alter|create|drop)\b/i',$sql))$writes[]=$query->sql;
+        });
         $result=$this->postJson(route('backend.event-venue-schedule.preview',$event),$options)->assertOk()->assertJsonPath('preview_only',true)->json();
         $this->assertCount(16,$result['matches'],json_encode($result['unscheduled']));
         foreach($result['matches'] as $row) $this->assertSame($draws->take(4)->contains('id',$row['draw_id'])?$venue->id:$other->id,$row['venue_id']);

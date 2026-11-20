@@ -270,13 +270,16 @@ class PayfastHandoffReconciliationCommandTest extends TestCase
 
     private function unresolvedTeamOrder(User $payer): TeamPaymentOrder
     {
-        $sequence = TeamPaymentOrder::count() + 1;
+        $event = \App\Models\Event::factory()->create(['start_date' => now()->addWeek(), 'deadline' => 0]);
+        $category = \App\Models\CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $team = \App\Models\Team::factory()->create(['category_event_id' => $category->id, 'user_id' => $payer->id]);
+        $player = \App\Models\Player::factory()->create();
 
         return TeamPaymentOrder::create([
             'user_id' => $payer->id,
-            'team_id' => 10 + $sequence,
-            'player_id' => 20 + $sequence,
-            'event_id' => 30 + $sequence,
+            'team_id' => $team->id,
+            'player_id' => $player->id,
+            'event_id' => $event->id,
             'total_amount' => 150,
             'wallet_reserved' => 25,
             'payfast_amount_due' => 125,

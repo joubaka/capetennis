@@ -27,7 +27,7 @@ class InvitationCommunicationRetryTest extends TestCase
         $region = TeamRegion::create(['region_name' => 'Retry region']);
         $eventRegion = EventRegion::findOrFail(DB::table('event_regions')->insertGetId(['event_id' => $event->id, 'region_id' => $region->id]));
         $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
-        $player = Player::factory()->create();
+        $player = Player::factory()->create(['email' => 'parent@example.test']);
         if ($trial) {
             $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'snapshot_hash' => str_repeat('a', 64), 'created_by_user_id' => $actor->id]);
             $invitation = InterprovincialTrialInvitation::create(['event_id' => $event->id, 'batch_id' => $batch->id, 'category_event_id' => $category->id, 'player_id' => $player->id, 'nomination_id' => 1, 'status' => 'failed']);

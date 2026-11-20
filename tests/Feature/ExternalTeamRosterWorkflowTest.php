@@ -92,7 +92,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->actingAs($this->admin)->postJson(
             route('backend.team.import.no.profile', [$otherEvent, $this->team]),
             ['file' => $this->roster("Rank,Name,Surname\n1,Ana,One\n2,Ben,Two\n")]
-        )->assertNotFound();
+        )->assertForbidden();
 
         $this->actingAs($this->admin)->postJson(
             route('backend.team.import.no.profile', [$this->event, $this->team]),
@@ -446,7 +446,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $reserved = (float) $order->fresh()->wallet_reserved;
         $due = (float) $order->fresh()->payfast_amount_due;
-        $this->travel(31)->minutes();
+        $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES - 1)->minutes();
         $this->post(route('team.payment.payfast.handoff', [
             $this->team, $player, $this->event,
         ]), ['custom_int5' => $order->id])->assertOk();
@@ -1174,8 +1174,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
         $payload = ['player_id' => $replacement->id, 'expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_replacement' => 1];
         $this->actingAs(User::factory()->create())->patchJson($url, $payload)->assertForbidden();
-        $manager = User::factory()->create();
-        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        $manager = $this->managerForAnotherRegion();
         $this->actingAs($manager)->patchJson($url, $payload)->assertForbidden();
         $this->actingAs($manager)->getJson(route('backend.team-selection.imported-players.profiles.search', [$this->event, $region, $this->team, $slot]).'?q=Player')->assertForbidden();
         $otherEvent = Event::factory()->create(['eventType' => $this->event->eventType]);
@@ -1588,8 +1587,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $url = route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]);
         $payload = ['expected_player_id' => $old->id, 'expected_rank' => 1, 'confirm_unlink' => 1];
         $this->actingAs(User::factory()->create())->deleteJson($url, $payload)->assertForbidden();
-        $manager = User::factory()->create();
-        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id, 'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        $manager = $this->managerForAnotherRegion();
         $this->actingAs($manager)->deleteJson($url, $payload)->assertForbidden();
         $this->actingAs($this->admin)->deleteJson($url, array_merge($payload, ['expected_rank' => 2]))->assertUnprocessable();
         $order = TeamPaymentOrder::create(['team_id' => $this->team->id, 'event_id' => $this->event->id,
@@ -2078,6 +2076,46 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->actingAs(User::factory()->create())->post($url, $base + ['target_type' => 'team'])->assertForbidden();
         Queue::assertNothingPushed();
         $this->assertDatabaseCount('bulk_email_logs', 0);
+    }
+
+    public function test_own_region_manager_can_relink_and_unlink_an_unpaid_imported_profile_without_ownership_or_mail(): void
+    {
+        Queue::fake();
+        \Illuminate\Support\Facades\Mail::fake();
+        [$region, $slot, $old, $replacement, $url] = $this->relinkScenario();
+        $owners = [$old->userId, $replacement->userId];
+        $manager = User::factory()->create();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $region->id,
+            'region_id' => $region->region_id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        $links = DB::table('user_players')->count();
+        $this->actingAs($manager)->patch($url, ['player_id' => $replacement->id, 'expected_player_id' => $old->id,
+            'expected_rank' => 1, 'confirm_replacement' => 1])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($replacement->id, (int) $slot->fresh()->player_profile);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'player_id' => $replacement->id, 'pay_status' => 0]);
+        $this->delete(route('backend.team-selection.imported-players.profile.destroy', [$this->event, $region, $this->team, $slot]),
+            ['expected_player_id' => $replacement->id, 'expected_rank' => 1, 'confirm_unlink' => 1])
+            ->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertNull($slot->fresh()->player_profile);
+        $this->assertDatabaseCount('team_players', 1);
+        $this->assertDatabaseHas('team_players', ['team_id' => $this->team->id, 'rank' => 1, 'player_id' => 0, 'pay_status' => 0]);
+        $this->assertDatabaseCount('team_payment_orders', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertSame($links, DB::table('user_players')->count());
+        $this->assertSame($owners, [$old->fresh()->userId, $replacement->fresh()->userId]);
+        Queue::assertNothingPushed();
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
+    private function managerForAnotherRegion(): User
+    {
+        $region = TeamRegion::create(['region_name' => 'Different managed region']);
+        $eventRegion = new EventRegion();
+        $eventRegion->forceFill(['event_id' => $this->event->id, 'region_id' => $region->id, 'ordering' => 2])->save();
+        $manager = User::factory()->create();
+        \App\Models\EventRegionManager::create(['event_id' => $this->event->id, 'event_region_id' => $eventRegion->id,
+            'region_id' => $region->id, 'user_id' => $manager->id, 'assigned_by' => $this->admin->id]);
+        return $manager;
     }
 
     private function relinkScenario(): array

@@ -521,7 +521,7 @@ class TeamControllerAuthorizationTest extends TestCase
         $this->actingAs($this->otherAdmin)->postJson($url, ['published' => false])->assertForbidden();
         $this->actingAs($this->admin)->postJson($url, ['published' => 'toggle'])->assertUnprocessable();
         $foreign = TeamRegion::create(['region_name' => 'Foreign region']);
-        $this->postJson(route('backend.region.teams.publish', [$this->event, $foreign]), ['published' => false])->assertNotFound();
+        $this->postJson(route('backend.region.teams.publish', [$this->event, $foreign]), ['published' => false])->assertForbidden();
         $this->assertDatabaseHas('teams', ['id' => $this->team->id, 'published' => true]);
         $empty = TeamRegion::create(['region_name' => 'Empty region']);
         $this->event->regions()->attach($empty);
@@ -732,9 +732,11 @@ class TeamControllerAuthorizationTest extends TestCase
     public function test_bulk_publish_rejects_a_region_not_attached_to_the_event(): void
     {
         $region = TeamRegion::create(['region_name' => 'Detached Region']);
+        $before = $this->team->fresh()->getAttributes();
 
         $this->actingAs($this->admin)
             ->postJson(route('backend.region.teams.publish', [$this->event, $region]))
-            ->assertNotFound();
+            ->assertForbidden();
+        $this->assertSame($before, $this->team->fresh()->getAttributes());
     }
 }

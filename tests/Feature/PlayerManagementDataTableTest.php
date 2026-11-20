@@ -117,12 +117,13 @@ class PlayerManagementDataTableTest extends TestCase
         $this->assertSame($players->slice(10, 100)->pluck('id')->values()->all(), array_column($response->json('data'), 'id'));
         foreach ($response->json('data') as $row) {
             $html = $row['ability_badge_html'];
-            $this->assertStringContainsString('54.8 | Low', $html);
+            $this->assertStringContainsString('aria-label="CTR 54.8 within-group only', $html);
+            $this->assertStringContainsString('Low confidence', $html);
             $this->assertStringNotContainsString('Very low', $html);
             $this->assertStringNotContainsString('C0', $html);
             $this->assertStringContainsString('&quot;&lt;script&gt;', $html);
             $this->assertStringNotContainsString('<script>', $html);
-            $this->assertStringNotContainsString('data-rating-player', $html);
+            $this->assertStringContainsString('data-rating-done="1"', $html);
         }
         $view = file_get_contents(resource_path('views/backend/player/index.blade.php'));
         $this->assertStringContainsString('row.ability_badge_html', $view);

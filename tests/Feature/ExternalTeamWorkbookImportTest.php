@@ -113,7 +113,7 @@ class ExternalTeamWorkbookImportTest extends TestCase
         $this->actingAs($otherAdmin)->postJson(
             route('backend.region.teams.import.no.profile', [$otherEvent, $region]),
             ['file' => $this->workbook(), 'expected_players' => 8]
-        )->assertNotFound();
+        )->assertForbidden();
 
         $this->assertDatabaseCount('teams', 0);
         $this->assertDatabaseCount('no_profile_team_players', 0);

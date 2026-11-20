@@ -169,7 +169,10 @@ class HistoricalIdentityReviewService
             $baseline = $service->identityReviewSnapshot($asOf, cohorts: array_unique($cohorts));
             $candidate = $service->identityReviewSnapshot($asOf, new HistoricalIdentityPreviewContext($identities), array_unique($cohorts));
             foreach ([$baseline, $candidate] as $snapshot) {
-                foreach ($snapshot['cohorts'] as $data) {
+                foreach (array_keys(BallRatingModel::LABELS) as $stage) {
+                    $data = $snapshot['ball_ratings'][$stage] ?? null;
+                    $this->require(is_array($data) && is_array($data['ratings'] ?? null) && is_array($data['components'] ?? null), 'Independent ball-level calculations are required for this preview.');
+                    $this->require(!array_key_exists('Ball-level model did not converge', $data['excluded'] ?? []), 'An affected comparison group did not converge. Rating changes are withheld.');
                     foreach ($data['components'] as $component) {
                         $this->require((bool) ($component['converged'] ?? false), 'An affected comparison group did not converge. Rating changes are withheld.');
                     }
@@ -191,9 +194,10 @@ class HistoricalIdentityReviewService
     private function comparison(array $before, array $after): array
     {
         $result = [];
-        foreach (array_unique([...array_keys($before['cohorts']), ...array_keys($after['cohorts'])]) as $label) {
-            $old = $before['cohorts'][$label] ?? ['ratings' => [], 'components' => []];
-            $new = $after['cohorts'][$label] ?? ['ratings' => [], 'components' => []];
+        foreach (BallRatingModel::LABELS as $stage => $label) {
+            $old = $before['ball_ratings'][$stage];
+            $new = $after['ball_ratings'][$stage];
+            if ($old['ratings'] === [] && $new['ratings'] === []) continue;
             $positions = function (array $data, array $names): array {
                 $out = [];
                 foreach ($data['components'] as $component => $group) {

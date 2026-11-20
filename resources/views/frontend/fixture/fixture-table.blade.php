@@ -1,5 +1,5 @@
 @php
-  $fixtureScheduleAvailable = app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'];
+  $fixtureScheduleAvailable = ($fixtureScheduleSummary ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw))['available'];
 @endphp
 <style>
   .winner-home { background-color: rgba(40,167,69,0.25) !important; color:#155724 !important; }

@@ -63,16 +63,19 @@ class PlayerRelationshipPrivacyTest extends TestCase
             'ends_at' => now()->addDays(17), 'version' => 1]);
         $readiness = Mockery::mock(PlayerPlusReadiness::class); $readiness->shouldReceive('forPlayer')->andReturn(null);
         $this->app->instance(PlayerPlusReadiness::class, $readiness);
+        $privateWorkspaceUrl = route('my.tennis', ['player' => $player->id, 'tab' => 'rating']);
         $response = $this->actingAs($sponsor)->get(route('player-plus.player', $player))->assertOk()
             ->assertSee('A new purchase for this player is not currently available')
             ->assertDontSee('admin-granted')->assertDontSee('Private support case detail')
-            ->assertDontSee(route('my.tennis.record', $player), false);
+            ->assertDontSee(route('my.tennis.record', $player), false)
+            ->assertDontSee(route('my.tennis.event-history', $player), false)
+            ->assertDontSee($privateWorkspaceUrl);
         $this->assertNull($response->viewData('adminAccess')); $this->assertNull($response->viewData('membership'));
         $this->assertTrue($response->viewData('purchaseBlocked'));
         $this->assertFalse($response->viewData('canViewRating'));
         $this->assertSame('no-store, private', $response->headers->get('Cache-Control'));
         $this->actingAs($owner)->get(route('player-plus.player', $player))->assertOk()->assertSee('admin-granted')
-            ->assertSee(route('my.tennis.record', $player), false)->assertSee(route('my.tennis.event-history', $player), false);
+            ->assertSee($privateWorkspaceUrl);
         $this->assertDatabaseCount('user_players', 0);
     }
 

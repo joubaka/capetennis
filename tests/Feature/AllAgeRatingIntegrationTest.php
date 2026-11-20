@@ -46,7 +46,7 @@ class AllAgeRatingIntegrationTest extends TestCase
         foreach ($ratings as $id => $rating) { $components[$rating['component']]['members'][] = (int) $id; }
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
             'reason' => null, 'all_age' => ['ratings' => $ratings, 'components' => $components],
-            'ball_ratings' => ['red' => ['ratings' => []], 'orange' => ['ratings' => []], 'standard' => ['ratings' => $ratings]], 'cohorts' => [], 'names' => [],
+            'ball_ratings' => ['red' => ['ratings' => []], 'orange' => ['ratings' => []], 'standard' => ['ratings' => $ratings, 'components' => $components]], 'cohorts' => [], 'names' => [],
             'built_at' => '2026-10-29 10:00:00', 'snapshot_as_of' => '2026-10-29', 'snapshot_stale' => false,
         ]);
         $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('allAgeBadgeSnapshot')->andReturn($ratings)
@@ -88,11 +88,11 @@ class AllAgeRatingIntegrationTest extends TestCase
         $this->saved([$young->id => $this->rating(80), $older->id => $historical, $disconnected->id => $this->rating(null)]);
         $url = route('backend.player-performance.ratings');
         $response = $this->get($url.'?sort=shared')->assertOk()->assertSeeInOrder(['Younger Shared', 'Older Shared', 'Disconnected Shared'])
-            ->assertSee('CTR Ratings')->assertSee('Find players by age group, gender or name.')
+            ->assertSee('CTR Ratings')->assertSee('Find players by rating, age group, gender, region or name.')
             ->assertSee('data-ctr-ranking-row', false)->assertSee('data-ctr-badge', false)->assertSee('No recent played-match connection')
             ->assertSee('Low confidence — historical connection')->assertSee('2025-05-19');
         $this->assertSame([80.0, 60.0, null], $response->viewData('players')->getCollection()->map(fn ($row) => $row['rating']['score'] ?? null)->all());
-        $this->get($url.'?age_group=u18')->assertOk()->assertSeeInOrder(['60.0', '/100'])->assertDontSee('Younger Shared');
+        $this->get($url.'?ball_type=standard&age_group=u18&age_scope=group')->assertOk()->assertSeeInOrder(['60.0', '/100'])->assertDontSee('Younger Shared');
         if (getenv('CT_ALL_AGE_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/all-age-ratings.html'), $response->getContent());
         }

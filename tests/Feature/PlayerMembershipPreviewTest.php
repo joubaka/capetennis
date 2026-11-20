@@ -158,7 +158,7 @@ class PlayerMembershipPreviewTest extends TestCase
         $this->assertSame(4, $data['unavailable_count']);
     }
 
-    public function test_real_saved_reader_works_under_sqlite_read_only_guard_without_snapshot_writes_jobs_or_mail(): void
+    public function test_real_saved_reader_withholds_legacy_cohorts_under_read_only_guard_without_writes_jobs_or_mail(): void
     {
         Schema::create('player_ability_snapshots', function (Blueprint $table) {
             $table->string('snapshot_key')->primary(); $table->integer('model_version'); $table->string('policy_hash');
@@ -175,7 +175,8 @@ class PlayerMembershipPreviewTest extends TestCase
         DB::statement('PRAGMA query_only = ON');
         try {
             $data = (new PlayerMembershipPreviewService($store))->build();
-            $this->assertCount(11, $data['rows']);
+            $this->assertSame([], $data['rows']);
+            $this->assertStringContainsString('preview is withheld', $data['reason']);
             $this->assertEquals($before, DB::table('player_ability_snapshots')->first());
             Bus::assertNothingDispatched(); Queue::assertNothingPushed(); Mail::assertNothingSent(); Mail::assertNothingQueued();
         } finally { DB::statement('PRAGMA query_only = OFF'); }

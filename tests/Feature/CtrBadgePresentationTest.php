@@ -95,8 +95,8 @@ class CtrBadgePresentationTest extends TestCase
     public function test_inline_overall_badge_keeps_scope_accessible_without_a_second_visible_label(): void
     {
         $html = Blade::render('<x-ctr-badge size="inline" :overall="true" :score="100.0" />');
-        $this->assertStringContainsString('aria-label="CTR 100.0 · Overall CTR · all ball levels"', $html);
-        $this->assertStringContainsString('Overall100.0/100', preg_replace('/\s+/', '', strip_tags($html)));
+        $this->assertStringContainsString('aria-label="CTR 100.0 · CTR · Green/Yellow · all ages"', $html);
+        $this->assertStringContainsString('CTR100.0/100', preg_replace('/\s+/', '', strip_tags($html)));
         $this->assertStringNotContainsString('all ball levels', strip_tags($html));
     }
 

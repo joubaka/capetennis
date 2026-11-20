@@ -51,9 +51,9 @@ class AllAgeTeamEvidenceTest extends TestCase
         $sources = [];
         $snapshot = $service->historySnapshot(CarbonImmutable::parse('2026-10-03'), $sources);
         $this->assertCount(1, $snapshot['all_age']['history_evidence']['matches']);
-        $this->assertCount(1, $snapshot['cohorts']['u13 boys']['history_evidence']['matches']);
-        $this->assertNull($snapshot['cohorts']['u13 boys']['baseline']['metadata']);
-        $this->assertSame([], $snapshot['cohorts']['u13 boys']['history_evidence']['fields']);
+        $this->assertSame([], $snapshot['cohorts']);
+        $this->assertSame($snapshot['all_age'], $snapshot['ball_ratings']['standard']);
+        $this->assertSame([], $snapshot['ball_ratings']['standard']['history_evidence']['fields']);
         $data['fixture']->update(['scheduled_at' => '2026-11-01 09:00:00']);
         $sources = [];
         $this->assertSame([], $service->historySnapshot(CarbonImmutable::parse('2026-10-31'), $sources)['source_matches']);
@@ -84,7 +84,8 @@ class AllAgeTeamEvidenceTest extends TestCase
         $this->assertCount(1, $after['all_age']['components']);
         $this->assertCount(4, $after['all_age']['ratings']);
         $this->assertSame(['u13 boys', 'u18 girls'], $after['all_age']['ratings'][$boys['first']->id]['component_age_groups']);
-        $this->assertCount(2, $after['cohorts']);
+        $this->assertSame([], $after['cohorts']);
+        $this->assertSame($after['all_age'], $after['ball_ratings']['standard']);
         $this->assertContains($bridge['event']->id, $after['source_events']);
         $this->assertContains('team-match:'.$bridge['fixture']->id, $after['source_matches']);
         $this->assertSame($counts, [Player::count(), TeamFixture::count(), TeamFixtureResult::count(), DB::table('user_players')->count()]);
@@ -96,8 +97,8 @@ class AllAgeTeamEvidenceTest extends TestCase
         $evidence = new PlayerRatingEvidenceBuilder;
         $evidence->append($historical, $sources, 0);
         $bridgeRows = array_values(array_filter($evidence->all(), fn ($row) => $row['source_id'] === 'team-match:'.$bridge['fixture']->id));
-        $this->assertCount(1, $bridgeRows);
-        $this->assertSame(AllAgeRatingModel::COHORT, $bridgeRows[0]['cohort']);
+        $this->assertCount(2, $bridgeRows);
+        $this->assertEqualsCanonicalizing([AllAgeRatingModel::COHORT, \App\Services\Performance\BallRatingModel::COHORTS['standard']], array_column($bridgeRows, 'cohort'));
         $this->assertSame($after['names'][$boys['first']->id], $bridgeRows[0]['names'][0]);
         $bridge['tie']->update(['published_at' => null]);
         $this->assertNotNull((new PlayerAbilitySnapshotStore)->current()['reason']);

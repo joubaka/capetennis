@@ -251,7 +251,8 @@ class HistoricalIdentityReviewTest extends TestCase
         $this->assertTrue($preview['preview_only']);
         $this->assertSame(['team-match:'.$s['fixture']->id], $preview['added_matches']);
         $this->assertNull($preview['source_checks'][0]['reason']);
-        $this->assertCount(2, $preview['cohorts']['u12 girls']['rows']);
+        $this->assertCount(2, $preview['cohorts']['Green/Yellow ball']['rows']);
+        $this->assertSame(['Green/Yellow ball'], array_keys($preview['cohorts']));
         $this->assertSame($before, $this->sources());
         $normal = app(PlayerSharedAbilityService::class)->calculateSnapshot(CarbonImmutable::parse('2026-10-18'));
         $this->assertNotContains('team-match:'.$s['fixture']->id, $normal['source_matches']);
@@ -371,8 +372,11 @@ class HistoricalIdentityReviewTest extends TestCase
     {
         $s = $this->scenario(); $service = app(HistoricalIdentityReviewService::class);
         $proposal = $service->propose($s['event'], $this->input($s));
-        $this->partialMock(\App\Services\Performance\SharedAbilityModel::class)->shouldReceive('fit')->andReturn(['ratings' => [], 'components' => ['bad' => ['converged' => false]]]);
-        $this->postJson(route('backend.player-performance.identity-preview', $s['event']), ['proposals' => [$proposal->id]])->assertUnprocessable()->assertJsonValidationErrors('proposal');
+        $snapshot = app(PlayerSharedAbilityService::class)->identityReviewSnapshot(CarbonImmutable::today('Africa/Johannesburg'));
+        $snapshot['ball_ratings']['standard']['components']['bad'] = ['converged' => false];
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('identityReviewSnapshot')->twice()->andReturn($snapshot);
+        $this->postJson(route('backend.player-performance.identity-preview', $s['event']), ['proposals' => [$proposal->id]])->assertUnprocessable()->assertJsonValidationErrors('proposal')
+            ->assertJsonPath('errors.proposal.0', 'An affected comparison group did not converge. Rating changes are withheld.');
         $this->expectException(\LogicException::class);
         app(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->replace(['preview_only' => true], CarbonImmutable::today(), '', []);
     }
@@ -397,7 +401,7 @@ class HistoricalIdentityReviewTest extends TestCase
         $service = app(HistoricalIdentityReviewService::class);
         $proposal = $service->propose($s['event'], $this->input($s));
         $preview = $service->preview($s['event'], [$proposal->id]);
-        $data = $preview['cohorts']['u12 girls']; $rows = collect($data['rows'])->keyBy('id');
+        $data = $preview['cohorts']['Green/Yellow ball']; $rows = collect($data['rows'])->keyBy('id');
         $this->assertCount(15, $rows);
         $this->assertSame(2, $data['before_components']); $this->assertSame(2, $data['after_components']);
         $this->assertTrue($rows[$s['first']->id]['new_node']);
@@ -406,5 +410,58 @@ class HistoricalIdentityReviewTest extends TestCase
         $this->assertSame($rows[$a->id]['before'], $rows[$a->id]['after']);
         $this->assertTrue($rows->contains(fn ($row) => $row['cutoff']));
         $this->assertTrue($rows->contains(fn ($row) => $row['top10_changed']));
+    }
+
+    public function test_preview_compares_each_ball_pool_separately_and_ignores_legacy_combined_graphs(): void
+    {
+        $s = $this->scenario();
+        $service = app(HistoricalIdentityReviewService::class);
+        $proposal = $service->propose($s['event'], $this->input($s));
+        $asOf = CarbonImmutable::today('Africa/Johannesburg');
+        $snapshot = app(PlayerSharedAbilityService::class)->identityReviewSnapshot($asOf);
+        $matches = [];
+        foreach (['red' => 10000, 'orange' => 20000, 'standard' => 30000] as $stage => $base) {
+            $matches[] = ['winner' => $base + 1, 'loser' => $base + 2, 'ball_type' => $stage,
+                'source_id' => 'synthetic:'.$stage, 'event_id' => 1, 'event_name' => 'Synthetic singles',
+                'category' => $stage.' ball', 'cohort' => \App\Services\Performance\BallRatingModel::COHORTS[$stage], 'confidence_date' => $asOf->subDay()->toDateString(),
+                'confidence_date_basis' => 'scheduled match date'];
+        }
+        $snapshot['ball_ratings'] = (new \App\Services\Performance\BallRatingModel)->fit($matches, $asOf);
+        $snapshot['all_age'] = ['ratings' => [99999 => ['score' => 100]]];
+        $snapshot['cohorts'] = ['combined legacy' => ['ratings' => [99999 => ['score' => 100]]]];
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('identityReviewSnapshot')->twice()->andReturn($snapshot);
+        $preview = $service->preview($s['event'], [$proposal->id]);
+        $this->assertSame(['Red ball', 'Orange ball', 'Green/Yellow ball'], array_keys($preview['cohorts']));
+        foreach (['Red ball' => 10000, 'Orange ball' => 20000, 'Green/Yellow ball' => 30000] as $label => $base) {
+            $this->assertEqualsCanonicalizing([$base + 1, $base + 2], array_column($preview['cohorts'][$label]['rows'], 'id'));
+        }
+    }
+
+    public function test_preview_rejects_a_missing_ball_pool_instead_of_using_the_all_age_alias(): void
+    {
+        $s = $this->scenario();
+        $service = app(HistoricalIdentityReviewService::class);
+        $proposal = $service->propose($s['event'], $this->input($s));
+        $snapshot = app(PlayerSharedAbilityService::class)->identityReviewSnapshot(CarbonImmutable::today('Africa/Johannesburg'));
+        unset($snapshot['ball_ratings']['standard']);
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('identityReviewSnapshot')->twice()->andReturn($snapshot);
+        $this->postJson(route('backend.player-performance.identity-preview', $s['event']), ['proposals' => [$proposal->id]])
+            ->assertUnprocessable()->assertJsonValidationErrors('proposal')
+            ->assertJsonPath('errors.proposal.0', 'Independent ball-level calculations are required for this preview.');
+    }
+
+    public function test_preview_rejects_a_ball_model_that_withheld_its_nonconverged_component(): void
+    {
+        $s = $this->scenario();
+        $service = app(HistoricalIdentityReviewService::class);
+        $proposal = $service->propose($s['event'], $this->input($s));
+        $snapshot = app(PlayerSharedAbilityService::class)->identityReviewSnapshot(CarbonImmutable::today('Africa/Johannesburg'));
+        // A failed finishing-only fit can have zero played rows; the marker itself is decisive.
+        $snapshot['ball_ratings']['standard']['excluded']['Ball-level model did not converge'] = 0;
+        $this->assertSame([], $snapshot['ball_ratings']['standard']['components']);
+        $this->partialMock(PlayerSharedAbilityService::class)->shouldReceive('identityReviewSnapshot')->twice()->andReturn($snapshot);
+        $this->postJson(route('backend.player-performance.identity-preview', $s['event']), ['proposals' => [$proposal->id]])
+            ->assertUnprocessable()->assertJsonValidationErrors('proposal')
+            ->assertJsonPath('errors.proposal.0', 'An affected comparison group did not converge. Rating changes are withheld.');
     }
 }

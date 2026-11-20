@@ -2,7 +2,7 @@
 namespace Tests\Feature;
 
 use App\Models\{Event, Draw, Player};
-use App\Services\Performance\{PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
+use App\Services\Performance\{BallRatingModel, PlayerAbilitySnapshotStore, PlayerSharedAbilityService};
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -126,7 +126,8 @@ class PlayerAbilitySnapshotTest extends TestCase
 
     private function payload(string $date = '2026-10-07'): array
     {
-        return ['cohorts' => [], 'names' => [], 'reason' => null, 'built_at' => $date.' 00:01:00 SAST', 'source_events' => Event::pluck('id')->all(), 'source_matches' => []];
+        $graphs = (new BallRatingModel)->fit([], CarbonImmutable::parse($date));
+        return ['cohorts' => [], 'all_age' => $graphs['standard'], 'ball_ratings' => $graphs, 'names' => [], 'reason' => null, 'built_at' => $date.' 00:01:00 SAST', 'source_events' => Event::pluck('id')->all(), 'source_matches' => []];
     }
     private function save(string $date = '2026-10-07'): void
     {
@@ -211,24 +212,37 @@ class PlayerAbilitySnapshotTest extends TestCase
         $this->assertTrue($lock->get());
         try { $this->artisan('player-ability:refresh')->assertFailed(); } finally { $lock->release(); }
         $payload = $this->payload();
-        $payload['cohorts'] = ['u10 boys' => ['components' => ['bad' => ['converged' => false]]]];
+        $graphs = (new BallRatingModel)->fit([[
+            'winner' => 1, 'loser' => 2, 'source_id' => 'match:synthetic',
+            'event_id' => 1, 'event_name' => 'Synthetic standard singles', 'category' => 'U13 Boys',
+            'cohort' => BallRatingModel::COHORTS['standard'], 'confidence_date' => '2026-10-06',
+            'confidence_date_basis' => 'scheduled match date', 'ball_type' => 'standard',
+        ]], CarbonImmutable::parse('2026-10-07'));
+        $this->assertNotEmpty($graphs['standard']['components']);
+        $component = array_key_first($graphs['standard']['components']);
+        $graphs['standard']['components'][$component]['converged'] = false;
+        $payload['ball_ratings'] = $graphs;
+        $payload['all_age'] = $graphs['standard'];
         try {
             $store = new PlayerAbilitySnapshotStore;
             $store->replace($payload, CarbonImmutable::parse('2026-10-07'), 'test', $store->manifest($payload));
             $this->fail('Nonconverged result replaced saved snapshot');
-        } catch (\RuntimeException) {}
+        } catch (\UnexpectedValueException $exception) {
+            $this->assertSame('Incomplete or invalid all-age component.', $exception->getMessage());
+        }
         $this->assertSame($saved, DB::table('player_ability_snapshots')->value('payload'));
     }
-    public function test_scheduler_explicitly_uses_midnight_south_african_time_and_overlap_lock(): void
+    public function test_scheduler_uses_the_ordered_nightly_pipeline_instead_of_independent_daytime_fits(): void
     {
         $schedule = app(\Illuminate\Console\Scheduling\Schedule::class);
-        $events = collect($schedule->events())->filter(fn ($event) => str_contains($event->command ?? '', 'player-ability:refresh'));
+        $this->assertCount(0, collect($schedule->events())->filter(fn ($event) => str_contains($event->command ?? '', 'player-ability:refresh')));
+        $events = collect($schedule->events())->filter(fn ($event) => str_contains($event->command ?? '', 'player-plus:refresh-derived'));
         $this->assertCount(2, $events);
-        $event = $events->first(fn ($event) => !str_contains($event->command, '--pending'));
-        $this->assertSame('0 0 * * *', $event->expression);
+        $event = $events->first(fn ($event) => !str_contains($event->command, '--resume'));
+        $this->assertSame('2 3 * * *', $event->expression);
         $this->assertSame('Africa/Johannesburg', $event->timezone);
         $this->assertTrue($event->withoutOverlapping);
-        $background = $events->first(fn ($event) => str_contains($event->command, '--pending'));
+        $background = $events->first(fn ($event) => str_contains($event->command, '--resume'));
         $this->assertSame('* * * * *', $background->expression);
         $this->assertTrue($background->withoutOverlapping);
         $this->assertTrue($background->runInBackground);

@@ -135,6 +135,7 @@ class MyTennisLiveResultsTest extends TestCase
             'components' => ['shared' => ['converged' => true, 'members' => $players->modelKeys()]],
             'ratings' => $ratings,
         ]];
+        $snapshot['ball_ratings']['standard'] = $snapshot['all_age'];
         $this->mock(\App\Services\Performance\PlayerAbilitySnapshotStore::class)->shouldReceive('current')->times(4)->andReturn($snapshot);
         $this->mock(\App\Services\Performance\PlayerRatingAccess::class)->shouldReceive('allowsDiscovery')->times(4)->andReturnTrue();
         $viewer = \Mockery::mock(User::class)->makePartial();

@@ -5,6 +5,7 @@ namespace Tests\Feature\Draw;
 use App\Models\Draw;
 use App\Models\Event;
 use App\Models\EventType;
+use App\Models\Fixture;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -104,9 +105,12 @@ class FixtureControllerAuthorizationTest extends TestCase
 
     public function test_ordinary_user_cannot_delete_ind_result(): void
     {
+        $fixture = Fixture::factory()->create(['draw_id' => $this->draw->id]);
+        $before = $fixture->fresh()->getAttributes();
         $this->actingAs($this->ordinaryUser)
-            ->postJson(route('draw.delete.ind.result', 999))
+            ->postJson(route('draw.delete.ind.result', $fixture->id))
             ->assertForbidden();
+        $this->assertSame($before, $fixture->fresh()->getAttributes());
     }
 
     // ── updatePlayersNames ───────────────────────────────────────────────────

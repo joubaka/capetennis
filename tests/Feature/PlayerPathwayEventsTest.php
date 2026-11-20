@@ -109,7 +109,8 @@ class PlayerPathwayEventsTest extends TestCase
         $this->event('U/13 Girls A', ['eventType' => 2]);
         $this->assertSame([$good], $this->ids('Wilson A'));
         $unknown = $this->player()->setRawAttributes(['id' => 1]);
-        $this->assertCount(3, app(PlayerPathwayEvents::class)->forPlayer($unknown, $this->pathway('Wilson A'))['events']);
+        // Unknown age/gender does not turn the Orange U9 division into a Wilson A event.
+        $this->assertCount(2, app(PlayerPathwayEvents::class)->forPlayer($unknown, $this->pathway('Wilson A'))['events']);
     }
 
     public function test_court_metadata_precedence_mixed_context_and_cross_event_allocations_are_respected(): void

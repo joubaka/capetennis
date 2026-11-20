@@ -344,6 +344,13 @@ class SchedulePublicationTest extends TestCase
             ->assertSee('fixture-team-chip', false)->assertSee('Show fixtures')->assertSee('13:45')
             ->assertSee('Match time to follow')
             ->assertSee('Match times published')->assertDontSee('data-live-results=', false);
+        $this->assertFalse((bool) $draw->fresh()->oop_published);
+        $this->get(route('frontend.fixtures.index', $draw).'?after_publish=1')
+            ->assertOk()->assertDontSee('13:45')->assertSee('Match times to follow');
+        $this->actingAs(User::factory()->create())
+            ->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['after_publish' => 1]))
+            ->assertForbidden()->assertDontSee('13:45');
+        $this->actingAs($admin);
         $hidden = $this->get(route('backend.event-venue-schedule.calendar.preview', $scope + ['hide_times' => 1]))
             ->assertOk()->assertSee('fixture-round', false)->assertSee('Match times to follow')
             ->assertDontSee('13:45')->assertDontSee($venue->name)->assertDontSee('data-live-results=', false);

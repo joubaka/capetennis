@@ -649,7 +649,8 @@ final class EventVenueScheduleController extends Controller
             if ($drawFixtures->first() instanceof \App\Models\TeamFixture) {
                 $drawFixtures = app(\App\Services\Scheduling\TeamFixtureOrder::class)->sort($drawFixtures);
             }
-            return ['draw' => $draw, 'fixtures' => $drawFixtures];
+            return ['draw' => $draw, 'fixtures' => $drawFixtures,
+                'scheduleSummary' => app(\App\Services\PublicDrawPresentation::class)->summary($draw, $hideTimes ? collect() : $allRows)];
         });
 
         return view('backend.schedule.public-schedule-preview', compact('event', 'scope', 'afterPublish', 'hideTimes', 'previewDraws'));

@@ -157,8 +157,8 @@ class InterprovincialTrialSafeguardsTest extends TestCase
         }
         $service = app(\App\Services\InterprovincialTrials\InvitationService::class);
         $preview = $service->previewAttempt($this->event, $this->admin, 'profileless');
-        $this->assertStringContainsString('Hello First Nominee', $preview['rendered_body']);
-        $this->assertStringContainsString('Hello Second Nominee', $preview['rendered_body']);
+        $this->assertStringContainsString('For First Nominee', $preview['rendered_body']);
+        $this->assertStringContainsString('For Second Nominee', $preview['rendered_body']);
         $this->assertStringNotContainsString('[recipient name]', $preview['rendered_body']);
         $this->assertDatabaseCount('interprovincial_trial_invitations', 0);
         $result = $service->queueAttempt($this->event, $this->admin, $preview);

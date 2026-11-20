@@ -224,6 +224,7 @@ class P0StabilizationTest extends TestCase
 
         $request = Request::create("/draws/{$draw->id}/score/{$fixture->id}", 'POST', [
             'sets' => ['6-4'],
+            'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh()),
         ]);
 
         $controller = app(RoundRobinController::class);
@@ -238,7 +239,7 @@ class P0StabilizationTest extends TestCase
         $this->actingAs($this->adminUser($draw));
 
         $controller = app(RoundRobinController::class);
-        $response   = $controller->deleteScore($fixture->id);
+        $response   = $controller->deleteScore(Request::create('/score/'.$fixture->id, 'DELETE'), $fixture->id);
 
         $this->assertEquals(403, $response->getStatusCode());
     }
@@ -334,7 +335,9 @@ class P0StabilizationTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->adminUser($draw))
-            ->deleteJson("/backend/roundrobin/score/{$child->id}");
+            ->deleteJson("/backend/roundrobin/score/{$child->id}", [
+                'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($child->fresh()),
+            ]);
 
         $this->assertEquals(200, $response->getStatusCode());
 

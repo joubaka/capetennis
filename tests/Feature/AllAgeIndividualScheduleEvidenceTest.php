@@ -43,7 +43,8 @@ class AllAgeIndividualScheduleEvidenceTest extends TestCase
         $snapshot = app(PlayerSharedAbilityService::class)->calculateSnapshot(CarbonImmutable::parse('2026-10-03'));
         $this->assertSame([], $snapshot['all_age']['ratings']);
         $this->assertSame(1, $snapshot['all_age']['excluded']['Individual match has conflicting schedule evidence']);
-        $this->assertCount(1, $snapshot['cohorts']);
+        $this->assertSame([], $snapshot['cohorts']);
+        $this->assertSame($snapshot['all_age'], $snapshot['ball_ratings']['standard']);
     }
 
     public function test_foreign_draw_schedule_never_establishes_shared_ball_or_date_evidence(): void

@@ -109,7 +109,8 @@ class ImportedRosterProfileMatchTest extends TestCase
         $this->get($this->url().'?source_event_id='.$this->source->id)->assertForbidden()->assertDontSee($this->player->email);
         $this->postJson($this->url('store'), $payload)->assertForbidden();
         $this->actingAs(User::factory()->create())->get($this->url())->assertForbidden();
-        $this->actingAs($this->admin)->get(route('backend.team-selection.profile-matches.index', [$this->event, $this->sourceTeam]))->assertNotFound();
+        $this->actingAs($this->admin)->get(route('backend.team-selection.profile-matches.index', [$this->event, $this->sourceTeam]))->assertForbidden();
+        $this->assertNull($this->slot->fresh()->player_profile);
     }
 
     public function test_stale_name_and_replay_are_rejected(): void

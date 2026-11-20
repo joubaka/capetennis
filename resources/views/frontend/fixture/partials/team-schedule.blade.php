@@ -1,5 +1,5 @@
 @php
-  $fixtureScheduleAvailable = app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'];
+  $fixtureScheduleAvailable = ($fixtureScheduleSummary ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw))['available'];
 @endphp
 <style>.fixture-round > summary .when-open,.fixture-tie > summary .when-open{display:none}.fixture-round[open] > summary .when-open,.fixture-tie[open] > summary .when-open{display:inline}.fixture-round[open] > summary .when-closed,.fixture-tie[open] > summary .when-closed{display:none}.fixture-tie > summary{padding:.75rem;border:1px solid #d9dee3;border-radius:.4rem;background:#f5f7fa}.fixture-toggle{font-size:.8rem;color:#315785;font-weight:600}</style>
 <style>

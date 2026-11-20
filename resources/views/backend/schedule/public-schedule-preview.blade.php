@@ -36,9 +36,9 @@
         @forelse($previewDraws as $preview)
             <section class="mb-4" aria-label="{{ $preview['draw']->drawName }}">
                 @if($preview['fixtures']->first() instanceof \App\Models\TeamFixture)
-                    @include('frontend.fixture.partials.team-schedule', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'enableLiveResults' => false])
+                    @include('frontend.fixture.partials.team-schedule', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'enableLiveResults' => false, 'fixtureScheduleSummary' => $preview['scheduleSummary']])
                 @else
-                    @include('frontend.fixture.fixture-table', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'hideFixtureHeader' => false, 'fixtureTableId' => 'preview-fixtures-'.$preview['draw']->id])
+                    @include('frontend.fixture.fixture-table', ['draw' => $preview['draw'], 'fixtures' => $preview['fixtures'], 'hideFixtureHeader' => false, 'fixtureTableId' => 'preview-fixtures-'.$preview['draw']->id, 'fixtureScheduleSummary' => $preview['scheduleSummary']])
                 @endif
             </section>
         @empty
