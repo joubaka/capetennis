@@ -259,7 +259,9 @@ jobs:
   test-feature:
     name: Feature Tests (remaining)
     runs-on: ubuntu-latest
-    needs: [test-draw, test-cleanup, test-platform]
+    # Run the complete suite even when a specialised bucket fails, so one run
+    # reports downstream regressions. Specialised jobs still report failures.
+    needs: migrations
     steps:
       - uses: actions/checkout@v4
 

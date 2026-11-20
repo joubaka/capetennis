@@ -2288,7 +2288,13 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $declining = $declining->fresh();
         $this->assertSame(TeamSelectionInvitation::DECLINED, $declining->status);
         $this->assertNotNull($declining->vacated_roster_rank);
-        Queue::assertNothingPushed();
+        Queue::assertNotPushed(SendTeamSelectionInvitationEmailJob::class);
+        $notification = BulkEmailLog::where('mail_type', 'team_selection_decline_notification')->sole();
+        $this->assertSame($manager->email, $notification->recipient_email);
+        $this->assertSame($declining->id, $notification->related_id);
+        $this->assertSame($source->event_id, $notification->payload['event_id']);
+        Queue::assertPushed(\App\Jobs\SendBulkEmailJob::class, fn ($job) => $job->logId === $notification->id);
+        Queue::assertCount(1);
         $this->actingAs($manager)->get(route('backend.team-selection.index', $source->event))
             ->assertOk()
             ->assertSee('Vacancy open')
