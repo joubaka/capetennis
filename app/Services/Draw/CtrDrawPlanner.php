@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 /** Private, event-bound preview/apply. This never rebuilds an existing draw. */
 class CtrDrawPlanner
 {
-    public const VERSION = 2;
+    public const VERSION = 3;
 
     public function certify(Event $event, User $actor, bool $certified): void
     {
@@ -140,6 +140,15 @@ class CtrDrawPlanner
                 }
             }
         }
+        foreach ($straightBlocks as $block) {
+            $indices = array_keys(array_filter($rows, fn ($row) => (int) $row['category_id'] === $block['category_id'] && in_array($row['group'], $block['groups'], true)));
+            $members = collect($indices)->map(fn ($index) => $rows[$index]);
+            // Only one comparable scale can establish rank order. Unknowns remain
+            // a deterministic suffix; different scales require explicit review.
+            if (count($indices) === 6 && $members->pluck('component')->filter()->unique()->count() <= 1) {
+                foreach ($indices as $position => $index) $rows[$index]['group'] = $block['groups'][in_array($position, [0,3,4], true) ? 0 : 1];
+            }
+        }
         return CtrDrawPlan::create(['token' => (string) Str::uuid(), 'event_id' => $event->id, 'actor_id' => $actor->id,
             'fingerprint' => $source['fingerprint'], 'proposal' => ['version' => self::VERSION, 'target' => $target, 'rows' => $rows, 'excluded_category_ids' => [], 'straight_blocks' => $straightBlocks,
                 'manual_reviewed' => false, 'short_matches_reviewed' => false], 'expires_at' => now()->addMinutes(30)]);
@@ -240,6 +249,9 @@ class CtrDrawPlanner
         foreach ($this->competitions($proposal) as $competition) {
             if ($competition['six'] && (count($competition['groups']) !== 2 || collect($competition['groups'])->contains(fn ($group) => count($group['rows']) !== 3))) {
                 $this->invalid('Six players need exactly two groups of three for the straight-over finals.');
+            }
+            if ($competition['six'] && collect($competition['rows'])->pluck('component')->filter()->unique()->count() > 1 && !$proposal['manual_reviewed']) {
+                $this->invalid('Review placements across different CTR comparison bands before creating this linked competition.');
             }
             foreach ($competition['groups'] as $group) {
                 $count = count($group['rows']);

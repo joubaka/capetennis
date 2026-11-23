@@ -2,6 +2,26 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-070",
+      "title": "Excluded CTR category still appears to block draw creation",
+      "scope": "CTR Certified planner previews with pending category exclusions; not cancellation of event categories, registrations or payments.",
+      "symptoms": "After excluding an undersized category, included-player totals are correct but Confirm remains disabled. Distinguish a pending AJAX save, an invalid included group, a stopped save requiring reload, and a stale server warning.",
+      "cause": "The current board and saved proposal are different states until canonical review succeeds. The previous navigation-only save step and old validation message obscured that distinction; disabling confirmation of unreviewed edits was correct. AJAX must acknowledge the latest board, not merely an earlier request.",
+      "fix": "Change the intended placements or exclusions and wait for Saved before confirming creation. AJAX debounces and serializes canonical review requests, retains the board and updates both revision fields. An earlier receipt may advance the next request's base revision but must not clear newer edits or enable Confirm. Invalid intermediate groups stay unsaved. Correct validation errors; uncertain, expired, conflicting or unauthorized saves stop and require an explicit reload. Use the normal save/review form as the non-JavaScript fallback. The UI owners are public/js/ctr-planner.js and resources/views/backend/draw/ctr-group-board.blade.php. Never force-enable Confirm, silently rebase rejected edits, omit source players or delete entries to bypass this state. See docs/draw-knowledge/ctr-certified-planner.md.",
+      "verification": "On 2026-11-23 the local SQLite planner suite passed 35 tests and 339 assertions, including canonical AJAX JSON receipts, revision chaining, rejected invalid/stale/foreign requests and normal form fallback. The full exclusion/review/creation case preserves all 20 fictional entries while assigning 18 players to four draws and 27 fixtures. Independent browser checks verified exclusion autosave without navigation at 360, 390, 768 and 1440px using local responses. Broader race/failure checks are reported separately. This is local evidence, not deployment authority.",
+      "limits": "Guide only; requires the existing certified-event management permission. Neither AJAX nor fallback review can approve stale sources, invalid included identities, unresolved sizes or unacknowledged match shortfalls. Exclusion changes only the reviewed plan. Autosave never creates draws, cancels entries or authorizes live changes. A lost response can follow a committed save, so do not guess the current revision or blindly retry it.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/Draw/CtrDrawPlanner.php",
+        "app/Http/Controllers/Backend/CtrDrawPlannerController.php",
+        "docs/draw-knowledge/ctr-certified-planner.md"
+      ],
+      "tests": [
+        "tests/Feature/Draw/CtrDrawPlannerTest.php",
+        "tests/Browser/ctr-planner.cjs"
+      ]
+    },
+    {
       "id": "RK-069",
       "title": "Unchanged Plus event updates restart their quiet timer on MySQL",
       "scope": "Plus entered-event and legacy draw/schedule notification snapshots stored as MySQL JSON; not rating calculations or general event publication.",

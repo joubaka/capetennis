@@ -27,7 +27,7 @@ into an unassigned list. This is a starting placement, not an ability judgment.
 Within one valid comparison scale, order comparable CTR descending and append
 unknown scores deterministically. Multiple comparison scales stay in separate
 labelled bands; never rank their numbers against each other. A deliberate manual
-group mixing those bands requires explicit acknowledgment. Missing rating alone
+group or linked competition spanning those bands requires explicit acknowledgment. Missing rating alone
 requires no acknowledgment. Invalid singles identity or unknown ball context
 remains a creation blocker.
 
@@ -41,6 +41,16 @@ group of four followed by that linked six-player competition: three groups
 4+3+3, two draws, fifteen matches. An explicit preferred size of five offers
 5+5 instead. Other fields are not silently converted to linked competitions.
 The saved proposal records exact straight-over block group numbers.
+
+Version 3 new previews seed a comparable six-player block in serpentine order:
+descending usable CTR ranks 1,4,5 in A and 2,3,6 in B. In default ten, the top four
+remain in the independent draw; the remaining six use that same local order
+(global ranks 5,8,9 and 6,7,10). Unknown scores remain null and follow known scores
+in deterministic order, without pretending to be measured ranks. Equal scores
+use the stable player identity tie-break. Separate comparison scales are never
+numerically ranked together: retain their bands and require explicit review for
+any linked competition crossing them. This rule runs only when preparing a new
+preview; later manual/AJAX placements are not automatically reseeded.
 
 Aim for three matches per player, with up to four: four-player RR gives three,
 five gives four, linked 3+3 gives three. An independent three-player RR gives
@@ -64,10 +74,30 @@ and unknowns last within each group. Same-category drag/drop and labelled
 Move-to selects/buttons share exact entry-ID placement fields; native selects
 also allow a server-reviewed no-JavaScript fallback. Adding/removing empty groups
 never removes players. Counts, match totals and prizes update locally, while
-invalid sizes, missing shortfall acknowledgment or mixed-band review disable
-Review. Every membership/exclusion/acknowledgment change disables Confirm until
-the server saves and re-renders the reviewed proposal. Version 2 source hashes
-invalidate older previews without rewriting them.
+invalid sizes, missing shortfall acknowledgment or mixed-band review block
+saving. Version 3 source hashes invalidate version 1/2 previews without rewriting
+them. Existing applied plans retain their created-draw receipts.
+
+Exclusions, moves and acknowledgments autosave in place through the canonical
+review POST after a 400ms debounce. Invalid intermediate boards remain visibly
+unsaved and do not send requests. A successful private JSON receipt supplies the
+exact saved revision, readiness, exclusions and totals; both forms use that new
+revision. This saves only the private plan, never draws. Confirmation remains an
+explicit separate token/revision POST. No-JavaScript form submission still uses
+the normal POST/redirect review flow.
+
+Only one save is in flight. Edits arriving during it queue the latest valid board
+using the last accepted server revision. An older acknowledgment must not clear
+newer dirty state, replace membership or enable creation. DOM focus, scroll and
+groups stay in place. A 422 validation response saves nothing and permits corrected
+edits or explicit retry. Network loss, timeout, malformed/login response, conflict,
+session/permission failure, rate limit or uncertain server outcome stop automatic
+writes and require explicit recovery by reloading the authoritative saved plan;
+never blindly retry a possibly committed revision. A request is not aborted when
+new edits arrive. Changes stay unsaved and Create stays disabled until the latest
+valid board has an accepted receipt. Client readiness never bypasses stale-source,
+identity, duplicate-player, shortfall or comparison-band checks. Current included
+group reasons replace obsolete blockers from excluded underfilled categories.
 
 Preview writes only an expiring private plan. Changed placements must be reviewed
 before confirmation. Apply validates the saved proposal revision, current entries,

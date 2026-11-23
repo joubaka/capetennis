@@ -1,4 +1,4 @@
-<li class="ctr-player-card" data-ctr-player data-entry-id="{{ $row['entry_id'] }}" data-category-id="{{ $row['category_id'] }}" data-component="{{ $row['component'] ?? '' }}" data-score="{{ $row['score'] ?? '' }}" data-order="{{ $row['order'] ?? $row['entry_id'] }}" draggable="true">
+<li class="ctr-player-card" data-ctr-player data-entry-id="{{ $row['entry_id'] }}" data-player-id="{{ $row['player_id'] ?? '' }}" data-category-id="{{ $row['category_id'] }}" data-component="{{ $row['component'] ?? '' }}" data-score="{{ $row['score'] ?? '' }}" data-order="{{ $row['order'] ?? $row['entry_id'] }}" draggable="true">
   <div class="ctr-player-title"><span class="ctr-drag-handle" aria-hidden="true">⠿</span><strong>{{ $row['name'] }}</strong></div>
   <div class="ctr-player-rating">
     @if($row['score'] !== null)

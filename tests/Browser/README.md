@@ -11,7 +11,12 @@ those exports and local static assets. The full exporter produces thirteen state
 initial, preview, shortfall, unrated, mixed, blocked, excluded2, six, ten, twenty,
 categories, sparse and created. At 360, 390, 768 and 1440 pixels this gives 52
 state/width checks; four Move/native-drag/boundary/exact-POST sequences plus a
-cross-category rejection give 57 checks. It verifies numeric group ordering,
+cross-category rejection give 57 checks. Paired `exclusion-flow-initial` and
+`exclusion-flow-reviewed` exports add four full exclusion/review/confirm flows,
+bringing the total to 61 checks. These verify that saving the exclusion returns
+a fresh reviewed page with an updated revision and enabled confirmation. The
+backend test verifies the actual redirect and persistence; browser responses
+remain locally intercepted. It verifies numeric group ordering,
 unrated suffix placement, short-match acknowledgment, reversible plan exclusions,
 and confirmation disabled until edits are reviewed. Six is one linked 3+3
 competition with nine matches and two prizes; default ten is independent four

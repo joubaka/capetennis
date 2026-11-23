@@ -31,6 +31,7 @@
 .ctr-player-issue{font-size:.8rem;color:#a03824;margin:.5rem 0}
 .ctr-review-bar{display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff;border:1px solid #dbe4ed;border-radius:12px;padding:1rem;margin:1rem 0}
 #ctr-board-status{min-height:1.5rem;margin:.75rem 0;font-size:.875rem}
+#ctr-review-changes{scroll-margin-top:6rem}
 #ctr-prize-total{font-weight:600;margin:0}
 .ctr-manual-review{padding:1rem;border:1px solid #e3c589;border-radius:10px;background:#fff9ed;margin:1rem 0}
 #ctr-planner button:focus-visible,#ctr-planner select:focus-visible,#ctr-planner summary:focus-visible{outline:3px solid #e49b24;outline-offset:3px}

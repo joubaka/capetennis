@@ -69,7 +69,7 @@ class CtrDrawPlannerTest extends TestCase
     private function reviewPlan(CtrDrawPlan $plan, array $extra = []): CtrDrawPlan
     {
         $placements = array_column($plan->proposal['rows'], 'group', 'entry_id');
-        $this->postJson(route('backend.ctr-planner.review', $this->event), array_replace([
+        $this->post(route('backend.ctr-planner.review', $this->event), array_replace([
             'token' => $plan->token, 'revision' => app(CtrDrawPlanner::class)->revision($plan), 'placements' => $placements,
         ], $extra))->assertRedirect();
         return $plan->fresh();
@@ -368,6 +368,11 @@ class CtrDrawPlannerTest extends TestCase
         $competitions = $planner->competitions($plan->proposal);
         $this->assertSame([false,true], array_column($competitions, 'six'));
         $this->assertSame([4,6], array_map(fn ($competition) => count($competition['rows']), $competitions));
+        $ranked = array_column($plan->proposal['rows'], 'registration_id');
+        $groups = $planner->groups($plan->proposal);
+        $this->assertSame(array_slice($ranked, 0, 4), array_column($groups[0]['rows'], 'registration_id'));
+        $this->assertSame([$ranked[4],$ranked[7],$ranked[8]], array_column($groups[1]['rows'], 'registration_id'));
+        $this->assertSame([$ranked[5],$ranked[6],$ranked[9]], array_column($groups[2]['rows'], 'registration_id'));
         $this->export('ten', $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()->assertSee('= 4 prizes')->getContent());
         $this->confirm($plan)->assertRedirect();
         $this->assertDatabaseCount('draws', 2);
@@ -440,7 +445,7 @@ class CtrDrawPlannerTest extends TestCase
         [$placements[$one], $placements[$two]] = [$placements[$two], $placements[$one]];
         $body = ['token' => $plan->token, 'revision' => app(CtrDrawPlanner::class)->revision($plan), 'placements' => $placements];
         $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertUnprocessable();
-        $this->postJson(route('backend.ctr-planner.review', $this->event), $body + ['manual_reviewed' => true])->assertRedirect();
+        $this->postJson(route('backend.ctr-planner.review', $this->event), $body + ['manual_reviewed' => true])->assertOk()->assertJsonPath('saved', true);
         $this->confirm($plan->fresh())->assertRedirect();
     }
 
@@ -569,7 +574,185 @@ class CtrDrawPlannerTest extends TestCase
         $this->assertSame($proposal, $plan->fresh()->proposal);
     }
 
-    private function export(string $state, string $html): void
+    public function test_live_shaped_orange_exclusion_is_saved_then_fresh_review_can_create_the_remaining_draws(): void
+    {
+        $this->entrants(12, rated: false);
+        $orange = CategoryEvent::factory()->create(['event_id' => $this->event->id,
+            'category_id' => Category::factory()->create(['name' => 'Orange Ball Singles'])->id]);
+        $yellow = CategoryEvent::factory()->create(['event_id' => $this->event->id,
+            'category_id' => Category::factory()->create(['name' => 'Yellow Ball Singles'])->id]);
+        $this->entrants(2, $orange, 'orange', false);
+        $this->entrants(6, $yellow, 'standard', false);
+        $before = CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all();
+        $plan = $this->preview();
+        $oldRevision = app(CtrDrawPlanner::class)->revision($plan);
+        $initial = $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()
+            ->assertSee('Not enough players');
+        $this->export('exclusion-flow-initial', $initial->getContent());
+        $this->confirm($plan)->assertUnprocessable();
+        $this->assertDatabaseCount('draws', 0);
+        $plan = $this->reviewPlan($plan, ['excluded_categories' => [$orange->id]]);
+        $reviewed = $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()
+            ->assertSee('= 8 prizes')->assertSee('4 competitions')->assertSee('27 matches');
+        preg_match('/<button\b[^>]*\bid="ctr-confirm"[^>]*>/', $reviewed->getContent(), $button);
+        $this->assertNotEmpty($button);
+        $this->assertDoesNotMatchRegularExpression('/\bdisabled\b/', $button[0]);
+        $this->assertSame([$orange->id], $plan->proposal['excluded_category_ids']);
+        $this->assertCount(20, $plan->proposal['rows']);
+        $this->assertFalse($plan->proposal['short_matches_reviewed']);
+        $this->export('exclusion-flow-reviewed', $reviewed->getContent());
+        $this->postJson(route('backend.ctr-planner.apply', $this->event), ['token' => $plan->token,
+            'revision' => $oldRevision])->assertConflict();
+        $this->confirm($plan)->assertRedirect();
+        $this->assertDatabaseCount('draws', 4);
+        $this->assertDatabaseCount('fixtures', 27);
+        $this->assertSame(0, Draw::where('category_event_id', $orange->id)->count());
+        $this->assertSame(0, DB::table('draw_group_registrations')->whereIn('registration_id',
+            CategoryEventRegistration::where('category_event_id', $orange->id)->pluck('registration_id'))->count());
+        $this->assertSame($before, CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all());
+        $this->assertSame(18, DB::table('draw_group_registrations')->count());
+        $this->confirm($plan)->assertRedirect();
+        $this->assertDatabaseCount('draws', 4);
+    }
+
+    public function test_ajax_exclusion_saves_exact_revision_and_totals_without_creating_draws(): void
+    {
+        $this->entrants(12, rated: false);
+        $orange = CategoryEvent::factory()->create(['event_id' => $this->event->id,
+            'category_id' => Category::factory()->create(['name' => 'Orange Ball Singles'])->id]);
+        $yellow = CategoryEvent::factory()->create(['event_id' => $this->event->id,
+            'category_id' => Category::factory()->create(['name' => 'Yellow Ball Singles'])->id]);
+        $this->entrants(2, $orange, 'orange', false);
+        $this->entrants(6, $yellow, 'standard', false);
+        $before = CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all();
+        $plan = $this->preview();
+        $planner = app(CtrDrawPlanner::class);
+        $body = ['token' => $plan->token, 'revision' => $planner->revision($plan),
+            'placements' => array_column($plan->proposal['rows'], 'group', 'entry_id'), 'excluded_categories' => [$orange->id]];
+        $this->export('exclusion-flow-initial', $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()->getContent());
+        $response = $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertOk()
+            ->assertJsonPath('saved', true)->assertJsonPath('ready', true)->assertJsonPath('token', $plan->token)
+            ->assertJsonPath('event_id', $this->event->id)->assertJsonPath('excluded_category_ids', [$orange->id])
+            ->assertJsonPath('totals', ['competitions' => 4, 'matches' => 27, 'included_players' => 18, 'winner_prizes' => 4, 'sportsmanship_prizes' => 4]);
+        $this->assertStringContainsString('no-store', $response->headers->get('Cache-Control'));
+        $plan->refresh();
+        $this->assertSame($planner->revision($plan), $response->json('revision'));
+        $this->assertNotSame($body['revision'], $response->json('revision'));
+        $this->export('exclusion-flow-reviewed', $response->getContent(), 'json');
+        $this->export('exclusion-flow-reviewed', $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()->getContent());
+        $this->assertDatabaseCount('draws', 0);
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->assertSame($before, CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all());
+        $accepted = $response->json('revision');
+        // An older request cannot overwrite the newly saved exclusions.
+        $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertConflict();
+        $this->assertSame($accepted, $planner->revision($plan->fresh()));
+        // Re-including the two-player field is an invalid intermediate edit, not a save.
+        $this->postJson(route('backend.ctr-planner.review', $this->event), array_replace($body, ['revision' => $accepted, 'excluded_categories' => []]))
+            ->assertUnprocessable();
+        $this->assertSame($accepted, $planner->revision($plan->fresh()));
+        $this->assertSame([$orange->id], $plan->fresh()->proposal['excluded_category_ids']);
+        // A later valid move uses the accepted revision and returns the next revision.
+        $green = collect($plan->proposal['rows'])->where('category_id', $this->category->id);
+        $a = $green->firstWhere('group', 1)['entry_id']; $b = $green->firstWhere('group', 2)['entry_id'];
+        [$body['placements'][$a], $body['placements'][$b]] = [$body['placements'][$b], $body['placements'][$a]];
+        $later = $this->postJson(route('backend.ctr-planner.review', $this->event), array_replace($body, ['revision' => $accepted]))->assertOk();
+        $this->assertNotSame($accepted, $later->json('revision'));
+        $this->assertSame($planner->revision($plan->fresh()), $later->json('revision'));
+        $this->assertDatabaseCount('draws', 0);
+        $this->assertDatabaseCount('fixtures', 0);
+        $this->post(route('backend.ctr-planner.apply', $this->event), ['token' => $plan->token,
+            'revision' => $later->json('revision')])->assertRedirect();
+        $this->assertDatabaseCount('draws', 4);
+        $this->assertDatabaseCount('fixtures', 27);
+        $this->assertSame($before, CategoryEventRegistration::orderBy('id')->get()->map->getAttributes()->all());
+    }
+
+    public function test_ajax_save_keeps_actor_and_source_boundaries(): void
+    {
+        $this->entrants(4);
+        $plan = $this->preview();
+        $body = ['token' => $plan->token, 'revision' => app(CtrDrawPlanner::class)->revision($plan),
+            'placements' => array_column($plan->proposal['rows'], 'group', 'entry_id')];
+        $this->snapshot['built_at'] = 'changed-while-editing';
+        $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertConflict();
+        $outsider = User::factory()->create();
+        $this->actingAs($outsider)->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertForbidden();
+        DB::table('event_admins')->insert(['event_id' => $this->event->id, 'user_id' => $outsider->id]);
+        $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertNotFound();
+        $this->assertSame($body['revision'], app(CtrDrawPlanner::class)->revision($plan->fresh()));
+        $this->assertDatabaseCount('draws', 0);
+    }
+
+    public function test_six_default_snake_uses_rank_one_four_five_and_two_three_six_with_matching_seeds(): void
+    {
+        $this->entrants(6);
+        $plan = $this->preview();
+        $ranked = array_column($plan->proposal['rows'], 'registration_id');
+        $expected = [[$ranked[0],$ranked[3],$ranked[4]], [$ranked[1],$ranked[2],$ranked[5]]];
+        $groups = app(CtrDrawPlanner::class)->groups($plan->proposal);
+        $this->assertSame($expected, array_map(fn ($group) => array_column($group['rows'], 'registration_id'), $groups));
+        $this->confirm($plan)->assertRedirect();
+        foreach (Draw::first()->groups()->orderBy('name')->get() as $index => $group) {
+            $this->assertSame($expected[$index], $group->groupRegistrations()->orderBy('seed')->pluck('registration_id')->map(fn ($id) => (int) $id)->all());
+        }
+        $this->assertDatabaseCount('fixtures', 9);
+    }
+
+    public function test_snake_unknown_slots_and_manual_ajax_moves_do_not_reseed(): void
+    {
+        $this->entrants(2);
+        $this->entrants(4, rated: false);
+        $plan = $this->preview();
+        $rows = $plan->proposal['rows'];
+        $this->assertSame([1,2,2,1,1,2], array_column($rows, 'group'));
+        $this->assertSame([90,89,null,null,null,null], array_column($rows, 'score'));
+        $placements = array_column($rows, 'group', 'entry_id');
+        [$placements[$rows[0]['entry_id']], $placements[$rows[1]['entry_id']]] = [2,1];
+        $body = ['token' => $plan->token, 'revision' => app(CtrDrawPlanner::class)->revision($plan), 'placements' => $placements];
+        $response = $this->postJson(route('backend.ctr-planner.review', $this->event), $body)->assertOk()->assertJsonPath('ready', true);
+        $this->assertSame($placements, array_column($plan->fresh()->proposal['rows'], 'group', 'entry_id'));
+        $this->postJson(route('backend.ctr-planner.review', $this->event), array_replace($body, ['revision' => $response->json('revision')]))->assertOk();
+        $this->assertSame($placements, array_column($plan->fresh()->proposal['rows'], 'group', 'entry_id'));
+    }
+
+    public function test_snake_ties_are_deterministic_and_incomparable_linked_bands_require_review(): void
+    {
+        $this->entrants(6);
+        foreach ($this->snapshot['ball_ratings']['standard']['ratings'] as &$rating) $rating['score'] = 50;
+        unset($rating);
+        $first = $this->preview();
+        $second = $this->preview();
+        $this->assertSame($first->proposal, $second->proposal);
+        $keys = array_keys($this->snapshot['ball_ratings']['standard']['ratings']);
+        foreach (array_slice($keys, 3) as $id) $this->snapshot['ball_ratings']['standard']['ratings'][$id]['component'] = 'separate';
+        $plan = $this->preview();
+        $this->assertSame([1,1,1,2,2,2], array_column($plan->proposal['rows'], 'group'));
+        $this->confirm($plan)->assertUnprocessable();
+        $response = $this->postJson(route('backend.ctr-planner.review', $this->event), ['token' => $plan->token,
+            'revision' => app(CtrDrawPlanner::class)->revision($plan), 'placements' => array_column($plan->proposal['rows'], 'group', 'entry_id'),
+            'manual_reviewed' => true])->assertOk();
+        $this->assertSame($response->json('revision'), app(CtrDrawPlanner::class)->revision($plan->fresh()));
+    }
+
+    public function test_version_two_adjacent_seed_preview_is_stale_and_never_reordered_by_new_page(): void
+    {
+        $this->entrants(6);
+        $plan = $this->preview();
+        $old = $plan->proposal;
+        $old['version'] = 2;
+        foreach ($old['rows'] as $index => &$row) $row['group'] = $index < 3 ? 1 : 2;
+        unset($row);
+        $plan->update(['proposal' => $old, 'fingerprint' => str_repeat('0', 64)]);
+        $this->get(route('backend.ctr-planner.show', [$this->event, 'plan' => $plan->token]))->assertOk()
+            ->assertSee('earlier grouping rule')->assertDontSee('id="ctr-placement-form"', false);
+        $this->assertSame($old, $plan->fresh()->proposal);
+        $this->postJson(route('backend.ctr-planner.review', $this->event), ['token' => $plan->token,
+            'revision' => app(CtrDrawPlanner::class)->revision($plan), 'placements' => array_column($old['rows'], 'group', 'entry_id')])->assertConflict();
+        $this->assertSame($old, $plan->fresh()->proposal);
+    }
+
+    private function export(string $state, string $html, string $extension = 'html'): void
     {
         if (getenv('CT_CTR_PLANNER_QA_HTML') !== '1') return;
         $safe = DB::connection()->getDatabaseName() === 'ct_testing'
@@ -577,6 +760,6 @@ class CtrDrawPlannerTest extends TestCase
         if (!app()->environment('testing') || !$safe) throw new \RuntimeException('Unsafe export environment');
         $dir = storage_path('app/testing/ctr-planner');
         if (!is_dir($dir)) mkdir($dir, 0777, true);
-        file_put_contents($dir.'/'.$state.'.html', $html);
+        file_put_contents($dir.'/'.$state.'.'.$extension, $html);
     }
 }
