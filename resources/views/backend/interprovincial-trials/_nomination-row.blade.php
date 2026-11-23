@@ -1,4 +1,8 @@
-@php($invitation = $presentation['invitation'])
+@php
+  $invitation = $presentation['invitation'];
+  $hasNominationHistory = $nomination->archived_at || $nomination->removed_at
+    || ($invitation && ($invitation->queued_at || $invitation->sent_at || $invitation->accepted_at || $invitation->paid_at || $invitation->withdrawn_at));
+@endphp
 <div class="interpro-nomination-row" role="row" data-nomination-row data-nomination-state="{{ $presentation['filter_key'] }}">
   <div class="interpro-nomination-row__identity" role="cell">
     <div class="fw-semibold">{{ $nomination->display_name }}</div>
@@ -28,7 +32,9 @@
     @endif
   </div>
   <div class="interpro-nomination-row__timeline small" role="cell">
+    @if($hasNominationHistory)
     <span class="interpro-cell-label" aria-hidden="true">Registration history</span>
+    <details class="interpro-history"><summary>View history</summary><div class="interpro-history-content">
     @if($invitation)
       @foreach([
         'Queued' => $invitation->queued_at,
@@ -42,8 +48,7 @@
     @endif
     @if($nomination->archived_at)<span>Archived: {{ $nomination->archived_at->format('d M Y H:i') }}</span><span class="text-muted">{{ $nomination->archive_reason }}</span>@endif
     @if($nomination->removed_at)<span>Removed: {{ \Illuminate\Support\Carbon::parse($nomination->removed_at)->format('d M Y H:i') }}</span><span class="text-muted">{{ $nomination->removed_by_name ?: 'Actor not recorded' }} · {{ $nomination->removal_reason ?: 'Reason not recorded' }}</span>@endif
-    @if(!$invitation || (!$invitation->queued_at && !$invitation->sent_at && !$invitation->accepted_at && !$invitation->paid_at && !$invitation->withdrawn_at))
-      <span class="text-muted" aria-label="No registration activity yet">—</span>
+    </div></details>
     @endif
   </div>
   <div class="interpro-nomination-row__actions" role="cell">

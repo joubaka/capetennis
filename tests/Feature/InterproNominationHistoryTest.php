@@ -94,6 +94,33 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame(102, app(NominationHistory::class)->build($event)['rows']->total());
     }
 
+    public function test_register_folds_categories_and_history_without_losing_filtered_records(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $second = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $this->nominee($event, $category, $batch, 'First group', 'withdrawn');
+        $withdrawn = $this->nominee($event, $second, $batch, 'Second group', 'withdrawn');
+        $withdrawn->actionableInvitation->forceFill(['withdrawn_at' => now()])->save();
+        $this->actingAs($actor);
+        $url = route('backend.interprovincial-trials.invitations.index', $event);
+        $response = $this->get($url)->assertOk()->assertSee('First group Candidate')->assertSee('Second group Candidate');
+        $document = new \DOMDocument();
+        @$document->loadHTML($response->getContent());
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(3, $xpath->query('//div[contains(@class,"interpro-tool-grid")]/details')->length);
+        $this->assertSame(1, $xpath->query('//details[@data-nomination-category and @open]')->length);
+        $this->assertSame(2, $xpath->query('//details[@data-nomination-category]')->length);
+        $this->assertSame(1, $xpath->query('//details[contains(@class,"interpro-history") and not(@open)]')->length);
+        $response->assertSee('View history')->assertSee('Withdrawn:')->assertDontSee('No registration activity yet');
+        $filtered = $this->get($url.'?nomination_status=withdrawn')->assertOk();
+        @$document->loadHTML($filtered->getContent());
+        $this->assertSame(2, (new \DOMXPath($document))->query('//details[@data-nomination-category and @open]')->length);
+        $this->assertSame(2, $filtered->viewData('nominations')->total());
+        if (getenv('CT_NOMINATION_HISTORY_QA_HTML')) {
+            file_put_contents(storage_path('framework/testing/interpro-nomination-ordered-qa.html'), $response->getContent());
+        }
+    }
+
     private function scenario(): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);

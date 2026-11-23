@@ -9,7 +9,15 @@
 @section('page-style')
 <style>
   .ct-backend .interpro-filter-bar .btn:not(.p-0):not(.btn-icon) { min-height:46px; }
-  .interpro-tools > summary { cursor:pointer; }
+  .interpro-tool-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.75rem; align-items:start; }
+  .interpro-tools { display:block; min-width:0; }
+  .interpro-tools[open] { grid-column:1 / -1; }
+  .interpro-tools > summary { cursor:pointer; min-height:48px; }
+  .interpro-category > summary { cursor:pointer; }
+  .interpro-category[open] > summary { border-bottom:1px solid #e6e8ee; }
+  .interpro-history > summary { cursor:pointer; min-height:32px; }
+  .interpro-history-content { display:flex; flex-direction:column; gap:.25rem; padding-top:.4rem; }
+  @media (max-width:575.98px) { .interpro-tool-grid { grid-template-columns:1fr; } }
   .interpro-tools > summary::marker { color:#566a7f; }
   .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
   .interpro-nomination-table { --nomination-columns:minmax(0,1.15fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.2fr); }
@@ -38,6 +46,7 @@
     .interpro-cell-label { display:block; color:#687185; font-size:.7rem; font-weight:600; margin-bottom:.2rem; }
     .interpro-row-category { display:block; }
     .interpro-row-action { min-height:44px; }
+    .interpro-history > summary { min-height:44px; display:flex; align-items:center; }
     .interpro-nomination-row__actions details[open] { max-width:30rem; }
   }
   @media (max-width: 575.98px) {
@@ -68,16 +77,9 @@
     $publishedCategoryCount = $event->categoryEvents->where('nominations_published', true)->count();
     $publicationStatus = $publishedCategoryCount === 0 ? 'Private' : ($publishedCategoryCount === $event->categoryEvents->count() ? 'Published' : 'Mixed');
   @endphp
-  <div class="card mb-4"><div class="card-body d-flex flex-wrap justify-content-between align-items-center gap-3">
-    <div><strong>Public nomination list: {{ $publicationStatus }}</strong><div class="text-muted small">Publishing shows nominated player names on the public event page. It does not send emails.</div></div>
-    <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}" target="_blank" rel="noopener">View public page</a>
-      <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.publication', $event) }}">@csrf @method('PUT')<input type="hidden" name="published" value="{{ $publicationStatus === 'Published' ? 0 : 1 }}"><button class="btn {{ $publicationStatus === 'Published' ? 'btn-outline-warning' : 'btn-outline-primary' }}" onclick="return confirm('{{ $publicationStatus === 'Published' ? 'Make every nomination category private?' : 'Publish nominated player names in every category?' }}')">{{ $publicationStatus === 'Published' ? 'Unpublish all names' : 'Publish all names' }}</button></form>
-    </div>
-  </div></div>
-
-  <details class="card mb-3 interpro-tools" id="add-nominees" @if($errors->any() || request()->filled('source_search') || ($nominationFilterGroups['all']['count'] ?? 0) === 0) open @endif>
-    <summary class="p-3 fw-semibold">Add nominees <span class="text-muted fw-normal small">— search players or import previous results</span></summary>
+  <div class="interpro-tool-grid mb-3">
+  <details class="card interpro-tools" id="add-nominees" @if($errors->any() || request()->filled('source_search') || ($nominationFilterGroups['all']['count'] ?? 0) === 0) open @endif>
+    <summary class="p-3 fw-semibold">Add nominees</summary>
     <div class="card-body pt-0">
     <h5 class="mb-3">Nominate existing players</h5>
     <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.bulk-store', $event) }}" id="nomination-form" class="row g-3">
@@ -119,8 +121,8 @@
     </div>
   </details>
 
-  <details class="card mb-3 interpro-tools" id="nomination-email-tools">
-    <summary class="p-3 fw-semibold">Email tools <span class="text-muted fw-normal small">— invitations, messages and delivery readiness</span></summary>
+  <details class="card interpro-tools" id="nomination-email-tools">
+    <summary class="p-3 fw-semibold">Email tools</summary>
     <div class="card-body pt-0">
       <a class="btn btn-primary mb-3" href="{{ route('backend.interprovincial-trials.communications.nominees.compose', $event) }}">Email nominated players</a>
       <h6>Invitation emails</h6>
@@ -171,6 +173,19 @@
     </div>
   </details>
 
+  <details class="card interpro-tools" id="nomination-publication-tools">
+    <summary class="p-3 fw-semibold">Public visibility <span class="badge bg-label-secondary ms-1">{{ $publicationStatus }}</span></summary>
+    <div class="card-body pt-0 d-flex flex-wrap justify-content-between align-items-center gap-3">
+    <div><strong>Public nomination list: {{ $publicationStatus }}</strong><div class="text-muted small">Publishing shows nominated player names on the public event page. It does not send emails.</div></div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="{{ route('events.show', $event) }}" target="_blank" rel="noopener">View public page</a>
+      <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.publication', $event) }}">@csrf @method('PUT')<input type="hidden" name="published" value="{{ $publicationStatus === 'Published' ? 0 : 1 }}"><button class="btn {{ $publicationStatus === 'Published' ? 'btn-outline-warning' : 'btn-outline-primary' }}" onclick="return confirm('{{ $publicationStatus === 'Published' ? 'Make every nomination category private?' : 'Publish nominated player names in every category?' }}')">{{ $publicationStatus === 'Published' ? 'Unpublish all names' : 'Publish all names' }}</button></form>
+    </div>
+    </div>
+  </details>
+
+  </div>
+
   <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Nominated players</h5></div><div class="card-body">
     <p class="text-muted small">Use Remove for an unused nomination, Decline to retain the decision, or Mark paid manually to record collection. Existing registrations must be cancelled or withdrawn in Entries.</p>
     <details class="mb-3"><summary class="small text-muted">About nomination history</summary><p class="text-muted small mt-2 mb-0">Includes archived withdrawals and recorded removals. Removal does not mean a player declined.</p></details>
@@ -182,10 +197,22 @@
         </a>
       @endforeach
     </div>
+    @if($nominations->isEmpty() && $event->categoryEvents->isNotEmpty())
+      <p class="text-muted">No nominations match this filter on this page. Category totals below cover the whole event.</p>
+    @endif
     <div class="row g-3">
+    @php
+      $openedNominationCategory = false;
+    @endphp
     @forelse($event->categoryEvents as $categoryEvent)
-      @php($categoryNominations = $nominations->getCollection()->where('category_event_id', $categoryEvent->id))
-      <div class="col-12"><div class="border rounded overflow-hidden interpro-nomination-table" role="table" aria-label="{{ $categoryEvent->category?->name ?? 'Category' }} nominations" data-nomination-category="{{ $categoryEvent->id }}"><h6 class="interpro-category-title">{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary ms-1" data-nomination-count>{{ $categoryEvent->nominations_count }} total</span></h6>
+      @php
+        $categoryNominations = $nominations->getCollection()->where('category_event_id', $categoryEvent->id);
+        $openNominationCategory = $categoryNominations->isNotEmpty() && ($nominationStatus !== 'all' || !$openedNominationCategory);
+        if ($categoryNominations->isNotEmpty()) $openedNominationCategory = true;
+      @endphp
+      <div class="col-12"><details class="border rounded overflow-hidden interpro-category" data-nomination-category="{{ $categoryEvent->id }}" @if($openNominationCategory) open @endif>
+      <summary class="interpro-category-title fw-semibold">{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary ms-1" data-nomination-count>{{ $categoryEvent->nominations_count }} total</span><span class="text-muted small fw-normal ms-2">{{ $categoryNominations->count() }} on this page</span></summary>
+      <div class="interpro-nomination-table" role="table" aria-label="{{ $categoryEvent->category?->name ?? 'Category' }} nominations">
       <div class="interpro-nomination-head" role="row"><span role="columnheader">Player</span><span role="columnheader">Status</span><span role="columnheader">Registration history</span><span role="columnheader">Actions</span></div>
       <div role="rowgroup" data-nomination-list>
       @forelse($categoryNominations as $nomination)
@@ -193,7 +220,7 @@
           'presentation' => $nominationPresentations->get($nomination->id),
         ])
       @empty<div class="text-muted p-3" data-empty-nominations>{{ $categoryEvent->nominations_count ? 'No nominations from this category on this page.' : 'No players nominated yet.' }}</div>@endforelse
-      </div></div></div>
+      </div></div></details></div>
     @empty<div class="col-12"><div class="alert alert-warning mb-0">Add event categories before nominating players.</div></div>@endforelse
     </div>
     @if($nominations->hasPages())<div class="mt-3">{{ $nominations->links() }}</div>@endif
