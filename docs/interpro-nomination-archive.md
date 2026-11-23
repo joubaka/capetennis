@@ -45,3 +45,25 @@ assertions, including unchanged other-event paid records, public visibility,
 old-link registration/decline rejection, reminder exclusion and retained
 withdrawal state. MySQL concurrency and live execution remain separate checks.
 Repair catalogue reference: RK-064.
+
+## Unanswered nominees on the Entries page
+
+The Entries page has a separate follow-up workflow for current published
+nominees with no response. Super-users and assigned event administrators can
+email one nominee through the existing recipient review and approval flow.
+Removal and category moves are restricted to Interprovincial Trials; other
+selection workflows keep their own nomination administration.
+
+`NomineeFollowUpService` rechecks the exact nomination and its revision under
+event/category locks. It rejects recorded registration or checkout history,
+responses, active invitation delivery and locked categories. Moves require a
+different published, unlocked category in the same event and reject duplicate
+nominations. These actions do not register players or send invitations.
+
+With invitation history, removal archives the source nomination; moving also
+creates a destination nomination, retaining the original invitation identity.
+Without invitation history, removal deletes the history-free nomination and a
+move updates its category. Both actions record an audit. This workflow does not
+replace the reviewed withdrawn-participation command described above.
+
+Tests: `tests/Feature/EventEntryNomineeFollowUpActionsTest.php`.

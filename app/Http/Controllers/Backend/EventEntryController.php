@@ -97,41 +97,10 @@ class EventEntryController extends Controller
       }
     }
 
-    // Follow-up contacts belong to event management, not shared scoring access.
-    // Existing entries (including unpaid/withdrawn ones) and recorded responses
-    // must never be presented as nominees who have not responded.
-    $unansweredNominations = collect();
-    if (auth()->user()->hasRole('super-user')
-      || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))) {
-      $unansweredNominations = EventNomination::query()
-        ->where('event_id', $event->id)
-        ->unarchived()
-        ->whereHas('categoryEvent', fn ($query) => $query
-          ->where('event_id', $event->id)->where('nominations_published', true))
-        ->whereNotExists(function ($query) {
-          $query->selectRaw('1')->from('interprovincial_trial_invitations as followup_responses')
-            ->whereColumn('followup_responses.nomination_id', 'event_nominations.id')
-            ->whereColumn('followup_responses.event_id', 'event_nominations.event_id')
-            ->whereColumn('followup_responses.category_event_id', 'event_nominations.category_event_id')
-            ->whereRaw('(followup_responses.player_id = event_nominations.player_id OR (followup_responses.player_id IS NULL AND event_nominations.player_id IS NULL))')
-            ->whereRaw("followup_responses.id = (SELECT COALESCE(MAX(CASE WHEN current_response.status != 'prepared' THEN current_response.id END), MAX(current_response.id)) FROM interprovincial_trial_invitations current_response WHERE current_response.nomination_id = event_nominations.id AND current_response.event_id = event_nominations.event_id AND current_response.category_event_id = event_nominations.category_event_id AND (current_response.player_id = event_nominations.player_id OR (current_response.player_id IS NULL AND event_nominations.player_id IS NULL)))")
-            ->whereIn('followup_responses.status', ['accepted_pending_payment', 'paid_confirmed', 'declined', 'admin_declined', 'withdrawn']);
-        })
-        ->whereNotExists(function ($query) {
-          $query->selectRaw('1')->from('category_event_registrations as followup_entries')
-            ->join('player_registrations as followup_players', 'followup_players.registration_id', '=', 'followup_entries.registration_id')
-            ->whereColumn('followup_entries.category_event_id', 'event_nominations.category_event_id')
-            ->whereColumn('followup_players.player_id', 'event_nominations.player_id')
-            ->where(fn ($entries) => $entries->whereNull('followup_entries.deleted_at')
-              ->orWhere('followup_entries.payment_status_id', 1)
-              ->orWhereNotNull('followup_entries.withdrawn_at')
-              ->orWhere('followup_entries.status', 'like', 'withdrawn%'));
-        })
-        ->with('player')
-        ->orderBy('nominee_surname')->orderBy('nominee_name')->orderBy('id')
-        ->get()->groupBy('category_event_id');
-    }
-
+    $followUp = app(\App\Services\NomineeFollowUpService::class);
+    $unansweredNominations = $followUp->canManage($event, auth()->user())
+      ? $followUp->query($event)->with('player')->orderBy('nominee_surname')->orderBy('nominee_name')->orderBy('id')->get()->groupBy('category_event_id')
+      : collect();
     $mastersBatch = $event->isMasters()
       ? MastersInvitationBatch::query()
           ->where('event_id', $event->id)
@@ -157,6 +126,17 @@ class EventEntryController extends Controller
       'success' => true,
       'locked' => true,
     ]);
+  }
+
+  public function nomineeAction(Request $request, Event $event, CategoryEvent $categoryEvent, EventNomination $nomination, \App\Services\NomineeFollowUpService $followUp)
+  {
+    $data = $request->validate([
+      'action' => ['required', 'in:remove,move'],
+      'revision' => ['required', 'string', 'size:64'],
+      'target_category_id' => ['nullable', 'required_if:action,move', 'integer'],
+    ]);
+    return response()->json($followUp->act($event, $categoryEvent, $nomination, $request->user(),
+      $data['action'], $data['revision'], $data['target_category_id'] ?? null));
   }
 
   /**

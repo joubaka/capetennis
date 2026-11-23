@@ -51,6 +51,7 @@ class EventCommunicationController extends Controller
                 'team_id' => 'required_if:compose_scope,team|nullable|integer',
                 'individual_key' => 'required_if:compose_scope,individual|nullable|string|max:80',
                 'compose_filter' => 'nullable|in:all,not_registered',
+                'followup_nomination_id' => 'nullable|integer|min:1',
             ]);
             $composeOptions = ['scope' => $target['compose_scope'], 'filter' => $target['compose_filter'] ?? 'all', 'recipients' => 'players'];
             if ($target['compose_scope'] === 'region') {
@@ -60,7 +61,15 @@ class EventCommunicationController extends Controller
                 $team = app(\App\Services\EventTeamScope::class)->query($event)->whereIn('region_id', $regions->pluck('region_id'))->findOrFail($target['team_id']);
                 $composeOptions['team_ids'] = [$team->id];
             } else {
-                $individual = $service->entries($event, $request->user())->firstWhere('key', $target['individual_key']);
+                if (! empty($target['followup_nomination_id'])) {
+                    $nomination = app(\App\Services\NomineeFollowUpService::class)->current($event, $request->user(), $target['followup_nomination_id']);
+                    $key = $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id;
+                    abort_unless($key === $target['individual_key'], 404);
+                    $individual = ['key' => $key, 'name' => $nomination->display_name];
+                    $composeOptions['followup_nomination_id'] = $nomination->id;
+                } else {
+                    $individual = $service->entries($event, $request->user())->firstWhere('key', $target['individual_key']);
+                }
                 abort_unless($individual, 404);
                 $composeOptions['individual_key'] = $individual['key'];
                 $search = $individual['name'];
@@ -155,6 +164,7 @@ class EventCommunicationController extends Controller
             'registration_id' => 'nullable|integer',
             'direct_email' => 'nullable|required_if:scope,direct|email|max:255',
             'individual_key' => 'nullable|required_if:scope,individual|string|max:80',
+            'followup_nomination_id' => 'nullable|integer|min:1',
             'filter' => 'required|in:all,not_registered,payment_pending,paid,declined,withdrawn,reserves',
             'recipients' => 'required|in:players,managers,both',
             'subject' => 'required|string|max:200',
@@ -164,6 +174,7 @@ class EventCommunicationController extends Controller
             'context_fingerprint' => ['nullable', \Illuminate\Validation\Rule::requiredIf($request->boolean('wrap_up')), 'string', 'size:64'],
         ]);
         $options = array_intersect_key($data, array_flip(['scope', 'region_id', 'team_id', 'team_ids', 'individual_key', 'category_event_id', 'registration_id', 'direct_email', 'filter', 'recipients', 'respect_status']));
+        if (! empty($data['followup_nomination_id'])) $options['followup_nomination_id'] = $data['followup_nomination_id'];
         if (! empty($data['pending_selection_import_id'])) $options['pending_selection_import_id'] = $data['pending_selection_import_id'];
         if ($event->isTeam() && ! $request->boolean('respect_status') && in_array($data['scope'], ['all', 'region', 'team'], true)) {
             $options['filter'] = 'all';

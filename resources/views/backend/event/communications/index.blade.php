@@ -49,7 +49,13 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 <div class="alert alert-info">Sending is unavailable for this event.</div>
 @endif
 @endif
-@unless($wrapUp)
+@if(!empty($composeOptions['followup_nomination_id']))
+@foreach(['scope','filter','recipients','individual_key','followup_nomination_id'] as $field)
+<input type="hidden" name="{{ $field }}" value="{{ $composeOptions[$field] }}">
+@endforeach
+<p><strong>Audience</strong> · {{ $search }} and their player contacts only</p>
+@endif
+@unless($wrapUp || !empty($composeOptions['followup_nomination_id']))
 @foreach(['category_event_id','registration_id','direct_email'] as $field)
 @if(old($field,$composeOptions[$field] ?? null))<input type="hidden" name="{{ $field }}" value="{{ old($field,$composeOptions[$field] ?? '') }}">@endif
 @endforeach
@@ -114,7 +120,7 @@ if ($wrapUp) $composeOptions = $wrapUp['options'] ?? ['scope' => $teamAudience ?
 @forelse($batches as $item)<a class="d-block mb-2 text-break" href="{{ route('backend.event-communications.index',array_merge(['event'=>$event],request()->except(['history_page','batch','report_scope']),['batch'=>$item->id,'report_scope'=>'batch'])) }}#email-history">{{ $item->subject }} - {{ count($item->recipients) }} emails - {{ $item->approved_at ? 'Approved' : 'Awaiting approval' }} - {{ $item->created_at }}</a>@empty<p>No email previews yet.</p>@endforelse
 {{ $batches->withQueryString()->links('pagination::bootstrap-5') }}
 @if($batch && $batch->issues)<details class="mt-3"><summary>Selected batch: missing contacts / excluded recipients</summary><ul>@foreach($batch->issues as $issue)<li>{{ $issue }}</li>@endforeach</ul></details>@endif
-@unless($wrapUp)
+@unless($wrapUp || !empty($composeOptions['followup_nomination_id']))
 <script>
 const scopeSelect = document.getElementById('communication-scope');
 const statusFilter = document.getElementById('communication-filter');

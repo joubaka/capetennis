@@ -285,6 +285,24 @@ class EventCommunicationService
 
     public function plan(Event $event, User $actor, array $options, string $subject, string $body, bool $lockLifecycle = false): array
     {
+        if (! empty($options['followup_nomination_id'])) {
+            $followUp = app(NomineeFollowUpService::class);
+            if ($lockLifecycle) {
+                Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
+                $identity = EventNomination::where('event_id', $event->id)->findOrFail($options['followup_nomination_id']);
+                \App\Models\CategoryEvent::whereKey($identity->category_event_id)->lockForUpdate()->firstOrFail();
+                EventNomination::whereKey($identity->id)->lockForUpdate()->firstOrFail();
+            }
+            $nomination = $followUp->current($event, $actor, (int) $options['followup_nomination_id']);
+            $key = $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id;
+            abort_unless(($options['scope'] ?? null) === 'individual' && ($options['recipients'] ?? null) === 'players'
+                && ($options['individual_key'] ?? null) === $key, 422);
+            $emails = $nomination->player ? $this->contacts->emails($nomination->player) : collect();
+            if (! $nomination->player && filter_var($nomination->nominee_email, FILTER_VALIDATE_EMAIL)) $emails->push(mb_strtolower(trim($nomination->nominee_email)));
+            $plan = $this->legacyPlan($event, $options, collect([['key' => $key, 'name' => $nomination->display_name, 'emails' => $emails->unique()->values()->all()]]), $subject, $body);
+            $plan['fingerprint'] = $this->planFingerprint([$plan, $followUp->revision($nomination)]);
+            return $plan;
+        }
         if (! empty($options['wrap_up'])) {
             abort_unless($this->managesWholeEvent($event, $actor), 403);
             $this->validateWrapUpResults($event, $options);

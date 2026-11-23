@@ -1299,6 +1299,8 @@ Route::delete(
     'event/{event}/entries',
     [EventEntryController::class, 'index']
   )->name('admin.events.entries.new');
+  Route::post('event/{event}/categories/{categoryEvent}/nominees/{nomination}/action',
+    [EventEntryController::class, 'nomineeAction'])->name('admin.events.nominees.action');
   Route::get(
     '/category/{categoryEvent}/available-registrations',
     [EventEntryController::class, 'availableRegistrations']

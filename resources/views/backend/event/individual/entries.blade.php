@@ -558,7 +558,19 @@
                   @if($contactEmail)<a class="text-break" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<div>No email captured</div>@endif
                 </td>
                 @if(auth()->user()->hasAnyRole(['super-user', 'admin']))<td class="col-poc" data-label="POC">—</td>@endif
-                <td class="col-actions text-end" data-label="Actions">—</td>
+                <td class="col-actions text-end" data-label="Actions">
+                  <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false">Actions</button>
+                    <ul class="dropdown-menu dropdown-menu-end entry-actions-menu">
+                      <li><a class="dropdown-item" href="{{ route('backend.event-communications.index', ['event' => $event, 'compose_scope' => 'individual', 'individual_key' => $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id, 'compose_filter' => 'all', 'followup_nomination_id' => $nomination->id]) }}"><i class="ti ti-mail me-1"></i>Email this player</a></li>
+                      @if($event->isInterprovincialTrials())
+                      <li><button type="button" class="dropdown-item nominee-action-btn" data-action="move" data-url="{{ route('admin.events.nominees.action', [$event, $categoryEvent, $nomination]) }}" data-category="{{ $categoryEvent->id }}" data-player="{{ $nomination->display_name }}" data-revision="{{ app(\App\Services\NomineeFollowUpService::class)->revision($nomination) }}"><i class="ti ti-arrows-exchange me-1"></i>Move category</button></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><button type="button" class="dropdown-item text-danger nominee-action-btn" data-action="remove" data-url="{{ route('admin.events.nominees.action', [$event, $categoryEvent, $nomination]) }}" data-category="{{ $categoryEvent->id }}" data-player="{{ $nomination->display_name }}" data-revision="{{ app(\App\Services\NomineeFollowUpService::class)->revision($nomination) }}"><i class="ti ti-user-minus me-1"></i>Remove nomination</button></li>
+                      @endif
+                    </ul>
+                  </div>
+                </td>
               </tr>
             @endforeach
           </tbody>
@@ -571,6 +583,32 @@
 
 {{-- EMAIL MODAL --}}
 <script>
+(function () {
+  const destinations = @json($categoryEvents->filter(fn ($category) => $category->nominations_published && !$category->isLocked())->map(fn ($category) => ['id' => (string) $category->id, 'name' => $category->category?->name])->values());
+  document.addEventListener('click', async function (event) {
+    const button = event.target.closest('.nominee-action-btn');
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    let target = null;
+    if (button.dataset.action === 'move') {
+      const options = Object.fromEntries(destinations.filter(category => category.id !== button.dataset.category).map(category => [category.id, category.name]));
+      if (!Object.keys(options).length) { toastr.info('There is no other published, unlocked category available.'); return; }
+      const selection = await Swal.fire({ title: 'Move nomination', text: 'Choose the category for ' + button.dataset.player + '.', input: 'select', inputOptions: options, inputPlaceholder: 'Choose a category', showCancelButton: true, confirmButtonText: 'Continue', inputValidator: value => value ? undefined : 'Choose a category.' });
+      if (!selection.isConfirmed) return;
+      target = selection.value;
+    }
+    const moving = button.dataset.action === 'move';
+    const confirmation = await Swal.fire({ title: moving ? 'Move nomination?' : 'Remove nomination?', text: moving ? button.dataset.player + ' will move to ' + destinations.find(category => category.id === target)?.name + '. Previous invitation history is retained. No email will be sent.' : 'Remove ' + button.dataset.player + ' from the current nomination list? Existing invitation history is retained.', icon: 'warning', showCancelButton: true, confirmButtonText: moving ? 'Move nomination' : 'Remove nomination' });
+    if (!confirmation.isConfirmed) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(button.dataset.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: JSON.stringify({ action: button.dataset.action, revision: button.dataset.revision, target_category_id: target }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not change nomination.');
+      window.location.reload();
+    } catch (error) { toastr.error(error.message); button.disabled = false; }
+  });
+})();
 (function () {
   const root = document.querySelector('.entries-workspace');
   if (!root) return;
