@@ -3,12 +3,20 @@
 ## CTR Certified planner
 
 Export fictional full-page states from `CtrDrawPlannerTest` with
-`CT_CTR_PLANNER_QA_HTML=1` (requires `APP_ENV=testing` and database `ct_testing`),
+`CT_CTR_PLANNER_QA_HTML=1` (requires `APP_ENV=testing` and either MySQL database
+`ct_testing` or isolated SQLite `:memory:`),
 then run `node tests/Browser/ctr-planner.cjs` using Node 24 and Playwright on
 `NODE_PATH`. The harness reads `storage/app/testing/ctr-planner/` and serves only
-those exports and local static assets. It checks initial, preview, blocked and
-created states at 360, 390, 768 and 1440 pixels, plus unsaved-placement confirmation
-guards. It never connects a browser to application data or creates live draws.
+those exports and local static assets. The full exporter produces thirteen states:
+initial, preview, shortfall, unrated, mixed, blocked, excluded2, six, ten, twenty,
+categories, sparse and created. At 360, 390, 768 and 1440 pixels this gives 52
+state/width checks; four Move/native-drag/boundary/exact-POST sequences plus a
+cross-category rejection give 57 checks. It verifies numeric group ordering,
+unrated suffix placement, short-match acknowledgment, reversible plan exclusions,
+and confirmation disabled until edits are reviewed. Six is one linked 3+3
+competition with nine matches and two prizes; default ten is independent four
+plus linked 3+3, fifteen matches and four prizes. It never connects a browser to
+application data or creates live draws.
 
 ## Interpro preview
 

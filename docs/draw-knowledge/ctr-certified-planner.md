@@ -21,15 +21,53 @@ Only eligible, paid, active single-player entries are projected, excluding playe
 already assigned in the same category. Existing category and ball-level boundaries
 remain intact. Red, Orange and standard CTR use separate validated saved pools;
 missing, stale or noncomparable scores are never replaced with zero or another pool.
-There is no fitting on page load. Manual placement requires explicit review.
+There is no fitting on page load. Unrated and unavailable ratings remain null;
+those players start at the bottom of their category rather than disappearing
+into an unassigned list. This is a starting placement, not an ability judgment.
+Within one valid comparison scale, order comparable CTR descending and append
+unknown scores deterministically. Multiple comparison scales stay in separate
+labelled bands; never rank their numbers against each other. A deliberate manual
+group mixing those bands requires explicit acknowledgment. Missing rating alone
+requires no acknowledgment. Invalid singles identity or unknown ball context
+remains a creation blocker.
 
-The accepted default is nearby-rated independent round robins, targeting four
-players, up to five, with groups of three where necessary. Examples: 6 = 3+3,
-7 = 4+3, 9 = 5+4, 10 = 5+5, 11 = 4+4+3. The preferred size can be changed to 3–5.
-Fewer than three players in an unresolved field require organizer review and cannot
-silently produce an undersized competition. There are no crossover stages.
-Each competition allocates one winner and one sportsmanship prize. The planner
-counts prizes; it neither awards sportsmanship randomly nor creates financial costs.
+The preferred group size defaults to four and can be changed to 3–5. Groups must
+contain 3–5 players. Defaults: five stays one group; seven is 4+3; nine is 5+4;
+eleven is 4+4+3. Six is one competition with two groups of three and three
+straight-over finals: A1–B1 for the winner, A2–B2 for places 3–4, A3–B3 for
+places 5–6. This creates six RR matches plus three unqualified final placeholders
+through the existing canonical playoff preparation. Ten defaults to an independent
+group of four followed by that linked six-player competition: three groups
+4+3+3, two draws, fifteen matches. An explicit preferred size of five offers
+5+5 instead. Other fields are not silently converted to linked competitions.
+The saved proposal records exact straight-over block group numbers.
+
+Aim for three matches per player, with up to four: four-player RR gives three,
+five gives four, linked 3+3 gives three. An independent three-player RR gives
+only two and must be explicitly acknowledged as a below-target exception before
+creation, or rebalanced/excluded. No rematches are invented. Twenty default
+players form five groups of four, thirty matches in total.
+
+Each competition allocates one winner and one sportsmanship prize; linked six
+groups share one pair. Thus six has two prizes and ten has four prizes, not six.
+The planner counts prizes; it neither awards sportsmanship randomly nor creates
+financial costs. A category with only one or two players stays visible with
+“Not enough players.” The organizer may explicitly exclude any exact category
+from this saved draw plan, then include it again before creation. Excluded
+players remain registered and their payment state is untouched. All-excluded
+plans cannot create an empty programme. Source fingerprints still cover every
+original source row, including excluded categories, and creation audits record
+the reviewed exclusions.
+
+The group board appears in numeric group order, with comparable CTR descending
+and unknowns last within each group. Same-category drag/drop and labelled
+Move-to selects/buttons share exact entry-ID placement fields; native selects
+also allow a server-reviewed no-JavaScript fallback. Adding/removing empty groups
+never removes players. Counts, match totals and prizes update locally, while
+invalid sizes, missing shortfall acknowledgment or mixed-band review disable
+Review. Every membership/exclusion/acknowledgment change disables Confirm until
+the server saves and re-renders the reviewed proposal. Version 2 source hashes
+invalidate older previews without rewriting them.
 
 Preview writes only an expiring private plan. Changed placements must be reviewed
 before confirmation. Apply validates the saved proposal revision, current entries,

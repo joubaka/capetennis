@@ -35,8 +35,9 @@ class CtrDrawPlannerController extends Controller
     public function review(Request $request, Event $event, CtrDrawPlanner $planner)
     {
         $data = $request->validate(['token' => 'required|uuid', 'revision' => 'required|string|size:64',
-            'placements' => 'required|array|max:1600', 'placements.*' => 'required|integer|min:1|max:1600', 'manual_reviewed' => 'sometimes|boolean']);
-        $plan = $planner->review($event, $request->user(), $data['token'], $data['revision'], $data['placements'], (bool) ($data['manual_reviewed'] ?? false));
+            'placements' => 'required|array|max:1600', 'placements.*' => 'required|integer|min:1|max:1600', 'manual_reviewed' => 'sometimes|boolean',
+            'excluded_categories' => 'sometimes|array|max:256', 'excluded_categories.*' => 'integer|distinct', 'short_matches_reviewed' => 'sometimes|boolean']);
+        $plan = $planner->review($event, $request->user(), $data['token'], $data['revision'], $data['placements'], (bool) ($data['manual_reviewed'] ?? false), $data['excluded_categories'] ?? [], (bool) ($data['short_matches_reviewed'] ?? false));
         return redirect()->route('backend.ctr-planner.show', [$event, 'plan' => $plan->token])->with('success', 'Placements reviewed. Check the groups and confirm when ready.');
     }
 

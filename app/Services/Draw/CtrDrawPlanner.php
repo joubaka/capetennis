@@ -12,7 +12,7 @@ use Illuminate\Validation\ValidationException;
 /** Private, event-bound preview/apply. This never rebuilds an existing draw. */
 class CtrDrawPlanner
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public function certify(Event $event, User $actor, bool $certified): void
     {
@@ -32,10 +32,11 @@ class CtrDrawPlanner
     }
 
     /** Prefer fours, add at most one extra per group, otherwise use threes. */
-    public function sizes(int $count, int $target = 4): array
+    public function sizes(int $count, int $target = 4, bool $tenCompetition = true): array
     {
         if ($count < 3) return [];
         $target = max(3, min(5, $target));
+        if ($count === 10 && $target !== 5 && $tenCompetition) return [4, 3, 3];
         $groups = max(1, intdiv($count, $target));
         while ($count > $groups * 5) $groups++;
         while ($groups > 1 && $count < $groups * 3) $groups--;
@@ -83,8 +84,8 @@ class CtrDrawPlanner
                     'component' => $valid ? (string) $rating['component'] : null,
                     'confidence' => $valid ? (string) ($rating['confidence_label'] ?? 'Unspecified confidence') : null,
                     'historical_connection' => $valid && !empty($rating['historical_connection']),
-                    'issue' => !$player ? 'Singles registration must identify exactly one player.' : ($pool === null ? 'Ball level needs review.'
-                        : (!$valid ? 'CTR unavailable, stale or not comparable — place manually.' : null)),
+                    'rating_label' => $valid ? 'CTR' : (empty($rating) && empty($snapshot['reason']) && empty($snapshot['snapshot_stale']) ? 'Unrated' : 'CTR unavailable'),
+                    'issue' => !$player ? 'Singles registration must identify exactly one player.' : ($pool === null ? 'Ball level needs review.' : null),
                     'eligibility' => $entrant->only(['payment_status_id', 'withdrawn_at', 'status']),
                 ];
             }
@@ -104,26 +105,44 @@ class CtrDrawPlanner
     public function preview(Event $event, User $actor, int $target = 4): CtrDrawPlan
     {
         $source = $this->source($event, $actor);
-        $rows = $source['rows'];
-        $groups = [];
-        foreach (collect($rows)->groupBy('category_id') as $categoryId => $categoryRows) {
+        $rows = [];
+        $straightBlocks = [];
+        foreach (collect($source['rows'])->groupBy('category_id') as $categoryRows) {
+            if ($categoryRows->count() === 6 || ($categoryRows->count() === 10 && $target !== 5)) {
+                $straightBlocks[] = ['category_id' => (int) $categoryRows->first()['category_id'],
+                    'groups' => $categoryRows->count() === 6 ? [1, 2] : [2, 3]];
+            }
             $number = 0;
-            // Different comparison groups are never ranked against each other.
-            foreach ($categoryRows->whereNotNull('score')->groupBy('component') as $componentRows) {
-                $ordered = $componentRows->sort(fn ($a, $b) => ($b['score'] <=> $a['score']) ?: ($a['player_id'] <=> $b['player_id']))->values();
+            $rated = $categoryRows->whereNotNull('score')->groupBy('component')->sortKeys();
+            $unknown = $categoryRows->whereNull('score')->sortBy('entry_id')->values();
+            // A single comparable scale can be grouped with unknowns as a suffix.
+            // Multiple scales stay in separate bands; their numbers are never ranked.
+            $bands = [];
+            foreach ($rated as $componentRows) {
+                $bands[] = $componentRows->sort(fn ($a, $b) => ($b['score'] <=> $a['score']) ?: ($a['player_id'] <=> $b['player_id']))->values();
+            }
+            if (count($bands) <= 1) {
+                $bands = [($bands[0] ?? collect())->concat($unknown)->values()];
+            } elseif ($unknown->isNotEmpty()) {
+                $bands[] = $unknown;
+            }
+            foreach ($bands as $bandIndex => $ordered) {
                 $offset = 0;
-                foreach ($this->sizes($ordered->count(), $target) as $size) {
+                foreach ($this->sizes($ordered->count(), $target, $categoryRows->count() === 10) ?: [$ordered->count()] as $size) {
                     $number++;
-                    foreach ($ordered->slice($offset, $size) as $row) $groups[$row['entry_id']] = $number;
+                    foreach ($ordered->slice($offset, $size) as $row) {
+                        $row['group'] = $number;
+                        $row['order'] = count($rows);
+                        $row['band'] = count($rated) > 1 ? ($row['score'] === null ? 'Unrated starting group' : 'Comparison band '.($bandIndex + 1)) : null;
+                        $rows[] = $row;
+                    }
                     $offset += $size;
                 }
             }
         }
-        foreach ($rows as &$row) $row['group'] = $groups[$row['entry_id']] ?? 0;
-        unset($row);
         return CtrDrawPlan::create(['token' => (string) Str::uuid(), 'event_id' => $event->id, 'actor_id' => $actor->id,
-            'fingerprint' => $source['fingerprint'], 'proposal' => ['version' => self::VERSION, 'target' => $target, 'rows' => $rows,
-                'manual_reviewed' => false], 'expires_at' => now()->addMinutes(30)]);
+            'fingerprint' => $source['fingerprint'], 'proposal' => ['version' => self::VERSION, 'target' => $target, 'rows' => $rows, 'excluded_category_ids' => [], 'straight_blocks' => $straightBlocks,
+                'manual_reviewed' => false, 'short_matches_reviewed' => false], 'expires_at' => now()->addMinutes(30)]);
     }
 
     public function revision(CtrDrawPlan $plan): string
@@ -139,9 +158,9 @@ class CtrDrawPlanner
         return $query->firstOrFail();
     }
 
-    public function review(Event $event, User $actor, string $token, string $revision, array $placements, bool $manual): CtrDrawPlan
+    public function review(Event $event, User $actor, string $token, string $revision, array $placements, bool $manual, array $excludedCategories = [], bool $shortMatches = false): CtrDrawPlan
     {
-        return DB::transaction(function () use ($event, $actor, $token, $revision, $placements, $manual) {
+        return DB::transaction(function () use ($event, $actor, $token, $revision, $placements, $manual, $excludedCategories, $shortMatches) {
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
             $plan = $this->owned($event, $actor, $token, true);
             $this->assertCurrent($event, $actor, $plan, $revision);
@@ -152,53 +171,95 @@ class CtrDrawPlanner
             foreach ($proposal['rows'] as &$row) $row['group'] = (int) $placements[$row['entry_id']];
             unset($row);
             $proposal['manual_reviewed'] = $manual;
+            $proposal['excluded_category_ids'] = array_values(array_unique(array_map('intval', $excludedCategories)));
+            $proposal['short_matches_reviewed'] = $shortMatches;
             $this->validateProposal($proposal);
             $plan->update(['proposal' => $proposal]);
             return $plan->fresh();
         });
     }
 
-    public function competitions(array $proposal): array
+    public function groups(array $proposal): array
     {
         $groups = [];
         foreach ($proposal['rows'] as $row) {
             if (!$row['group']) continue;
             $key = $row['category_id'].':'.$row['group'];
-            $groups[$key] ??= ['name' => $row['category'].' · Group '.$row['group'], 'category_id' => $row['category_id'], 'rows' => []];
+            $groups[$key] ??= ['name' => $row['category'].' · Group '.$row['group'], 'category_id' => $row['category_id'], 'number' => (int) $row['group'], 'rows' => []];
             $groups[$key]['rows'][] = $row;
         }
         foreach ($groups as &$group) {
             // Order seeds by CTR only when all members share a comparable scale.
             $members = collect($group['rows']);
-            if ($members->whereNull('score')->isEmpty() && $members->pluck('component')->unique()->count() === 1) {
-                $group['rows'] = $members->sort(fn ($a, $b) => ($b['score'] <=> $a['score']) ?: ($a['player_id'] <=> $b['player_id']))->values()->all();
+            if ($members->pluck('component')->filter()->unique()->count() <= 1) {
+                $group['rows'] = $members->sort(function ($a, $b) {
+                    if (($a['score'] === null) !== ($b['score'] === null)) return $a['score'] === null ? 1 : -1;
+                    return ($a['score'] === null ? 0 : ($b['score'] <=> $a['score'])) ?: ($a['entry_id'] <=> $b['entry_id']);
+                })->values()->all();
+            } else {
+                $group['rows'] = $members->sort(fn ($a, $b) => (($a['score'] === null) <=> ($b['score'] === null))
+                    ?: (($a['order'] ?? $a['entry_id']) <=> ($b['order'] ?? $b['entry_id'])))->values()->all();
             }
         }
         unset($group);
-        return array_values($groups);
+        return collect($groups)->sort(fn ($a, $b) => ($a['category_id'] <=> $b['category_id']) ?: ($a['number'] <=> $b['number']))->values()->all();
+    }
+
+    public function competitions(array $proposal): array
+    {
+        $competitions = [];
+        $excluded = $proposal['excluded_category_ids'] ?? [];
+        foreach (collect($this->groups($proposal))->groupBy('category_id') as $categoryId => $groups) {
+            if (in_array((int) $categoryId, $excluded, true)) continue;
+            $used = [];
+            foreach ($proposal['straight_blocks'] ?? [] as $block) {
+                if ((int) $block['category_id'] !== (int) $categoryId) continue;
+                $blockGroups = $groups->whereIn('number', $block['groups'])->values();
+                $used = array_merge($used, $block['groups']);
+                $competitions[] = ['name' => $groups->first()['rows'][0]['category'].' · Six-player competition',
+                    'category_id' => (int) $categoryId, 'rows' => $blockGroups->flatMap(fn ($group) => $group['rows'])->all(),
+                    'groups' => $blockGroups->all(), 'six' => true, 'matches' => 9, 'number' => min($block['groups'])];
+            }
+            foreach ($groups->whereNotIn('number', $used) as $group) $competitions[] = $group + ['groups' => [$group], 'six' => false,
+                'matches' => count($group['rows']) * (count($group['rows']) - 1) / 2];
+        }
+        return collect($competitions)->sort(fn ($a, $b) => ($a['category_id'] <=> $b['category_id']) ?: ($a['number'] <=> $b['number']))->values()->all();
     }
 
     public function validateProposal(array $proposal): void
     {
         if (empty($proposal['rows'])) $this->invalid('There are no available players to create draws for.');
+        if (($proposal['version'] ?? null) !== self::VERSION) $this->invalid('This preview uses an earlier grouping rule. Press Plan all draws for a fresh preview.');
+        $excluded = $proposal['excluded_category_ids'] ?? [];
+        if (array_diff($excluded, array_column($proposal['rows'], 'category_id'))) $this->invalid('Exclude only categories belonging to this exact plan.');
         foreach ($proposal['rows'] as $row) {
+            if (in_array((int) $row['category_id'], $excluded, true)) continue;
             if (!$row['player_id'] || $row['pool'] === null) $this->invalid('Resolve the singles identity or ball-level issue before creating draws.');
             if ($row['group'] < 1 || $row['group'] > 1600) $this->invalid('Assign every player to a group before confirming.');
-            if ($row['issue'] && !$proposal['manual_reviewed']) $this->invalid('Confirm that you reviewed manual placements for players without comparable CTR.');
         }
         foreach ($this->competitions($proposal) as $competition) {
-            $count = count($competition['rows']);
-            if ($count < 3 || $count > 5) $this->invalid('Each group must contain three to five players.');
+            if ($competition['six'] && (count($competition['groups']) !== 2 || collect($competition['groups'])->contains(fn ($group) => count($group['rows']) !== 3))) {
+                $this->invalid('Six players need exactly two groups of three for the straight-over finals.');
+            }
+            foreach ($competition['groups'] as $group) {
+                $count = count($group['rows']);
+                if ($count < 3 || $count > 5) $this->invalid('Not enough players, or too many in one group. Each included group needs three to five players.');
+                if (!$competition['six'] && $count === 3 && !($proposal['short_matches_reviewed'] ?? false)) {
+                    $this->invalid('Three-player groups have only two matches per player, below the target of three. Review and explicitly accept this exception, or rebalance or exclude the category.');
+                }
+                if (collect($group['rows'])->pluck('component')->filter()->unique()->count() > 1 && !$proposal['manual_reviewed']) {
+                    $this->invalid('Review manual placements before mixing players from different rating comparison groups.');
+                }
+            }
             $ids = array_column($competition['rows'], 'player_id');
             if (count($ids) !== count(array_unique($ids))) $this->invalid('A player cannot occur twice in one competition.');
-            if (collect($competition['rows'])->pluck('component')->filter()->unique()->count() > 1 && !$proposal['manual_reviewed']) {
-                $this->invalid('Review manual placements before mixing players from different rating comparison groups.');
-            }
         }
         // Aliases cannot silently place a real player in two draws of the same category.
         foreach (collect($proposal['rows'])->groupBy('category_id') as $rows) {
+            if (in_array((int) $rows->first()['category_id'], $excluded, true)) continue;
             if ($rows->pluck('player_id')->unique()->count() !== $rows->count()) $this->invalid('Duplicate player registrations need review before planning.');
         }
+        if (!$this->competitions($proposal)) $this->invalid('Include at least one category with enough players to create draws.');
     }
 
     public function apply(Event $event, User $actor, string $token, string $revision): CtrDrawPlan
@@ -215,16 +276,29 @@ class CtrDrawPlanner
             foreach ($this->competitions($plan->proposal) as $competition) {
                 $draw = Draw::create(['event_id' => $event->id, 'category_event_id' => $competition['category_id'],
                     'drawName' => $competition['name'], 'published' => 0, 'oop_published' => 0, 'locked' => 0, 'oop_created' => 0]);
-                $draw->settings()->create(['workflow' => 'round_robin', 'boxes' => 1,
-                    'draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id')]);
-                $group = $draw->groups()->create(['name' => 'A', 'round_robin_phase' => 1]);
+                $six = $competition['six'];
+                $draw->settings()->create(['workflow' => $six ? 'round_robin_playoffs' : 'round_robin', 'boxes' => $six ? 2 : 1,
+                    'draw_format_id' => \App\Models\DrawFormats::where('name', 'Round Robin')->value('id'),
+                    'preset_key' => $six ? '2_groups_cross' : null,
+                    'playoff_config' => $six ? array_slice(\App\Models\DrawSetting::getPresetTemplates()['2_groups_cross']['config'], 0, 3) : null]);
                 $assignments = app(GroupAssignmentService::class);
-                $assignments->save($draw, ['revision' => $assignments->revision($draw), 'groups' => [
-                    ['group_id' => $group->id, 'registration_ids' => array_column($competition['rows'], 'registration_id')],
-                ]]);
+                $placements = [];
+                foreach ($competition['groups'] as $index => $plannedGroup) {
+                    $group = $draw->groups()->create(['name' => chr(65 + $index), 'round_robin_phase' => 1]);
+                    $placements[] = ['group_id' => $group->id, 'registration_ids' => array_column($plannedGroup['rows'], 'registration_id')];
+                }
+                $assignments->save($draw, ['revision' => $assignments->revision($draw), 'groups' => $placements]);
                 app(RoundRobinGenerationService::class)->generate($draw);
+                if ($six && app(AutomaticPlayoffPreparationService::class)->prepare($draw) !== 3) {
+                    $this->invalid('The straight-over finals could not be prepared. No draws were created.');
+                }
                 DrawAuditLog::record($draw->id, 'ctr_programme_created', null, ['plan_token' => $plan->token,
-                    'winner_prizes' => 1, 'sportsmanship_prizes' => 1, 'template_version' => self::VERSION]);
+                    'winner_prizes' => 1, 'sportsmanship_prizes' => 1, 'template_version' => self::VERSION,
+                    'excluded_category_ids' => $plan->proposal['excluded_category_ids'] ?? [],
+                    'short_matches_reviewed' => (bool) ($plan->proposal['short_matches_reviewed'] ?? false),
+                    'manual_comparison_reviewed' => (bool) ($plan->proposal['manual_reviewed'] ?? false),
+                    'competition_format' => $six ? 'six_player_straight_finals' : 'independent_round_robin',
+                    'planned_group_numbers' => array_column($competition['groups'], 'number')]);
                 $ids[] = $draw->id;
             }
             $plan->update(['draw_ids' => $ids, 'applied_at' => now()]);
