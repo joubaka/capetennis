@@ -41,6 +41,10 @@ An archived nominee must first
 be restored before any new registration or withdrawal cancellation.
 
 The backend nomination register includes current and archived nominees together.
+Within each category, sort before pagination by unregistered, registered, declined,
+then withdrawn, followed by archived and removed history; retain exact status labels
+and stable nomination-ID order within each group. Cancelled checkouts belong to
+the unregistered group.
 Its server-side status links show whole-event totals across all pages, with
 Withdrawn and Cancelled kept separate, and Declined / removed combined in one
 filter while each row retains its factual Declined or Removed label. An archived withdrawal

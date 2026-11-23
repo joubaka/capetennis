@@ -34,7 +34,13 @@ class NominationHistory
                 WHEN n.archived_at IS NOT NULL THEN 'archived'
                 WHEN i.status IN ('queued','sending','sent') THEN 'invited'
                 WHEN i.status = 'failed' THEN 'delivery-failed'
-                ELSE 'nominated' END as state");
+                ELSE 'nominated' END as state,
+                CASE
+                WHEN n.archived_at IS NOT NULL THEN 4
+                WHEN i.status = 'paid_confirmed' THEN 1
+                WHEN i.status IN ('declined','admin_declined') THEN 2
+                WHEN i.status = 'withdrawn' THEN 3
+                ELSE 0 END as display_order");
 
         $removed = $this->removedQuery($event);
         $register = DB::query()->fromSub($current->unionAll($removed), 'register');
@@ -42,7 +48,7 @@ class NominationHistory
         $categoryCounts = (clone $register)->selectRaw('category_event_id, COUNT(*) as total')->groupBy('category_event_id')->pluck('total', 'category_event_id');
         $rows = (clone $register)->when($filter !== 'all', fn ($q) => $filter === 'declined-removed'
             ? $q->whereIn('state', ['declined', 'removed']) : $q->where('state', $filter))
-            ->orderBy('category_event_id')->orderBy('id')->paginate(100, ['*'], 'nominations_page')->withQueryString();
+            ->orderBy('category_event_id')->orderBy('display_order')->orderBy('id')->paginate(100, ['*'], 'nominations_page')->withQueryString();
         $retained = EventNomination::with(['player:id,name,surname', 'categoryEvent.category:id,name'])
             ->where('event_id', $event->id)->whereIn('id', $rows->getCollection()->whereNull('audit_id')->pluck('id'))->get()->keyBy('id');
         $audits = DB::table('audit_events')->where('event_id', $event->id)
@@ -98,7 +104,7 @@ class NominationHistory
                 ->whereColumn('newer.event_id', 'a.event_id')->whereColumn('newer.subject_type', 'a.subject_type')
                 ->whereColumn('newer.subject_id', 'a.subject_id')->whereColumn('newer.action', 'a.action')
                 ->where('newer.outcome', 'succeeded')->whereColumn('newer.id', '>', 'a.id'))
-            ->selectRaw("CAST(a.subject_id AS UNSIGNED) as id, c.id as category_event_id, a.id as audit_id, 'removed' as state");
+            ->selectRaw("CAST(a.subject_id AS UNSIGNED) as id, c.id as category_event_id, a.id as audit_id, 'removed' as state, 4 as display_order");
         // Reject malformed identifiers rather than allowing SQL coercion to invent a match.
         if (DB::getDriverName() === 'sqlite') {
             $removed->whereRaw("a.subject_id != '' AND a.subject_id NOT GLOB '*[^0-9]*'");

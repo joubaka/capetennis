@@ -189,6 +189,7 @@
   <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Nominated players</h5></div><div class="card-body">
     <p class="text-muted small">Use Remove for an unused nomination, Decline to retain the decision, or Mark paid manually to record collection. Existing registrations must be cancelled or withdrawn in Entries.</p>
     <details class="mb-3"><summary class="small text-muted">About nomination history</summary><p class="text-muted small mt-2 mb-0">Includes archived withdrawals and recorded removals. Removal does not mean a player declined.</p></details>
+    <p class="text-muted small">Order: Unregistered · Registered · Declined · Withdrawn · Archived / removed</p>
     <p id="nomination-range" class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} matching nominations. Totals cover the whole event.</p>
     <div class="interpro-filter-bar mb-3" aria-label="Filter all nominated players and history">
       @foreach($nominationFilterGroups as $filter)

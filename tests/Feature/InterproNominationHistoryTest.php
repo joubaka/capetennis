@@ -121,6 +121,47 @@ class InterproNominationHistoryTest extends TestCase
         }
     }
 
+    public function test_status_order_is_applied_within_categories_before_pagination_without_changing_counts(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        // Create later groups first so ID ordering alone cannot satisfy this test.
+        $registered = $this->nominee($event, $category, $batch, 'Registered', 'paid_confirmed');
+        $withdrawn = $this->nominee($event, $category, $batch, 'Withdrawn', 'withdrawn');
+        $declined = $this->nominee($event, $category, $batch, 'Declined', 'admin_declined');
+        $archived = $this->nominee($event, $category, $batch, 'Archived withdrawal', 'withdrawn');
+        $archived->forceFill(['archived_at' => now(), 'archive_reason' => 'Withdrawn'])->save();
+        $this->deleted($event, $category, 90001, 'Removed');
+        $unregistered = [];
+        foreach (['prepared', 'sent', 'accepted_pending_payment', 'failed', 'cancelled'] as $status) {
+            $unregistered[] = $this->nominee($event, $category, $batch, $status, $status)->id;
+        }
+        for ($i = 0; $i < 96; $i++) {
+            $unregistered[] = $this->nominee($event, $category, $batch, 'Unregistered'.$i, 'sent')->id;
+        }
+        $second = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $secondNominee = $this->nominee($event, $second, $batch, 'Next category', 'sent');
+        $this->actingAs($actor);
+        $url = route('backend.interprovincial-trials.invitations.index', $event);
+        $first = $this->get($url)->assertOk();
+        $secondPage = $this->get($url.'?nominations_page=2')->assertOk();
+        $firstRows = $first->viewData('nominations');
+        $secondRows = $secondPage->viewData('nominations');
+        $this->assertSame(107, $firstRows->total());
+        $this->assertSame(array_slice($unregistered, 0, 100), $firstRows->getCollection()->pluck('id')->all());
+        $this->assertSame([$unregistered[100], $registered->id, $declined->id, $withdrawn->id, $archived->id, 90001, $secondNominee->id],
+            $secondRows->getCollection()->pluck('id')->all());
+        $this->assertSame(['invited', 'registered', 'declined', 'withdrawn', 'withdrawn', 'removed', 'invited'],
+            $secondRows->getCollection()->pluck('history_state')->all());
+        $groups = $first->viewData('nominationFilterGroups');
+        $this->assertSame(107, $groups['all']['count']);
+        $this->assertSame(1, $groups['registered']['count']);
+        $this->assertSame(2, $groups['withdrawn']['count']);
+        $this->assertSame(2, $groups['declined-removed']['count']);
+        $filtered = $this->get($url.'?nomination_status=withdrawn')->assertOk();
+        $this->assertSame([$withdrawn->id, $archived->id], $filtered->viewData('nominations')->getCollection()->pluck('id')->all());
+        $this->assertSame(2, $filtered->viewData('nominations')->total());
+    }
+
     private function scenario(): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
