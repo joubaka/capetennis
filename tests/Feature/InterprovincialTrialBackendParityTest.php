@@ -155,13 +155,20 @@ class InterprovincialTrialBackendParityTest extends TestCase
             ->assertSee('Nominations &amp; invitations', false)
             ->assertSee($url, false);
 
-        $this->actingAs($this->admin)->get($url)
+        $response = $this->actingAs($this->admin)->get($url)
             ->assertOk()
             ->assertSee('Tournament workspace')
             ->assertSee('Event overview')
             ->assertSee('Nominations &amp; invitations', false)
             ->assertSee('href="'.$url.'"', false)
             ->assertSee('aria-current="page"', false);
+
+        $this->assertSame(1, substr_count($response->getContent(), 'id="add-nominees"'));
+        $this->assertSame(1, substr_count($response->getContent(), 'id="nomination-email-tools"'));
+        $response->assertSee('data-send-preview-mode="new"', false)
+            ->assertSee('data-send-preview-mode="profileless"', false)
+            ->assertSee('data-send-preview-mode="not_registered"', false)
+            ->assertDontSee('Optional: send invitation emails');
     }
 
     public function test_unassigned_admin_is_denied_and_does_not_receive_the_interprovincial_tool_link(): void
@@ -380,7 +387,7 @@ class InterprovincialTrialBackendParityTest extends TestCase
             ->assertSee('Invitation readiness')
             ->assertSee('Add nominations')
             ->assertSee('No recipients ready')
-            ->assertSee('Message ready to edit below')
+            ->assertSee('Message ready to edit during review')
             ->assertSee('Registration open');
 
         $player = Player::factory()->create();

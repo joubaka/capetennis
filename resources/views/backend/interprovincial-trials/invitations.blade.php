@@ -9,6 +9,8 @@
 @section('page-style')
 <style>
   .ct-backend .interpro-filter-bar .btn:not(.p-0):not(.btn-icon) { min-height:46px; }
+  .interpro-tools > summary { cursor:pointer; }
+  .interpro-tools > summary::marker { color:#566a7f; }
   .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
   .interpro-nomination-table { --nomination-columns:minmax(0,1.15fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.2fr); }
   .interpro-nomination-head, .interpro-nomination-row { display:grid; gap:1rem; grid-template-columns:var(--nomination-columns); padding:.8rem 1rem; }
@@ -53,48 +55,14 @@
   @include('backend.event.partials.header', ['event' => $event])
 
   <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Nominate players, then remove, decline or mark them paid manually. Publishing names and sending emails are optional separate steps.</p></div>
+    <div><h2 class="mb-1">Nominations &amp; invitations</h2><p class="text-muted mb-0">Manage nominees here. Publishing names and emailing players are separate, optional actions.</p></div>
     <div class="d-flex flex-wrap gap-2">
-      <a class="btn btn-primary" href="{{ route('backend.interprovincial-trials.communications.nominees.compose', $event) }}">Email nominated players</a>
       <a class="btn btn-outline-secondary" href="{{ route('admin.events.overview', $event) }}">Back to event overview</a>
     </div>
   </div>
   @if(session('success')) <div class="alert alert-success">{{ session('success') }}</div> @endif
   @if($errors->any()) <div class="alert alert-danger">{{ $errors->first() }}</div> @endif
 
-  <details class="mb-4"><summary class="fw-semibold mb-2">Email readiness and audit history</summary>
-  <section class="card mb-4" aria-labelledby="invitation-readiness-heading" data-testid="invitation-readiness">
-    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-      <div>
-        <h5 class="mb-1" id="invitation-readiness-heading">Invitation readiness</h5>
-        <p class="text-muted small mb-0">A read-only view of nominations, the latest email batch, and registration access.</p>
-      </div>
-      <span class="badge {{ $readiness['batch_status'] === 'reviewed' ? 'bg-label-success' : 'bg-label-info' }} text-break">
-        {{ $readiness['batch_status'] ? 'Batch '.ucfirst($readiness['batch_status']) : 'No invitation batch' }}
-      </span>
-    </div>
-    <div class="card-body">
-      <div class="row g-3">
-        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Categories</div><div class="fs-4 fw-semibold">{{ $readiness['category_count'] }}</div></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Nominations</div><div class="fs-4 fw-semibold">{{ $readiness['nomination_count'] }}</div></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Ready recipients</div><div class="fs-4 fw-semibold">{{ $readiness['ready_recipient_count'] }}</div></div></div>
-        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Missing email</div><div class="fs-4 fw-semibold">{{ $readiness['blocked_recipient_count'] }}</div></div></div>
-      </div>
-      <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Readiness checks">
-        <span class="badge {{ $readiness['nomination_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['nomination_count'] > 0 ? 'Nominations ready' : 'Add nominations' }}</span>
-        <span class="badge {{ $readiness['invitation_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['invitation_count'] > 0 ? 'Valid recipients can be emailed' : 'No recipients ready' }}</span>
-        <span class="badge {{ $readiness['message_saved'] ? 'bg-label-success' : 'bg-label-info' }}">{{ $readiness['message_saved'] ? 'Message stored' : 'Message ready to edit below' }}</span>
-        <span class="badge {{ $readiness['registration_open'] ? 'bg-label-success' : 'bg-label-danger' }}">Registration {{ $readiness['registration_open'] ? 'open' : 'closed' }}</span>
-      </div>
-      @if($readiness['state_counts']->isNotEmpty())
-        <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Invitation status counts">
-          @foreach($readiness['state_counts'] as $status => $count)
-            <span class="badge bg-label-secondary text-break">{{ str($status)->replace('_', ' ')->title() }}: {{ $count }}</span>
-          @endforeach
-        </div>
-      @endif
-    </div>
-  </section></details>
 
   @php
     $publishedCategoryCount = $event->categoryEvents->where('nominations_published', true)->count();
@@ -108,8 +76,10 @@
     </div>
   </div></div>
 
-  @include('backend.interprovincial-trials._previous-results-nominations')
-  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Nominate existing players</h5></div><div class="card-body">
+  <details class="card mb-3 interpro-tools" id="add-nominees" @if($errors->any() || request()->filled('source_search') || ($nominationFilterGroups['all']['count'] ?? 0) === 0) open @endif>
+    <summary class="p-3 fw-semibold">Add nominees <span class="text-muted fw-normal small">— search players or import previous results</span></summary>
+    <div class="card-body pt-0">
+    <h5 class="mb-3">Nominate existing players</h5>
     <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.bulk-store', $event) }}" id="nomination-form" class="row g-3">
       @csrf
       <div class="col-lg-6">
@@ -133,7 +103,7 @@
       <div class="col-12"><span id="nomination-selected-count">0 players selected</span></div>
       <div class="col-12 d-none" id="nomination-review"><strong id="nomination-review-category"></strong><p id="nomination-review-visibility"></p><ul id="nomination-review-names"></ul><button type="button" id="nomination-save" class="btn btn-primary">Save nominations</button></div>
     </form>
-    <details class="mt-3" @if($errors->hasAny(['nominee_name', 'nominee_surname', 'nominee_email'])) open @endif>
+    <details class="mt-3" @if($errors->hasAny(['nominee_name', 'nominee_surname', 'nominee_email']) || old('nominee_name') !== null) open @endif>
       <summary class="fw-semibold">Add a player without a profile</summary>
       <p class="text-muted small mt-2">Use the player or parent/guardian email for invitations. Any signed-in user may complete the player profile and pay for registration.</p>
       <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.no-profile', $event) }}" class="row g-3">
@@ -145,18 +115,65 @@
         <div class="col-12"><button class="btn btn-primary" {{ $event->categoryEvents->isEmpty() ? 'disabled' : '' }}>Add nomination without profile</button></div>
       </form>
     </details>
-  </div></div>
+    @include('backend.interprovincial-trials._previous-results-nominations')
+    </div>
+  </details>
 
-  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">2. Manage nominated players</h5></div><div class="card-body">
-    <p class="text-muted small">Use Remove for an unused nomination, Decline to retain the decision, or Mark paid manually to record collection. Existing registrations must be cancelled or withdrawn in Entries.</p>
-    <details class="mb-3"><summary class="fw-semibold mb-2">Optional invitation emails</summary>
+  <details class="card mb-3 interpro-tools" id="nomination-email-tools">
+    <summary class="p-3 fw-semibold">Email tools <span class="text-muted fw-normal small">— invitations, messages and delivery readiness</span></summary>
+    <div class="card-body pt-0">
+      <a class="btn btn-primary mb-3" href="{{ route('backend.interprovincial-trials.communications.nominees.compose', $event) }}">Email nominated players</a>
+      <h6>Invitation emails</h6>
+      <p class="text-muted small">Review recipients and the message before sending. Saving or publishing nominations does not send emails.</p>
     <div class="d-flex flex-wrap gap-2 mb-3">
       <button type="button" class="btn btn-primary" data-send-preview-mode="new"><i class="ti ti-send me-1"></i>Review emails for newly nominated</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="profileless">Review emails for players without profiles</button>
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Review emails for players not registered</button>
     </div>
-    </details>
-    <p class="text-muted small">All nominations and retained history are together here, including archived withdrawals and recorded removals. Removal does not mean a player declined.</p>
+
+      @if($batch)
+        <p class="small mb-0"><strong>Latest batch #{{ $batch->id }}</strong> · {{ ucfirst($batch->status) }} · {{ $readiness['invitation_count'] }} invitations</p>
+      @endif
+    <details class="mt-3"><summary class="fw-semibold">Email readiness and audit history</summary>
+  <section class="card mb-4" aria-labelledby="invitation-readiness-heading" data-testid="invitation-readiness">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h5 class="mb-1" id="invitation-readiness-heading">Invitation readiness</h5>
+        <p class="text-muted small mb-0">A read-only view of nominations, the latest email batch, and registration access.</p>
+      </div>
+      <span class="badge {{ $readiness['batch_status'] === 'reviewed' ? 'bg-label-success' : 'bg-label-info' }} text-break">
+        {{ $readiness['batch_status'] ? 'Batch '.ucfirst($readiness['batch_status']) : 'No invitation batch' }}
+      </span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Categories</div><div class="fs-4 fw-semibold">{{ $readiness['category_count'] }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Nominations</div><div class="fs-4 fw-semibold">{{ $readiness['nomination_count'] }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Ready recipients</div><div class="fs-4 fw-semibold">{{ $readiness['ready_recipient_count'] }}</div></div></div>
+        <div class="col-6 col-lg-3"><div class="border rounded p-3 h-100"><div class="text-muted small">Missing email</div><div class="fs-4 fw-semibold">{{ $readiness['blocked_recipient_count'] }}</div></div></div>
+      </div>
+      <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Readiness checks">
+        <span class="badge {{ $readiness['nomination_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['nomination_count'] > 0 ? 'Nominations ready' : 'Add nominations' }}</span>
+        <span class="badge {{ $readiness['invitation_count'] > 0 ? 'bg-label-success' : 'bg-label-warning' }}">{{ $readiness['invitation_count'] > 0 ? 'Valid recipients can be emailed' : 'No recipients ready' }}</span>
+        <span class="badge {{ $readiness['message_saved'] ? 'bg-label-success' : 'bg-label-info' }}">{{ $readiness['message_saved'] ? 'Message stored' : 'Message ready to edit during review' }}</span>
+        <span class="badge {{ $readiness['registration_open'] ? 'bg-label-success' : 'bg-label-danger' }}">Registration {{ $readiness['registration_open'] ? 'open' : 'closed' }}</span>
+      </div>
+      @if($readiness['state_counts']->isNotEmpty())
+        <div class="d-flex flex-wrap gap-2 mt-3" aria-label="Invitation status counts">
+          @foreach($readiness['state_counts'] as $status => $count)
+            <span class="badge bg-label-secondary text-break">{{ str($status)->replace('_', ' ')->title() }}: {{ $count }}</span>
+          @endforeach
+        </div>
+      @endif
+    </div>
+  </section></details>
+
+    </div>
+  </details>
+
+  <div class="card mb-4"><div class="card-header"><h5 class="mb-0">Nominated players</h5></div><div class="card-body">
+    <p class="text-muted small">Use Remove for an unused nomination, Decline to retain the decision, or Mark paid manually to record collection. Existing registrations must be cancelled or withdrawn in Entries.</p>
+    <details class="mb-3"><summary class="small text-muted">About nomination history</summary><p class="text-muted small mt-2 mb-0">Includes archived withdrawals and recorded removals. Removal does not mean a player declined.</p></details>
     <p id="nomination-range" class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} matching nominations. Totals cover the whole event.</p>
     <div class="interpro-filter-bar mb-3" aria-label="Filter all nominated players and history">
       @foreach($nominationFilterGroups as $filter)
@@ -198,16 +215,7 @@
     </div>
   @endif
 
-  <div class="card overflow-hidden">
-    <div class="card-header"><h5 class="mb-0">Optional: send invitation emails</h5></div>
-    <div class="card-body">
-      @if($batch)
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><span><strong>Latest batch #{{ $batch->id }}</strong> <span class="badge bg-label-info">{{ ucfirst($batch->status) }}</span></span><span class="text-muted small">{{ $readiness['invitation_count'] }} invitation{{ $readiness['invitation_count'] === 1 ? '' : 's' }}</span></div>
-      @endif
-      <p class="text-muted mb-0">Choose a send action above to preview the exact recipients, blockers, subject, and message before sending through the managed mail service. Delivery continues in the background.</p>
-    </div>
 
-  </div>
 </div>
 
 <div class="modal fade" id="interpro-send-preview-modal" tabindex="-1" aria-labelledby="interpro-send-preview-title" aria-hidden="true">

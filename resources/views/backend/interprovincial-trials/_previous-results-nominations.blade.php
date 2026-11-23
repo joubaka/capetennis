@@ -1,6 +1,6 @@
-<section class="card mb-4"><div class="card-header"><h5 class="mb-0">Add nominees from previous trials results</h5></div><div class="card-body">
+<details class="mt-3 pt-3 border-top" @if(request()->filled('source_search')) open @endif><summary class="fw-semibold">Add nominees from previous trials results</summary><div class="pt-3">
   <p>Choose a source category and its qualifying positions, then review the existing profiles before saving privately. Repeat for each age group and gender.</p>
-  <p class="small text-muted">Only saved final positions can be imported. Provisional draws, nomination lists and PDF attachments are not used. If results are unavailable, save reviewed final positions in the source event or use the existing-player picker below. Search by event name or year below if your source event is missing.</p>
+  <p class="small text-muted">Only saved final positions can be imported. Provisional draws, nomination lists and PDF attachments are not used. If results are unavailable, save reviewed final positions in the source event or use the existing-player picker above. Search by event name or year below if your source event is missing.</p>
   <form method="GET" class="row g-2 mb-3"><div class="col-sm-9"><label for="source-event-search" class="form-label">Find a previous event by name or year</label><input id="source-event-search" name="source_search" class="form-control" maxlength="100" value="{{ request('source_search') }}" placeholder="For example: Cavaliers 2025"></div><div class="col-sm-3 d-flex align-items-end"><button type="submit" class="btn btn-outline-secondary">Find events</button></div></form>
   <form id="previous-results-form" class="row g-3">
     <div class="col-12"><label for="previous-results-source" class="form-label">Previous event and category</label><select id="previous-results-source" name="source_category_event_id" class="form-select" required><option value="">Choose source results</option>@foreach($sourceCategories as $source)<option value="{{ $source->id }}">{{ $source->event->name }} · {{ $source->event->start_date?->format('d M Y') }} · {{ $source->category?->name }}</option>@endforeach</select></div>
@@ -11,4 +11,4 @@
   </form>
   <p id="previous-results-feedback" class="mt-3" role="status" aria-live="polite"></p>
   <div id="previous-results-review" class="d-none"><p id="previous-results-summary"></p><div class="table-responsive"><table class="table"><thead><tr><th>Rank</th><th>Player</th><th>Existing profile</th><th>Action</th></tr></thead><tbody id="previous-results-rows"></tbody></table></div><button id="previous-results-save" type="button" class="btn btn-primary">Save private nominations</button></div>
-</div></section>
+</div></details>
