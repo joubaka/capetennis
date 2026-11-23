@@ -1,5 +1,17 @@
 # Draw workspace browser regressions
 
+`node tests/Browser/interpro-preview.cjs` checks the fictional Interpro walkthrough
+at 360, 390 and 1440px, including four RR groups, all 18 playoff routes, carried
+scores, phone scrolling, blank draws and 12 final positions. First export the
+focused `InterproRoundRobinFormatTest` full-progression case with
+`INTERPRO_PREVIEW_EXPORT=1`; set `INTERPRO_PREVIEW_ASSET_BASE` to the local Wamp
+asset root when needed. The exporter requires the isolated `ct_testing` database.
+The harness loads only local assets, checks the actual print handlers with
+success/empty/failure responses, and writes screenshots and a PDF under
+`storage/app/testing/interpro-preview`. Use Node 20+, installed Microsoft Edge
+and Playwright in `NODE_PATH`. Optional `--serve` opens the read-only walkthrough
+at `http://127.0.0.1:8765/`; it has no application mutation endpoints.
+
 `node tests/Browser/all-age-ratings.cjs` checks the all-age ratings directory at
 320, 390, 768 and 1440px with synthetic shared and withheld players. First run
 `AllAgeRatingIntegrationTest` with `CT_ALL_AGE_QA_HTML=1` to render the fixture.

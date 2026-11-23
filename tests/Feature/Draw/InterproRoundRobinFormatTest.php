@@ -102,8 +102,30 @@ class InterproRoundRobinFormatTest extends TestCase
     public function test_first_results_cascade_without_duplicate_evidence_and_determine_all_twelve_positions(): void
     {
         $draw = $this->context();
+        $preview = getenv('INTERPRO_PREVIEW_EXPORT') === '1' ? new \Tests\Support\InterproPreviewExporter() : null;
+        if ($preview) {
+            $draw->update(['drawName' => 'Fictional U13 Interpro trials']);
+            $draw->event->update(['name' => 'Fictional Interpro format review']);
+            foreach ($draw->groups()->with('groupRegistrations.registration.players')->orderBy('name')->get() as $group) {
+                foreach ($group->groupRegistrations->sortBy('seed')->values() as $index => $entry) {
+                    $entry->registration->players->first()->update(['name' => 'Group '.$group->name, 'surname' => 'Player '.($index + 1)]);
+                }
+            }
+            $setupEvent = Event::factory()->create(['eventType' => $draw->event->eventType, 'name' => 'Fictional format setup']);
+            $setupCategory = CategoryEvent::factory()->create(['event_id' => $setupEvent->id]);
+            $setupDraw = Draw::factory()->create(['event_id' => $setupEvent->id, 'category_event_id' => $setupCategory->id,
+                'drawName' => 'Fictional U13 Interpro trials', 'published' => false, 'oop_published' => false, 'locked' => false]);
+            $setupDraw->settings()->create(['workflow' => 'round_robin_playoffs', 'preset_key' => InterproRoundRobinFormat::PRESET,
+                'playoff_config' => InterproRoundRobinFormat::configuration(), 'boxes' => 4, 'num_sets' => 1, 'score_format' => 'one_set_to_6']);
+            foreach (['A', 'B', 'C', 'D'] as $name) $setupDraw->groups()->create(['name' => $name]);
+            DB::table('event_admins')->insert(['event_id' => $setupEvent->id, 'user_id' => auth()->id()]);
+            $preview->setup($this->get(route('draw.setup.show', $setupDraw))->assertOk()->getContent());
+        }
         app(InterproRoundRobinFormat::class)->prepare($draw);
+        $preview?->roundRobin($draw->fresh());
         $this->reachCarries($draw);
+        if ($preview) $preview->stage('carry.html', '3 · Feed-in with first results carried',
+            $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->getContent());
         foreach ([3007, 3008] as $nr) {
             $fixture = $this->fixture($draw, $nr);
             $source = InterproRoundRobinFormat::source($fixture);
@@ -123,8 +145,14 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->progress($draw);
         $this->assertSame($before, $draw->drawFixtures()->get()->toJson());
         $this->assertSame(42, $draw->drawFixtures()->count());
-        $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('First result stands')->assertSee('11/12');
-        $this->get(route('backend.draw.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertDontSee('6-2')->assertSee('Loser match 2002');
+        $finalPage = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('First result stands')->assertSee('11/12')->assertSee('Final positions');
+        $blankPage = $this->get(route('backend.draw.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertDontSee('6-2')->assertSee('Loser match 2002')->assertDontSee('Final positions');
+        if ($preview) {
+            $preview->stage('final.html', '4 · Completed trial draw and final positions', $finalPage->getContent());
+            $preview->stage('blank.html', '6 · Blank planning draw', $blankPage->getContent());
+            $preview->printPage($finalPage->getContent(), $draw->fresh());
+            $preview->finish($draw->fresh());
+        }
         auth()->logout();
         $draw->event->update(['published' => true]);
         $this->get(route('public.roundrobin.main-bracket', $draw))->assertForbidden();

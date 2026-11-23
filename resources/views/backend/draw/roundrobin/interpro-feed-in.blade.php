@@ -29,3 +29,6 @@
     </table>
   </div>
 </section>
+@unless($emptyBracket ?? false)
+  @include('draw.partials.final-positions', ['draw' => $draw])
+@endunless

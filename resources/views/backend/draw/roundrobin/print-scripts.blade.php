@@ -4,6 +4,12 @@
 // ============================================================
 (function($) {
   const drawName = @json($draw->drawName ?? 'Draw');
+  const fixedInterpro = @json(\App\Services\Draw\InterproRoundRobinFormat::selected($draw));
+  function fixedBracketUnavailable() {
+    if (!fixedInterpro) return false;
+    toastr.error('The Interpro feed-in could not be loaded. Please retry before printing.');
+    return true;
+  }
   const printStyles = `
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -72,6 +78,16 @@
           max-height: 100%;
           page-break-inside: avoid;
         }
+        .bracket-print-wrap:has(.interpro-feed-in) { height: auto; page-break-inside: auto; break-inside: auto; }
+        .interpro-feed-in { font-size: 11px; }
+        .interpro-feed-in h4 { font-size: 15px; margin: 8px 0; }
+        .interpro-feed-in p { margin: 6px 0; }
+        .interpro-feed-in .table-responsive { overflow: visible; }
+        .interpro-feed-in table { font-size: 10px; margin-bottom: 10px; }
+        .interpro-feed-in th { font-size: 10px; }
+        .interpro-feed-in th, .interpro-feed-in td { padding: 5px; }
+        .interpro-feed-in tr { page-break-inside: avoid; break-inside: avoid; }
+        .interpro-feed-in thead { display: table-header-group; }
         *:last-child { margin-bottom: 0 !important; }
       }
     </style>`;
@@ -461,7 +477,7 @@
 
   // Helper: check if SVG has actual bracket content (not just wrapper + style)
   function svgHasBracketContent(svgHtml) {
-    return svgHtml && (svgHtml.indexOf('<line') !== -1 || svgHtml.indexOf('<text x=') !== -1);
+    return svgHtml && (svgHtml.indexOf('<line') !== -1 || svgHtml.indexOf('<text x=') !== -1 || svgHtml.indexOf('class="interpro-feed-in"') !== -1);
   }
 
   // Print the saved canonical rules, matching server-generated draw packs.
@@ -497,12 +513,14 @@
           html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
         } else {
           console.log('🖨️ [PrintEmptyBracket] SVG empty, using config fallback');
+          if (fixedBracketUnavailable()) return;
           html += buildBracketFromConfig(true);
         }
         openPrintWindow(drawName + ' — Empty Bracket', html, true);
       })
       .fail(function(xhr, status, err) {
         console.error('🖨️ [PrintEmptyBracket] AJAX FAILED:', status, err);
+        if (fixedBracketUnavailable()) return;
         var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Blank Bracket</h2></div>';
         html += buildBracketFromConfig(true);
         openPrintWindow(drawName + ' — Empty Bracket', html, true);
@@ -523,11 +541,13 @@
         if (hasContent) {
           html += '<div class="bracket-print-wrap">' + svgHtml + '</div>';
         } else {
+          if (fixedBracketUnavailable()) return;
           html += buildBracketFromConfig(false);
         }
         openPrintWindow(drawName + ' — Brackets', html, true);
       })
       .fail(function() {
+        if (fixedBracketUnavailable()) return;
         var html = '<div class="bracket-header"><h1>' + escapeHtml(drawName) + '</h1><h2>Playoff Brackets</h2></div>';
         html += buildBracketFromConfig(false);
         openPrintWindow(drawName + ' — Brackets', html, true);
@@ -642,7 +662,7 @@
     var oop = window.RR_OOP || [];
     if (!oop.length) return '';
     var stageLabels = { RR: 'Round Robin', MAIN: 'Main Draw', PLATE: 'Plate', CONS: 'Consolation', BOWL: 'Bowl', SHIELD: 'Shield', SPOON: 'Spoon' };
-    var list = filterStage ? oop.filter(function(fx) { return fx.stage === filterStage; }) : oop;
+    var list = filterStage ? oop.filter(function(fx) { return filterStage === 'PLAYOFF' ? fx.stage !== 'RR' : fx.stage === filterStage; }) : oop;
     if (!list.length) return '';
 
     var html = '<table><thead><tr><th>M#</th><th>Stage</th><th>Player 1</th><th class="text-center">vs</th><th>Player 2</th><th class="text-center">Rd</th><th class="text-center">Score</th></tr></thead><tbody>';
@@ -677,6 +697,7 @@
   // Generates a fixture list for each enabled playoff bracket from playoffConfig,
   // with match numbers, round labels, seed sources, and W/L feeder indicators.
   function buildBracketFixtureTableFromConfig() {
+    if (fixedInterpro) return buildFixturesHtml('PLAYOFF');
     var config = (typeof playoffConfig !== 'undefined') ? playoffConfig : [];
     var nGroups = (typeof numGroups !== 'undefined') ? numGroups : 4;
     var groupNames = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').slice(0, nGroups);
@@ -844,11 +865,13 @@
         if (svgHasBracketContent(svgHtml)) {
           bracketHtml = '<div class="bracket-print-wrap">' + svgHtml + '</div>';
         } else {
+          if (fixedBracketUnavailable()) return;
           bracketHtml = buildBracketFromConfig(true);
         }
         assemblePack(bracketHtml);
       })
       .fail(function() {
+        if (fixedBracketUnavailable()) return;
         assemblePack(buildBracketFromConfig(true));
       })
       .always(function() {

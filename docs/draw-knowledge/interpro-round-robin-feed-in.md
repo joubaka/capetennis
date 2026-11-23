@@ -76,3 +76,21 @@ event isolation, unpublication, result protection and explicit-reset safeguards.
   `AutomaticPlayoffPreparationTest`, `InterproDrawGenerationPreservationTest`.
 
 These are source/test references, not production deployment or browser evidence.
+
+## Fictional review snapshots
+
+Set `INTERPRO_PREVIEW_EXPORT=1` when running the focused
+`test_first_results_cascade_without_duplicate_evidence_and_determine_all_twelve_positions`
+regression to export a static walkthrough under
+`storage/app/testing/interpro-preview/index.html`. The exporter requires
+`APP_ENV=testing` and the exact `ct_testing` database. Its fictional records roll
+back with the test; snapshots have disabled controls and local asset links.
+When the testing URL differs from Wamp's configured URL, set
+`INTERPRO_PREVIEW_ASSET_BASE` to the reviewed local asset root before exporting.
+
+Print Bracket and Print Empty Bracket use the actual fixed table, with final
+positions included only in the populated view. The print content check must
+recognize this table as well as SVG. For the selected preset, a missing or failed
+bracket response must ask for a retry rather than fabricate a generic four-player
+fallback. Draw-pack playoff fixtures come from canonical non-RR rows, preserving
+all eighteen source routes and carried-result labels.
