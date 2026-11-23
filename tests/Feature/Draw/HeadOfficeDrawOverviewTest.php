@@ -25,6 +25,25 @@ class HeadOfficeDrawOverviewTest extends TestCase
         $this->assertStringContainsString('$hasOrderOfPlay =', $compiled);
     }
 
+    public function test_public_event_with_pathway_and_ctr_badges_compiles_to_valid_php(): void
+    {
+        $compiled = app('blade.compiler')->compileString(
+            file_get_contents(resource_path('views/frontend/event/show.blade.php'))
+        );
+        token_get_all($compiled, TOKEN_PARSE);
+        $this->assertStringContainsString('$publicPathwayBadges =', $compiled);
+        $this->assertStringContainsString('isCtrCertified()', $compiled);
+    }
+
+    public function test_event_categories_with_pathway_fields_compiles_to_valid_php(): void
+    {
+        $compiled = app('blade.compiler')->compileString(
+            file_get_contents(resource_path('views/backend/event/categories.blade.php'))
+        );
+        token_get_all($compiled, TOKEN_PARSE);
+        $this->assertStringContainsString('$levelResolver =', $compiled);
+    }
+
     private function draw(bool $flexible = false): Draw
     {
         $draw = (new Draw)->forceFill([

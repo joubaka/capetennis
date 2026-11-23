@@ -21,6 +21,11 @@ class Event extends Model
     return $this->hasOne(CtrEventCertification::class);
   }
 
+  public function isCtrCertified(): bool
+  {
+    return app(\App\Services\Draw\CtrCertificationStatus::class)->certified($this);
+  }
+
   protected $table = 'events';
 
   /*

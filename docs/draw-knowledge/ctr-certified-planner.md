@@ -9,6 +9,11 @@ make results eligible, or carry into a copied event. Historical Panarottis event
 must be identified by exact reviewed IDs; names, current administrators and
 organizer text do not prove who created an event. No automatic backfill is provided.
 
+Shared/public event badges treat missing certification schema as uncertified,
+with one schema-readiness check per request rather than one per rendered event.
+Planner actions require both certification and saved-plan tables and return a
+clear setup-pending response when the migration is absent or incomplete.
+
 Assigned event administrators and active convenors may plan and confirm only this
 event's new private competitions. Score-keeper-only assignments are insufficient.
 This narrowly scoped ability does not grant general regeneration or publication.

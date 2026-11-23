@@ -68,10 +68,12 @@ class CtrDrawPlannerTest extends TestCase
 
     public function test_group_sizes_and_configurable_preference(): void
     {
-        foreach (['draw_groups', 'draw_group_registrations'] as $table) {
-            $engine = DB::table('information_schema.TABLES')->where('TABLE_SCHEMA', DB::connection()->getDatabaseName())
-                ->where('TABLE_NAME', $table)->value('ENGINE');
-            $this->assertSame('innodb', strtolower($engine));
+        if (DB::connection()->getDriverName() === 'mysql') {
+            foreach (['draw_groups', 'draw_group_registrations'] as $table) {
+                $engine = DB::table('information_schema.TABLES')->where('TABLE_SCHEMA', DB::connection()->getDatabaseName())
+                    ->where('TABLE_NAME', $table)->value('ENGINE');
+                $this->assertSame('innodb', strtolower($engine));
+            }
         }
         $planner = app(CtrDrawPlanner::class);
         foreach ([3 => [3], 4 => [4], 5 => [5], 6 => [3,3], 7 => [4,3], 8 => [4,4], 9 => [5,4], 10 => [5,5],

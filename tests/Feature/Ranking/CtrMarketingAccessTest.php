@@ -71,7 +71,8 @@ class CtrMarketingAccessTest extends TestCase
         $this->assertTrue($access->comingSoon());
         $this->assertFalse(PlayerPlusService::salesEnabled());
         $this->assertFalse($access->allowsDiscovery(null));
-        $html = view('frontend.ctr', ['isSuperUser' => false])->render();
+        $publicPathway = ['publicPathwayStage' => 'red', 'publicPathwayEvents' => ['stage' => 'red', 'events' => [], 'limited' => false]];
+        $html = view('frontend.ctr', ['isSuperUser' => false] + $publicPathway)->render();
         $this->assertStringContainsString('data-player-plus-coming-soon', $html);
         $this->assertStringContainsString('Purchases are not open yet.', $html);
         $this->assertStringNotContainsString('R69.00', $html);
@@ -79,7 +80,7 @@ class CtrMarketingAccessTest extends TestCase
         $this->assertStringNotContainsString('href="'.route('player-plus.index').'"', $html);
         Cache::put('site_setting.'.PlayerRatingAccess::SETTING, (object) ['value' => '1']);
         $this->assertFalse($access->comingSoon());
-        $html = view('frontend.ctr', ['isSuperUser' => false])->render();
+        $html = view('frontend.ctr', ['isSuperUser' => false] + $publicPathway)->render();
         $this->assertStringNotContainsString(' data-player-plus-coming-soon>', $html);
         $this->assertStringContainsString('Choose a player', $html);
     }

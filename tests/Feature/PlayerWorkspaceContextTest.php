@@ -152,7 +152,7 @@ class PlayerWorkspaceContextTest extends TestCase
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->once()->andReturn($this->history());
         $response = $this->actingAs($user)->get(route('player-plus.player', $player))->assertOk();
         $response->assertDontSee('data-rating-snapshot', false)
-            ->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']));
+            ->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'pathway']));
     }
 
     public function test_opponents_loads_schedule_and_record_with_only_the_header_rating_summary(): void

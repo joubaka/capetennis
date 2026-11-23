@@ -31,7 +31,7 @@ class PlayerRatingCurrentGroupTest extends TestCase
         // An older standard rating does not establish the current level.
         $months = [['date' => '2026-09-30', 'cohorts' => [BallRatingModel::COHORTS['standard'] => [42 => ['score' => 88, 'group' => 'old', 'component' => 'old']]]],
             ['date' => '2026-10-31', 'cohorts' => $cohorts]];
-        $store->method('read')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-31', 'built_at' => '2026-10-31', 'months' => $months, 'evidence' => []]);
+        $store->method('readForPlayer')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-31', 'built_at' => '2026-10-31', 'months' => $months, 'evidence' => []]);
         $player = new Player;
         $player->setRawAttributes(['id' => 42, 'name' => 'Synthetic', 'surname' => 'Player']);
         $service = new PlayerRatingHistoryService($ability, $store);

@@ -18,7 +18,7 @@ class HostEventApplicationTest extends TestCase
         parent::setUp();
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:', 'database.connections.sqlite.url' => null]);
         DB::purge('sqlite');
-        foreach (['2013_01_01_000000_create_base_schema_for_testing.php', '2026_11_19_150000_create_marketing_portal_tables.php', '2026_11_19_170000_create_host_event_applications.php', '2026_11_19_180000_add_court_plan_to_host_event_applications.php'] as $file) (require database_path('migrations/'.$file))->up();
+        foreach (['2013_01_01_000000_create_base_schema_for_testing.php', '2026_11_19_150000_create_marketing_portal_tables.php', '2026_11_19_170000_create_host_event_applications.php', '2026_11_19_180000_add_court_plan_to_host_event_applications.php', '2026_11_23_150000_add_pathway_levels_to_events_and_categories.php'] as $file) (require database_path('migrations/'.$file))->up();
         Schema::table('category_event_registrations', fn ($table) => $table->softDeletes());
         Schema::create('event_mail_issues', function ($table) { $table->id(); $table->unsignedBigInteger('user_id'); $table->timestamp('read_at')->nullable(); });
         Schema::create('site_settings', function ($table) { $table->id(); $table->string('key')->unique(); $table->text('value')->nullable(); $table->timestamps(); });

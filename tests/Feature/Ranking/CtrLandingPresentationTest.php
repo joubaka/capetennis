@@ -23,9 +23,10 @@ class CtrLandingPresentationTest extends TestCase
     {
         $source = file_get_contents(resource_path('views/frontend/ctr.blade.php'));
         preg_match("/@section\('page-style'\)(.*?)@endsection/s", $source, $style);
-        preg_match("/@section\('content'\)(.*)@endsection/s", $source, $content);
+        preg_match("/@section\('content'\)(.*?)@endsection/s", $source, $content);
         // Compile the actual page sections; the shared site shell is excluded from this isolated fixture.
-        $html = Blade::render($style[1].$content[1], ['isSuperUser' => false]);
+        $publicPathway = ['publicPathwayStage' => 'red', 'publicPathwayEvents' => ['stage' => 'red', 'events' => [], 'limited' => false]];
+        $html = Blade::render($style[1].$content[1], ['isSuperUser' => false] + $publicPathway);
         foreach (['R699.00', 'PayFast plans renew automatically until cancelled', 'Annual wallet payments are once off.',
             'No actual player data', 'Choose your player', 'Purchase details', 'Private history requires a linked account'] as $text) {
             $this->assertStringContainsString($text, $html);
@@ -38,7 +39,7 @@ class CtrLandingPresentationTest extends TestCase
         if (getenv('CT_CTR_LANDING_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/ctr-landing-presentation.html'), '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="http://localhost/assets/vendor/css/rtl/core.css"><link rel="stylesheet" href="http://localhost/assets/vendor/css/rtl/theme-default.css"><link rel="stylesheet" href="http://localhost/assets/vendor/fonts/tabler-icons.css"></head><body style="padding:16px;background:#f5f6f8">'.$html.'</body></html>');
         }
-        $html = Blade::render($style[1].$content[1], ['isSuperUser' => true]);
+        $html = Blade::render($style[1].$content[1], ['isSuperUser' => true] + $publicPathway);
         $this->assertStringContainsString('Open CTR ratings', $html);
         $this->assertStringContainsString(route('backend.player-performance.ratings'), $html);
     }

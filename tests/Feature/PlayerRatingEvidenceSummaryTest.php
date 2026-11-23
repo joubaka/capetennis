@@ -27,7 +27,7 @@ class PlayerRatingEvidenceSummaryTest extends TestCase
         foreach ($ratings as $index => $rating) {
             $months[] = ['date' => ['2026-09-30', '2026-10-31'][$index], 'cohorts' => [BallRatingModel::COHORTS['standard'] => $rating === null ? [] : [1 => $rating]]];
         }
-        $store->method('read')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-31', 'built_at' => '2026-10-31', 'evidence' => [], 'months' => $months]);
+        $store->method('readForPlayer')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-31', 'built_at' => '2026-10-31', 'evidence' => [], 'months' => $months]);
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => $month]);

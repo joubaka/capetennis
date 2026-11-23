@@ -18,6 +18,7 @@ class CtrDrawPlanner
     {
         abort_unless($actor->hasRole('super-user'), 403);
         abort_unless((int) $event->eventType === \App\Models\EventType::INDIVIDUAL, 422);
+        app(CtrPlannerAccess::class)->authorize($actor, $event, false);
         $this->assertTransactional(['events', 'ctr_event_certifications', 'platform_audit_logs']);
         DB::transaction(function () use ($event, $actor, $certified) {
             Event::whereKey($event->id)->lockForUpdate()->firstOrFail();

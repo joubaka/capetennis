@@ -86,7 +86,9 @@
               <td>{{ $categoryEvent->category->name }}</td>
 
               <td style="min-width:240px">
-                @php($levelResolver = app(\App\Services\Performance\EventPathwayClassification::class))
+                @php
+                  $levelResolver = app(\App\Services\Performance\EventPathwayClassification::class);
+                @endphp
                 <p class="small mb-2"><strong>{{ $levelResolver->label($categoryEvent) }}</strong> · {{ $categoryEvent->pathway_level === null ? 'Event default' : 'Category override' }}</p>
                 @if($levelResolver->hasExplicit($categoryEvent) && $levelResolver->forCategory($categoryEvent) === null)
                   <p class="small text-warning">Ball-level details conflict. Review the category and court setup before discovery can use this level.</p>

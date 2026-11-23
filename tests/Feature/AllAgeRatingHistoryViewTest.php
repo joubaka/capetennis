@@ -13,7 +13,7 @@ class AllAgeRatingHistoryViewTest extends TestCase
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
         $store = $this->createStub(PlayerRatingHistoryStore::class);
-        $store->method('read')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-01', 'built_at' => '2026-10-01', 'evidence' => [],
+        $store->method('readForPlayer')->willReturn(['source_fingerprint' => 'same', 'as_of' => '2026-10-01', 'built_at' => '2026-10-01', 'evidence' => [],
             'months' => [['date' => '2026-10-01', 'cohorts' => ['u13 boys' => [1 => ['score' => 75, 'group' => 'old', 'component' => 'old']], AllAgeRatingModel::COHORT => []]]]]);
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);

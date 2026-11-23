@@ -221,7 +221,7 @@ class PlayerPlusLaunchTest extends TestCase
         $this->assertTrue(app(PlayerRatingAccess::class)->allows($owner, $player));
         $this->assertTrue(app(PlayerRatingAccess::class)->allowsDiscovery($owner));
         $this->actingAs($owner)->get(route('player-plus.player', $player))->assertOk()->assertSee('covered until')
-            ->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']));
+            ->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'pathway']));
         $this->actingAs($pending->user)->post(route('player-plus.orders.pay', $pending))->assertNotFound();
         $this->post(route('player-plus.store', $pending->player), $this->purchaseData())->assertNotFound();
         $this->travelTo($order->term_ends_at);
@@ -593,7 +593,7 @@ class PlayerPlusLaunchTest extends TestCase
         $this->export('order', $this->get(route('player-plus.orders.show', $order))->assertOk());
         $order = $this->activate($order);
         $this->export('player-active', $this->get(route('player-plus.player', $player))->assertOk()
-            ->assertSee('Back to My Tennis')->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'rating']))
+            ->assertSee('Back to My Tennis')->assertSee(route('my.tennis', ['player' => $player->id, 'tab' => 'pathway']))
             ->assertDontSee('data-plus-stepper', false));
         SiteSetting::set(PlayerRatingAccess::SETTING, '0');
         $this->export('paused', $this->get(route('player-plus.index'))->assertOk()->assertSee('purchases are currently paused'));

@@ -18,7 +18,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
         $store = $this->createStub(PlayerRatingHistoryStore::class);
-        $store->method('read')->willReturn($saved);
+        $store->method('readForPlayer')->willReturn($saved);
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
@@ -42,7 +42,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
         $store = $this->createStub(PlayerRatingHistoryStore::class);
-        $store->method('read')->willReturn($this->savedHistory());
+        $store->method('readForPlayer')->willReturn($this->savedHistory());
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
@@ -77,7 +77,7 @@ class AllAgeHistoricalPresentationTest extends TestCase
         $ability = $this->createStub(PlayerSharedAbilityService::class);
         $ability->method('fingerprint')->willReturn('same');
         $store = $this->createStub(PlayerRatingHistoryStore::class);
-        $store->method('read')->willReturn($saved);
+        $store->method('readForPlayer')->willReturn($saved);
         $player = new Player;
         $player->setRawAttributes(['id' => 1, 'name' => 'Synthetic', 'surname' => 'Player']);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer($player, ['month' => 0]);
