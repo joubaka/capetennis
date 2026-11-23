@@ -20,6 +20,6 @@ class PlusNotificationPreferencesController extends Controller
     {
         $data = $request->validate(['choice' => ['required', Rule::in(['daily', 'off', 'snooze7', 'snooze30'])]]);
         $preferences->update($request->user(), $data['choice']);
-        return redirect()->route('player-plus.notifications')->with('status', 'Your morning email preference has been saved.');
+        return redirect()->route('player-plus.notifications')->with('status', 'Your Plus update email preference has been saved.');
     }
 }

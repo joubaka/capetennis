@@ -15,7 +15,7 @@ An older, unhanded checkout below R5.00 cannot start a new PayFast handoff. Its 
 
 Marketing leads with “Know your game. Find your next step.” and four short questions: “What could I play next?”, “How am I progressing?”, “What is my rating?” and “How do I compare with my opponent?”. Tournament options help choose a suitable type or level of event, not a guaranteed next dated fixture. Event dates, availability and entry requirements must still be checked with the organiser. These are offer-positioning decisions; they do not expand rating access or eligibility.
 
-Essential tournament information remains free. Draw alerts remain a historical design concept and are excluded; customer copy must not promise a delivery date. The public customer offer is `/ctr`; `/player-plus` is the authenticated player-selection step. The private backend membership preview is labelled historical.
+Essential tournament information remains free. Morning discovery emails and entered-event updates remain coming-soon benefits until separately activated and verified. Entered-event updates cover public draw/schedule, announcement and event-information changes after ten unchanged minutes, with further meaningful edits restarting the wait. Customer copy must not promise exact inbox arrival. They remain excluded from the current purchase while disabled. See `docs/player-plus-publication-notifications.md` for the implemented boundaries and verification. The public customer offer is `/ctr`; `/player-plus` is the authenticated player-selection step. The private backend membership preview is labelled historical.
 
 ## Marketing readiness
 

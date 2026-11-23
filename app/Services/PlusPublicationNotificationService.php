@@ -20,6 +20,7 @@ final class PlusPublicationNotificationService
 
     public function record(Draw $draw, bool $trackedOnly = false, bool $baseline = false): void
     {
+        if ($draw->event) app(PlusEventUpdateService::class)->record($draw->event, $baseline);
         if (! $this->ready()) return;
         DB::transaction(function () use ($draw, $trackedOnly, $baseline): void {
             $event = Event::whereKey($draw->event_id)->lockForUpdate()->first();
@@ -33,7 +34,7 @@ final class PlusPublicationNotificationService
                     'generation' => 0, 'snapshot' => $snapshot, 'changes' => ['draw' => false, 'fixtures' => []], 'prepared_at' => now()]);
                 return;
             }
-            if ($state && $state->snapshot === $snapshot) return;
+            if ($state && PlusEventUpdateService::same($state->snapshot, $snapshot)) return;
             $before = $state?->snapshot ?? ['visible' => false, 'draw' => [], 'schedule' => []];
             $changes = $state && ! $state->prepared_at ? $state->changes : ['draw' => false, 'fixtures' => []];
             $visible = $snapshot['visible'];
@@ -46,11 +47,11 @@ final class PlusPublicationNotificationService
                         'player_id' => (int) $pending->player_id, 'recipient' => $pending->recipient, 'changes' => $pending->changes,
                     ];
                 }
-                $changes['draw'] = $changes['draw'] || ! $before['visible'] || $before['draw'] !== $snapshot['draw'];
+                $changes['draw'] = $changes['draw'] || ! $before['visible'] || ! PlusEventUpdateService::same($before['draw'], $snapshot['draw']);
                 $changes['schedule_initial'] = ($changes['schedule_initial'] ?? false) || (! $before['schedule'] && (bool) $snapshot['schedule']);
                 $keys = array_unique(array_merge(array_keys($before['schedule']), array_keys($snapshot['schedule'])));
                 foreach ($keys as $key) {
-                    if (($before['schedule'][$key] ?? null) !== ($snapshot['schedule'][$key] ?? null)) $changes['fixtures'][] = $key;
+                    if (! PlusEventUpdateService::same($before['schedule'][$key] ?? [], $snapshot['schedule'][$key] ?? [])) $changes['fixtures'][] = $key;
                 }
                 $changes['fixtures'] = array_values(array_unique($changes['fixtures']));
                 // Hidden slots have no public destination. Never announce their availability.
@@ -61,7 +62,7 @@ final class PlusPublicationNotificationService
             }
             $state ??= new PlusPublicationState(['draw_id' => $draw->id, 'event_id' => $event->id, 'generation' => 0]);
             $state->fill(['generation' => $state->generation + 1, 'snapshot' => $snapshot, 'changes' => $changes,
-                'due_at' => $visible && ($changes['draw'] || $changes['fixtures'] || ! empty($changes['carry'])) ? now()->addMinutes(5) : null,
+                'due_at' => $visible && ($changes['draw'] || $changes['fixtures'] || ! empty($changes['carry'])) ? now()->addMinutes(10) : null,
                 'prepared_at' => null])->save();
             PlusPublicationDelivery::where('state_id', $state->id)->where('status', 'pending')->update(['status' => 'superseded']);
         }, 3);
@@ -157,6 +158,8 @@ final class PlusPublicationNotificationService
     /** Bounded due processing; no transport is invoked here. */
     public function prepareDue(int $limit = 50): int
     {
+        // The event-level stream combines publications with information and announcement edits.
+        if (app(PlusEventUpdateService::class)->ready()) return 0;
         if (! config('publication_notifications.delivery_enabled') || ! $this->ready() || ! PlayerPlusService::ready()) return 0;
         $count = 0;
         foreach (PlusPublicationState::whereNotNull('due_at')->where('due_at', '<=', now())->whereNull('prepared_at')->orderBy('id')->limit($limit)->pluck('id') as $id) {
@@ -167,7 +170,7 @@ final class PlusPublicationNotificationService
                 $state = PlusPublicationState::lockForUpdate()->find($id);
                 if (! $state || $state->prepared_at || ! $state->due_at || $state->due_at->isFuture()) return 0;
                 $draw = Draw::find($state->draw_id);
-                if (! $draw || (int) $draw->event_id !== (int) $state->event_id || $this->snapshot($draw, $draw->event) !== $state->snapshot) {
+                if (! $draw || (int) $draw->event_id !== (int) $state->event_id || ! PlusEventUpdateService::same($this->snapshot($draw, $draw->event), $state->snapshot)) {
                     if ($draw && (int) $draw->event_id === (int) $state->event_id) $this->record($draw, trackedOnly: true);
                     else $state->update(['due_at' => null]);
                     return 0;
@@ -201,15 +204,16 @@ final class PlusPublicationNotificationService
 
     public function current(PlusPublicationDelivery $delivery): bool
     {
+        if (app(PlusEventUpdateService::class)->ready()) return false;
         if (! config('publication_notifications.delivery_enabled') || ! PlayerPlusService::ready()) return false;
         $state = PlusPublicationState::find($delivery->state_id);
         $draw = $state ? Draw::find($state->draw_id) : null;
         if (! $draw || (int) $draw->event_id !== (int) $state->event_id || (int) $state->generation !== (int) $delivery->generation
             || ! $state->due_at || $state->due_at->isFuture() || ! $state->prepared_at
-            || $this->snapshot($draw, $draw->event) !== $state->snapshot) return false;
+            || ! PlusEventUpdateService::same($this->snapshot($draw, $draw->event), $state->snapshot)) return false;
         $player = app(PlayerPlusEntitlement::class)->activePlayers()->whereKey($delivery->player_id)->with(['user', 'users'])->first();
         $notices = $this->noticesFor($state, $draw, (int) $delivery->player_id, $delivery->recipient);
-        return $player && ($notices['draw'] || $notices['fixtures']) && $notices === $delivery->changes
+        return $player && ($notices['draw'] || $notices['fixtures']) && PlusEventUpdateService::same($notices, $delivery->changes)
             && app(TeamSelectionContactService::class)->emails($player)->contains($delivery->recipient);
     }
 

@@ -21,5 +21,5 @@
 @endforeach
 <p>Check the event page for current dates, entry requirements and any later changes. Essential event information remains free.</p>
 <p><a href="{{ route('home') }}">Browse Cape Tennis events</a></p>
-<p><a href="{{ route('player-plus.notifications') }}">Snooze or turn off your Plus morning emails</a></p>
+<p><a href="{{ route('player-plus.notifications') }}">Snooze or turn off your Plus update emails</a></p>
 </body></html>

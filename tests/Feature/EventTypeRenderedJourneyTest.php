@@ -43,11 +43,6 @@ class EventTypeRenderedJourneyTest extends TestCase
     protected function beforeRefreshingDatabase(): void
     {
         $this->assertSame('testing', app()->environment());
-        if (config('database.default') === 'sqlite') {
-            $this->assertSame(':memory:', config('database.connections.sqlite.database'));
-            $this->assertSame(':memory:', DB::connection()->getDatabaseName());
-            return;
-        }
         $this->assertSame('mysql', config('database.default'));
         $this->assertSame('ct_testing', config('database.connections.mysql.database'));
         $this->assertSame('ct_testing', DB::connection()->getDatabaseName());

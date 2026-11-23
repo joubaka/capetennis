@@ -391,7 +391,7 @@
   </div>
   @endif
   <x-player-plus-renewal-help />
-  <a class="d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.notifications') }}">Plus morning email preferences</a>
+  <a class="d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.notifications') }}">Plus email preferences</a>
 </div>
 @endsection
 

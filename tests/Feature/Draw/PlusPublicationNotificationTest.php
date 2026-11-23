@@ -21,6 +21,7 @@ class PlusPublicationNotificationTest extends TestCase
         parent::setUp();
         $this->freezeTime();
         $this->travelTo(now()->startOfSecond());
+        $this->partialMock(\App\Services\PlusEventUpdateService::class, fn ($mock) => $mock->shouldReceive('ready')->andReturn(false));
         config(['publication_notifications.delivery_enabled' => true]);
         // Every named managed transport is in-memory, including tests of the real mail listener.
         foreach (array_keys(config('mail.mailers')) as $mailer) config(["mail.mailers.{$mailer}" => ['transport' => 'array']]);
@@ -62,15 +63,15 @@ class PlusPublicationNotificationTest extends TestCase
         return OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => $time, 'duration_minutes' => 60]);
     }
 
-    public function test_draw_publication_waits_five_minutes_and_repeated_publication_is_a_noop(): void
+    public function test_draw_publication_waits_ten_minutes_and_repeated_publication_is_a_noop(): void
     {
         [$event, $draw] = $this->context();
         $service = app(PlusPublicationNotificationService::class);
         app(DrawPublicationService::class)->publish($draw);
         $state = PlusPublicationState::sole();
-        $this->assertTrue($state->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue($state->due_at->equalTo(now()->addMinutes(10)));
         $this->assertSame(0, $service->prepareDue());
-        $this->travel(4)->minutes();
+        $this->travel(9)->minutes();
         app(DrawPublicationService::class)->publish($draw->fresh());
         $this->assertSame($state->generation, $state->fresh()->generation);
         $this->assertSame(0, $service->prepareDue());
@@ -97,8 +98,8 @@ class PlusPublicationNotificationTest extends TestCase
         $slot->update(['court' => '2']);
         $this->assertSame($state->generation, $state->fresh()->generation);
         $publication->publish($event, ['fixture_keys' => ['individual:'.$fixtures[0]->id]]);
-        $this->assertTrue($state->fresh()->due_at->equalTo(now()->addMinutes(5)));
-        $this->travel(3)->minutes();
+        $this->assertTrue($state->fresh()->due_at->equalTo(now()->addMinutes(10)));
+        $this->travel(8)->minutes();
         $this->assertSame(0, app(PlusPublicationNotificationService::class)->prepareDue());
         $this->travel(2)->minutes();
         $this->assertSame(2, app(PlusPublicationNotificationService::class)->prepareDue());
@@ -115,8 +116,8 @@ class PlusPublicationNotificationTest extends TestCase
         $this->assertNull(PlusPublicationState::sole()->due_at);
         $this->travel(20)->minutes();
         $event->update(['published' => true]);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
-        $this->travel(5)->minutes();
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
+        $this->travel(10)->minutes();
         $this->assertSame(4, app(PlusPublicationNotificationService::class)->prepareDue());
     }
 
@@ -131,13 +132,13 @@ class PlusPublicationNotificationTest extends TestCase
         $this->travel(15)->minutes();
         $this->assertSame(0, app(PlusPublicationNotificationService::class)->prepareDue());
         $publication->publish($event, ['draw_id' => $draw->id]);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(2, app(PlusPublicationNotificationService::class)->prepareDue());
         $delivery = PlusPublicationDelivery::first();
         $draw->refresh()->update(['published' => false]);
         $this->assertFalse(app(PlusPublicationNotificationService::class)->current($delivery));
         $draw->update(['published' => true]);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
         $this->assertFalse(app(PlusPublicationNotificationService::class)->current($delivery));
     }
 
@@ -151,7 +152,7 @@ class PlusPublicationNotificationTest extends TestCase
         $players[2]->plusOverride->update(['ends_at' => now()]);
         $players[3]->plusOverride->delete();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $this->assertSame(3, $service->prepareDue());
         $this->assertEqualsCanonicalizing(['player1@example.test', 'parent@example.test', 'extra@example.test'], PlusPublicationDelivery::pluck('recipient')->all());
@@ -174,7 +175,7 @@ class PlusPublicationNotificationTest extends TestCase
         CategoryEventRegistration::where('registration_id', $fixtures[0]->registration2_id)->update(['category_event_id' => $other->id]);
         $players[2]->plusOverride->delete();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(1, app(PlusPublicationNotificationService::class)->prepareDue());
         $this->assertSame($players[3]->id, PlusPublicationDelivery::sole()->player_id);
     }
@@ -183,7 +184,7 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw, $players, $fixtures] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->slot($draw, $fixtures[0]);
         app(SchedulePublicationService::class)->publish($event, ['draw_id' => $draw->id]);
         $state = PlusPublicationState::sole();
@@ -192,7 +193,7 @@ class PlusPublicationNotificationTest extends TestCase
         app(SchedulePublicationService::class)->hide($event, ['draw_id' => $draw->id]);
         $this->assertTrue($state->fresh()->changes['draw']);
         $this->assertEmpty($state->fresh()->changes['fixtures']);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(4, app(PlusPublicationNotificationService::class)->prepareDue());
     }
 
@@ -205,7 +206,7 @@ class PlusPublicationNotificationTest extends TestCase
         $this->assertSame(0, app(PlusPublicationNotificationService::class)->prepareDue());
         $draw->refresh()->update(['published' => false]);
         app(DrawPublicationService::class)->publish($draw->fresh());
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         config(['publication_notifications.delivery_enabled' => false]);
         Mail::fake();
         $this->assertSame(0, app(PlusPublicationNotificationService::class)->prepareDue());
@@ -221,7 +222,7 @@ class PlusPublicationNotificationTest extends TestCase
         DB::rollBack();
         $this->assertDatabaseCount('plus_publication_states', 0);
         app(DrawPublicationService::class)->publish($draw->fresh());
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         Bus::shouldReceive('dispatch')->once()->andThrow(new \RuntimeException('Queue unavailable'));
         try {
             app(PlusPublicationNotificationService::class)->prepareDue();
@@ -238,7 +239,7 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw, $players] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $service->prepareDue();
         $delivery = PlusPublicationDelivery::first();
@@ -260,7 +261,7 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $service->prepareDue();
         $delivery = PlusPublicationDelivery::first();
@@ -270,7 +271,7 @@ class PlusPublicationNotificationTest extends TestCase
         Mail::assertNothingSent();
         $this->assertSame('superseded', $delivery->fresh()->status);
         $draw->update(['published' => true]);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service->prepareDue();
         $delivery = PlusPublicationDelivery::where('status', 'pending')->first();
         Mail::swap(\Mockery::mock(\Illuminate\Mail\MailManager::class));
@@ -313,7 +314,7 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         app(PlusPublicationNotificationService::class)->prepareDue();
         $delivery = PlusPublicationDelivery::first();
         $delivery->update(['status' => 'sending', 'claimed_at' => now()]);
@@ -348,7 +349,7 @@ class PlusPublicationNotificationTest extends TestCase
         $this->travel(2)->minutes();
         $publication->publish($event, ['fixture_keys' => ['individual:'.$fixtures[1]->id]]);
         $this->assertCount(2, PlusPublicationState::sole()->changes['fixtures']);
-        $this->travel(3)->minutes();
+        $this->travel(8)->minutes();
         $this->assertSame(0, app(PlusPublicationNotificationService::class)->prepareDue());
         $this->travel(2)->minutes();
         $this->assertSame(4, app(PlusPublicationNotificationService::class)->prepareDue());
@@ -356,7 +357,7 @@ class PlusPublicationNotificationTest extends TestCase
         $first->update(['court' => '2']);
         $publication->publish($event, ['fixture_keys' => ['individual:'.$fixtures[0]->id]]);
         $this->assertFalse(app(PlusPublicationNotificationService::class)->current($old));
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(4, app(PlusPublicationNotificationService::class)->prepareDue());
     }
 
@@ -372,8 +373,8 @@ class PlusPublicationNotificationTest extends TestCase
         $service->save($draw, ['size' => 4, 'slots' => $slots], 0);
         $record = $service->generate($draw, 1);
         $service->publish($draw, $record->revision, true);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
-        $this->travel(5)->minutes();
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
+        $this->travel(10)->minutes();
         $this->assertSame(4, app(PlusPublicationNotificationService::class)->prepareDue());
         $body = (new PlusPublicationMail(PlusPublicationDelivery::first()))->body();
         $this->assertStringContainsString(e(route('public.flexible-monrad.show', $draw)), $body);
@@ -395,7 +396,7 @@ class PlusPublicationNotificationTest extends TestCase
         $this->assertDatabaseCount('plus_publication_states', 0);
         $this->postJson($url, $payload)->assertOk();
         $this->assertSame($draw->id, PlusPublicationState::sole()->draw_id);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
     }
 
     public function test_paid_membership_qualifies_player_without_notifying_unrelated_payer(): void
@@ -408,7 +409,7 @@ class PlusPublicationNotificationTest extends TestCase
             'payfast_paid' => true, 'activated_at' => now()->subDay(), 'expires_at' => now()->subDay()]);
         \App\Models\PlayerPlusMembership::create(['player_id' => $players[0]->id, 'order_id' => $order->id, 'starts_at' => now()->subDay(), 'ends_at' => now()->addDay()]);
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(1, app(PlusPublicationNotificationService::class)->prepareDue());
         $delivery = PlusPublicationDelivery::sole();
         $this->assertSame($players[0]->email, $delivery->recipient);
@@ -429,7 +430,7 @@ class PlusPublicationNotificationTest extends TestCase
         $draw->settings->update(['schedule_visibility' => 'first_match']);
         $this->assertCount(1, PlusPublicationState::sole()->snapshot['schedule']);
         $this->assertCount(1, PlusPublicationState::sole()->changes['fixtures']);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
         $draw->settings()->delete();
         $draw->unsetRelation('settings');
         $draw->settings()->create(['workflow' => 'round_robin', 'schedule_visibility' => 'first_match']);
@@ -437,14 +438,14 @@ class PlusPublicationNotificationTest extends TestCase
         $this->travel(1)->minutes();
         $draw->settings()->first()->update(['schedule_visibility' => 'full_schedule']);
         $this->assertCount(2, PlusPublicationState::sole()->snapshot['schedule']);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
     }
 
-    public function test_event_hide_cancels_existing_deliveries_and_republishing_starts_five_minutes(): void
+    public function test_event_hide_cancels_existing_deliveries_and_republishing_starts_ten_minutes(): void
     {
         [$event, $draw] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $service->prepareDue();
         $delivery = PlusPublicationDelivery::first();
@@ -453,7 +454,7 @@ class PlusPublicationNotificationTest extends TestCase
         $this->assertNull(PlusPublicationState::sole()->due_at);
         $this->travel(1)->minutes();
         $event->update(['published' => true]);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
         $this->assertFalse($service->current($delivery));
     }
 
@@ -480,14 +481,14 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw, $players, $fixtures] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $this->assertSame(4, $service->prepareDue());
         $sent = PlusPublicationDelivery::where('player_id', $players[0]->id)->sole();
         $sent->update(['status' => 'sent', 'sent_at' => now()]);
         $this->slot($draw, $fixtures[0]);
         app(SchedulePublicationService::class)->publish($event, ['fixture_keys' => ['individual:'.$fixtures[0]->id]]);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $this->assertSame(4, $service->prepareDue());
         $latest = PlusPublicationDelivery::where('status', 'pending')->get()->keyBy('player_id');
         $this->assertFalse($latest[$players[0]->id]->changes['draw']);
@@ -502,7 +503,7 @@ class PlusPublicationNotificationTest extends TestCase
     {
         [$event, $draw, $players, $fixtures] = $this->context();
         app(DrawPublicationService::class)->publish($draw);
-        $this->travel(5)->minutes();
+        $this->travel(10)->minutes();
         $service = app(PlusPublicationNotificationService::class);
         $service->prepareDue();
         $old = PlusPublicationDelivery::first();
@@ -511,8 +512,8 @@ class PlusPublicationNotificationTest extends TestCase
         (new SendPlusPublicationNotification($old->id))->handle($service);
         Mail::assertNothingSent();
         $this->assertSame('superseded', $old->fresh()->status);
-        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(5)));
-        $this->travel(5)->minutes();
+        $this->assertTrue(PlusPublicationState::sole()->due_at->equalTo(now()->addMinutes(10)));
+        $this->travel(10)->minutes();
         $this->assertSame(4, $service->prepareDue());
     }
 }

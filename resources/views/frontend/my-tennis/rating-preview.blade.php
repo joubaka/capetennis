@@ -73,7 +73,7 @@
     </div>
     <div class="plus-terms">
       <p class="mb-1">Eligible results are needed for a rating; purchasing Plus does not guarantee one. Ratings can rise or fall and may be provisional or unavailable.</p>
-      <details><summary>How membership works</summary><p>Review available plans and renewal terms before paying. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Draw alerts are not included.</p></details>
+      <details><summary>How membership works</summary><p>Review available plans and renewal terms before paying. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p></details>
     </div>
   </div>
 </section>

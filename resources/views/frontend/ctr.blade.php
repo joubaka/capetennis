@@ -211,7 +211,7 @@
       <div class="ctr-offer-links"><a href="{{ route('rankings.index') }}">View series rankings</a><a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></div>
     </div>
   </section>
-  <div class="ctr-disclosures"><p>A rating needs eligible results and may be provisional or unavailable. Buying Plus does not guarantee a rating or change rankings or selection.</p><p>Private history requires a linked account and active membership. Sponsoring a player does not create that link. Draw alerts are not included.</p></div>
+  <div class="ctr-disclosures"><p>A rating needs eligible results and may be provisional or unavailable. Buying Plus does not guarantee a rating or change rankings or selection.</p><p>Private history requires a linked account and active membership. Sponsoring a player does not create that link. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p></div>
   @if($isSuperUser)<aside class="ctr-admin"><p>Your CTR access is active.</p><a href="{{ route('backend.player-performance.ratings') }}">Open CTR ratings <i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i></a></aside>@endif
 </main>
 @endsection

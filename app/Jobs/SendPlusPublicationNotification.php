@@ -25,6 +25,7 @@ class SendPlusPublicationNotification implements ShouldQueue
 
     public function handle(PlusPublicationNotificationService $service): void
     {
+        if (app(\App\Services\PlusEventUpdateService::class)->ready()) return;
         // A local/default-disabled scheduler must never reach a real mail transport.
         if (! config('publication_notifications.delivery_enabled')) return;
         $delivery = DB::transaction(function () use ($service) {

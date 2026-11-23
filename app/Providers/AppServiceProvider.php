@@ -97,6 +97,10 @@ class AppServiceProvider extends ServiceProvider
       }
     });
     \App\Models\Fixture::observe(\App\Observers\TrialFixtureObserver::class);
+    foreach ([\App\Models\Event::class, \App\Models\Announcement::class, \App\Models\Draw::class,
+        \App\Models\File::class, \App\Models\CategoryEvent::class] as $model) {
+      $model::observe(\App\Observers\PlusEventUpdateObserver::class);
+    }
     \App\Models\Draw::observe(\App\Observers\PlusPublicationVisibilityObserver::class);
     \App\Models\Event::observe(\App\Observers\PlusPublicationVisibilityObserver::class);
     \App\Models\DrawSetting::observe(\App\Observers\PlusPublicationVisibilityObserver::class);

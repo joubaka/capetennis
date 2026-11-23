@@ -116,6 +116,17 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Player Plus, identity and offers
 
+- Product decision: automatic Plus updates for an entered event cover relevant
+  public draw/schedule, announcement and event-information changes after ten
+  unchanged minutes. A further meaningful change restarts the wait; no-op saves
+  do not. This supersedes the older five-minute publication-only rule. Combine
+  bursts, preserve unsent changes and respect snooze/off without paused-period
+  catch-up. Morning event discovery remains a separate channel. Consult
+  `docs/player-plus-publication-notifications.md`, `PlusEventUpdateService` and
+  their focused tests for implementation boundaries; code alone does not prove
+  deployment, activation, cron execution or inbox delivery. Keep disabled
+  features clearly coming soon and outside the current purchase.
+
 - Sponsoring registration or buying Plus does not establish player ownership,
   create a family relationship or authorize private history. Trace account/player
   link creation, legacy links, revocation and every private-access caller.

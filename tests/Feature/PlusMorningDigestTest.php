@@ -28,7 +28,11 @@ class PlusMorningDigestTest extends TestCase
         $this->assertDatabaseMissing('plus_digest_preferences', ['user_id' => 999]);
         Schema::create('site_settings', function (Blueprint $t) { $t->id(); $t->string('key'); $t->text('value')->nullable(); });
         Schema::create('permissions', function (Blueprint $t) { $t->id(); $t->string('name'); $t->string('guard_name'); });
-        $this->get(route('player-plus.notifications'))->assertOk()->assertSee('Turn morning emails off')->assertSee('Snooze for 30 days');
+        $page = $this->get(route('player-plus.notifications'))->assertOk()->assertSee('Turn Plus update emails off')->assertSee('Snooze for 30 days');
+        if (getenv('CT_PLUS_QA_HTML') === '1') {
+            if (! is_dir(storage_path('framework/testing'))) mkdir(storage_path('framework/testing'), 0777, true);
+            file_put_contents(storage_path('framework/testing/plus-event-preferences.html'), $page->getContent());
+        }
         $this->assertSame('suppressed', $delivery->fresh()->status);
         (new SendPlusMorningDigest($delivery->id))->handle($this->service);
         $this->assertCount(0, Mail::mailer('array')->getSymfonyTransport()->messages());

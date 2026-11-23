@@ -6,6 +6,12 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_event_updates_migration_is_allowlisted(): void
+    {
+        $config = file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        $this->assertStringContainsString('database/migrations/2026_11_20_200000_create_plus_event_updates.php', $config);
+    }
+
     public function test_plus_digest_preferences_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

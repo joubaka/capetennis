@@ -8,6 +8,23 @@ use Illuminate\Support\Facades\{DB, Schema};
 
 final class PlusDigestPreferences
 {
+    /** A paused interval never becomes a catch-up event campaign, even before morning baseline. */
+    public function allowsEventUpdate(User $user, \App\Models\PlusEventUpdateState $state): bool
+    {
+        if (! $this->allows($user)) return false;
+        $preference = $this->forUser($user);
+        $epoch = $preference->event_resume_epoch ?? 'initial';
+        if (! Schema::hasTable('plus_event_update_baselines')) return false;
+        $baseline = DB::table('plus_event_update_baselines')->where('user_id', $user->id)->where('event_id', $state->event_id)->first();
+        if (! $baseline || $baseline->epoch !== (string) $epoch) {
+            $snapshot = array_intersect_key($state->snapshot, array_flip(['information_revision', 'draw_revision', 'announcement_revision']));
+            $snapshot['announcements'] = collect($state->snapshot['announcements'] ?? [])->map(fn ($post) => ['revision' => $post['revision']])->all();
+            DB::table('plus_event_update_baselines')->updateOrInsert(['user_id' => $user->id, 'event_id' => $state->event_id],
+                ['epoch' => (string) $epoch, 'generation' => $state->generation, 'snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR)]);
+            return false;
+        }
+        return $state->generation > $baseline->generation;
+    }
     public function ready(): bool { return Schema::hasTable('plus_digest_preferences'); }
 
     public function forUser(User $user): object
@@ -39,9 +56,17 @@ final class PlusDigestPreferences
                 'needs_baseline' => $choice !== 'daily' || $resuming || ($previous?->needs_baseline ?? false),
                 'created_at' => $previous?->created_at ?? now(), 'updated_at' => now(),
             ]);
+            $eventResuming = $choice === 'daily' && $previous && (! $previous->enabled
+                || ($previous->snoozed_until && Carbon::parse($previous->snoozed_until)->isFuture()));
+            if (Schema::hasColumn('plus_digest_preferences', 'event_resume_epoch') && ($choice !== 'daily' || $eventResuming)) {
+                DB::table('plus_digest_preferences')->where('user_id', $user->id)->update(['event_resume_epoch' => now()]);
+                DB::table('plus_event_update_baselines')->where('user_id', $user->id)->delete();
+            }
             if ($choice !== 'daily' && Schema::hasTable('plus_digest_deliveries')) {
                 PlusDigestDelivery::where('user_id', $user->id)->where('status', 'pending')->update(['status' => 'suppressed']);
             }
+            // Pending event messages are also checked against this actor's current preference
+            // during preparation, claim and final transport; never infer ownership from email_2/3.
         }, 3);
     }
 

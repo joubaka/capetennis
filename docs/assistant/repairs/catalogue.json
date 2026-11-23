@@ -2,6 +2,27 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-069",
+      "title": "Unchanged Plus event updates restart their quiet timer on MySQL",
+      "scope": "Plus entered-event and legacy draw/schedule notification snapshots stored as MySQL JSON; not rating calculations or general event publication.",
+      "symptoms": "Saving unchanged public information or republishing an identical draw advances the notification generation, restarts the quiet period or makes a queued message appear stale after reading its saved snapshot.",
+      "cause": "MySQL normalizes JSON object key order. Strict PHP array equality compared insertion order as well as content, so the database round trip made unchanged keyed snapshots look different.",
+      "fix": "Compare snapshots and recipient change projections through PlusEventUpdateService::same(), recursively sorting associative keys while preserving list order and scalar types. Retain exact current public content, entry, entitlement, contact and preference checks. Meaningful public changes restart the ten-minute wait; no-op saves do not. Do not weaken comparisons to loose equality or remove final transport validation.",
+      "verification": "On 2026-11-20 fictional isolated MySQL regressions reproduced false changes before the canonical comparison fix. The subsequent focused entered-event, legacy publication, morning digest and deployment-configuration batch passed 109 tests and 478 assertions. Tests cover timer/no-op behavior, publication and transport boundaries; local results do not establish production activation or inbox delivery.",
+      "limits": "Guide only. Do not replay old or transport-uncertain messages as a repair. Deployment, production migrations, notification activation and outbound mail require their own authorization. Preserve the separate morning digest and entered-event resume baselines.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/PlusEventUpdateService.php",
+        "app/Services/PlusPublicationNotificationService.php",
+        "docs/player-plus-publication-notifications.md"
+      ],
+      "tests": [
+        "tests/Feature/PlusEventUpdateTest.php",
+        "tests/Feature/Draw/PlusPublicationNotificationTest.php",
+        "tests/Unit/Assistant/AssistantRepairLibraryTest.php"
+      ]
+    },
+    {
       "id": "RK-068",
       "title": "Historical identity preview shows empty rating comparisons",
       "scope": "Private super-user hypothetical historical identity previews using current independent ball-level snapshots; not documentary evidence application.",

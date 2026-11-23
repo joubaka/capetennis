@@ -24,7 +24,7 @@
   <h2 class="h4"><i class="ti ti-help" aria-hidden="true"></i>Payment issues and requests for help</h2>
   <p>Returning from PayFast does not prove payment. Initial payments received after checkout expiry or cancellation, unexpected additional payments, and recurring payments outside the expected billing period need Cape Tennis review and do not automatically activate or extend membership. Normal verified monthly renewals follow the subscription schedule, not the initial checkout expiry. Do not pay again while a payment is being checked.</p>
   <p>For an incorrect-player purchase, missing data, duplicate or delayed payment, or a refund enquiry, contact <a href="mailto:support@capetennis.co.za">support@capetennis.co.za</a> with your P order number. Support must verify the payer and payment evidence before deciding or processing a remedy. Do not email bank credentials, passwords or full card details. This page does not authorise an automatic refund or transfer, and does not limit rights that otherwise apply.</p>
-  <p>Essential tournament information remains free. Draw alerts are planned and are not part of this purchase.</p>
+  <p>Essential tournament information remains free. Morning emails and entered-event updates, including draw alerts after ten unchanged minutes, are planned and are not part of this purchase until activated and offered.</p>
   <p><a href="{{ route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]) }}">Find my Plus orders</a></p>
   </div>
 </div>

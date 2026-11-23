@@ -22,14 +22,14 @@
     </ul>
   <x-player-plus-morning-updates class="my-3" />
   @auth
-    <a class="d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.notifications') }}">Manage your Plus morning emails</a>
+    <a class="d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.notifications') }}">Manage your Plus email updates</a>
   @endauth
   <details>
     <summary class="small py-2" style="min-height:44px; cursor:pointer">How membership works</summary>
     <p class="small mb-2">Ratings can be provisional or unavailable. Membership does not change a rating, ranking, selection or tournament entry.</p>
     <p class="small mb-2">Pathway guidance supports discussion with a coach. It does not automatically promote a player or guarantee selection.</p>
     <p class="small mb-2">Paying for a player does not link them to your account or give you access to their private information.</p>
-    <p class="small mb-0">Account signup and essential tournament information remain free. Plus is optional. Draw alerts are not included.</p>
+    <p class="small mb-0">Account signup and essential tournament information remain free. Plus is optional. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p>
   </details>
   <a class="small d-inline-block py-2" style="min-height:44px" href="{{ route('player-plus.terms') }}">Purchase details and payment support</a>
   <style>

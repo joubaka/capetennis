@@ -190,6 +190,7 @@ final class PlusMorningDigestService
 
     public function itemCurrent(User $user, array $item): bool
     {
+        if (app(PlusEventUpdateService::class)->alreadyDelivered(mb_strtolower(trim((string) $user->email)), $item)) return false;
         if (! app(PlusDigestPreferences::class)->permitsChange($user, $item['key'], $item['revision'])) return false;
         $event = Event::visibleTo(null)->find($item['snapshot']['event_id']);
         if (! $event) return false;

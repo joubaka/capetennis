@@ -342,6 +342,7 @@
                 <td><span class="badge text-wrap text-start text-dark {{ !empty($checkoutClock['payment_pending']) ? 'bg-warning' : 'bg-label-secondary' }}">{{ $checkoutClock['payment_label'] ?? 'Review required' }}</span></td>
               </tr>
             @endforeach
+
           </tbody>
         </table>
       </div>
@@ -545,6 +546,21 @@
 
               </tr>
             @endforeach
+            @foreach(($unansweredNominations ?? collect())->get($categoryEvent->id, collect()) as $nomination)
+              @php $nominee = $nomination->player; $contactEmail = $nominee?->email ?: $nomination->nominee_email; @endphp
+              <tr class="table-danger" data-nomination-id="{{ $nomination->id }}" data-nominee-player-id="{{ $nomination->player_id }}">
+                <td class="col-idx" data-label="#">—</td>
+                <td class="col-player" data-label="Player">{{ $nomination->display_name }}<div class="small">Nominated · not registered</div></td>
+                <td class="col-status" data-label="Status"><span class="badge bg-danger">No response</span></td>
+                <td class="col-payment" data-label="Payment">—</td>
+                <td class="col-contact" data-label="Contact">
+                  @if($nominee?->cellNr)<div><a href="tel:{{ $nominee->cellNr }}">{{ $nominee->cellNr }}</a></div>@else<div>No cell number captured</div>@endif
+                  @if($contactEmail)<a class="text-break" href="mailto:{{ $contactEmail }}">{{ $contactEmail }}</a>@else<div>No email captured</div>@endif
+                </td>
+                @if(auth()->user()->hasAnyRole(['super-user', 'admin']))<td class="col-poc" data-label="POC">—</td>@endif
+                <td class="col-actions text-end" data-label="Actions">—</td>
+              </tr>
+            @endforeach
           </tbody>
         </table>
       </div>
@@ -562,22 +578,22 @@
     const categoryTerms = root.querySelector('[data-entry-category-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const playerTerms = root.querySelector('[data-entry-player-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     let count = 0;
+    let nomineeCount = 0;
     root.querySelectorAll('.category-card').forEach(card => {
       const categoryMatch = categoryTerms.every(term => card.querySelector('.category-meta h5').textContent.toLowerCase().includes(term));
       let matches = 0;
-      card.querySelectorAll('tbody tr[data-entry-id]').forEach(row => {
+      card.querySelectorAll('tbody tr[data-entry-id], tbody tr[data-nomination-id]').forEach(row => {
         const labels = ['#', 'Player', 'Status', 'Payment', 'Contact', ...(row.querySelector('.col-poc') ? ['POC'] : []), 'Actions'];
         Array.from(row.cells).forEach((cell, index) => { cell.dataset.label = labels[index] || ''; });
         const playerName = row.cells[1]?.textContent.toLowerCase() || '';
         const visible = categoryMatch && playerTerms.every(term => playerName.includes(term));
         row.hidden = !visible;
-        if (visible) matches++;
+        if (visible) { matches++; if (row.hasAttribute('data-nomination-id')) nomineeCount++; else count++; }
       });
       card.hidden = !categoryMatch || (playerTerms.length > 0 && matches === 0);
-      count += matches;
     });
     const status = root.querySelector('[data-entry-match-count]');
-    const message = count + ' entries shown. Category totals show all confirmed entries.';
+    const message = count + ' entries shown.' + (nomineeCount ? ' ' + nomineeCount + ' nominees with no response shown.' : '') + ' Category totals show all confirmed entries.';
     if (status.textContent !== message) status.textContent = message;
   }
   root.querySelectorAll('[data-entry-category-search], [data-entry-player-search]').forEach(input => input.addEventListener('input', filterEntries));
@@ -1246,9 +1262,16 @@ if (addForm) {
             if (card && res.row) {
                 const tbody = card.querySelector('tbody');
                 if (tbody) {
+                    tbody.querySelectorAll('[data-nominee-player-id]').forEach(row => {
+                        if (row.dataset.nomineePlayerId === submittedData.get('registration_id')) row.remove();
+                    });
                     const existingRow = tbody.querySelector(`[data-entry-id="${res.entry_id}"]`);
                     if (existingRow) existingRow.outerHTML = res.row;
-                    else tbody.insertAdjacentHTML('beforeend', res.row);
+                    else {
+                        const firstNominee = tbody.querySelector('[data-nomination-id]');
+                        if (firstNominee) firstNominee.insertAdjacentHTML('beforebegin', res.row);
+                        else tbody.insertAdjacentHTML('beforeend', res.row);
+                    }
                     reindexRows(card);
                     const countEl = card.querySelector('.entry-count');
                     if (countEl) countEl.textContent = res.count;
