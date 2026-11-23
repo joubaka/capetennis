@@ -257,6 +257,8 @@ final class InterproRoundRobinFormat
             abort_unless($service->complete($draw, $group, $fixtures)
                 && $service->positionsResolved($draw, array_values($standings[$group->id] ?? []), $fixtures),
                 422, 'Complete the full trial group programme and resolve tied finishing positions before progressing.');
+            abort_if($fixtures->contains(fn ($fixture) => app(IndividualMatchOutcomeService::class)->winner($fixture) === null),
+                422, 'First result stands requires a decisive original result for every group match. Resolve drawn matches before confirming trial progression.');
         }
     }
 }

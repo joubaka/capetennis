@@ -156,12 +156,13 @@
       <button type="button" class="btn btn-outline-primary" data-send-preview-mode="not_registered"><i class="ti ti-mail-forward me-1"></i>Review emails for players not registered</button>
     </div>
     </details>
-    <p id="nomination-range" class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} nominations. Filters apply to this page.</p>
-    <div class="interpro-filter-bar mb-3" aria-label="Filter nominated players on this page">
+    <p class="text-muted small">All nominations and retained history are together here, including archived withdrawals and recorded removals. Removal does not mean a player declined.</p>
+    <p id="nomination-range" class="text-muted small mb-2">Showing {{ $nominations->firstItem() ?? 0 }}–{{ $nominations->lastItem() ?? 0 }} of {{ $nominations->total() }} matching nominations. Totals cover the whole event.</p>
+    <div class="interpro-filter-bar mb-3" aria-label="Filter all nominated players and history">
       @foreach($nominationFilterGroups as $filter)
-        <button type="button" class="btn btn-sm btn-outline-primary {{ $filter['key'] === 'all' ? 'active' : '' }}" data-nomination-filter="{{ $filter['key'] }}" aria-pressed="{{ $filter['key'] === 'all' ? 'true' : 'false' }}">
+        <a class="btn btn-sm btn-outline-primary {{ $filter['key'] === $nominationStatus ? 'active' : '' }}" href="{{ request()->fullUrlWithQuery(['nomination_status' => $filter['key'], 'nominations_page' => 1]) }}#nomination-range" @if($filter['key'] === $nominationStatus) aria-current="true" @endif>
           {{ $filter['label'] }} <span class="badge bg-label-primary ms-1" data-filter-count="{{ $filter['key'] }}">{{ $filter['count'] }}</span>
-        </button>
+        </a>
       @endforeach
     </div>
     <div class="row g-3">
@@ -180,16 +181,6 @@
     </div>
     @if($nominations->hasPages())<div class="mt-3">{{ $nominations->links() }}</div>@endif
   </div></div>
-
-  @if($archivedNominations->isNotEmpty())
-    <details class="card mb-4"><summary class="card-header fw-semibold">Archived nominations ({{ $archivedNominations->count() }})</summary>
-      <div class="card-body"><p class="text-muted small">Hidden from the public list and registration. Original entries, invitations and payments remain in history. Restoration requires a reviewed administrator action.</p>
-        @foreach($archivedNominations as $archivedNomination)
-          <div class="border-bottom py-2"><strong>{{ $archivedNomination->display_name }}</strong> <span class="badge bg-label-secondary">Archived</span><div class="small text-muted">{{ $archivedNomination->archived_at->format('d M Y H:i') }} · {{ $archivedNomination->archive_reason }}</div></div>
-        @endforeach
-      </div>
-    </details>
-  @endif
 
   @if($historicalInvitations && $historicalInvitations->count())
     <div class="card mb-4">
@@ -286,28 +277,6 @@ $(function () {
     finally { this.disabled = false; }
   });
 
-  const refreshNominationFilters = () => {
-    const rows = Array.from(document.querySelectorAll('[data-nomination-row]'));
-    document.querySelectorAll('[data-filter-count]').forEach(counter => {
-      const key = counter.dataset.filterCount;
-      counter.textContent = key === 'all' ? rows.length : rows.filter(row => row.dataset.nominationState === key).length;
-    });
-  };
-
-  document.querySelectorAll('[data-nomination-filter]').forEach(button => {
-    button.addEventListener('click', function () {
-      const selected = this.dataset.nominationFilter;
-      document.querySelectorAll('[data-nomination-filter]').forEach(filter => {
-        const active = filter === this;
-        filter.setAttribute('aria-pressed', active ? 'true' : 'false');
-        filter.classList.toggle('active', active);
-      });
-      document.querySelectorAll('[data-nomination-row]').forEach(row => {
-        row.classList.toggle('d-none', selected !== 'all' && row.dataset.nominationState !== selected);
-      });
-    });
-  });
-
   const previewModalElement = document.getElementById('interpro-send-preview-modal');
   const previewModal = previewModalElement ? bootstrap.Modal.getOrCreateInstance(previewModalElement) : null;
   const previewForm = document.getElementById('interpro-send-preview-form');
@@ -382,27 +351,7 @@ $(function () {
     feedback.className = `small ${isError ? 'text-danger' : 'text-success'}`;
   };
 
-  const rebuildCategory = data => {
-    if (data.total > 100 || @json($nominations->currentPage()) > 1) { window.location.reload(); return; }
-    document.getElementById('nomination-range').textContent = `Showing ${data.total ? 1 : 0}–${data.total} of ${data.total} nominations. Filters apply to this page.`;
-    if ((data.pagination?.last_page || 1) > 1) {
-      window.location.reload();
-      return;
-    }
-    const card = document.querySelector(`[data-nomination-category="${data.category_event_id}"]`);
-    if (!card) return;
-    card.querySelector('[data-nomination-count]').textContent = data.count;
-    const list = card.querySelector('[data-nomination-list]');
-    list.innerHTML = data.html || '';
-    if (!data.nominations.length) {
-      const empty = document.createElement('div');
-      empty.className = 'text-muted';
-      empty.dataset.emptyNominations = '';
-      empty.textContent = 'No players nominated yet.';
-      list.appendChild(empty);
-    }
-    refreshNominationFilters();
-  };
+  const rebuildCategory = data => { window.location.reload(); };
   player.select2({
     width: '100%',
     placeholder: 'Search by player name or surname',

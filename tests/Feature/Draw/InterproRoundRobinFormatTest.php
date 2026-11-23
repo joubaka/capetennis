@@ -87,6 +87,13 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertNull($this->fixture($draw, 2001)->registration1_id);
         $rr = $draw->drawFixtures()->where('stage', 'RR')->firstOrFail();
         app(\App\Services\Draw\DrawRecoveryImpactService::class)->assertSafeOrdinaryCorrection($rr);
+        $draw->settings()->update(['score_format' => 'timed', 'match_duration_minutes' => 20]);
+        $rr->fixtureResults()->first()->update(['registration1_score' => 4, 'registration2_score' => 4]);
+        $rr->update(['winner_registration' => null]);
+        $this->assertFalse(app(RoundRobinProgressReadiness::class)->forDraw($draw->fresh())['ready']);
+        $rr->fixtureResults()->first()->update(['registration1_score' => 6, 'registration2_score' => 2]);
+        $rr->update(['winner_registration' => $rr->registration1_id]);
+        $draw->settings()->update(['score_format' => 'one_set_to_6']);
         $this->progress($draw);
         $this->assertNotNull($this->fixture($draw, 2001)->registration1_id);
         $this->assertSame(36, $draw->drawFixtures()->count());

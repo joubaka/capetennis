@@ -35,6 +35,10 @@ outcomes verify draw identity, unordered participants, earlier topology and the
 original fingerprint. Display scores in the current slot orientation and label
 the original match. A changed or unavailable source requires review.
 
+Confirming progression requires a decisive result in every RR match, including
+when timed scoring is selected. Resolve drawn original matches during the group
+stage before confirmation; a first draw cannot decide a later knockout winner.
+
 Resolve both winner and loser paths in template order, independent of the order
 in which scores arrive. Carried pairings cannot be scored again or booked on a
 court. Release their working booking when they resolve, retaining the audit and

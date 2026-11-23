@@ -29,15 +29,13 @@ class InterprovincialTrialInvitationController extends Controller
             ->orderBy('ordering')
             ->orderBy('id')]);
         $categoryIds = $event->categoryEvents->pluck('id');
-        $nominations = EventNomination::query()
-            ->unarchived()
-            ->with(['player:id,name,surname', 'categoryEvent.category:id,name'])
-            ->where('event_id', $event->id)
-            ->whereIn('category_event_id', $categoryIds)
-            ->orderBy('category_event_id')
-            ->orderBy('id')
-            ->paginate(self::NOMINATIONS_PER_PAGE, ['*'], 'nominations_page')
-            ->withQueryString();
+        $request->validate(['nomination_status' => ['nullable', 'in:all,nominated,invited,payment-pending,registered,withdrawn,declined,cancelled,removed,archived,delivery-failed']]);
+        $nominationStatus = $request->query('nomination_status', 'all') ?: 'all';
+        $history = app(\App\Services\InterprovincialTrials\NominationHistory::class)->build($event, $nominationStatus);
+        $nominations = $history['rows'];
+        foreach ($event->categoryEvents as $category) {
+            $category->nominations_count = (int) ($history['categoryCounts'][$category->id] ?? 0);
+        }
         $invitations = $this->nominationInvitations($event, $nominations->getCollection());
         $successfulInitialIds = $this->successfulInitialInvitationIds($invitations);
         $failedFollowUpIds = $this->failedFollowUpInvitationIds($invitations);
@@ -45,7 +43,17 @@ class InterprovincialTrialInvitationController extends Controller
         $nominationPresentations = $nominations->getCollection()->mapWithKeys(function (EventNomination $nomination) use ($latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
             $invitation = $latestInvitationsByNomination->get((int) $nomination->id);
 
-            return [$nomination->id => $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id))];
+            $presentation = $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id));
+            $presentation['filter_key'] = $nomination->history_state;
+            if (in_array($nomination->history_state, ['removed', 'archived'], true)) {
+                $presentation['label'] = ucfirst($nomination->history_state);
+                $presentation['tone'] = 'secondary';
+            }
+            if ($nomination->archived_at || $nomination->removed_at) {
+                foreach (['can_remove', 'can_administer', 'can_resend', 'can_retry_follow_up'] as $flag) $presentation[$flag] = false;
+                $presentation['historical'] = true;
+            }
+            return [$nomination->id => $presentation];
         });
         $historicalInvitations = $batch
             ? $this->batchInvitationQuery($batch, $event)
@@ -74,15 +82,18 @@ class InterprovincialTrialInvitationController extends Controller
             'invited' => 'Awaiting response',
             'payment-pending' => 'Payment pending',
             'registered' => 'Registered',
-            'declined-withdrawn' => 'Declined / withdrawn',
+            'withdrawn' => 'Withdrawn',
+            'declined' => 'Declined',
             'delivery-failed' => 'Delivery failed',
             'cancelled' => 'Cancelled',
+            'removed' => 'Removed',
+            'archived' => 'Archived',
         ])->map(fn (string $label, string $key): array => [
             'key' => $key,
             'label' => $label,
             'count' => $key === 'all'
-                ? $nominationPresentations->count()
-                : $nominationPresentations->where('filter_key', $key)->count(),
+                ? $history['counts']->sum()
+                : (int) ($history['counts'][$key] ?? 0),
         ]);
         $registrationClosesAt = $event->registrationClosesAt()?->endOfDay();
         $registrationOpen = (bool) $event->published
@@ -107,7 +118,7 @@ class InterprovincialTrialInvitationController extends Controller
         $readyRecipientCount = $batch ? $this->batchInvitationQuery($batch, $event)->whereHas('nomination', fn ($query) => $query->unarchived())->whereNotNull('recipient_email')->count() : 0;
         $readiness = [
             'category_count' => $event->categoryEvents->count(),
-            'nomination_count' => $nominations->total(),
+            'nomination_count' => EventNomination::where('event_id', $event->id)->whereIn('category_event_id', $categoryIds)->unarchived()->count(),
             'invitation_count' => $invitationCount,
             'ready_recipient_count' => $readyRecipientCount,
             'blocked_recipient_count' => $invitationCount - $readyRecipientCount,
@@ -131,11 +142,9 @@ class InterprovincialTrialInvitationController extends Controller
                 ->when(! $request->user()->hasRole('super-user'), fn ($query) => $query->whereExists(fn ($admins) => $admins
                     ->selectRaw('1')->from('event_admins')->whereColumn('event_admins.event_id', 'events.id')->where('user_id', $request->user()->id))))
             ->orderByDesc('id')->limit(200)->get();
-        $archivedNominations = EventNomination::where('event_id', $event->id)->whereNotNull('archived_at')
-            ->with('player:id,name,surname')->orderByDesc('archived_at')->limit(100)->get();
         return view('backend.interprovincial-trials.invitations', compact(
             'event', 'batch', 'readiness', 'latestInvitationsByNomination', 'nominationPresentations',
-            'nominationFilterGroups', 'historicalInvitations', 'nominations', 'sourceCategories', 'archivedNominations'
+            'nominationFilterGroups', 'historicalInvitations', 'nominations', 'sourceCategories', 'nominationStatus'
         ));
     }
 

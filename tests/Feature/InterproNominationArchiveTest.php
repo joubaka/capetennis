@@ -59,7 +59,7 @@ class InterproNominationArchiveTest extends TestCase
         $this->assertTrue($this->runArchive($actor, $nomination, $preview['confirmation'])['already_in_state']);
         $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate')->assertSee('Current Nominee');
         $backend = $this->actingAs($actor)->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk()
-            ->assertSee('Archived nominations')->assertSee('Archived Candidate');
+            ->assertSee('Archived nomination')->assertSee('Archived Candidate');
         $this->assertSame(1, $backend->viewData('readiness')['nomination_count']);
         $this->assertSame('withdrawn', $entry->fresh()->status);
         $this->assertSame('withdrawn', $invitation->fresh()->status);

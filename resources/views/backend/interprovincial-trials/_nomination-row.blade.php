@@ -3,7 +3,7 @@
   <div class="interpro-nomination-row__identity" role="cell">
     <div class="fw-semibold">{{ $nomination->display_name }}</div>
     @if($nomination->player_id === null)<span class="badge bg-label-warning">Profile required</span>@endif
-    @if($nomination->player_id === null)
+    @if($nomination->player_id === null && !($presentation['historical'] ?? false))
       <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.email', [$event, $categoryEvent, $nomination]) }}" class="mt-2">
         @csrf @method('PUT')
         <label class="form-label small" for="nominee-email-{{ $nomination->id }}">Invitation email (optional)</label>
@@ -21,6 +21,7 @@
   <div class="interpro-nomination-row__status" role="cell">
     <span class="interpro-cell-label" aria-hidden="true">Status</span>
     <span class="badge bg-label-{{ $presentation['tone'] }}">{{ $invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id ? 'Paid privately' : $presentation['label'] }}</span>
+    @if($nomination->archived_at)<span class="badge bg-label-secondary">Archived nomination</span>@endif
     @if($invitation?->status === 'paid_confirmed' && $invitation->registration_id && !$invitation->order_id)<span class="small text-muted">Private collection; not reconciled</span>@endif
     @if($invitation && in_array($invitation->status, ['queued', 'sending', 'sent'], true))
       <span class="small text-muted">{{ str($invitation->status)->title() }}</span>
@@ -39,12 +40,17 @@
         @if($timestamp)<span><span class="text-muted">{{ $timestampLabel }}:</span> {{ $timestamp->format('d M Y H:i') }}</span>@endif
       @endforeach
     @endif
+    @if($nomination->archived_at)<span>Archived: {{ $nomination->archived_at->format('d M Y H:i') }}</span><span class="text-muted">{{ $nomination->archive_reason }}</span>@endif
+    @if($nomination->removed_at)<span>Removed: {{ \Illuminate\Support\Carbon::parse($nomination->removed_at)->format('d M Y H:i') }}</span><span class="text-muted">{{ $nomination->removed_by_name ?: 'Actor not recorded' }} · {{ $nomination->removal_reason ?: 'Reason not recorded' }}</span>@endif
     @if(!$invitation || (!$invitation->queued_at && !$invitation->sent_at && !$invitation->accepted_at && !$invitation->paid_at && !$invitation->withdrawn_at))
       <span class="text-muted" aria-label="No registration activity yet">—</span>
     @endif
   </div>
   <div class="interpro-nomination-row__actions" role="cell">
     <span class="interpro-cell-label w-100" aria-hidden="true">Actions</span>
+    @if($presentation['historical'] ?? false)
+      <span class="small text-muted">Retained history</span>
+    @else
     @if($presentation['can_administer'])
       <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.administer', [$event, $categoryEvent, $nomination]) }}">
         @csrf<input type="hidden" name="action" value="decline">
@@ -91,6 +97,7 @@
       </form>
     @else
       <a class="small" href="{{ route('admin.events.entries.new', $event) }}">Manage registration in Entries</a>
+    @endif
     @endif
   </div>
 </div>
