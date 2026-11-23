@@ -9,6 +9,7 @@
           <i class="ti ti-ball-tennis event-logo-placeholder" aria-hidden="true"></i>
         </div>
         <div class="event-details">
+          <div class="event-pathway-badges d-flex flex-wrap gap-2 mb-3" aria-label="Tournament pathway divisions"></div>
           <dl class="event-dates">
             <div class="event-date">
               <dt>Event start:</dt>

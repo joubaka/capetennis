@@ -21,18 +21,29 @@ class RefreshPlayerRatingHistory extends Command
         $originalLimit = (string) ini_get('memory_limit');
         $limit = ini_parse_quantity($originalLimit);
         if ($limit > 0 && $limit < 512 * 1024 * 1024) ini_set('memory_limit', '512M');
+        $canonicalSaved = false;
         try {
             $refresh->running();
             $start = microtime(true);
             $saved = app(PlayerAbilityConsistentRead::class)->run(fn () => $history->calculate(CarbonImmutable::today('Africa/Johannesburg')));
             $store->replace($saved, $ability->fingerprint());
+            $canonicalSaved = true;
+            $projections = app(\App\Services\Performance\PlayerHistoryProjectionStore::class);
+            if ($projections->ready()) {
+                $ids = app(\App\Services\Performance\PlayerPlusEntitlement::class)->activePlayers()
+                    ->orderBy('players.id')->limit($projections::MAX_PLAYERS + 1)->pluck('players.id')->map(fn ($id) => (int) $id)->all();
+                $projections->replace($saved, $ids);
+            }
             $refresh->completed();
             $this->info('Saved 12 monthly histories as of '.$saved['as_of'].' in '.number_format(microtime(true) - $start, 2).' seconds (peak '.number_format(memory_get_peak_usage(true) / 1024 / 1024, 1).' MiB).');
             return self::SUCCESS;
         } catch (\Throwable $error) {
             $refresh->failed();
-            Log::warning('Player rating history refresh failed; last successful build retained.', ['exception_type' => get_class($error)]);
-            $this->error('Rating history refresh failed. The last successful build was retained.');
+            Log::warning($canonicalSaved ? 'Player history saved; player projections failed; validated file fallback retained.'
+                : 'Player rating history refresh failed; last successful build retained.', ['exception_type' => get_class($error)]);
+            $this->error($canonicalSaved
+                ? 'Rating history was saved, but player projections failed. Pages retain the validated history fallback; review the failed refresh.'
+                : 'Rating history refresh failed. The last successful build was retained.');
             return self::FAILURE;
         } finally {
             $lock->release();

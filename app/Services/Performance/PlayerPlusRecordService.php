@@ -12,7 +12,7 @@ class PlayerPlusRecordService
 
     public function forPlayer(Player $player, array $filters = [], bool $includeTeamSheet = false): array
     {
-        $source = $this->history->recordSource();
+        $source = $this->history->recordSource($player);
         $matches = []; $conflicts = [];
         foreach ($source['evidence'] ?? [] as $row) {
             if ($row['kind'] !== 'match' || !($row['months'] ?? 0) || $row['date'] > $source['as_of']

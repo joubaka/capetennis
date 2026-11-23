@@ -94,12 +94,17 @@ must be strictly above Wilson A before any of the three bands is shown.
 `PlayerPathwayEvents` discovers only published upcoming individual events,
 including ongoing events under the canonical date convention. Terminal,
 postponed, results-published and Masters/Trials invitation formats are excluded.
-It matches explicit category ball words or exact U9/U10 B Orange classification;
-Wilson needs an explicit Wilson A/B category or an exact Wilson type with one
-category division. TSA needs an exact TSA event type. Generic event titles and
-unclassified standard categories cannot manufacture a match. Conflicting family
-or ball metadata is withheld. Canonical `BallRatingContext` checks event-scoped
-court evidence before inclusion. Known exact category age/gender exclusions use
+Hosted levels can be configured explicitly as an optional event default and an
+event-category override. `EventPathwayClassification` validates these labels
+against known ball evidence; a conflicting explicit setting never falls back to
+a guessed label. These discovery settings do not alter match rating evidence.
+When settings are absent, legacy matching uses explicit category ball words or
+exact U9/U10 B Orange classification; Wilson needs an explicit Wilson A/B category
+or an exact Wilson type with one category division. Generic event titles and
+unclassified standard categories cannot manufacture a match. TSA remains an
+external circuit, not a hosted classification. Conflicting family or ball
+metadata is withheld. Canonical `BallRatingContext` checks event-scoped court
+evidence before inclusion. See `../player-plus-pathway.md`. Known exact category age/gender exclusions use
 the existing calendar-year convention; missing or ambiguous profile/category
 information remains an organiser review, not proof of admission.
 

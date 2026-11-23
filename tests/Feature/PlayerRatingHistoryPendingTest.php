@@ -86,7 +86,7 @@ class PlayerRatingHistoryPendingTest extends TestCase
         for ($index = 0; $index < 12; $index++) {
             $months[] = ['date' => '2026-10-01', 'cohorts' => [\App\Services\Performance\BallRatingModel::COHORTS['standard'] => [42 => ['score' => 61.5, 'group' => 'same', 'component' => 'a']]]];
         }
-        $store->shouldReceive('read')->once()->andReturn($extra + ['source_fingerprint' => 'before', 'as_of' => '2026-10-01',
+        $store->shouldReceive('readForPlayer')->once()->andReturn($extra + ['source_fingerprint' => 'before', 'as_of' => '2026-10-01',
             'built_at' => '2026-10-01T03:00:00+02:00', 'months' => $months, 'evidence' => []]);
         $player = new Player;
         $player->id = 42;

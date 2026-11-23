@@ -16,6 +16,11 @@ class Event extends Model
 {
   use HasFactory;
 
+  public function ctrCertification()
+  {
+    return $this->hasOne(CtrEventCertification::class);
+  }
+
   protected $table = 'events';
 
   /*
@@ -36,6 +41,7 @@ class Event extends Model
     'eventType',
     'status',
     'venue_notes',
+    'pathway_level',
     'logo',
     'published',
     'results_published',

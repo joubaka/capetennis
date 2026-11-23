@@ -228,6 +228,7 @@ class EventController extends Controller
 
   public function store(Request $request)
   {
+    if ($request->exists('pathway_level')) $this->authorize('event.create');
     if ($request->filled('source_event_id') && !auth()->user()->hasRole('super-user')) {
       abort(403, 'Only super users can duplicate events.');
     }
@@ -259,6 +260,7 @@ class EventController extends Controller
       'admins.*'            => 'integer|exists:users,id',
       'source_event_id'     => 'nullable|integer|exists:events,id',
       'host_application_id' => 'nullable|integer',
+      'pathway_level' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
     ]);
 
     if (!empty($data['host_application_id'])) {
@@ -312,6 +314,7 @@ class EventController extends Controller
         'end_date'            => $data['end_date'] ?? null,
         'information'         => $data['information'] ?? null,
         'venue_notes'         => $data['venue_notes'] ?? null,
+        'pathway_level'       => $data['pathway_level'] ?? null,
         'entryFee'            => $data['entryFee'] ?? null,
         'deadline'            => $data['deadline'] ?? 7,
         'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,
@@ -376,6 +379,7 @@ class EventController extends Controller
 
   public function update(Request $request, Event $event)
   {
+    if ($request->exists('pathway_level')) $this->authorize('event-category.manage', $event);
     Log::info('🛠 Event update START', [
       'event_id' => $event->id,
       'user_id' => auth()->id(),
@@ -393,6 +397,7 @@ class EventController extends Controller
       'eventType' => 'required|integer',
       'email' => 'nullable|email',
       'organizer' => 'nullable|string|max:191',
+      'pathway_level' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
 
       'logo_existing' => 'nullable|string',
       'logo_upload' => 'nullable|image|max:2048',
@@ -438,6 +443,7 @@ class EventController extends Controller
       'end_date' => $data['end_date'] ?? null,
       'information' => $data['information'] ?? null,
       'venue_notes' => $data['venue_notes'] ?? null,
+      'pathway_level' => array_key_exists('pathway_level', $data) ? $data['pathway_level'] : $event->pathway_level,
       'entryFee' => $data['entryFee'] ?? null,
       'deadline' => $data['deadline'] ?? null,
       'withdrawal_deadline' => $data['withdrawal_deadline'] ?? null,

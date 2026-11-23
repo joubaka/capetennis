@@ -107,6 +107,18 @@ may contribute to a rating while its match details remain restricted. See
 
 ## Publication and bounds
 
+The Activity card's recent published results combine separately published
+finishing positions with recorded scores from public draws in past events
+(end date before today in South African time). A public draw's scores do not
+require the separate event results-publication switch. Draw-only rows link to
+the public event draw section as **Draw results** and never infer a final place
+from partial scores, roster order or an unpublished finishing list. Individual
+participation must match the same event and exact linked division; team rows
+retain published-tie and canonical public-lineup validation. The merged card is
+bounded and ordered by event date, with one row per event/division; team discovery
+also caps recent fixture candidates at 500. These reads do not publish or
+calculate results. `MyTennisRecentResultsTest` covers these boundaries.
+
 Current rankings require a published series and its latest published modern
 run. Archived rows never qualify merely because they retain a timestamp.
 Legacy null-run rows are retained only without a modern published run, with

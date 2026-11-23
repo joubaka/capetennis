@@ -1,5 +1,7 @@
 # Draw knowledge library
 
+For the certified-event bulk grouping workflow, see [CTR Certified planner](ctr-certified-planner.md).
+
 Reviewed locally on 1 November 2026. This library turns previous draw questions into reusable rules, source pointers and executable regression examples. Start with [the problem and solution catalogue](catalogue.md), then use [verification](verification.md) to select checks.
 
 This is repository knowledge for maintainers and future Codex work. It does not train a model, automatically change tournament settings, or connect the in-progress event assistant to chat history. Application behaviour remains in the canonical services and controllers; tests protect that behaviour.

@@ -580,7 +580,7 @@ class PlayerPathwayTest extends TestCase
         $this->mock(PlayerRatingHistoryService::class)->shouldReceive('forPlayer')->andReturn($history);
         $this->actingAs($this->actor());
         $html = $this->get(route('my.tennis.pathway', 1))->assertOk()->assertSee('Latest saved stage · update pending')->assertSee('Saved rating awaiting an update')->getContent();
-        $this->assertStringContainsString('data-pathway-competition="Wilson A"  aria-current="step"', $html);
+        $this->assertMatchesRegularExpression('/data-pathway-competition="Wilson A"[^>]*aria-current="step"/', $html);
         preg_match_all('/<li\b[^>]*aria-current="step"[^>]*>/', $html, $currentCards);
         $this->assertCount(1, $currentCards[0]);
         $this->assertStringContainsString('Your rating stage · latest saved CTR', $html);

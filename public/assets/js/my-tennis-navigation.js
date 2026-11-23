@@ -153,7 +153,7 @@
     return null;
   }
 
-  function render(page, workspace, url, {back, focus}) {
+  function render(page, workspace, url, {back, focus, cached = false}) {
     const next = page.workspace.cloneNode(true);
     if (!back && url.href !== window.location.href) window.history.pushState(null, '', url.href);
     if (page.title) document.title = page.title;
@@ -161,7 +161,9 @@
     workspace.dispatchEvent(new CustomEvent('my-tennis:unmounting', {bubbles: true}));
     workspace.replaceWith(next);
     next.dispatchEvent(new CustomEvent('my-tennis:mounted', {bubbles: true}));
-    mountLiveResults(next, true);
+    // Fresh responses already contain current scores. Cached copies deliberately
+    // omit that private live panel and need an immediate authorized read.
+    mountLiveResults(next, cached);
     cacheTabs(next, page);
 
     const active = next.querySelector('[data-my-tennis-link][aria-current="page"]');
@@ -195,7 +197,7 @@
     const key = pageKey(url);
     const ready = cachedPage(key);
     if (ready) {
-      render(ready, workspace, url, {back, focus});
+      render(ready, workspace, url, {back, focus, cached: true});
       return;
     }
 
@@ -236,7 +238,8 @@
 
     try {
       if (pending !== request) return;
-      const page = cachedPage(key) ?? await fetchWorkspace(url, request.signal);
+      const readyPage = cachedPage(key);
+      const page = readyPage ?? await fetchWorkspace(url, request.signal);
       if (pending !== request) return;
       if (page.redirected) {
         if (back) window.location.reload();
@@ -246,7 +249,7 @@
       if (request.signal.aborted) throw new Error('My Tennis request timed out');
       if (scope) remember(scope, key, page);
       closeLoading();
-      render(page, workspace, url, {back, focus});
+      render(page, workspace, url, {back, focus, cached: Boolean(readyPage)});
     } catch (error) {
       if (pending !== request) return;
       closeLoading();

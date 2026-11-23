@@ -287,7 +287,7 @@
       </div>
       <div class="col-12 col-lg-6">
         <div class="card h-100 border-0 shadow-sm my-tennis-activity-card my-tennis-results"><div class="card-body"><div class="my-tennis-card-heading"><span class="my-tennis-section-icon" aria-hidden="true"><i class="ti ti-trophy"></i></span><h2 class="h5 mb-0">Recent published results</h2></div>
-          @forelse($history['placements'] as $placement)<div class="border-bottom py-2"><div class="fw-semibold">{{ $placement->categoryEvent?->event?->name ?? 'Event' }}</div><div class="small text-muted">{{ $placement->categoryEvent?->category?->name ?? 'Category' }} · Place {{ $placement->position }}</div></div>@empty<p class="text-muted mb-0">No published results yet.</p>@endforelse
+          @include('frontend.my-tennis.recent-results', ['recentResults' => $history['recentResults'] ?? collect()])
         </div></div>
       </div>
       <div class="col-12 col-lg-6">

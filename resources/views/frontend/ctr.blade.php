@@ -2,6 +2,7 @@
 @section('title', 'Player Plus · Ratings, progress and tournament guidance')
 @section('meta-description', 'Follow your Cape Tennis Rating, monthly reports and tournament options with Player Plus. For junior players, beginners and their families.')
 @section('page-style')
+<link rel="stylesheet" href="{{ asset('assets/css/player-pathway.css') }}?v={{ filemtime(public_path('assets/css/player-pathway.css')) }}">
 <style>
 .ctr-intro{font-family:'Public Sans',system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:1180px;margin:1.5rem auto 3rem;color:#172e45}
 .ctr-intro *{box-sizing:border-box}
@@ -139,6 +140,8 @@
     </div>
   </section>
 
+  @include('frontend.my-tennis.pathway-public')
+
   <div class="ctr-section-intro"><h2>Four ways to understand your tennis</h2><p>From your latest results to your next tournament options.</p></div>
   <div class="ctr-intro-features">
     <details class="ctr-intro-feature">
@@ -214,4 +217,9 @@
   <div class="ctr-disclosures"><p>A rating needs eligible results and may be provisional or unavailable. Buying Plus does not guarantee a rating or change rankings or selection.</p><p>Private history requires a linked account and active membership. Sponsoring a player does not create that link. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p></div>
   @if($isSuperUser)<aside class="ctr-admin"><p>Your CTR access is active.</p><a href="{{ route('backend.player-performance.ratings') }}">Open CTR ratings <i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i></a></aside>@endif
 </main>
+@endsection
+
+@section('page-script')
+<script src="{{ asset('assets/js/pathway-explore.js') }}?v={{ filemtime(public_path('assets/js/pathway-explore.js')) }}" defer></script>
+<script src="{{ asset('assets/js/pathway-share.js') }}?v={{ filemtime(public_path('assets/js/pathway-share.js')) }}" defer></script>
 @endsection

@@ -278,7 +278,10 @@ class HomeController extends Controller
         'end_date',
         'deadline',
         'logo',
-      ]);
+        'eventType',
+      ])->with(['eventTypeModel', 'categoryEvents' => fn ($q) => $q->with('category')->orderBy('id')->limit(21)]);
+
+    if (\Illuminate\Support\Facades\Schema::hasColumn('events', 'pathway_level')) $query->addSelect('pathway_level');
 
     // 🔍 SEARCH FILTER
     if (!empty($search)) {
@@ -321,6 +324,7 @@ class HomeController extends Controller
         'end_date' => $event->end_date?->toDateString(),
         'deadline' => $event->deadline,
         'logo' => $event->logo,
+        'pathway_badges' => app(\App\Services\Performance\PlayerPathwayEvents::class)->badgesForEvent($event),
       ];
 
       return $payload;

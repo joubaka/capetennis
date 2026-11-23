@@ -2,6 +2,14 @@
 
 
 
+Route::middleware(['auth', 'throttle:60,1'])->prefix('backend/events/{event}/ctr-planner')->name('backend.ctr-planner.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Backend\CtrDrawPlannerController::class, 'show'])->name('show');
+    Route::post('/certify', [\App\Http\Controllers\Backend\CtrDrawPlannerController::class, 'certify'])->name('certify');
+    Route::post('/preview', [\App\Http\Controllers\Backend\CtrDrawPlannerController::class, 'preview'])->name('preview');
+    Route::post('/review', [\App\Http\Controllers\Backend\CtrDrawPlannerController::class, 'review'])->name('review');
+    Route::post('/confirm', [\App\Http\Controllers\Backend\CtrDrawPlannerController::class, 'apply'])->name('apply');
+});
+
 use App\Http\Controllers\Backend\AnnouncementController;
 use App\Http\Controllers\Backend\CategoryEventController;
 use App\Http\Controllers\Backend\ChartController;
@@ -1147,6 +1155,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
   )->name('admin.events.category-fee.update');
   Route::patch('event/category/{categoryEvent}/entry-limit', [EventCategoryController::class, 'updateLimit'])
     ->name('admin.events.category-limit.update');
+  Route::patch('event/category/{categoryEvent}/pathway', [EventCategoryController::class, 'updatePathway'])
+    ->name('admin.events.category-pathway.update');
+  Route::patch('event/{event}/pathway', [EventCategoryController::class, 'updateEventPathway'])
+    ->name('admin.events.pathway.update');
   Route::patch('event/{event}/category-entry-limits', [EventCategoryController::class, 'updateLimits'])
     ->name('admin.events.category-limits.update');
   Route::patch(

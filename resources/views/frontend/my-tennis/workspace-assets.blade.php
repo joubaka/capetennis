@@ -11,6 +11,7 @@
 <script defer src="{{ asset('assets/js/player-match-explanation.js') }}?v={{ filemtime(public_path('assets/js/player-match-explanation.js')) }}"></script>
 <script src="{{ asset('assets/js/player-rating-history-refresh.js') }}"></script>
 <script src="{{ asset('assets/js/player-pathway.js') }}?v={{ filemtime(public_path('assets/js/player-pathway.js')) }}"></script>
+<script src="{{ asset('assets/js/pathway-explore.js') }}?v={{ filemtime(public_path('assets/js/pathway-explore.js')) }}" defer></script>
 <script src="{{ asset('assets/js/my-tennis-player-search.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-search.js')) }}"></script>
 @once('my-tennis-player-switch-script')
 <script defer src="{{ asset('assets/js/my-tennis-player-switch.js') }}?v={{ filemtime(public_path('assets/js/my-tennis-player-switch.js')) }}"></script>

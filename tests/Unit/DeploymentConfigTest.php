@@ -6,6 +6,28 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_pathway_level_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_23_150000_add_pathway_levels_to_events_and_categories.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
+    public function test_player_history_projection_migration_is_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $this->assertContains('database/migrations/2026_11_23_140000_create_player_history_projections.php', preg_split('/\s+/', trim($match[1] ?? '')));
+    }
+
+    public function test_ctr_planner_migrations_are_explicitly_allowlisted(): void
+    {
+        $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms', $config, $match);
+        $paths = preg_split('/\s+/', trim($match[1] ?? ''));
+        $this->assertContains('database/migrations/2026_11_23_120000_create_ctr_event_planner.php', $paths);
+        $this->assertContains('database/migrations/2026_11_23_121000_make_ctr_draw_groups_transactional.php', $paths);
+    }
     public function test_event_updates_migration_is_allowlisted(): void
     {
         $config = file_get_contents(dirname(__DIR__, 2).'/deploy.config');

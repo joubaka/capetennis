@@ -127,6 +127,8 @@
               @error('eventType')<div class="invalid-feedback">{{ $message }}</div>@enderror
             </div>
 
+            @include('backend.event.partials.pathway-level-field', ['pathwayValue' => $sourceEvent?->pathway_level])
+
             {{-- Rich information --}}
             <div class="mb-3">
               <label id="event-information-label" class="form-label">Information</label>

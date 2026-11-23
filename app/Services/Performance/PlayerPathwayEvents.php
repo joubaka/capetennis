@@ -18,6 +18,47 @@ class PlayerPathwayEvents
     public function forPlayer(Player $player, array $pathway): array
     {
         $stage = $pathway['presentation']['event_stage'] ?? null;
+        return $this->discover($stage, $player);
+    }
+
+    /** Anonymous exploration never loads a player's identity or saved evidence. */
+    public function forStage(string $stage): array
+    {
+        return $this->discover($stage);
+    }
+
+    /** Category-specific labels only; an event can legitimately offer several stages. */
+    public function badgesForEvent(Event $event): array
+    {
+        $labels = [];
+        $budget = self::CONTEXT_LIMIT;
+        $codeFamily = $this->family($event->eventTypeModel?->code);
+        $nameFamily = $this->family($event->eventTypeModel?->name);
+        if ($codeFamily && $nameFamily && $codeFamily !== $nameFamily) return [];
+        $family = $codeFamily ?? $nameFamily;
+        if ($event->isMasters() || $event->isInterprovincialTrials() || (int) $event->eventTypeModel?->type !== EventType::INDIVIDUAL) return [];
+        foreach ($event->categoryEvents->take(self::CATEGORY_LIMIT) as $field) {
+            $field->setRelation('event', $event);
+            $classification = app(EventPathwayClassification::class);
+            if ($classification->hasExplicit($field)) {
+                if ($budget-- <= 0) break;
+                $stage = $classification->forCategory($field);
+                if ($stage !== null) $labels[] = ['category' => (string) $field->category?->name, 'stage' => $stage];
+                continue;
+            }
+            foreach (['red', 'orange', 'Wilson B', 'Wilson A', 'TSA tournaments'] as $stage) {
+                if ($budget <= 0) break 2;
+                if ($this->categoryStage($field, $family, $stage, Schema::hasTable('draws'), $budget) === $stage) {
+                    $labels[] = ['category' => (string) $field->category?->name, 'stage' => $stage];
+                    break;
+                }
+            }
+        }
+        return $labels;
+    }
+
+    private function discover(?string $stage, ?Player $player = null): array
+    {
         $result = ['stage' => $stage, 'events' => [], 'limited' => false];
         if (!$stage || !in_array($stage, ['red', 'orange', 'Wilson B', 'Wilson A', 'TSA tournaments'], true)) return $result;
         // Setup/test installations without the discovery schema can still show ratings.
@@ -52,7 +93,7 @@ class PlayerPathwayEvents
             foreach ($event->categoryEvents->take(self::CATEGORY_LIMIT) as $field) {
                 $field->setRelation('event', $event);
                 if ($remainingContexts === 0) { $result['limited'] = true; break; }
-                if (!$this->compatible($player, $event, (string) $field->category?->name) || $this->categoryStage($field, $type, $stage, $hasDraws, $remainingContexts) !== $stage) continue;
+                if (($player && !$this->compatible($player, $event, (string) $field->category?->name)) || $this->categoryStage($field, $type, $stage, $hasDraws, $remainingContexts) !== $stage) continue;
                 $categories[] = (string) $field->category->name;
             }
             if (!$categories) continue;
@@ -77,6 +118,12 @@ class PlayerPathwayEvents
 
     private function categoryStage(CategoryEvent $field, ?string $family, string $wanted, bool $hasDraws, int &$remainingContexts): ?string
     {
+        $classification = app(EventPathwayClassification::class);
+        if ($classification->hasExplicit($field)) {
+            $remainingContexts--;
+            $declared = $classification->forCategory($field);
+            return $declared === $wanted ? $declared : null;
+        }
         $label = strtolower(trim((string) $field->category?->name));
         if ($label === '') return null;
         // Exact category words establish the candidate; event titles never do.

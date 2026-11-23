@@ -183,7 +183,7 @@ class PlayerPlusController extends Controller
         $canView = $verified && $player && app(PlayerPlusEntitlement::class)->forPlayer($request->user(), $player)
             && app(PlayerRatingAccess::class)->allows($request->user(), $player);
         return ['state' => $canView ? 'verified' : 'receipt',
-            'destination' => $canView ? route('my.tennis', ['player' => $player->id]).'#rating' : $receipt];
+            'destination' => $canView ? route('my.tennis.pathway', $player) : $receipt];
     }
 
     public function cancel(Request $request, PlayerPlusOrder $order, PlayerPlusService $service)

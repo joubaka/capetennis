@@ -185,6 +185,8 @@
               </div>
             </div>
 
+            @include('backend.event.partials.pathway-level-field', ['pathwayValue' => $event->pathway_level])
+
             {{-- Event Type --}}
             <div class="mb-3">
               <label for="event-field-4" class="form-label">Event Type</label>

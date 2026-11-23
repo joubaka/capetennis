@@ -80,6 +80,7 @@ class MyTennisService
                 'history' => [
                     'entries' => collect(),
                     'placements' => collect(),
+                    'recentResults' => collect(),
                     'rankingScores' => collect(),
                     'seriesRankings' => collect(),
                     'teamAppearances' => collect(),

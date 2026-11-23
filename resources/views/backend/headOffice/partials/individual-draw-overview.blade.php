@@ -7,6 +7,9 @@
   <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
     <div><h2 class="h4 mb-1">Manage your draws</h2><p class="text-muted mb-0">Open draws, plan match times and manage publication.</p></div>
     <div class="draws-event-actions">
+      @if(app(\App\Services\Draw\CtrPlannerAccess::class)->manages(auth()->user(), $event))
+        <a class="btn draws-button draws-button-primary" href="{{ route('backend.ctr-planner.show', $event) }}">CTR event planner</a>
+      @endif
       @if($event->draws->isNotEmpty())
         <details class="draws-extra-tools"><summary class="btn draws-button draws-button-secondary">Event tools</summary><div class="d-flex flex-wrap gap-2 mt-2">
         <button type="button" class="btn draws-button draws-button-secondary" data-bs-toggle="modal" data-bs-target="#drawSettingsModal">

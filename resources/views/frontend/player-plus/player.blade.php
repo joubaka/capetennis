@@ -51,7 +51,7 @@
     $ordersUrl = route('player-plus.orders.index', ['player' => $workspace['player']->id ?? null]);
     $myTennisUrl = route('my.tennis', [
       'player' => ($linked || $canViewRating) ? $player->id : null,
-      'tab' => $canViewRating ? 'rating' : null,
+      'tab' => $canViewRating ? 'pathway' : null,
     ]);
   @endphp
   <x-player-workspace-header class="pp-membership-header" :title="'Player Plus for '.$player->full_name" eyebrow="Cape Tennis · Player Plus">

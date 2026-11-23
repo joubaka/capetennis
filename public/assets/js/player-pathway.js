@@ -41,7 +41,7 @@
     async info(button) {
       const readSignal = this.readSignal?.() || this.signal;
       if (readSignal?.aborted) return;
-      const card = button.closest('li');
+      const card = button.closest('li') || button.closest('[data-pathway-exploration-panel]');
       const content = card?.querySelector('[data-pathway-info-content]');
       if (!content || button.disabled) return;
       if (button.getAttribute('aria-expanded') === 'true' && content.dataset.loaded === 'true') {

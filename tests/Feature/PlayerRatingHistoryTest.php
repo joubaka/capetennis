@@ -85,7 +85,7 @@ class PlayerRatingHistoryTest extends TestCase
         $store->shouldReceive('policyHash')->once()->andReturn('policy');
         $service = new PlayerRatingHistoryService($ability, $store);
         $saved = $service->calculate(CarbonImmutable::today('Africa/Johannesburg'));
-        $store->shouldReceive('read')->once()->andReturn($saved);
+        $store->shouldReceive('readForPlayer')->once()->andReturn($saved);
         $history = $service->forPlayer($player);
         $this->assertCount(11, $history['series'][\App\Services\Performance\AllAgeRatingModel::COHORT]);
         $this->assertSame('2025-11-30', $dates[0]);
@@ -130,7 +130,7 @@ class PlayerRatingHistoryTest extends TestCase
         $ability->shouldReceive('fingerprint')->once()->andReturn('after');
         $ability->shouldNotReceive('historySnapshot', 'validationSnapshot', 'calculateSnapshot');
         $store = Mockery::mock(PlayerRatingHistoryStore::class);
-        $store->shouldReceive('read')->once()->andReturn(['source_fingerprint' => 'before']);
+        $store->shouldReceive('readForPlayer')->once()->andReturn(['source_fingerprint' => 'before']);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer(new Player);
         $this->assertSame([], $history['series']);
         $this->assertStringContainsString('changed', $history['reason']);
@@ -141,7 +141,7 @@ class PlayerRatingHistoryTest extends TestCase
         $ability = Mockery::mock(PlayerSharedAbilityService::class);
         $ability->shouldNotReceive('fingerprint', 'historySnapshot', 'validationSnapshot', 'calculateSnapshot');
         $store = Mockery::mock(PlayerRatingHistoryStore::class);
-        $store->shouldReceive('read')->once()->andReturn(null);
+        $store->shouldReceive('readForPlayer')->once()->andReturn(null);
         $history = (new PlayerRatingHistoryService($ability, $store))->forPlayer(new Player);
         $this->assertSame([], $history['series']);
         $this->assertStringContainsString('03:02 SAST', $history['reason']);

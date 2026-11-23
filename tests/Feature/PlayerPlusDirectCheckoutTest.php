@@ -129,7 +129,7 @@ class PlayerPlusDirectCheckoutTest extends TestCase
         $this->assertDatabaseCount('player_plus_memberships', 0);
         $this->assertFalse($order->fresh()->payfast_paid);
         $order = $this->activate($order);
-        $destination = route('my.tennis', ['player' => $player->id]).'#rating';
+        $destination = route('my.tennis.pathway', $player);
         $this->getJson($status)->assertOk()->assertJsonPath('state', 'verified')->assertJsonPath('destination', $destination);
         $this->get($return)->assertRedirect($destination);
         $player->update(['userId' => null]);

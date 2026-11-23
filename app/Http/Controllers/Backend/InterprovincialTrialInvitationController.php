@@ -479,7 +479,7 @@ class InterprovincialTrialInvitationController extends Controller
             InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT => ['payment-pending', 'payment-pending', 'Payment pending', 'warning'],
             InterprovincialTrialInvitation::PAID_CONFIRMED => ['registered', 'registered', 'Registered', 'success'],
             InterprovincialTrialInvitation::DECLINED, 'admin_declined' => ['declined', 'declined-withdrawn', 'Declined', 'secondary'],
-            InterprovincialTrialInvitation::WITHDRAWN => ['withdrawn', 'declined-withdrawn', 'Withdrawn', 'secondary'],
+            InterprovincialTrialInvitation::WITHDRAWN => ['withdrawn', 'declined-withdrawn', 'Withdrawn', 'danger'],
             'failed' => ['delivery-failed', 'delivery-failed', 'Delivery failed', 'danger'],
             'cancelled' => ['cancelled', 'cancelled', 'Cancelled', 'dark'],
             default => ['nominated', 'nominated', 'Nominated - not sent', 'info'],

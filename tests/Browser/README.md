@@ -1,5 +1,17 @@
 # Draw workspace browser regressions
 
+## CTR Certified planner
+
+Export fictional full-page states from `CtrDrawPlannerTest` with
+`CT_CTR_PLANNER_QA_HTML=1` (requires `APP_ENV=testing` and database `ct_testing`),
+then run `node tests/Browser/ctr-planner.cjs` using Node 24 and Playwright on
+`NODE_PATH`. The harness reads `storage/app/testing/ctr-planner/` and serves only
+those exports and local static assets. It checks initial, preview, blocked and
+created states at 360, 390, 768 and 1440 pixels, plus unsaved-placement confirmation
+guards. It never connects a browser to application data or creates live draws.
+
+## Interpro preview
+
 `node tests/Browser/interpro-preview.cjs` checks the fictional Interpro walkthrough
 at 360, 390 and 1440px, including four RR groups, all 18 playoff routes, carried
 scores, phone scrolling, blank draws and 12 final positions. First export the

@@ -63,20 +63,24 @@ final class GroupAssignmentService
     }
 
     /** Competition identities already selected by another draw in the same scope. */
-    public function assignedElsewhere(Draw $draw): \Illuminate\Support\Collection
+    public function assignedElsewhere(Draw $draw, bool $lock = false): \Illuminate\Support\Collection
     {
         $siblings = Draw::query()->where('event_id', $draw->event_id)->whereKeyNot($draw->id)
             ->when($draw->category_event_id, fn ($query) => $query->where(fn ($scope) => $scope
                 ->where('category_event_id', $draw->category_event_id)->orWhereNull('category_event_id')))
             ->select('id');
-        $registrationIds = DB::table('draw_registrations')->whereIn('draw_id', clone $siblings)->pluck('registration_id')
-            ->merge(DB::table('draw_group_registrations')->whereIn('draw_group_id',
-                DB::table('draw_groups')->whereIn('draw_id', clone $siblings)->where('round_robin_phase', 1)->select('id'))
-                ->pluck('registration_id'))->unique();
-        $playerIds = DB::table('player_registrations')->whereIn('registration_id', $registrationIds)->pluck('player_id');
+        $direct = DB::table('draw_registrations')->whereIn('draw_id', clone $siblings);
+        $grouped = DB::table('draw_group_registrations')->whereIn('draw_group_id',
+            DB::table('draw_groups')->whereIn('draw_id', clone $siblings)->where('round_robin_phase', 1)->select('id'));
+        if ($lock) { $direct->lockForUpdate(); $grouped->lockForUpdate(); }
+        $registrationIds = $direct->pluck('registration_id')->merge($grouped->pluck('registration_id'))->unique();
+        $players = DB::table('player_registrations')->whereIn('registration_id', $registrationIds);
+        if ($lock) $players->lockForUpdate();
+        $playerIds = $players->pluck('player_id');
+        $aliases = DB::table('player_registrations')->whereIn('player_id', $playerIds);
+        if ($lock) $aliases->lockForUpdate();
 
-        return $registrationIds->merge(DB::table('player_registrations')->whereIn('player_id', $playerIds)
-            ->pluck('registration_id'))->unique()->values();
+        return $registrationIds->merge($aliases->pluck('registration_id'))->unique()->values();
     }
 
     public function assignable(Draw $draw): Builder

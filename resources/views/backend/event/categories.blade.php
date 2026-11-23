@@ -56,6 +56,14 @@
   @error('entry_limit')<div class="alert alert-danger" role="alert">{{ $message }}</div>@enderror
   <p id="courtAllocationFeedback" role="status" aria-live="polite" class="text-success"></p>
 
+  <div class="card mb-4"><div class="card-body">
+    <form method="POST" action="{{ route('admin.events.pathway.update', $event) }}">
+      @csrf @method('PATCH')
+      @include('backend.event.partials.pathway-level-field', ['pathwayValue' => $event->pathway_level])
+      <button class="btn btn-primary" type="submit">Save event default</button>
+    </form>
+  </div></div>
+
   {{-- CATEGORY LIST --}}
   <div class="card">
     <div class="card-header"><h3 class="h5 mb-0">Categories in this event</h3></div>
@@ -64,6 +72,7 @@
         <thead class="table-light">
           <tr>
             <th>Category</th>
+            <th>Tournament level</th>
             <th class="text-center">Entries</th>
             <th class="text-center">Entry Fee Override</th>
             <th>Division entry cap</th>
@@ -75,6 +84,25 @@
           @forelse($categoryEvents as $categoryEvent)
             <tr>
               <td>{{ $categoryEvent->category->name }}</td>
+
+              <td style="min-width:240px">
+                @php($levelResolver = app(\App\Services\Performance\EventPathwayClassification::class))
+                <p class="small mb-2"><strong>{{ $levelResolver->label($categoryEvent) }}</strong> · {{ $categoryEvent->pathway_level === null ? 'Event default' : 'Category override' }}</p>
+                @if($levelResolver->hasExplicit($categoryEvent) && $levelResolver->forCategory($categoryEvent) === null)
+                  <p class="small text-warning">Ball-level details conflict. Review the category and court setup before discovery can use this level.</p>
+                @endif
+                <form method="POST" action="{{ route('admin.events.category-pathway.update', $categoryEvent) }}">
+                  @csrf @method('PATCH')
+                  <label class="visually-hidden" for="category-pathway-{{ $categoryEvent->id }}">Tournament level for {{ $categoryEvent->category->name }}</label>
+                  <select id="category-pathway-{{ $categoryEvent->id }}" name="pathway_level" class="form-select mb-2">
+                    <option value="">Use event default{{ $event->pathway_level ? ': '.(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS[$event->pathway_level] ?? 'Not classified') : ' (not classified)' }}</option>
+                    @foreach(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS as $code => $levelLabel)
+                      <option value="{{ $code }}" @selected($categoryEvent->pathway_level === $code)>{{ $levelLabel }}</option>
+                    @endforeach
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary" type="submit">Save level</button>
+                </form>
+              </td>
 
               <td class="text-center">
                 {{ $categoryEvent->categoryEventRegistrations->count() }}
@@ -127,7 +155,7 @@
             </tr>
           @empty
             <tr>
-              <td colspan="5" class="text-center text-muted py-3">
+              <td colspan="6" class="text-center text-muted py-3">
                 No categories attached to this event.
               </td>
             </tr>
@@ -164,6 +192,7 @@
           </select>
         </div>
 
+        @include('backend.event.partials.pathway-level-field', ['pathwayFieldId' => 'attach-pathway-level', 'pathwayFieldLabel' => 'Tournament level for new categories', 'pathwayBlankLabel' => 'Use event default', 'pathwayHelp' => 'Applies only to newly attached categories. Existing category overrides are retained.'])
         <button class="btn btn-primary">
           <i class="ti ti-plus"></i> Add Selected
         </button>
@@ -181,6 +210,7 @@
             class="d-flex flex-wrap gap-2">
         @csrf
 
+        @include('backend.event.partials.pathway-level-field', ['pathwayFieldId' => 'create-pathway-level', 'pathwayFieldLabel' => 'Tournament level', 'pathwayBlankLabel' => 'Use event default', 'pathwayHelp' => 'Set this event category’s level independently of categories with the same name in other events.'])
         <label for="category-create-name" class="form-label">New category name</label>
         <input type="text"
                name="name" id="category-create-name"

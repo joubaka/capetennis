@@ -19,6 +19,18 @@ class CtrMarketingTest extends TestCase
         SiteSetting::set(PlayerRatingAccess::COMING_SOON_SETTING, '0');
     }
 
+    public function test_public_pathway_is_anonymous_shareable_and_rejects_invalid_guidance_bands(): void
+    {
+        SiteSetting::set(PlayerRatingAccess::COMING_SOON_SETTING, '1');
+        $this->mock(\App\Services\Performance\PlayerRatingHistoryService::class)->shouldNotReceive('forPlayer');
+        $this->get(route('ctr.index', ['stage' => ['unsafe']]))->assertOk()->assertSee('data-public-pathway', false)
+            ->assertSee('Fictional example')->assertSee('data-pathway-share', false)->assertSee('Download coach poster')
+            ->assertSee('https://capetennis.co.za/ctr#pathway')->assertDontSee('data-pathway-top-badge', false);
+        config(['pathway.wilson_a_above' => 80, 'pathway.tsa_above' => 50]);
+        $this->get(route('ctr.index'))->assertOk()->assertSee('Tournament rating bands are awaiting configuration')
+            ->assertDontSee('Wilson B: CTR 80');
+    }
+
     public function test_free_signup_has_a_compact_optional_offer_with_an_accessible_destination(): void
     {
         foreach (['0', '1'] as $marketing) {

@@ -11,6 +11,7 @@
     :subtitle="$eventWorkspaceSubtitle"
     :icon="$eventWorkspaceIcon">
     <x-slot:meta>
+      @if($event->ctrCertification?->certified)<span class="badge bg-success">CTR Certified</span>@endif
       @if($event->start_date)
         <span><i class="ti ti-calendar-event me-1" aria-hidden="true"></i>{{ $event->start_date->format('d M Y') }}</span>
       @endif

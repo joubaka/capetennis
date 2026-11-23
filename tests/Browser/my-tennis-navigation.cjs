@@ -31,6 +31,7 @@ async function run() {
       let documentLoads = 0;
       let ratingFragmentLoads = 0;
       let liveScore = '6–2';
+      let liveResultLoads = 0;
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', async route => {
         const request = route.request();
@@ -64,6 +65,7 @@ async function run() {
           return route.fulfill({ contentType: 'text/html', body: fixture('rating-fragment') });
         }
         if (url.pathname.endsWith('/live-results')) {
+          liveResultLoads++;
           return route.fulfill({contentType: 'text/html', body:
             `<section data-my-tennis-live-results="${url.pathname}"><h2>Recent results</h2><p>${liveScore}</p></section>`});
         }
@@ -140,7 +142,9 @@ async function run() {
         await active(name);
         if (name === 'Results') {
           const live = workspace.locator('[data-my-tennis-live-results]');
-          await live.getByText('6–2', {exact: true}).waitFor();
+          await live.getByRole('heading', {name: 'Latest results', exact: true}).waitFor();
+          await page.waitForTimeout(100);
+          assert.equal(liveResultLoads, 0, 'Fresh Results already contain live data; do not immediately request it again');
           liveScore = '7–5';
           await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
           await live.getByText('7–5', {exact: true}).waitFor();
@@ -149,6 +153,15 @@ async function run() {
           const october = chart.getByRole('link', { name: 'Oct 2026', exact: true });
           assert.match(await october.getAttribute('href'), /record_month=2026-10#match-results$/);
           assert.equal(await chart.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true);
+        }
+        if (name === 'Opponents') {
+          const before = liveResultLoads;
+          await nav.getByRole('link', {name: 'Results', exact: true}).click();
+          await active('Results');
+          await workspace.locator('[data-my-tennis-live-results]').getByText('7–5', {exact: true}).waitFor();
+          assert.equal(liveResultLoads, before + 1, 'Cached Results omit live data and refresh it immediately');
+          await nav.getByRole('link', {name: 'Opponents', exact: true}).click();
+          await active('Opponents');
         }
         if (name === 'Rating') {
           await workspace.getByRole('heading', { name: 'Player rating', exact: true }).waitFor();

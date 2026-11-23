@@ -22,6 +22,18 @@ class PlayerRatingHistoryStore
         return app(PlayerRatingReadScope::class)->remember('validated-history:'.$this->path(), fn () => $this->readFresh());
     }
 
+    /** Reuse the canonical artifact validation for a small exact-player projection. */
+    public function readForPlayer(int $playerId): ?array
+    {
+        return app(PlayerRatingReadScope::class)->remember('validated-player-history:'.$this->path().':'.$playerId, function () use ($playerId) {
+            try {
+                $saved = app(PlayerHistoryProjectionStore::class)->read($playerId);
+                if ($saved !== null && $this->valid($saved)) return $saved;
+            } catch (\Throwable) {}
+            return $this->read();
+        });
+    }
+
     private function readFresh(): ?array
     {
         try {
@@ -41,6 +53,10 @@ class PlayerRatingHistoryStore
         $json = json_encode($saved, JSON_THROW_ON_ERROR);
         if (strlen($json) > 20 * 1024 * 1024) throw new \RuntimeException('History exceeds storage limit.');
         File::ensureDirectoryExists(dirname($this->path()));
+        // Clear the fast-path pointer before replacing its canonical source.
+        // A failed projection build must fall back to this new validated file,
+        // never prefer an older database generation indefinitely.
+        app(PlayerHistoryProjectionStore::class)->invalidate();
         File::replace($this->path(), $json);
     }
 

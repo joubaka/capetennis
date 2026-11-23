@@ -331,6 +331,16 @@
         <div class="flex-grow-1 mt-3 mt-sm-5">
           <div class="mx-4">
             <h4>{{ $event->name }}</h4>
+            @php($publicPathwayBadges = app(\App\Services\Performance\PlayerPathwayEvents::class)->badgesForEvent($event))
+            @if($publicPathwayBadges)
+              <div class="d-flex flex-wrap gap-2 my-2" aria-label="Tournament pathway divisions">
+                @foreach($publicPathwayBadges as $publicPathwayBadge)
+                  <span class="badge bg-label-primary">{{ $publicPathwayBadge['category'] }} · {{ $publicPathwayBadge['stage'] }}</span>
+                @endforeach
+              </div>
+              <a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('ctr.index') }}#pathway">Explore the Cape Tennis pathway →</a>
+            @endif
+            @if($event->ctrCertification?->certified)<span class="badge bg-success">CTR Certified</span>@endif
 
             <ul class="list-inline d-flex gap-2 flex-wrap">
               @if($event->isIndividual())

@@ -69,6 +69,34 @@ class PlayerPathwayEventsTest extends TestCase
         return array_column(app(PlayerPathwayEvents::class)->forPlayer($this->player(), $this->pathway($stage))['events'], 'id');
     }
 
+    public function test_anonymous_stage_exploration_uses_public_evidence_without_personal_age_or_gender_filters(): void
+    {
+        $girls = $this->event('U/9 Girls Orange ball');
+        $boys = $this->event('U/13 Boys Orange ball');
+        $this->event('Orange ball', ['published' => false]);
+        $service = app(PlayerPathwayEvents::class);
+        $this->assertSame([$girls, $boys], array_column($service->forStage('orange')['events'], 'id'));
+        $this->assertSame([], $service->forStage('untrusted')['events']);
+        $this->assertSame([$boys], $this->ids('orange'));
+    }
+
+    public function test_explicit_category_overrides_drive_matching_and_mixed_event_badges_without_title_guessing(): void
+    {
+        Schema::table('events', fn (Blueprint $t) => $t->string('pathway_level')->nullable());
+        Schema::table('category_events', fn (Blueprint $t) => $t->string('pathway_level')->nullable());
+        $id = $this->event('Open singles', ['pathway_level' => 'wilson-b']);
+        $category = DB::table('categories')->insertGetId(['name' => 'Other singles']);
+        DB::table('category_events')->insert(['event_id' => $id, 'category_id' => $category, 'pathway_level' => 'wilson-a']);
+        $service = app(PlayerPathwayEvents::class);
+        $this->assertSame([$id], $this->ids('Wilson B'));
+        $this->assertSame([$id], $this->ids('Wilson A'));
+        $badges = $service->badgesForEvent(\App\Models\Event::findOrFail($id));
+        $this->assertSame([['category' => 'Open singles', 'stage' => 'Wilson B'], ['category' => 'Other singles', 'stage' => 'Wilson A']], $badges);
+        DB::table('category_events')->where('event_id', $id)->update(['pathway_level' => 'tsa']);
+        $this->assertSame([], $this->ids('Wilson B'));
+        $this->assertSame([], $service->badgesForEvent(\App\Models\Event::findOrFail($id)));
+    }
+
     public function test_only_public_upcoming_individual_nonterminal_events_are_projected_without_mutation(): void
     {
         $good = $this->event('Red ball');

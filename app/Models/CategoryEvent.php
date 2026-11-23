@@ -16,6 +16,7 @@ class CategoryEvent extends Model
     'nominations_published',
     'locked_at',
     'entry_limit',
+    'pathway_level',
   ];
 
   public $timestamps = false;

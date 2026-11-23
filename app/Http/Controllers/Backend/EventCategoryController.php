@@ -10,6 +10,26 @@ use Illuminate\Http\Request;
 
 class EventCategoryController extends Controller
 {
+  public function updateEventPathway(Request $request, Event $event)
+  {
+    $this->authorize('event-category.manage', $event);
+    $data = $request->validate([
+      'pathway_level' => ['present', 'nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
+    ]);
+    $event->update(['pathway_level' => $data['pathway_level']]);
+    return back()->with('success', 'Default tournament level saved. Category overrides are retained.');
+  }
+
+  public function updatePathway(Request $request, CategoryEvent $categoryEvent)
+  {
+    $this->authorize('event-category.manage', $categoryEvent->event);
+    $data = $request->validate([
+      'pathway_level' => ['present', 'nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
+    ]);
+    $categoryEvent->update(['pathway_level' => $data['pathway_level']]);
+    return back()->with('success', 'Category tournament level saved.');
+  }
+
   public function updateLimits(Request $request, Event $event)
   {
     $this->authorize('event-category.manage', $event);
@@ -100,12 +120,13 @@ class EventCategoryController extends Controller
     $validated = $request->validate([
       'category_ids' => ['required', 'array', 'min:1'],
       'category_ids.*' => ['integer', 'exists:categories,id'],
+      'pathway_level' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
     ]);
 
     foreach ($validated['category_ids'] as $categoryId) {
       $event->categoryEvents()->firstOrCreate(
         ['category_id' => $categoryId],
-        [] // future-proof if you add extra columns later
+        ['pathway_level' => $validated['pathway_level'] ?? null]
       );
     }
 
@@ -125,6 +146,7 @@ class EventCategoryController extends Controller
 
     $data = $request->validate([
       'name' => 'required|string|max:255|unique:categories,name',
+      'pathway_level' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
     ]);
 
     $category = Category::create([
@@ -133,6 +155,7 @@ class EventCategoryController extends Controller
 
     $event->categoryEvents()->create([
       'category_id' => $category->id,
+      'pathway_level' => $data['pathway_level'] ?? null,
     ]);
 
     return back()->with('success', 'Category created and added to event.');

@@ -234,7 +234,7 @@ class PlayerPlusRecordTest extends TestCase
         $snapshots = Mockery::mock(PlayerAbilitySnapshotStore::class); $snapshots->shouldReceive('published')->once()->andReturn(false);
         $this->app->instance(PlayerAbilitySnapshotStore::class, $snapshots);
         $this->assertArrayNotHasKey('evidence', (new PlayerRatingHistoryService($ability, $store))->recordSource());
-        $store = Mockery::mock(PlayerRatingHistoryStore::class); $store->shouldReceive('read')->once()->andReturn(null);
+        $store = Mockery::mock(PlayerRatingHistoryStore::class); $store->shouldReceive('readForPlayer')->once()->andReturn(null);
         $result = (new PlayerPlusRecordService(new PlayerRatingHistoryService($ability, $store)))->forPlayer($this->player());
         $this->assertNotNull($result['reason']); $this->assertSame(0, $result['played']);
     }

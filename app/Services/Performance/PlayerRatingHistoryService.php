@@ -10,9 +10,9 @@ class PlayerRatingHistoryService
     public function __construct(private readonly PlayerSharedAbilityService $ability, private readonly PlayerRatingHistoryStore $store) {}
 
     /** Existing saved results only; callers must enforce per-player Plus access. */
-    public function recordSource(): array
+    public function recordSource(?Player $player = null): array
     {
-        $saved = $this->store->read();
+        $saved = $player ? $this->store->readForPlayer((int) $player->id) : $this->store->read();
         if (!$saved) return ['reason' => 'Your playing record will be available after the next saved results update.'];
         if (isset($saved['publication_manifest']['teamsheet_context']) && !app(TeamSheetTennisEvidence::class)->published($saved['publication_manifest']['teamsheet_context'])) {
             return ['reason' => 'Saved results are awaiting an update because their source access changed.'];
@@ -26,7 +26,7 @@ class PlayerRatingHistoryService
     /** Page reads never calculate, enqueue, or update ratings. */
     public function forPlayer(Player $player, array $filters = [], bool $summaryOnly = false): array
     {
-        $saved = $this->store->read();
+        $saved = $this->store->readForPlayer((int) $player->id);
         if ($saved === null) return ['series' => [], 'reason' => 'Rating history is awaiting its first saved calculation. Updates run nightly at 03:02 SAST.'];
         if (isset($saved['publication_manifest']['teamsheet_context']) && !app(TeamSheetTennisEvidence::class)->published($saved['publication_manifest']['teamsheet_context'])) {
             return ['series' => [], 'reason' => 'Rating history is awaiting an update because its TeamSheet source is stale or changed.'];

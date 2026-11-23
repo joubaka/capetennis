@@ -121,6 +121,10 @@ $(function () {
     const url = eventUrl(event.id);
 
     $card.find('.eventName').text(event.name).attr('href', url);
+    for (const badge of (Array.isArray(event.pathway_badges) ? event.pathway_badges : [])) {
+      if (!badge?.category || !badge?.stage) continue;
+      $card.find('.event-pathway-badges').append($('<span>', { class: 'badge bg-label-primary', text: badge.category + ' · ' + badge.stage }));
+    }
     $card.find('.start_date').text(formatDate(startDate));
     $card.find('.end_date').text(formatDate(endDate));
     $card.find('.deadline').text(formatDate(deadlineDate));

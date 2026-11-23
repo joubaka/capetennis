@@ -63,6 +63,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Discovery is bounded and read-only, and a stage match never establishes entry
   eligibility. See `PlayerPathwayEvents`, `PlayerPathwayEventsTest` and
   `docs/performance/all-age-rating.md` for matching limits and empty states.
+- Hosted pathway classification is an optional event default with event-category
+  overrides, never a property of the globally shared category. Hosted choices are
+  Red, Orange, Wilson B and Wilson A; TSA remains an external opportunity.
+  Use `EventPathwayClassification::forCategory()` for validated public labels;
+  its admin `label()` method describes configuration and does not resolve ball
+  conflicts. Settings guide discovery without changing played-match evidence.
+  Keep stage exploration separate from the saved personal marker and generic
+  coach sharing separate from private player access. See
+  `docs/player-plus-pathway.md` and `EventPathwayClassificationTest`.
 - The separate match-influence tool is an offline sensitivity estimate on saved Overall CTR:
   baseline minus a canonical refit omitting one exact eligible match at the same
   date. Preserve component, reference, backbone and connection comparability;
@@ -235,6 +244,9 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 - My Tennis tab fragments use the same authorized GET routes as direct links.
   Preserve full-page fallback, rebind controls on workspace mount, and cancel
   transient rating and pathway reads when leaving a view.
+  Cached workspace clones retain attributes but lose listeners. Use actual
+  element identity for mount guards and restore moved disclosure content before
+  rebinding; verify `pathway-explore.js` and `tests/Browser/pathway-experience.cjs`.
   Render the initial authorized Rating panel with its tab response. Use the
   rating fragment endpoint for subsequent filters and refreshes.
   Cache visited tabs without speculative all-tab fetches; selected navigation must
@@ -242,6 +254,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   match-graph placeholders in that cache. My Tennis GETs may reuse the exact source
   fingerprint and validated history only inside `PlayerRatingReadScope`; new
   requests, writes and offline work require fresh checks, never a persistent TTL.
+  The nightly history command also prepares compact database history projections
+  for active Plus players. Reads use the exact player's validated projection with
+  the full shared publication manifest; missing or invalid projections fall back
+  to validated global history. Canonical file replacement clears the old database
+  pointer before writing, and only complete transactional builds become current.
+  This reduces history decoding and filtering, not the remaining exact source or
+  historical-context scans. See `PlayerHistoryProjectionStore`,
+  `PlayerHistoryProjectionTest` and `docs/player-plus-nightly-refresh.md`.
+  Fresh Results responses already include live scores and wait for the normal
+  polling interval; cached Results copies omit live scores and refresh immediately.
   Use lightweight canonical
   `PlayerRatingTopTen::context()` only when discovery lists are not displayed.
   The Rating panel renders positions and Top 10 lists and must use `build()`;
