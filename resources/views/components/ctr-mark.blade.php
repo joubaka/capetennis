@@ -1,8 +1,8 @@
 @props(['size' => 'small'])
 @once
 <style>
-  .layout-menu .menu-link:has([data-ctr-mark]) [data-player-plus-coming-soon] { font-size:.65rem!important;padding:.3rem .45rem!important;white-space:nowrap!important; }
-  .layout-menu .menu-link:has([data-ctr-mark]) > div { min-width:0; }
+  #layout-menu .menu-link:has([data-ctr-mark]) [data-player-plus-coming-soon] { font-size:.65rem!important;padding:.3rem .45rem!important;white-space:nowrap!important; }
+  #layout-menu .menu-link:has([data-ctr-mark]) > div { min-width:0; }
 </style>
 @endonce
 {{-- A decorative identity mark, never a player score or an unavailable rating. --}}

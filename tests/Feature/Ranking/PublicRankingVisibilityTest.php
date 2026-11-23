@@ -19,6 +19,36 @@ class PublicRankingVisibilityTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_public_print_view_contains_only_published_rows_and_labels_score_states(): void
+    {
+        $series = Series::factory()->create(['name' => 'Print Preview Series', 'year' => 2026, 'leaderboard_published' => true]);
+        foreach (['Print Boys', 'Print Girls'] as $division) {
+            $category = Category::factory()->create(['name' => $division]);
+            $list = RankingList::factory()->create(['series_id' => $series->id, 'category_id' => $category->id]);
+            foreach (['Alpha', 'Beta'] as $name) {
+                $player = Player::factory()->create(['name' => $name, 'surname' => $division]);
+                $this->row($series, $list, $category, $player, RankingStatus::Published, 'print-live', now(), [
+                    'counting_legs' => [
+                        ['position' => 1, 'points' => 100, 'synthetic' => false],
+                        ['position' => 2, 'points' => 80, 'synthetic' => true],
+                    ],
+                    'dropped_legs' => [['position' => 3, 'points' => 40]],
+                ]);
+            }
+            $privatePlayer = Player::factory()->create(['name' => 'Private Draft', 'surname' => $division]);
+            $this->row($series, $list, $category, $privatePlayer, RankingStatus::Calculated, 'print-draft');
+        }
+
+        $response = $this->get(route('frontend.ranking.show', $series))
+            ->assertOk()->assertSee('Print rankings')->assertSee('Prints the current division and search.')
+            ->assertSee('Alpha Print Boys')->assertSee('Beta Print Girls')->assertDontSee('Private Draft')
+            ->assertSee('public-ranking-print-label', false)->assertSee('Automatic award')->assertSee('Not counted');
+
+        if (getenv('CT_RANKING_PRINT_QA_HTML') === '1') {
+            file_put_contents(storage_path('framework/testing/public-ranking-print.html'), $response->getContent());
+        }
+    }
+
     public function test_public_rankings_index_lists_only_published_series(): void
     {
         $published = Series::query()->create([

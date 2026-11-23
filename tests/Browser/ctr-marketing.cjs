@@ -27,6 +27,14 @@ const introHtml = read('intro');
     for (const width of [320, 390, 768, 1200, 1440]) {
       await page.setViewportSize({ width, height: 960 });
       await page.setContent(homeHtml, { waitUntil: 'networkidle' });
+      assert.equal(await page.locator('#layout-menu a[href*="practice-camps"]').count(), 0);
+      if (width >= 1200) {
+        const centers = await page.locator('#layout-menu .menu-inner > .menu-item > .menu-link').evaluateAll(links => links.slice(0, 3).map(link => {
+          const rect = link.getBoundingClientRect();
+          return rect.top + rect.height / 2;
+        }));
+        assert.ok(Math.max(...centers) - Math.min(...centers) <= 1, `navigation aligned at ${width}px`);
+      }
       const banner = page.locator('[data-home-ctr]');
       assert.equal(await banner.isVisible(), true);
       assert.match(await banner.innerText(), /Player Plus · Now open/i);
@@ -34,14 +42,23 @@ const introHtml = read('intro');
       const link = banner.getByRole('link', { name: 'Explore Player Plus' });
       const details = banner.locator('.home-ctr-mobile-details');
       const mobile = width < 768;
-      assert.equal(await details.isVisible(), mobile);
+      assert.equal(await details.isVisible(), true);
+      if (!mobile) {
+        const compactHeight = await banner.evaluate(el => el.offsetHeight);
+        assert.ok(compactHeight <= 330, `compact desktop banner at ${width}px: ${compactHeight}px`);
+        assert.equal(await details.evaluate(el => el.open), false);
+        await details.locator('summary').press('Enter');
+        assert.equal(await details.getByText('Track ratings, progress and monthly reports').isVisible(), true);
+        assert.equal(await banner.locator('[data-ctr-badge]:visible').count(), 3);
+        await details.locator('summary').press('Enter');
+      }
       if (mobile) {
         const compactHeight = await banner.evaluate(el => el.offsetHeight);
         assert.ok(compactHeight <= 230, `compact banner at ${width}px: ${compactHeight}px`);
         assert.equal(await details.evaluate(el => el.open), false);
         await details.locator('summary').press('Enter');
         assert.equal(await details.evaluate(el => el.open), true);
-        assert.equal(await details.getByText('Compare with eligible opponents').isVisible(), true);
+        assert.equal(await details.getByText('Compare available opponent ratings and past matches').isVisible(), true);
         assert.ok(await banner.evaluate(el => el.offsetHeight) > compactHeight);
       }
       assert.equal(await banner.locator('[data-ctr-badge]:visible').count(), 3);

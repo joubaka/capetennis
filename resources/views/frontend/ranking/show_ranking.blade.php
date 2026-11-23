@@ -16,7 +16,7 @@
   .public-ranking-stat__label { color: var(--bs-secondary-color); font-size: .72rem; }
   .public-ranking-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1rem 1.35rem 0; }
   .public-ranking-filter { max-width: 20rem; }
-  .public-ranking-tools { align-items: end; }
+  .public-ranking-tools { align-items: end; flex-wrap: wrap; }
   .public-ranking-division-picker { min-width: min(100%, 24rem); }
   .public-ranking-division-picker label { display: block; margin-bottom: .35rem; color: var(--bs-secondary-color); font-size: .72rem; font-weight: 700; letter-spacing: .04rem; text-transform: uppercase; }
   .public-ranking-division-picker select { min-height: 2.5rem; border-color: rgba(20,121,110,.45); font-weight: 600; }
@@ -55,6 +55,8 @@
   .legend-synthetic::before { background: #ff9f43; }
   .public-ranking-category.is-hidden, .public-ranking-row.is-hidden { display: none; }
   .public-ranking-table-wrap { overflow-x: auto; }
+  .public-ranking-print-context, .public-ranking-print-label { display: none; }
+  .public-ranking-print { flex-shrink: 0; }
 
   @media (max-width: 767.98px) {
     .public-ranking-category__heading { padding: 1.15rem 1rem .75rem; }
@@ -82,6 +84,34 @@
     .public-ranking-tiebreak-modal .modal-dialog { margin: .75rem; }
     .public-ranking-tiebreak-fact { grid-template-columns: 1fr; gap: .2rem; }
     .public-ranking-score { padding-inline: .5rem; font-size: .7rem; }
+  }
+  @media print {
+    @page { margin: 12mm; }
+    body *:not(.public-ranking-shell):not(.public-ranking-shell *):not(:has(.public-ranking-shell)) { display: none !important; }
+    html, body, body :has(.public-ranking-shell), .public-ranking-shell { background: #fff !important; color: #000 !important; margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; min-height: 0 !important; height: auto !important; overflow: visible !important; position: static !important; transform: none !important; display: block !important; }
+    .public-ranking-card { border: 0 !important; border-radius: 0; box-shadow: none; overflow: visible; margin: 0 !important; }
+    .public-ranking-hero { display: block; background: #fff !important; color: #000; padding: 0 0 3mm; border-bottom: 1px solid #000; }
+    .public-ranking-shell :is(h1,h5,p,span,a,td,th) { color: #000 !important; text-shadow: none !important; }
+    .public-ranking-hero h1 { font-size: 18pt; }
+    .public-ranking-hero__eyebrow { font-size: 9pt; }
+    .public-ranking-tools, .public-ranking-summary, .public-ranking-hero__icon, .public-ranking-legend, .public-ranking-player__action, .public-ranking-tiebreak, [data-ctr-rating] { display: none !important; }
+    .public-ranking-print-context { display: block; margin: 3mm 0; font-size: 9pt; }
+    .public-ranking-category__heading { padding: 4mm 0 2mm; font-size: 12pt; break-after: avoid; }
+    .public-ranking-table-wrap { padding: 0 0 3mm; overflow: visible; }
+    .public-ranking-table { display: table; width: 100%; font-size: 9pt; border-collapse: collapse; table-layout: auto; }
+    .public-ranking-table thead { display: table-header-group; }
+    .public-ranking-table tbody { display: table-row-group; }
+    .public-ranking-table tr, .public-ranking-table tbody tr { display: table-row; width: auto; padding: 0; break-inside: avoid; page-break-inside: avoid; }
+    .public-ranking-table :is(th,td), .public-ranking-table tbody td { display: table-cell; width: auto; padding: 2mm !important; border-bottom: 1px solid #aaa; }
+    .public-ranking-table thead th { background: #fff; border-bottom: 1px solid #000; font-size: 8pt; letter-spacing: 0; }
+    .public-ranking-player { min-width: 0; }
+    .public-ranking-player a { display: inline; text-decoration: none; }
+    .public-ranking-total::before { content: none; }
+    .public-ranking-score { background: #fff !important; border: 1px solid #555; border-radius: 0; padding: 1mm 1.5mm; min-height: 0; font-size: 8pt; line-height: 1.2; }
+    .public-ranking-score--dropped { border-style: dashed; }
+    .public-ranking-score--synthetic { border: 3px double #555; }
+    .public-ranking-print-label { display: inline; font-weight: 400; margin-left: 1mm; font-size: 7pt; }
+    .public-ranking-category.is-hidden, .public-ranking-row.is-hidden { display: none !important; }
   }
 </style>
 @endsection
@@ -131,7 +161,12 @@
         <span class="input-group-text"><i class="ti ti-search" aria-hidden="true"></i></span>
         <input id="ranking-player-search" class="form-control" type="search" placeholder="Search players" autocomplete="off">
       </label>
+      <div class="public-ranking-print">
+        <button type="button" class="btn btn-outline-primary btn-sm" id="ranking-print"><i class="ti ti-printer me-1" aria-hidden="true"></i>Print rankings</button>
+        <div class="small text-muted mt-1">Prints the current division and search.</div>
+      </div>
     </div>
+    <p class="public-ranking-print-context" id="ranking-print-context"></p>
     @forelse($categories as $category)
       @php
         $rows = $rankings->where('category_id', $category->id)->sortBy('rank_position')->values();
@@ -192,6 +227,7 @@
                           <span class="public-ranking-score {{ $scoreClass }}"
                                 title="{{ ($leg['status'] ?? 'counted') === 'dropped' ? 'Not counted' : (!empty($leg['synthetic']) ? 'Automatic award' : 'Counted') }}{{ isset($leg['event_id']) ? ' · Event ' . $leg['event_id'] : '' }}">
                             {{ $points }}
+                            <span class="public-ranking-print-label">{{ !empty($leg['synthetic']) ? (($leg['status'] ?? 'counted') === 'dropped' ? 'Automatic · not counted' : 'Automatic award') : (($leg['status'] ?? 'counted') === 'dropped' ? 'Not counted' : 'Counted') }}</span>
                           </span>
                         @empty
                           <span class="text-muted small">No event scores available</span>
@@ -261,11 +297,13 @@
     const search = document.getElementById('ranking-player-search');
     const divisionSelect = document.getElementById('ranking-division-select');
     const viewStatus = document.getElementById('ranking-view-status');
+    const printContext = document.getElementById('ranking-print-context');
     const categories = document.querySelectorAll('[data-ranking-category]');
     const apply = function () {
       const query = (search?.value || '').trim().toLowerCase();
       const active = divisionSelect?.value || 'all';
       const activeLabel = divisionSelect?.options[divisionSelect.selectedIndex]?.text || 'All divisions';
+      let totalVisibleRows = 0;
       categories.forEach(function (category) {
         const matchesCategory = active === 'all' || category.dataset.rankingCategory === active;
         let visibleRows = 0;
@@ -275,13 +313,22 @@
           if (visible) visibleRows++;
         });
         category.classList.toggle('is-hidden', !matchesCategory || visibleRows === 0);
+        totalVisibleRows += visibleRows;
       });
       if (viewStatus) {
         viewStatus.textContent = active === 'all' ? 'Showing all published divisions.' : `Showing ${activeLabel}.`;
       }
+      if (printContext) {
+        printContext.textContent = `${activeLabel}${query ? ' · Search: ' + search.value.trim() : ''} · ${totalVisibleRows} player${totalVisibleRows === 1 ? '' : 's'} shown.`;
+      }
     };
     divisionSelect?.addEventListener('change', apply);
     search?.addEventListener('input', apply);
+    window.addEventListener('beforeprint', apply);
+    document.getElementById('ranking-print')?.addEventListener('click', function () {
+      apply();
+      window.print();
+    });
     apply();
   });
 </script>

@@ -8,8 +8,8 @@
 .ctr-intro *{box-sizing:border-box}
 .ctr-intro h1,.ctr-intro h2,.ctr-intro h3{color:inherit}
 .ctr-intro .ctr-eyebrow{font-size:.72rem;font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin:0 0 1rem}
-.ctr-intro-hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:2.5rem;align-items:center;background:radial-gradient(ellipse at 90% 5%,#244d75,transparent 65%),linear-gradient(115deg,#102438,#132f49);border:1px solid #395c7f;border-radius:1rem;padding:clamp(1.5rem,4vw,3.25rem);color:#fff;overflow:hidden}
-.ctr-intro .ctr-intro-hero h1{font-size:clamp(2.5rem,4.2vw,3.8rem);line-height:1.08;letter-spacing:-.045em;color:#fff!important;max-width:16ch;margin:0 0 1.25rem;text-wrap:balance}
+.ctr-intro-hero{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;align-items:center;background:radial-gradient(ellipse at 90% 5%,#244d75,transparent 65%),linear-gradient(115deg,#102438,#132f49);border:1px solid #395c7f;border-radius:1rem;padding:clamp(1.25rem,3vw,2rem);color:#fff;overflow:hidden}
+.ctr-intro .ctr-intro-hero h1{font-size:clamp(2rem,3.5vw,3rem);line-height:1.08;letter-spacing:-.045em;color:#fff!important;max-width:16ch;margin:0 0 1.25rem;text-wrap:balance}
 .ctr-intro-hero h1 span,.ctr-intro-hero .ctr-eyebrow{color:#ffbd70}
 .ctr-intro-hero .ctr-eyebrow{display:inline-block;background:#ffbd701a;border:1px solid #ffbd7080;border-radius:2rem;padding:.35rem .7rem;letter-spacing:.07em}
 .ctr-hero-description{font-size:1.05rem;line-height:1.75;color:#e0ebf5;max-width:34rem;margin-bottom:1.6rem}
@@ -19,24 +19,14 @@
 .ctr-intro .ctr-primary:hover{background:#00345f;color:#ffffff}
 .ctr-intro-hero .ctr-primary{background:#ffab45;border-color:#ffbd70;color:#172e45;font-weight:800}
 .ctr-intro-hero .ctr-primary:hover{background:#ffc077;border-color:#ffc077;color:#172e45}
-.ctr-intro .ctr-secondary{border:1px solid #89a9c9;color:#fff;background:transparent}
-.ctr-intro .ctr-secondary:hover{background:#ffffff12;color:#fff}
 .ctr-hero-note{font-size:.78rem;color:#c6d8ea;margin:1rem 0 0;line-height:1.6}
-.ctr-illustration{position:relative;min-width:0;background:#f5f8fc;border-radius:18px;padding:1.25rem;color:#172e45;transform:rotate(2deg);box-shadow:0 20px 35px #172e4526}
-.ctr-illustration-header{display:flex;justify-content:space-between;gap:.6rem;align-items:center;font-size:.78rem;font-weight:600;margin-bottom:1rem}
-.ctr-illustration-label{font-size:.63rem;letter-spacing:.08em;text-transform:uppercase;background:#eaf1f8;padding:.35rem .5rem;border-radius:5px;color:#536873}
-.ctr-court{width:100%;height:auto;display:block;border-radius:10px}
-.ctr-illustration-footer{display:flex;gap:.75rem;align-items:center;margin-top:1rem;font-size:.8rem;line-height:1.5}
-.ctr-illustration-footer i{background:#eaf1f8;color:#004177;border-radius:8px;padding:.6rem;font-size:1.2rem}
-.ctr-illustration-footer strong{display:block}
-.ctr-illustration-footer span{color:#536873;font-size:.72rem}
 .ctr-section-intro{display:flex;justify-content:space-between;align-items:end;gap:1rem;margin:2.5rem 0 1.1rem}
 .ctr-section-intro h2{font-size:1.7rem;letter-spacing:-.04em;margin:0}
 .ctr-section-intro p{color:#536873;font-size:.9rem;margin:0;max-width:25rem}
 .ctr-intro-features{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
 .ctr-intro-feature{border:1px solid #dce5ef;background:#fff;border-radius:14px;min-width:0;align-self:start;overflow:hidden}
 .ctr-feature-summary{display:block;padding:1.5rem;cursor:pointer;list-style:none}
-.ctr-feature-example{display:block;background:#f1f6fc;border:1px solid #dce5ef;border-radius:.65rem;margin-top:1rem;padding:.65rem .75rem}
+.ctr-feature-example{display:none;background:#f1f6fc;border:1px solid #dce5ef;border-radius:.65rem;margin-top:1rem;padding:.65rem .75rem}
 .ctr-example-label{display:block;color:#425d77;font-size:.72rem;font-weight:700;margin-bottom:.45rem}
 .ctr-example-row{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .65rem;color:#172e45;font-size:.8rem}
 .ctr-example-item{display:inline-flex;align-items:center;gap:.25rem;font-weight:700}
@@ -48,6 +38,7 @@
 .ctr-feature-toggle{align-items:center;color:#004177;display:flex;font-size:.78rem;font-weight:700;gap:.5rem;margin-top:1rem}
 .ctr-feature-chevron{border-bottom:2px solid currentColor;border-right:2px solid currentColor;height:.45rem;margin-left:auto;transform:rotate(45deg);width:.45rem}
 .ctr-feature-less{display:none}
+.ctr-intro-feature[open] .ctr-feature-example{display:block}
 .ctr-intro-feature[open]{border-color:#9db8d5;box-shadow:0 4px 16px #172e450a}
 .ctr-intro-feature[open] .ctr-feature-chevron{transform:rotate(225deg)}
 .ctr-intro-feature[open] .ctr-feature-more{display:none}
@@ -80,15 +71,18 @@
 .ctr-admin{border-top:1px solid #dce5ef;margin-top:1.25rem;padding-top:1rem;font-size:.8rem;display:flex;gap:1rem;align-items:center;flex-wrap:wrap;color:#536873}
 .ctr-admin p{margin:0}
 .ctr-admin a{color:#004177;min-height:44px;display:inline-flex;align-items:center}
+.ctr-disclosure{border:1px solid #dce5ef;border-radius:.75rem;background:#fff;padding:1rem 1.25rem;margin-top:1rem}
+.ctr-disclosure>summary{cursor:pointer;font-size:1rem;font-weight:700;min-height:44px;align-content:center;color:#172e45}
+.ctr-disclosure>summary h2{display:inline;font-size:1.1rem;margin:0}
+.ctr-disclosure[open]>summary{margin-bottom:1rem}
+.ctr-disclosure>summary:focus-visible{outline:3px solid #ff9f43;outline-offset:4px}
 .ctr-intro a:focus-visible{outline:3px solid #ff9f43;outline-offset:4px}
 @media(max-width:991.98px){.ctr-intro-hero{gap:1.5rem}
-.ctr-illustration{transform:none}
 .ctr-offer{gap:1.25rem}
 .ctr-feature-summary{padding:1.2rem}
 .ctr-feature-details{margin:0 1.2rem;padding-bottom:1.2rem}}@media(max-width:767.98px){.ctr-intro{margin:1rem auto 2rem}
 .ctr-intro-hero,.ctr-offer{grid-template-columns:1fr}
 .ctr-intro .ctr-intro-hero h1{max-width:12ch}
-.ctr-illustration{max-width:430px;width:100%;justify-self:center}
 .ctr-section-intro{display:block;margin-top:2rem}
 .ctr-section-intro p{margin-top:.6rem}
 .ctr-intro-features{grid-template-columns:1fr}
@@ -112,35 +106,18 @@
 @section('content')
 <main class="ctr-intro" data-ctr-intro>
   @php($plusSalesOpen = \App\Services\Performance\PlayerPlusService::salesEnabled())
-  <x-player-plus-stepper :current="1" />
   <section class="ctr-intro-hero" aria-labelledby="ctr-title">
     <div>
       <p class="ctr-eyebrow">{{ $plusSalesOpen ? 'Player Plus · Now open' : 'Cape Tennis · Player Plus' }}</p>
       <x-player-plus-coming-soon class="mb-3" />
       <h1 id="ctr-title">Know your game.<br><span>Find your next step.</span></h1>
-      <p class="ctr-hero-description">Follow your rating, understand your results and explore what to play next. For junior players, beginners and the families supporting them.</p>
+      <p class="ctr-hero-description">Your rating, progress and next tournament options, in one place.</p>
       <div class="ctr-intro-actions">
         <a class="btn ctr-primary" href="{{ $plusSalesOpen ? route('player-plus.index') : '#ctr-offer-title' }}">{{ $plusSalesOpen ? 'Choose your player' : 'Discover Player Plus' }} <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
-        <a class="btn ctr-secondary" href="{{ route('my.tennis', ['tab' => 'rating']) }}">Preview in My Tennis</a>
       </div>
       <p class="ctr-hero-note">For one player and their linked parents or guardians.<br>Essential tournament information stays free.</p>
     </div>
-    <div class="ctr-illustration" role="img" aria-label="Illustration of a tennis court and progress line. No actual player data.">
-      <div class="ctr-illustration-header"><span><i class="ti ti-ball-tennis" aria-hidden="true"></i> A view of their game</span><span class="ctr-illustration-label">Illustration</span></div>
-      <svg class="ctr-court" viewBox="0 0 440 290" fill="none" aria-hidden="true">
-        <rect width="440" height="290" fill="#004177"/><path d="M51 30H389V260H51V30ZM87 30V260M353 30V260M87 87H353M87 203H353M220 87V203M51 145H389" stroke="#b8d8f5" stroke-width="2"/>
-        <path d="M26 145H414" stroke="#e0ebf5" stroke-width="2" stroke-dasharray="4 5"/>
-        <rect x="113" y="69" width="235" height="156" rx="13" fill="#f5f8fc" stroke="#dce5ef"/>
-        <path d="M137 193H325M137 160H325M137 127H325" stroke="#dce5ef"/>
-        <path d="M138 183C161 183 161 153 185 160S217 170 239 141S269 153 287 123S309 127 324 109" stroke="#c6dff5" stroke-width="19" stroke-linecap="round"/>
-        <path d="M138 183C161 183 161 153 185 160S217 170 239 141S269 153 287 123S309 127 324 109" stroke="#004177" stroke-width="3" stroke-linecap="round"/>
-        <circle cx="324" cy="109" r="6" fill="#f5f8fc" stroke="#004177" stroke-width="3"/><circle cx="379" cy="237" r="17" fill="#d8eaff"/><path d="M367 225Q386 231 391 249M367 249Q374 232 391 225" stroke="#315b85" stroke-width="1.5"/>
-      </svg>
-      <div class="ctr-illustration-footer"><i class="ti ti-chart-line" aria-hidden="true"></i><div><strong>Your progress, in perspective.</strong><span>Illustrative graphic · No actual player data</span></div></div>
-    </div>
   </section>
-
-  @include('frontend.my-tennis.pathway-public')
 
   <div class="ctr-section-intro"><h2>Four ways to understand your tennis</h2><p>From your latest results to your next tournament options.</p></div>
   <div class="ctr-intro-features">
@@ -198,8 +175,6 @@
     </details>
   </div>
 
-  <x-player-plus-morning-updates class="my-4" />
-
   <section class="ctr-offer" aria-labelledby="ctr-offer-title">
     <div><p class="ctr-eyebrow">Optional Player Plus</p><h2 id="ctr-offer-title">Player Plus.<br>One player. More insight.</h2><p class="ctr-offer-copy">One membership, shared with the player’s linked parents or guardians.</p></div>
     <div class="ctr-offer-pricing">
@@ -211,10 +186,12 @@
           <button class="btn ctr-primary" type="button" disabled>{{ app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? 'Coming Soon' : 'Purchases paused' }}</button>
         @endif
       </div>
-      <div class="ctr-offer-links"><a href="{{ route('rankings.index') }}">View series rankings</a><a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></div>
+      <div class="ctr-offer-links"><a href="{{ route('my.tennis', ['tab' => 'rating']) }}">Preview in My Tennis</a><a href="{{ route('rankings.index') }}">View series rankings</a><a href="{{ route('player-plus.terms') }}">Purchase details &amp; payment support</a></div>
     </div>
   </section>
   <div class="ctr-disclosures"><p>A rating needs eligible results and may be provisional or unavailable. Buying Plus does not guarantee a rating or change rankings or selection.</p><p>Private history requires a linked account and active membership. Sponsoring a player does not create that link. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p></div>
+  @include('frontend.my-tennis.pathway-public')
+  <details class="ctr-disclosure"><summary>Coming soon: event email updates</summary><x-player-plus-morning-updates class="mt-3" /></details>
   @if($isSuperUser)<aside class="ctr-admin"><p>Your CTR access is active.</p><a href="{{ route('backend.player-performance.ratings') }}">Open CTR ratings <i class="ti ti-arrow-up-right ms-1" aria-hidden="true"></i></a></aside>@endif
 </main>
 @endsection

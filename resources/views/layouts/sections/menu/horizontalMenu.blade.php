@@ -7,6 +7,7 @@ $configData = Helper::appClasses();
     margin-inline: auto;
     width: 100%;
   }
+  #layout-menu.menu-horizontal .menu-inner { align-items: center; }
 
   @media (max-width: 1199.98px) {
     #layout-menu > .horizontal-menu-shell {
@@ -40,11 +41,6 @@ $configData = Helper::appClasses();
         </a>
       </li>
       @endif
-      @auth
-      @hasanyrole('super-user|admin')
-      <li class="menu-item {{ request()->routeIs('backend.practice-camps.*') ? 'active' : '' }}"><a class="menu-link" href="{{ route('backend.practice-camps.index') }}"><i class="menu-icon ti ti-ball-tennis"></i><div>Practice camps</div></a></li>
-      @endhasanyrole
-      @endauth
       @foreach ($menuData[1]->menu as $menu)
       @continue(($menu->playerPlusMarketing ?? false) && !app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
 

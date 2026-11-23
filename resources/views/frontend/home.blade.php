@@ -113,7 +113,12 @@
   .home-ctr-benefits li::before { background: #ffbd70; border-radius: 50%; content: ''; height: .3rem; width: .3rem; }
   .home-ctr p.home-ctr-availability { font-size: .85rem; margin: .45rem 0 .65rem; }
   .home-ctr-copy { min-width: 0; }
-  .home-ctr .home-ctr-mobile-summary, .home-ctr-mobile-details { display: none; }
+  .home-ctr .home-ctr-mobile-summary { display: none; }
+  .home-ctr-mobile-details { grid-column: 1 / -1; }
+  .home-ctr-mobile-details summary { align-content: center; color: #e4efff; cursor: pointer; font-size: .85rem; min-height: 44px; width: fit-content; }
+  .home-ctr-mobile-details > .home-ctr-examples { display: none; }
+  .home-ctr-copy > .home-ctr-benefits { display: none; }
+  .home-ctr { row-gap: 0; }
   .home-ctr-examples { background: #0e243a66; border: 1px solid #9ec9f24a; border-radius: .85rem; isolation: isolate; overflow: hidden; padding: .65rem .75rem; position: relative; text-align: center; }
   .home-ctr-examples::before { background: linear-gradient(90deg, transparent 49%, #fff 49% 51%, transparent 51%), linear-gradient(0deg, transparent 24%, #fff 24% 25%, transparent 25% 75%, #fff 75% 76%, transparent 76%); border: 2px solid #fff; content: ''; height: 16rem; inset: -2.5rem auto auto 50%; opacity: .12; pointer-events: none; position: absolute; transform: translateX(-50%) rotate(-20deg); width: 9rem; z-index: -1; }
   .home-ctr-example-title { color: #fff; font-size: .9rem; font-weight: 800; letter-spacing: .06em; margin-bottom: .35rem; text-transform: uppercase; }
@@ -136,7 +141,7 @@
   @media (min-width: 1200px) {
     /* The desktop navbar already carries the brand; avoid a duplicate below it. */
     .home-brand { display: none; }
-    .home-layout { padding-top: 5rem; }
+    .home-layout { padding-top: 1.5rem; }
   }
   @media (max-width: 767.98px) {
     .home-ctr { gap: 0; grid-template-columns: minmax(0, 1fr); padding: .85rem 1rem .35rem; }
@@ -150,6 +155,7 @@
     .home-ctr [data-player-plus-coming-soon] { margin-bottom: .4rem; }
     .home-layout .home-ctr .btn { font-size: .85rem; margin-top: .55rem; padding: .4rem .75rem; }
     .home-ctr-mobile-details { display: block; }
+    .home-ctr-mobile-details > .home-ctr-examples { display: block; }
     .home-ctr-mobile-details summary { align-content: center; color: #e4efff; cursor: pointer; font-size: .85rem; min-height: 44px; width: fit-content; }
     .home-ctr-mobile-details[open] { padding-bottom: .5rem; }
     .home-ctr-mobile-details .home-ctr-benefits { margin-top: 0; }

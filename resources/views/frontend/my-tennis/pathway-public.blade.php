@@ -1,8 +1,8 @@
-<section id="pathway" class="pathway-public" aria-labelledby="public-pathway-title" data-public-pathway>
-  <p class="pathway-eyebrow">Cape Tennis · Opportunities for every stage</p>
-  <h2 id="public-pathway-title">Find your place. Discover what comes next.</h2>
-  <p>Explore the pathway with your player or coach. Published event information stays free; Player Plus adds your personal rating context, progress and matching tournament options where evidence is available.</p>
+<details id="pathway" class="pathway-public ctr-disclosure" aria-labelledby="public-pathway-title" data-public-pathway>
+  <summary><h2 id="public-pathway-title">Explore the tournament pathway</h2></summary>
+  <p>Explore with your player or coach. Published event information stays free; Player Plus adds personal rating context where evidence is available.</p>
   @include('frontend.my-tennis.pathway-journey', ['journeyPublic' => true, 'publicPathwayTargets' => config('pathway.targets', [])])
+  <details class="ctr-disclosure"><summary>See a fictional Player Plus example</summary>
   <aside class="pathway-demo" aria-label="Fictional Player Plus pathway example">
     <span class="pathway-eyebrow">Fictional example · no actual player data</span>
     <h3 class="h4 mt-2">Your game. Your next challenge.</h3>
@@ -23,6 +23,7 @@
     <p class="small">Sample only. Your view depends on your own comparable published evidence. No rating or event availability is guaranteed.</p>
     <a href="#ctr-offer-title">Explore Player Plus <span aria-hidden="true">→</span></a>
   </aside>
+  </details>
   <section id="pathway-events" aria-labelledby="public-pathway-events-title">
     <h3 class="h4" id="public-pathway-events-title">Explore published opportunities</h3>
     <nav class="pathway-filter" aria-label="Choose an event stage">
@@ -45,7 +46,8 @@
     @if($publicPathwayEvents['limited'])<p class="small mt-2">This is a limited selection. <a href="{{ route('home') }}">Browse all events</a>.</p>@endif
     @if($publicPathwayStage === 'TSA tournaments')<p class="mt-3"><a href="https://www.satennis.co.za/" target="_blank" rel="noopener noreferrer">Explore the TSA website <span class="visually-hidden">(opens in a new tab)</span></a></p>@endif
   </section>
-</section>
+</details>
+<details class="ctr-disclosure"><summary>Share the pathway with players and parents</summary>
 <section id="pathway-coach-kit" class="pathway-public" aria-labelledby="pathway-coach-title" data-pathway-share>
   <img class="pathway-print-poster" src="{{ asset('assets/img/pathway-coach-poster.svg') }}" alt="Cape Tennis pathway court poster with the public guide QR code" width="1080" height="1350">
   <p class="pathway-eyebrow">For coaches, players and parents</p><h2 id="pathway-coach-title">Share a bigger picture of their tennis.</h2>
@@ -58,3 +60,4 @@
     <p class="small">Public guide: <a href="https://capetennis.co.za/ctr#pathway">capetennis.co.za/ctr#pathway</a>. Sharing does not expose any player’s private ratings or send a message automatically.</p>
   </div><div><img class="pathway-share-qr" src="{{ asset('assets/img/pathway-share-qr.svg') }}" alt="QR code opening the public Cape Tennis pathway guide" width="180" height="180" loading="lazy"><p><a href="{{ asset('assets/img/pathway-share-qr.svg') }}" download="cape-tennis-pathway-qr.svg">Download QR code</a></p><p><a href="{{ asset('assets/img/pathway-coach-poster.svg') }}" download="cape-tennis-pathway-poster.svg">Download coach poster</a></p></div></div>
 </section>
+</details>
