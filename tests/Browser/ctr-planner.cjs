@@ -122,7 +122,7 @@ async function main() {
           const expectedRevision = accepted.get(token) || record.revision;
           let code = 200, response;
           if (record.revision !== expectedRevision || mode === '409') { code = 409; response = { message: 'The saved plan changed. Reload the saved plan before continuing.' }; }
-          else if (['403', '419', '422', '500'].includes(mode)) { code = Number(mode); response = { message: code === 422 ? 'Review the highlighted placements before saving.' : 'Cannot save the current plan.', errors: code === 422 ? { placements: ['Review the highlighted placements before saving.'] } : undefined }; }
+          else if (['401', '403', '419', '422', '429', '500'].includes(mode)) { code = Number(mode); response = { message: code === 422 ? 'Review the highlighted placements before saving.' : 'Cannot save the current plan.', errors: code === 422 ? { placements: ['Review the highlighted placements before saving.'] } : undefined }; }
           else {
             const counts = new Map(), excluded = fields.getAll('excluded_categories[]');
             let competitions = 0, matches = 0, included = 0;
