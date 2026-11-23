@@ -406,10 +406,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   resetting the refund. See `docs/pending-bank-wallet-conversion.md` and verify
   `PendingBankWalletConversionTest`; deployment and live apply remain separate.
 
-- Removing a withdrawn Interpro nominee from current/public lists uses reversible
-  nomination archive metadata, preserving the original nomination and all payment,
-  invitation and withdrawal history. Use explicit current-selector filters rather
-  than a global model scope; restoring visibility never restores participation.
+- Public Interpro lists automatically omit withdrawn and declined nominees based
+  on the latest exact-tuple actionable invitation. Explicit removal from current
+  registration, readiness and reminder audiences uses reversible nomination
+  archive metadata, preserving nomination, payment, invitation and withdrawal
+  history. Use explicit current-selector filters rather than a global model
+  scope; archive restoration never restores participation or displays a nominee
+  whose latest response remains withdrawn or declined.
   See `docs/interpro-nomination-archive.md`, RK-064 and
   `InterproNominationArchiveTest`; deployment and live apply need separate authority.
 

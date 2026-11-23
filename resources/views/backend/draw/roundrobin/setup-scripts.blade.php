@@ -110,7 +110,7 @@ $('#drawSettingsForm').on('submit', function(event) {
 // ============================================================
 // PLAYOFF CONFIGURATION HANDLERS
 // ============================================================
-@unless($roundRobinOnly || $draw->hasHybridRoundRobin())
+@unless($roundRobinOnly || $draw->hasHybridRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
 
 // Store playoff config in memory
 let playoffConfig = @json($playoffConfig ?? []);

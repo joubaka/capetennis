@@ -510,6 +510,19 @@ parent-row locks: a lazy relation can retain an old read view across a lock wait
 HTTP and lazy/nested service callers using actual child-process lock waits in an
 explicitly isolated local database. See `docs/draw-workflow.md` and RK-055.
 
+## DK-34 — Four-group Interpro trials with first result stands
+
+The explicit Interpro RR feed-in preset retains fixed A–D qualifying routes,
+eliminates fourth-place group finishers and resolves positions 1–12. Repeated
+pairings reference their original decisive result without copied sets, a second
+played match or a court booking. Stable playoff identities survive scheduling
+and reviewed qualification. See [the format and current correction boundary](interpro-round-robin-feed-in.md).
+
+**Sources:** `InterproRoundRobinFormat`, canonical individual outcomes and the
+shared scheduling/publication services. **Regression:**
+`tests/Feature/Draw/InterproRoundRobinFormatTest.php`. Existing saved draws are not
+automatically converted; local code does not establish deployment.
+
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.

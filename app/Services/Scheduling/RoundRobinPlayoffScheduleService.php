@@ -24,6 +24,10 @@ final class RoundRobinPlayoffScheduleService
     public function prepare(Draw $draw): Collection
     {
         $draw->loadMissing(['settings', 'groups']);
+        if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)
+            && $draw->drawFixtures()->where('stage', 'RR')->exists()) {
+            return app(\App\Services\Draw\InterproRoundRobinFormat::class)->prepare($draw);
+        }
         if ($draw->settings?->workflow !== 'round_robin_playoffs'
             || ! $draw->drawFixtures()->where('stage', 'RR')->exists()) {
             return collect();
@@ -76,6 +80,7 @@ final class RoundRobinPlayoffScheduleService
 
     public function supportsEntireConfiguration(Draw $draw): bool
     {
+        if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) return true;
         $draw->loadMissing(['settings', 'groups']);
         $config = collect($draw->settings?->playoff_config ?? [])->where('enabled', true)
             ->reject(fn ($entry) => app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $entry));
@@ -88,6 +93,9 @@ final class RoundRobinPlayoffScheduleService
 
     public function resolveFromStandings(Draw $draw, array $standings, bool $preserveOccupiedSlots = false): int
     {
+        if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+            return app(\App\Services\Draw\InterproRoundRobinFormat::class)->resolve($draw, $standings, $preserveOccupiedSlots);
+        }
         if ($draw->isTwoStageRoundRobin()) return 0;
         $fixtures = $draw->drawFixtures()->where(function ($query) {
             $query->whereNotNull('registration1_source_group_id')

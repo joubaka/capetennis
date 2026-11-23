@@ -144,7 +144,29 @@ class EventController extends Controller
     $interprovincialTrialCategories = collect();
     if ($event->isInterprovincialTrials()) {
       $interprovincialTrialCategories = CategoryEvent::query()
-        ->with(['category', 'nominations' => fn ($query) => $query->unarchived()->with(['player:id,name,surname', 'actionableInvitation.order'])->orderBy('id')->limit(500)])
+        ->with(['category', 'nominations' => fn ($query) => $query->unarchived()
+          // Only the latest invitation for this exact nominee can hide a public row.
+          // Older declines must not hide a subsequent valid registration.
+          ->whereNotExists(function ($hidden) {
+            $hidden->selectRaw('1')->from('interprovincial_trial_invitations as hidden_invitation')
+              ->whereColumn('hidden_invitation.nomination_id', 'event_nominations.id')
+              ->whereColumn('hidden_invitation.event_id', 'event_nominations.event_id')
+              ->whereColumn('hidden_invitation.category_event_id', 'event_nominations.category_event_id')
+              ->where(fn ($player) => $player->whereColumn('hidden_invitation.player_id', 'event_nominations.player_id')
+                ->orWhere(fn ($profileless) => $profileless->whereNull('hidden_invitation.player_id')->whereNull('event_nominations.player_id')))
+              ->whereIn('hidden_invitation.status', ['withdrawn', 'declined', 'admin_declined'])
+              ->whereNotExists(function ($newer) {
+                $newer->selectRaw('1')->from('interprovincial_trial_invitations as newer_invitation')
+                  ->whereColumn('newer_invitation.nomination_id', 'hidden_invitation.nomination_id')
+                  ->whereColumn('newer_invitation.event_id', 'hidden_invitation.event_id')
+                  ->whereColumn('newer_invitation.category_event_id', 'hidden_invitation.category_event_id')
+                  ->where(fn ($player) => $player->whereColumn('newer_invitation.player_id', 'hidden_invitation.player_id')
+                    ->orWhere(fn ($profileless) => $profileless->whereNull('newer_invitation.player_id')->whereNull('hidden_invitation.player_id')))
+                  ->whereColumn('newer_invitation.id', '>', 'hidden_invitation.id')
+                  ->whereIn('newer_invitation.status', ['queued', 'sent', 'open_registration', 'accepted_pending_payment', 'paid_confirmed', 'declined', 'admin_declined', 'withdrawn']);
+              });
+          })
+          ->with(['player:id,name,surname', 'actionableInvitation.order'])->orderBy('id')->limit(500)])
         ->where('event_id', $event->id)
         ->where('nominations_published', true)
         ->orderBy('ordering')->orderBy('id')->limit(100)->get();

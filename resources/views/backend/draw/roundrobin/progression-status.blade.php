@@ -56,11 +56,16 @@
       <div class="small mt-2">
         <p>Complete all group results, review each group's final order and confirm every group. Qualifiers come from the saved positions below; the preview does not qualify players.</p>
         <ul>
+          @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+            <li>A1–D1 and B1–C1 contest the title. A2–D3, B2–C3, C2–B3 and D2–A3 cross over. The two surviving crossover players meet the losing championship semifinalists to decide positions 3–6; the other branches decide 7–12.</li>
+            <li>Fourth place finishes after the group stage. First result stands: repeat pairings carry their original result and require no court booking. Confirmed group results and completed playoff results are protected against direct changes.</li>
+          @else
           @forelse(collect($draw->settings->playoff_config ?? [])->filter(fn ($config) => is_array($config) && ($config['enabled'] ?? false)) as $progressConfig)
             <li><strong>{{ is_string($progressConfig['name'] ?? null) ? $progressConfig['name'] : 'Playoffs' }}:</strong> {{ is_array($progressConfig['positions'] ?? null) ? 'positions '.implode(', ', array_filter($progressConfig['positions'], 'is_numeric')).' from each group' : 'qualifying positions must be configured' }}.</li>
           @empty
             <li>Choose and save the qualifying positions in playoff settings.</li>
           @endforelse
+          @endif
         </ul>
         <a href="{{ route('backend.draw.roundrobin.show', $draw) }}#standings">Review group standings</a> · <a href="{{ route('backend.draw.roundrobin.show', $draw) }}#settings">View saved playoff settings</a> · <a href="{{ route('backend.draw.roundrobin.show', $draw) }}#notes">Event rules and notes</a>
       </div>

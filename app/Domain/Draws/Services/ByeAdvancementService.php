@@ -44,6 +44,9 @@ final class ByeAdvancementService
     public function advance(Draw $draw): int
     {
         DrawGuard::requireMutable($draw, 'advance BYEs for');
+        if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+            return app(\App\Services\Draw\InterproRoundRobinFormat::class)->resolve($draw);
+        }
 
         $stages = $this->allStages($draw);
 

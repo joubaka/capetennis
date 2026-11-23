@@ -196,7 +196,7 @@ class DrawService
           'venue_name' => optional(optional($fx->orderOfPlay)->venue)->name,
           'court' => optional($fx->orderOfPlay)->court,
 
-          'score' => $sets,
+          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? $sets,
           'winner' => $winner,
 
           'winner_feeders' => $wFeed,
@@ -354,6 +354,7 @@ class DrawService
   // ============================================================
   public function clearMainPlayoffFixtures(Draw $draw): void
   {
+    abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw), 409, 'The selected Interpro format has a protected fixed playoff graph.');
     Log::info("🧹 [MainBracket] Clearing old MAIN fixtures", [
       'draw_id' => $draw->id,
     ]);
@@ -365,6 +366,7 @@ class DrawService
 
   public function clearSecondThirdPlayoffFixtures(Draw $draw): void
   {
+    abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw), 409, 'The selected Interpro format has a protected fixed playoff graph.');
     Log::info("🧹 [PlateBracket] Clearing old PLATE fixtures", [
       'draw_id' => $draw->id,
     ]);
@@ -877,6 +879,7 @@ class DrawService
   }
   public function generateFullBracketFixtures(Draw $draw, $seeds)
   {
+    abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw), 409, 'Use the reviewed Interpro trial progression workflow.');
     \Log::info("🧬 [FullBracket] START with incoming seeds", $seeds);
 
     $result = [];
@@ -1216,6 +1219,7 @@ class DrawService
 
   public function saveBracketScore(Fixture $fixture, array $sets, ?int $decidingPointWinnerId = null): array
   {
+    \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
     abort_if($fixture->stage === 'FM', 409, 'Use the Flexible Monrad editor to score this match.');
     if ($fixture->draw?->hasHybridRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
     Log::info("🎾 [BracketScore] Saving score for fixture {$fixture->id}", [
@@ -1231,6 +1235,7 @@ class DrawService
         ->with(['draw', 'fixtureResults'])
         ->lockForUpdate()
         ->findOrFail($fixture->id);
+      \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
 
       if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
         $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId);
@@ -1365,7 +1370,7 @@ class DrawService
           'r2_id' => $fx->registration2_id,
 
           'time' => optional($fx->orderOfPlay)->time ?? '',
-          'score' => $sets,
+          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? $sets,
           'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
         ];
       })
@@ -1397,6 +1402,10 @@ class DrawService
 
   private function autoAdvanceBracket(Fixture $fixture, int $winner, int $loser): void
   {
+    if (\App\Services\Draw\InterproRoundRobinFormat::selected($fixture->draw)) {
+      app(\App\Services\Draw\InterproRoundRobinFormat::class)->resolve($fixture->draw);
+      return;
+    }
     Log::info("➡ [Advance] Starting auto-advance for fixture {$fixture->id}", [
       'winner' => $winner,
       'loser' => $loser,
@@ -1611,6 +1620,7 @@ class DrawService
     DB::transaction(function () use ($fixture, $sets) {
       $lockedDraw = \App\Models\Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
       $fixture->setRelation('draw', $lockedDraw);
+      \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
       if ($lockedDraw->isTwoStageRoundRobin()) \App\Domain\Draws\Guards\DrawGuard::requireScoreable($fixture);
       \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();

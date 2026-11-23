@@ -41,6 +41,8 @@ final class DrawRecoveryService
         return DB::transaction(function () use ($draw, $source, $sets, $reason, $fingerprint) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
             $source = Fixture::whereKey($source->id)->where('draw_id', $draw->id)->lockForUpdate()->firstOrFail();
+            $source->setRelation('draw', $draw);
+            InterproRoundRobinFormat::assertScoreMutable($source);
             $this->lockCompetitionRows($draw);
             abort_unless(hash_equals($this->snapshots->checksum($draw), $fingerprint), 409,
                 'The draw changed after the recovery preview. Generate a fresh preview before applying it.');

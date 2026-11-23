@@ -55,6 +55,19 @@ final class DrawFinalPlacementService
         if ($fixtures->isEmpty()) {
             return $this->applyAdjustments(collect(), $adjustments);
         }
+        if (InterproRoundRobinFormat::selected($draw)) {
+            $rows = collect();
+            foreach ($fixtures->whereNotNull('position') as $fixture) {
+                if ((int) $fixture->match_status === 5) {
+                    $rows->put((int) $fixture->position, $this->bye((int) $fixture->position));
+                    $rows->put((int) $fixture->position + 1, $this->bye((int) $fixture->position + 1));
+                    continue;
+                }
+                $fixture->winner_registration = app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture);
+                $this->applyPair($rows, $fixture, (int) $fixture->position);
+            }
+            return $rows->sortKeys()->values();
+        }
 
         if ($fixtures->contains(fn (Fixture $fixture) => in_array(strtoupper((string) $fixture->stage), ['F', '3/4', 'C-F', '7/8'], true))) {
             $placements = $this->legacyEightPlayerPlacements($fixtures);

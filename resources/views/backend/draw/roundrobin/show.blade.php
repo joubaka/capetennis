@@ -281,6 +281,9 @@
           @endif
           @unless($roundRobinOnly)
             <div id="rr-saved-playoff-summary">
+            @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+              <p class="mb-0"><strong>Interpro trials — fixed feed-in.</strong> Four groups A–D of three or four players. Fourth place finishes. Group winners contest positions 1–2; crossovers and feed-ins decide 3–12. First result stands when players meet again.</p>
+            @else
             @php
               $playoffConfig = collect($playoffConfig)->filter(fn ($playoff) => is_array($playoff) && isset($playoff['slug']))->values()->all();
               $unusedPlayoffs = collect($playoffConfig)->filter(fn ($playoff) => !($playoff['enabled'] ?? false) || app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $playoff));
@@ -297,6 +300,7 @@
                   <li>{{ $playoff['name'] }} — {{ ($playoff['enabled'] ?? false) ? 'Awaiting qualifying positions' : 'Disabled' }}, group positions {{ implode(', ', $playoff['positions'] ?? []) ?: 'none' }}</li>
                 @endforeach
               </ul></details>
+            @endif
             @endif
             </div>
           @endunless
@@ -355,7 +359,7 @@
           @if($draw->hasHybridRoundRobin())
             <p class="alert alert-info mt-3">Hybrid qualification and playoff structure are fixed by the selected second-stage format. Review first-stage results to qualify players; generic playoff editing cannot replace these fixtures.</p>
           @endif
-          @unless($roundRobinOnly || $draw->hasHybridRoundRobin())
+          @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
           <hr class="my-4">
 
       {{-- PLAYOFF CONFIGURATION --}}
@@ -456,7 +460,7 @@
         </div>
       </div>
       </form>
-      @unless($roundRobinOnly || $draw->hasHybridRoundRobin())
+      @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
       <details class="mb-3"><summary class="p-3">View full setup</summary>
       {{-- PLAYER ACCOUNTING --}}
       <div class="card mb-3 border-info">

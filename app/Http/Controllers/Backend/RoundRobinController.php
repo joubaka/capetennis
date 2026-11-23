@@ -361,6 +361,8 @@ class RoundRobinController extends Controller
   public function storeOrderOfPlay(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
+    abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw->fresh()), 409,
+        'Use the shared event scheduler for Interpro trials so carried results and feed-in dependencies stay protected.');
 
     $data = $request->validate([
       'items' => 'required|array',
@@ -553,6 +555,7 @@ class RoundRobinController extends Controller
     }
 
     $this->authorize('deleteScore', $draw);
+    \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
     if (auth()->user()->is_event_score_keeper($draw->event_id)) {
       $venueId = $fixture->orderOfPlay?->venue_id;
       abort_unless(auth()->user()->canScoreVenue($draw->event_id, $venueId === null ? null : (int) $venueId), 403);
@@ -669,7 +672,7 @@ class RoundRobinController extends Controller
       // ============================================================
       // INTERPROVINCIAL TRIALS - Use InterproDrawBuilder
       // ============================================================
-      if ($draw->event?->isInterprovincialTrials()) {
+      if ($draw->event?->isInterprovincialTrials() && !\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
         $fixtures = DB::transaction(function () use ($draw) {
           $seeds = $this->builder->buildMainSeedsFromRRStandings($draw);
           \Log::info("🧬 [MainBracket] SEEDS BUILT", $seeds);
@@ -924,6 +927,7 @@ class RoundRobinController extends Controller
 
         $progression = app(\App\Domain\Fixtures\Services\FixtureProgressionService::class);
         foreach ($fixtures as $fixture) {
+          if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) continue;
           if (($fixture->fixtureResults->isEmpty() && !$fixture->isWalkover()) || ! $fixture->winner_registration
               || ! $fixture->registration1_id || ! $fixture->registration2_id) {
             continue;
@@ -935,7 +939,7 @@ class RoundRobinController extends Controller
           $progression->advance($fixture, (int) $fixture->winner_registration, $loser);
         }
 
-        $this->autoAdvanceByes($draw);
+        if (!\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) $this->autoAdvanceByes($draw);
         $fixturesAfter = $draw->drawFixtures()->where('stage', '!=', 'RR')->get();
         $advancedSlots = $fixturesAfter->sum(function ($fixture) use ($beforeSlots) {
           $before = $beforeSlots->get($fixture->id, [null, null]);
@@ -1073,6 +1077,9 @@ class RoundRobinController extends Controller
    */
   public function prepareSchedulePlayoffs(Draw $draw): int
   {
+    if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+      return app(\App\Services\Draw\InterproRoundRobinFormat::class)->prepare($draw)->count();
+    }
     return DB::transaction(function () use ($draw) {
       $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
       $draw->load(['settings', 'groups.groupRegistrations']);
@@ -1675,6 +1682,8 @@ class RoundRobinController extends Controller
     abort_if($draw->isRoundRobinOnly(), 422, 'Playoffs are not available for a round-robin-only draw.');
 
     \Log::info("===============================================");
+    abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw->fresh()), 409,
+        'Interpro trials use one fixed feed-in playoff. The separate legacy plate generator cannot replace it.');
     \Log::info("🎾 [PlateBracket] START GENERATION", [
       'draw_id' => $draw->id
     ]);
@@ -1732,6 +1741,9 @@ class RoundRobinController extends Controller
   public function mainBracket(Draw $draw)
   {
     $this->authorize('view', $draw);
+    if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+      return view('backend.draw.roundrobin.interpro-feed-in', ['draw' => $draw, 'emptyBracket' => request()->boolean('empty')]);
+    }
 
     $isEmpty = request()->boolean('empty');
 

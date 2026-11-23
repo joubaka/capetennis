@@ -58,10 +58,11 @@
       <legend class="visually-hidden">Draw format</legend>
       <div class="row g-3 mb-4">
         @foreach($options as $value => [$label, $description])
+          @continue($value === 'interpro_rr_feed_in' && !$draw->event?->isInterprovincialTrials())
           <div class="col-12 col-md-6">
             <label class="card h-100 p-4 d-flex flex-row gap-3" style="cursor:pointer">
               <input type="radio" name="workflow" value="{{ $value }}" class="form-check-input flex-shrink-0" required
-                @checked(old('workflow', $draw->settings?->workflow) === $value)>
+                @checked(old('workflow', \App\Services\Draw\InterproRoundRobinFormat::selected($draw) ? 'interpro_rr_feed_in' : $draw->settings?->workflow) === $value)>
               <span>
                 <strong class="d-flex align-items-center gap-2 mb-2">
                   {{ $label }}

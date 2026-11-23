@@ -5,6 +5,14 @@ registration, invitation readiness and reminder audiences. It retains the
 nomination ID and all original registration, invitation, payment, withdrawal
 and account-link evidence. Other events are outside the operation's query scope.
 
+The public Interpro nomination list also automatically omits nominees whose latest
+supported invitation for the exact event/category/nomination/player is withdrawn,
+declined or administrator-declined. This is a read-only display filter, applied
+before the public list limit on each page request. Unanswered and registered
+nominees remain visible; a newer valid invitation supersedes an older decline.
+Backend nomination and withdrawal history remains available. No separate archive
+action is needed merely to hide a withdrawn or declined public row.
+
 Only a super-user may preview or confirm this operation. The service locks the
 event, category and exact nomination, checks matching invitation/order tuples,
 requires all of that player's event participation to be withdrawn and rejects
@@ -24,9 +32,12 @@ and retained entry/order/invitation IDs. Apply the unchanged invocation with
 action, reason and current nomination/participation state. An unchanged repeated
 apply is idempotent. Preview output omits payment and bank details.
 
-To restore visibility, explicitly preview and confirm the same command with
-`--restore`. Restoration changes only nomination visibility; it never restores
-withdrawn participation or reopens a checkout. An archived nominee must first
+To restore current nomination availability, explicitly preview and confirm the
+same command with `--restore`. Restoration clears only archive metadata; it never
+restores withdrawn participation or reopens a checkout. Withdrawn and declined
+nominees remain excluded from the public list after archive restoration until
+their current invitation status changes through the normal workflow.
+An archived nominee must first
 be restored before any new registration or withdrawal cancellation.
 
 Backend current nomination counts exclude archived nominees. A bounded archived
@@ -40,10 +51,11 @@ Migration:
 Deployment allowlisting is separate from authority to run that migration or a
 live archive. Tests: `tests/Feature/InterproNominationArchiveTest.php`.
 
-Local verification: isolated in-memory SQLite passed eight tests and 54
-assertions, including unchanged other-event paid records, public visibility,
-old-link registration/decline rejection, reminder exclusion and retained
-withdrawal state. MySQL concurrency and live execution remain separate checks.
+Local regression coverage includes unchanged other-event paid records, automatic
+public omission after withdrawal/decline, exact invitation tuple and latest-status
+selection, profileless nominees, archive restoration, old-link registration/decline
+rejection, reminder exclusion and retained withdrawal state. MySQL concurrency
+and live execution remain separate checks.
 Repair catalogue reference: RK-064.
 
 ## Unanswered nominees on the Entries page

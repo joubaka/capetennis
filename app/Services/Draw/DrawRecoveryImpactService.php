@@ -11,6 +11,7 @@ final class DrawRecoveryImpactService
 {
     public function preview(Draw $draw, Fixture $source): array
     {
+        InterproRoundRobinFormat::assertScoreMutable($source);
         TwoStageRoundRobinService::assertScoreMutable($source);
         abort_unless((int) $source->draw_id === (int) $draw->id, 422, 'The source fixture does not belong to this draw.');
         abort_unless($source->stage === 'RR', 422, 'This recovery operation starts from a round-robin result.');
@@ -49,8 +50,16 @@ final class DrawRecoveryImpactService
 
     public function assertSafeOrdinaryCorrection(Fixture $fixture): void
     {
+        InterproRoundRobinFormat::assertScoreMutable($fixture);
         TwoStageRoundRobinService::assertScoreMutable($fixture);
         $draw = $fixture->draw;
+        if ($fixture->stage === 'RR' && InterproRoundRobinFormat::selected($draw)
+            && empty($draw->settings->playoff_config[0]['trials_confirmed'])
+            && !$draw->drawFixtures()->where('stage', '!=', 'RR')->where(fn ($query) => $query
+                ->whereNotNull('registration1_id')->orWhereNotNull('registration2_id')
+                ->orWhereNotNull('winner_registration')->orWhereHas('fixtureResults')->orWhere('match_status', '!=', 0))->exists()) {
+            return; // Unqualified group-position placeholders survive a first-stage correction.
+        }
         if ($fixture->stage === 'RR' && $draw?->hasHybridRoundRobin() && !$draw->hasConfirmedSecondRoundRobin()
             && app(PendingHybridRoundRobinService::class)->preparedStructureIsValid($draw)) {
             // No participant has qualified yet. Stable group-position sources

@@ -302,6 +302,8 @@ class DrawApiController extends Controller
     public function saveSchedule(Request $request, Draw $draw)
     {
         $this->authorize('modifySchedule', $draw);
+        abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw->fresh()), 409,
+            'Use the shared event scheduler for Interpro trials so carried results and feed-in dependencies stay protected.');
 
         $validated = $request->validate([
             'items'                => 'required|array',

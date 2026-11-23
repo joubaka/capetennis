@@ -42,9 +42,12 @@ class InterproNominationArchiveTest extends TestCase
 
     public function test_archive_hides_only_current_nomination_and_preserves_every_financial_and_invitation_row(): void
     {
-        [$actor, $payer, $event, $category, $nomination, $invitation, $entry] = $this->scenario();
-        $before = $this->history();
+        [$actor, $payer, $event, $category, $nomination, $invitation, $entry] = $this->scenario(false);
         $this->get(route('events.show', $event))->assertOk()->assertSee('Archived Candidate');
+        app(EntryService::class)->withdrawEntryAsAdmin($entry, $actor);
+        app(InvitationService::class)->handlePaidWithdrawal($entry->registration_id, $actor);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate');
+        $before = $this->history();
         $preview = $this->runArchive($actor, $nomination);
         $this->assertFalse($preview['applied']);
         $this->assertNull($nomination->fresh()->archived_at);
@@ -79,7 +82,7 @@ class InterproNominationArchiveTest extends TestCase
         $this->assertSame($before, $this->history());
     }
 
-    public function test_explicit_restore_changes_visibility_without_restoring_withdrawal_or_payment(): void
+    public function test_explicit_restore_keeps_withdrawn_nominee_hidden_without_restoring_payment(): void
     {
         [$actor, , $event, , $nomination, $invitation, $entry] = $this->scenario();
         $preview = $this->runArchive($actor, $nomination);
@@ -89,9 +92,78 @@ class InterproNominationArchiveTest extends TestCase
         $this->runArchive($actor, $nomination, $restore['confirmation'], 'restore');
         $this->assertNull($nomination->fresh()->archived_at);
         $this->assertSame($before, $this->history());
-        $this->get(route('events.show', $event))->assertOk()->assertSee('Archived Candidate');
+        $this->assertTrue(EventNomination::unarchived()->whereKey($nomination->id)->exists());
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate');
         $this->assertSame('withdrawn', $entry->fresh()->status);
         $this->assertSame('withdrawn', $invitation->fresh()->status);
+    }
+
+    public function test_public_list_automatically_hides_withdrawn_and_declined_nominees_without_changing_history(): void
+    {
+        [, , $event, , , $invitation] = $this->scenario(false);
+        foreach (['sent', 'accepted_pending_payment', 'paid_confirmed', 'declined', 'admin_declined', 'withdrawn'] as $status) {
+            $invitation->update(['status' => $status]);
+            $before = $this->history();
+            $response = $this->get(route('events.show', $event))->assertOk()->assertSee('Current Nominee');
+            if (in_array($status, ['declined', 'admin_declined', 'withdrawn'], true)) {
+                $response->assertDontSee('Archived Candidate');
+            } else {
+                $response->assertSee('Archived Candidate');
+            }
+            $this->assertSame($before, $this->history());
+        }
+        Mail::assertNothingSent(); Mail::assertNothingQueued();
+    }
+
+    public function test_public_list_uses_latest_exact_tuple_and_does_not_hide_another_events_nomination(): void
+    {
+        [$actor, , $event, $category, $nomination, $invitation] = $this->scenario(false);
+        $invitation->update(['status' => 'declined']);
+        $otherEvent = Event::factory()->create(['eventType' => $event->eventType, 'published' => true, 'signUp' => true,
+            'status' => 'active', 'start_date' => now()->addDays(20)->toDateString(), 'deadline' => 2]);
+        $otherCategory = CategoryEvent::factory()->create(['event_id' => $otherEvent->id, 'nominations_published' => true]);
+        EventNomination::create(['event_id' => $otherEvent->id, 'category_event_id' => $otherCategory->id, 'player_id' => $nomination->player_id]);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate');
+        $this->get(route('events.show', $otherEvent))->assertOk()->assertSee('Archived Candidate');
+
+        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'status' => 'draft',
+            'snapshot_hash' => str_repeat('b', 64), 'created_by_user_id' => $actor->id]);
+        $newer = InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $event->id,
+            'category_event_id' => $category->id, 'nomination_id' => $nomination->id, 'player_id' => $nomination->player_id,
+            'status' => 'draft']);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate');
+        $newer->update(['status' => 'sent']);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Archived Candidate');
+        $newer->update(['status' => 'withdrawn']);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Archived Candidate');
+
+        // A foreign event, category or player must never supply this nominee's public status.
+        foreach (['event_id' => $otherEvent->id, 'category_event_id' => $otherCategory->id,
+            'player_id' => Player::factory()->create()->id] as $column => $foreignId) {
+            $invitation->update(['status' => 'sent']);
+            $newer->update(['event_id' => $event->id, 'category_event_id' => $category->id,
+                'player_id' => $nomination->player_id, $column => $foreignId]);
+            $this->get(route('events.show', $event))->assertOk()->assertSee('Archived Candidate');
+        }
+    }
+
+    public function test_profileless_administrator_decline_is_hidden_until_a_newer_valid_invitation(): void
+    {
+        [$actor, , $event, $category] = $this->scenario(false);
+        $nomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $category->id,
+            'nominee_name' => 'Profileless', 'nominee_surname' => 'Candidate']);
+        $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'status' => 'draft',
+            'snapshot_hash' => str_repeat('c', 64), 'created_by_user_id' => $actor->id]);
+        InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $event->id,
+            'category_event_id' => $category->id, 'nomination_id' => $nomination->id, 'player_id' => null,
+            'status' => 'admin_declined']);
+        $this->get(route('events.show', $event))->assertOk()->assertDontSee('Profileless Candidate');
+        $newBatch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'status' => 'draft',
+            'snapshot_hash' => str_repeat('d', 64), 'created_by_user_id' => $actor->id]);
+        InterprovincialTrialInvitation::create(['batch_id' => $newBatch->id, 'event_id' => $event->id,
+            'category_event_id' => $category->id, 'nomination_id' => $nomination->id, 'player_id' => null,
+            'status' => 'sent']);
+        $this->get(route('events.show', $event))->assertOk()->assertSee('Profileless Candidate');
     }
 
     public function test_role_event_tuple_and_stale_confirmation_are_rejected(): void

@@ -103,6 +103,9 @@ class PublicRoundRobinController extends Controller
     app(PublicTournamentVisibility::class)->ensureDrawIsVisible($draw, auth()->user());
 
     $isEmpty = request()->boolean('empty');
+    if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+      return response()->view('backend.draw.roundrobin.interpro-feed-in', ['draw' => $draw, 'emptyBracket' => $isEmpty])->withHeaders($this->freshDrawHeaders());
+    }
 
     if ($draw->event?->isInterprovincialTrials()) {
       $engine = new \App\Services\BracketEngine($draw);

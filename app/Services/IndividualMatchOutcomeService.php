@@ -9,6 +9,8 @@ final class IndividualMatchOutcomeService
 {
     public function winner(Fixture $fixture): ?int
     {
+        if ($source = \App\Services\Draw\InterproRoundRobinFormat::source($fixture)) return $this->winner($source);
+        if ($winner = \App\Services\Draw\InterproRoundRobinFormat::automaticWinner($fixture)) return $winner;
         if ($fixture->isWalkover() || $fixture->isRetired()) return (int) $fixture->winner_registration;
         $sets = $fixture->fixtureResults->sortBy('set_nr')->unique('set_nr')
             ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();

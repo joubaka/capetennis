@@ -9,7 +9,9 @@ class TrialWithdrawalProgressionService
     public function resolve(CategoryEventRegistration $entry): void
     {
         $category = $entry->categoryEvent;
-        foreach (Draw::where('event_id', $category->event_id)->where('category_event_id', $category->id)->get() as $draw) {
+        foreach (Draw::where('event_id', $category->event_id)->where(fn ($query) => $query->where('category_event_id', $category->id)
+            ->orWhere(fn ($query) => $query->whereNull('category_event_id')->whereHas('settings', fn ($settings) => $settings
+                ->where('preset_key', \App\Services\Draw\InterproRoundRobinFormat::PRESET))))->get() as $draw) {
             $flexible = FlexibleMonradDraw::where('draw_id', $draw->id)->whereNotNull('graph')->first();
             if ($flexible) {
                 app(\App\Services\Draw\FlexibleMonradService::class)->reconcileWithdrawals($draw, $flexible->revision);
@@ -23,6 +25,7 @@ class TrialWithdrawalProgressionService
                 $fixtures = Fixture::where('draw_id', $draw->id)->whereIn('match_status', [0, 2])
                     ->where(fn ($q) => $q->whereIn('registration1_id', $withdrawn)->orWhereIn('registration2_id', $withdrawn))->orderBy('round')->orderBy('id')->lockForUpdate()->get();
                 foreach ($fixtures as $fixture) {
+                    if (\App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture)) continue;
                     if (!$fixture->registration1_id || !$fixture->registration2_id) { continue; }
                     $firstOut = $withdrawn->contains((int) $fixture->registration1_id);
                     $secondOut = $withdrawn->contains((int) $fixture->registration2_id);
@@ -43,7 +46,7 @@ class TrialWithdrawalProgressionService
                     \App\Models\DrawAuditLog::record($draw->id, 'trials_withdrawal_loss', $fixture->id, ['registration_id' => $entry->registration_id]);
                 }
             } while ($progressed);
-            app(\App\Domain\Draws\Services\ByeAdvancementService::class)->advance($draw);
+            if (!\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) app(\App\Domain\Draws\Services\ByeAdvancementService::class)->advance($draw);
             $draw->registrations()->detach(app(\App\Services\Draw\AlternateReplacementService::class)
                 ->withdrawalIdentities(collect([$draw->id]), collect([(int) $entry->registration_id])));
         }

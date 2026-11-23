@@ -19,6 +19,7 @@ final class DrawWorkflow
         $record = $flexible ? $draw->flexibleMonrad : null;
         $fixtures = $draw->drawFixtures()->with(['orderOfPlay', 'fixtureResults'])->withCount('fixtureResults')->get();
         $playable = $fixtures->reject(fn ($fixture) => $fixture->winner_registration && (!$fixture->registration1_id || !$fixture->registration2_id));
+        if (InterproRoundRobinFormat::selected($draw)) $playable = $playable->reject(fn ($fixture) => InterproRoundRobinFormat::noMatchRequired($fixture));
         $generated = $playable->isNotEmpty();
         $results = $fixtures->sum('fixture_results_count');
         $scheduled = $playable->filter(fn ($fixture) => $fixture->orderOfPlay?->time && $fixture->orderOfPlay?->court && $fixture->orderOfPlay?->venue_id)->count();
@@ -76,6 +77,8 @@ final class DrawWorkflow
         foreach ($fixtures as $fixture) $fixture->setRelation('draw', $draw);
         $resultsComplete = $generated && ($flexible ? ($progression['positions_complete'] ?? false)
             : $playable->every(fn ($fixture) => $outcomes->winner($fixture) !== null || $outcomes->isDraw($fixture)));
+        if (InterproRoundRobinFormat::selected($draw) && $fixtures->contains(fn ($fixture) => InterproRoundRobinFormat::hasReference($fixture)
+            && !InterproRoundRobinFormat::source($fixture))) $resultsComplete = false;
         if (!$flexible && ($draw->isTwoStageRoundRobin() || $draw->settings?->workflow === 'round_robin_playoffs')) {
             $placements = app(DrawFinalPlacementService::class)->forDraw($draw);
             $resultsComplete = $resultsComplete && $placements->isNotEmpty()
@@ -109,7 +112,7 @@ final class DrawWorkflow
         if ($draw->event->hasRecordedResults()) $blockers[] = 'Results have been recorded in this event. Competition format and group rules cannot be changed.';
         return compact('steps', 'next', 'blockers', 'generated', 'playersReady', 'scheduled', 'results', 'workspace', 'resultsComplete') + [
             'context' => $context,
-            'format' => \App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? 'Choose a format',
+            'format' => InterproRoundRobinFormat::selected($draw) ? 'Interpro trials — round robin → feed-in' : (\App\Http\Controllers\Backend\DrawSetupController::OPTIONS[$draw->settings?->workflow][0] ?? 'Choose a format'),
             'matches' => $fixtures->count(),
         ];
     }

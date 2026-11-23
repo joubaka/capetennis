@@ -145,6 +145,7 @@ class ScheduleEngine
 
   private function automatic(Fixture $fixture, array $feeders): bool
   {
+    if (\App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture)) return true;
     return ! $fixture->fixtureResults->count() && (! $fixture->registration1_id || ! $fixture->registration2_id)
       && ($fixture->winner_registration || (empty($feeders[$fixture->id])
         && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
@@ -298,6 +299,9 @@ class ScheduleEngine
         );
       }
       $fixture = $draw->drawFixtures()->lockForUpdate()->findOrFail($fixtureId);
+      $fixture->setRelation('draw', $draw);
+      abort_if(\App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture), 409,
+          'First result stands. This trial pairing uses its original result and does not need a court booking.');
             abort_if($fixture->fixtureResults()->exists() || (int) $fixture->match_status !== 0, 409, 'A match with play or results cannot be rescheduled.');
       $duration ??= (int) ($fixture->orderOfPlay?->duration_minutes ?: 75);
       $timing = app(\App\Services\Scheduling\MatchTimingService::class)->forDraw($draw, $duration, $courtGap ?? (int) ($fixture->orderOfPlay?->gap_minutes ?? 0));

@@ -138,6 +138,10 @@ class ManageDrawController extends Controller
         \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $drawData, $updateData, $data, $competitionRulesOnly) {
             $draw->refresh();
             $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+            abort_if(isset($updateData['playoff_config']) && \App\Services\Draw\InterproRoundRobinFormat::selected($lockedDraw), 422,
+                'The selected Interpro format has fixed qualification and feed-in routes. Choose a different format in Setup before changing playoff structure.');
+            abort_if(($updateData['preset_key'] ?? null) === \App\Services\Draw\InterproRoundRobinFormat::PRESET, 422,
+                'Choose the Interpro trials format through Setup.');
             abort_if(isset($updateData['playoff_config']) && $lockedDraw->hasHybridRoundRobin(), 422,
                 'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
             if (isset($updateData['playoff_config'])) app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $updateData['playoff_config']);
@@ -268,6 +272,9 @@ class ManageDrawController extends Controller
 
     \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $validated): void {
       $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($lockedDraw)
+          || ($validated['preset_key'] ?? null) === \App\Services\Draw\InterproRoundRobinFormat::PRESET, 422,
+          'The selected Interpro format has fixed qualification and feed-in routes. Use Setup to choose this format.');
       abort_if($lockedDraw->hasHybridRoundRobin(), 422,
           'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
       app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $validated['playoff_config']);

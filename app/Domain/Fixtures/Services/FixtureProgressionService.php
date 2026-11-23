@@ -40,6 +40,10 @@ final class FixtureProgressionService
     public function advance(Fixture $fixture, int $winner, int $loser): void
     {
         $draw = $this->loadDraw($fixture);
+        if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
+            app(\App\Services\Draw\InterproRoundRobinFormat::class)->resolve($draw);
+            return;
+        }
         DrawGuard::requireMutable($draw, 'advance progression for');
 
         DB::transaction(function () use ($fixture, $winner, $loser) {
@@ -65,6 +69,7 @@ final class FixtureProgressionService
      */
     public function rollback(Fixture $fixture): void
     {
+        \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
         DB::transaction(function () use ($fixture) {
             $draw = Draw::whereKey($fixture->draw_id)->lockForUpdate()->firstOrFail();
             $fixture->setRelation('draw', $draw);

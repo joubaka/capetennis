@@ -47,6 +47,13 @@ final class RoundRobinProgressReadiness
                 $message = $exception->getMessage();
             }
         }
+        if (InterproRoundRobinFormat::selected($draw) && $ready) {
+            try { app(InterproRoundRobinFormat::class)->assertGroupsReady($draw); }
+            catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+                $ready = false;
+                $message = $exception->getMessage();
+            }
+        }
         return [
             'ready' => $ready,
             'pending' => $pending,

@@ -16,7 +16,7 @@ final class DrawSetupGuide
         $draws = $draws->reject(fn ($draw) => $draw->isTeamDraw());
         if ($draws->isEmpty()) return collect();
         $fixtures = Fixture::whereIn('draw_id', $draws->pluck('id'))
-            ->select(['id', 'draw_id', 'draw_group_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration'])
+            ->select(['id', 'draw_id', 'draw_group_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration', 'match_status'])
             ->withCount('fixtureResults')->get()->groupBy('draw_id');
         $schedules = OrderOfPlay::query()->leftJoin('venues', 'venues.id', '=', 'order_of_plays.venue_id')
             ->whereIn('fixture_id', $fixtures->flatten(1)->pluck('id'))
@@ -68,6 +68,9 @@ final class DrawSetupGuide
                 })->count();
             } else {
                 $playable = $matches->reject(fn ($fixture) => $fixture->winner_registration && (!$fixture->registration1_id || !$fixture->registration2_id));
+                if (InterproRoundRobinFormat::selected($draw)) $playable = $playable->reject(fn ($fixture) => (int) $fixture->match_status === 5
+                    || isset($draw->settings->playoff_config[0]['trials_carries'][$fixture->id])
+                    || array_key_exists($fixture->id, $draw->settings->playoff_config[0]['trials_advances'] ?? []));
                 $scheduled = $playable->filter(function ($fixture) use ($schedules) {
                     $slot = $schedules->get($fixture->id);
                     return $slot?->time && $slot->venue_id && trim((string) $slot->court) !== '';
@@ -149,6 +152,7 @@ final class DrawSetupGuide
         } else {
             $fixtures = $draw->drawFixtures()->with('orderOfPlay')->get();
             $playable = $fixtures->reject(fn ($fixture) => $fixture->winner_registration && (!$fixture->registration1_id || !$fixture->registration2_id));
+            if (InterproRoundRobinFormat::selected($draw)) $playable = $playable->reject(fn ($fixture) => InterproRoundRobinFormat::noMatchRequired($fixture));
             $scheduled = $playable->filter(fn ($fixture) => $fixture->orderOfPlay?->time && $fixture->orderOfPlay?->venue_id && trim((string) $fixture->orderOfPlay?->court) !== '')->count();
         }
         $generated = $fixtures->isNotEmpty() && $playable->isNotEmpty();

@@ -46,6 +46,12 @@ final class FixtureParticipantLabels
 
     public function groupPositionLabel(Fixture $fixture, int $slot): ?string
     {
+        if ($fixture->draw && \App\Services\Draw\InterproRoundRobinFormat::selected($fixture->draw)) {
+            $source = \App\Services\Draw\InterproRoundRobinFormat::template()[(int) $fixture->match_nr][2][$slot - 1] ?? null;
+            if ($source) return preg_match('/^([WL])(\d+)$/', $source, $parts)
+                ? ($parts[1] === 'W' ? 'Winner' : 'Loser').' match '.$parts[2]
+                : 'Group '.$source[0].' #'.$source[1];
+        }
         $id = (int) $fixture->getAttribute("registration{$slot}_source_group_id");
         $position = (int) $fixture->getAttribute("registration{$slot}_source_position");
         if (!$id || $position < 1) return null;

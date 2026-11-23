@@ -1629,6 +1629,7 @@ final class EventVenueScheduleService
             $automatic = $fixture->fixtureResults->isEmpty() && (! $fixture->registration1_id || ! $fixture->registration2_id)
                 && ($fixture->winner_registration || (empty($feeders[$fixture->id])
                     && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
+            $automatic = $automatic || \App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture);
             $labels = $sourceLabels[$fixture->id] ?? [];
             ksort($labels);
             $dependencies = array_values(array_unique($feeders[$fixture->id] ?? []));

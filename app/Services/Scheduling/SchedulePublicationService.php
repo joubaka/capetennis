@@ -105,6 +105,7 @@ final class SchedulePublicationService
             $fixture = ($row->fixture_kind === 'team' ? $team : $individual)->get($row->fixture_id);
             if (! $fixture || (int) $fixture->draw_id !== (int) $row->draw_id) return null;
             $fixture->setRelation('draw', $draws[$row->draw_id]);
+            if ($fixture instanceof Fixture && \App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture)) return null;
             if ($fixture instanceof TeamFixture) {
                 $fixture->setAttribute('scheduled_at', $row->scheduled_at);
                 $fixture->setAttribute('court_label', $row->court);
