@@ -40,9 +40,25 @@ their current invitation status changes through the normal workflow.
 An archived nominee must first
 be restored before any new registration or withdrawal cancellation.
 
-Backend current nomination counts exclude archived nominees. A bounded archived
-section identifies retained archived records and the reason; operational use
-and public registration remain disabled. Generic and dedicated hard-delete
+The backend nomination register includes current and archived nominees together.
+Its server-side status links show whole-event totals across all pages, with
+Withdrawn and Cancelled kept separate, and Declined / removed combined in one
+filter while each row retains its factual Declined or Removed label. An archived withdrawal
+counts once as Withdrawn and carries an Archived nomination badge with its date
+and reason. Historical rows offer no registration or editing controls.
+Readiness and operational audiences still exclude archived nominees.
+
+Removed nominations are reconstructed only from the latest successful exact-event
+nomination deletion audit snapshot, validated against its original identity and
+an event-owned category. A removed record is not evidence of a decline or a
+withdrawal. Missing reasons remain explicitly unrecorded; missing identity has an
+honest nomination-ID fallback. The register cannot recover deletions for which no
+valid audit snapshot survives. The audit projection is bounded and paginated,
+with counts calculated in SQL independently of the selected page or filter.
+After adding or removing a nomination, the register reloads its authoritative
+counts rather than recalculating them from the visible page.
+
+Generic and dedicated hard-delete
 routes cannot remove archived Interpro nomination history. A retained ID also
 prevents silently renominating the same player through duplicate insertion.
 
@@ -57,6 +73,10 @@ selection, profileless nominees, archive restoration, old-link registration/decl
 rejection, reminder exclusion and retained withdrawal state. MySQL concurrency
 and live execution remain separate checks.
 Repair catalogue reference: RK-064.
+
+Register regression coverage: `tests/Feature/InterproNominationHistoryTest.php`
+(global counts, archived withdrawals, separate terminal statuses, removed-row
+deduplication, event/snapshot validation, historical rows, pagination and drafts).
 
 ## Unanswered nominees on the Entries page
 

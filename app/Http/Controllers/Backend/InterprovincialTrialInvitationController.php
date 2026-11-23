@@ -29,7 +29,7 @@ class InterprovincialTrialInvitationController extends Controller
             ->orderBy('ordering')
             ->orderBy('id')]);
         $categoryIds = $event->categoryEvents->pluck('id');
-        $request->validate(['nomination_status' => ['nullable', 'in:all,nominated,invited,payment-pending,registered,withdrawn,declined,cancelled,removed,archived,delivery-failed']]);
+        $request->validate(['nomination_status' => ['nullable', 'in:all,nominated,invited,payment-pending,registered,withdrawn,declined-removed,cancelled,archived,delivery-failed']]);
         $nominationStatus = $request->query('nomination_status', 'all') ?: 'all';
         $history = app(\App\Services\InterprovincialTrials\NominationHistory::class)->build($event, $nominationStatus);
         $nominations = $history['rows'];
@@ -66,6 +66,10 @@ class InterprovincialTrialInvitationController extends Controller
                     ->select('id')
                     ->where('event_id', $event->id)
                     ->whereIn('category_event_id', $categoryIds))
+                // Recovered deletion records already appear in the complete register.
+                ->whereNotIn('nomination_id', DB::query()->fromSub(
+                    app(\App\Services\InterprovincialTrials\NominationHistory::class)->removedQuery($event), 'recovered'
+                )->select('id'))
                 ->orderBy('id')
                 ->paginate(self::HISTORICAL_INVITATIONS_PER_PAGE, ['*'], 'history_page')
                 ->withQueryString()
@@ -83,17 +87,18 @@ class InterprovincialTrialInvitationController extends Controller
             'payment-pending' => 'Payment pending',
             'registered' => 'Registered',
             'withdrawn' => 'Withdrawn',
-            'declined' => 'Declined',
+            'declined-removed' => 'Declined / removed',
             'delivery-failed' => 'Delivery failed',
             'cancelled' => 'Cancelled',
-            'removed' => 'Removed',
             'archived' => 'Archived',
         ])->map(fn (string $label, string $key): array => [
             'key' => $key,
             'label' => $label,
             'count' => $key === 'all'
                 ? $history['counts']->sum()
-                : (int) ($history['counts'][$key] ?? 0),
+                : ($key === 'declined-removed'
+                    ? (int) ($history['counts']['declined'] ?? 0) + (int) ($history['counts']['removed'] ?? 0)
+                    : (int) ($history['counts'][$key] ?? 0)),
         ]);
         $registrationClosesAt = $event->registrationClosesAt()?->endOfDay();
         $registrationOpen = (bool) $event->published

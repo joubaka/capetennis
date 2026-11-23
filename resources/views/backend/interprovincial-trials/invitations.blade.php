@@ -8,7 +8,7 @@
 @endsection
 @section('page-style')
 <style>
-  .interpro-filter-bar .btn { min-height:44px; }
+  .ct-backend .interpro-filter-bar .btn:not(.p-0):not(.btn-icon) { min-height:46px; }
   .interpro-filter-bar { display:flex; flex-wrap:wrap; gap:.5rem; }
   .interpro-nomination-table { --nomination-columns:minmax(0,1.15fr) minmax(0,.9fr) minmax(0,1fr) minmax(0,1.2fr); }
   .interpro-nomination-head, .interpro-nomination-row { display:grid; gap:1rem; grid-template-columns:var(--nomination-columns); padding:.8rem 1rem; }
@@ -168,7 +168,7 @@
     <div class="row g-3">
     @forelse($event->categoryEvents as $categoryEvent)
       @php($categoryNominations = $nominations->getCollection()->where('category_event_id', $categoryEvent->id))
-      <div class="col-12"><div class="border rounded overflow-hidden interpro-nomination-table" role="table" aria-label="{{ $categoryEvent->category?->name ?? 'Category' }} nominations" data-nomination-category="{{ $categoryEvent->id }}"><h6 class="interpro-category-title">{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary ms-1" data-nomination-count>{{ $categoryEvent->nominations_count }}</span></h6>
+      <div class="col-12"><div class="border rounded overflow-hidden interpro-nomination-table" role="table" aria-label="{{ $categoryEvent->category?->name ?? 'Category' }} nominations" data-nomination-category="{{ $categoryEvent->id }}"><h6 class="interpro-category-title">{{ $categoryEvent->category?->name ?? 'Category' }} <span class="badge bg-label-primary ms-1" data-nomination-count>{{ $categoryEvent->nominations_count }} total</span></h6>
       <div class="interpro-nomination-head" role="row"><span role="columnheader">Player</span><span role="columnheader">Status</span><span role="columnheader">Registration history</span><span role="columnheader">Actions</span></div>
       <div role="rowgroup" data-nomination-list>
       @forelse($categoryNominations as $nomination)
@@ -184,7 +184,7 @@
 
   @if($historicalInvitations && $historicalInvitations->count())
     <div class="card mb-4">
-      <div class="card-header"><h5 class="mb-1">Historical invitations no longer in current nominations</h5><p class="text-muted small mb-0">Audit history is retained. These players are not part of the current nomination list.</p></div>
+      <div class="card-header"><h5 class="mb-1">Legacy invitations without nomination history</h5><p class="text-muted small mb-0">These invitation records have no recoverable nomination snapshot and are outside the nomination totals above.</p></div>
       <div class="card-body py-2">
         @foreach($historicalInvitations as $presentation)
           @php($invitation = $presentation['invitation'])

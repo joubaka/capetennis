@@ -36,36 +36,12 @@ class NominationHistory
                 WHEN i.status = 'failed' THEN 'delivery-failed'
                 ELSE 'nominated' END as state");
 
-        $beforeEvent = $this->json('a.before', 'event_id');
-        $beforeCategory = $this->json('a.before', 'category_event_id');
-        $removed = DB::table('audit_events as a')->join('category_events as c', function ($join) use ($beforeCategory) {
-            $join->whereRaw("c.id = $beforeCategory");
-        })->where('a.event_id', $event->id)->where('c.event_id', $event->id)
-            ->whereRaw("$beforeEvent = ?", [$event->id])
-            ->where('a.subject_type', EventNomination::class)->where('a.action', 'event-nomination.deleted')->where('a.outcome', 'succeeded')
-            ->whereRaw($this->json('a.before', 'id').' = a.subject_id')
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('event_nominations as retained')->whereColumn('retained.id', 'a.subject_id'))
-            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('audit_events as newer')
-                ->whereColumn('newer.event_id', 'a.event_id')->whereColumn('newer.subject_type', 'a.subject_type')
-                ->whereColumn('newer.subject_id', 'a.subject_id')->whereColumn('newer.action', 'a.action')
-                ->where('newer.outcome', 'succeeded')->whereColumn('newer.id', '>', 'a.id'))
-            ->selectRaw("CAST(a.subject_id AS UNSIGNED) as id, c.id as category_event_id, a.id as audit_id, 'removed' as state");
-        // Reject malformed identifiers rather than allowing SQL coercion to invent a match.
-        if (DB::getDriverName() === 'sqlite') {
-            $removed->whereRaw("a.subject_id != '' AND a.subject_id NOT GLOB '*[^0-9]*'");
-        } else {
-            $removed->whereRaw("a.subject_id REGEXP '^[0-9]+$'");
-        }
-        foreach (['id', 'event_id', 'category_event_id'] as $key) {
-            $value = $this->json('a.before', $key);
-            $removed->whereRaw(DB::getDriverName() === 'sqlite'
-                ? "$value IS NOT NULL AND CAST($value AS TEXT) != '' AND CAST($value AS TEXT) NOT GLOB '*[^0-9]*'"
-                : "$value REGEXP '^[0-9]+$'");
-        }
+        $removed = $this->removedQuery($event);
         $register = DB::query()->fromSub($current->unionAll($removed), 'register');
         $counts = (clone $register)->selectRaw('state, COUNT(*) as total')->groupBy('state')->pluck('total', 'state');
         $categoryCounts = (clone $register)->selectRaw('category_event_id, COUNT(*) as total')->groupBy('category_event_id')->pluck('total', 'category_event_id');
-        $rows = (clone $register)->when($filter !== 'all', fn ($q) => $q->where('state', $filter))
+        $rows = (clone $register)->when($filter !== 'all', fn ($q) => $filter === 'declined-removed'
+            ? $q->whereIn('state', ['declined', 'removed']) : $q->where('state', $filter))
             ->orderBy('category_event_id')->orderBy('id')->paginate(100, ['*'], 'nominations_page')->withQueryString();
         $retained = EventNomination::with(['player:id,name,surname', 'categoryEvent.category:id,name'])
             ->where('event_id', $event->id)->whereIn('id', $rows->getCollection()->whereNull('audit_id')->pluck('id'))->get()->keyBy('id');
@@ -104,6 +80,38 @@ class NominationHistory
             return $nomination;
         }));
         return compact('rows', 'counts', 'categoryCounts');
+    }
+
+    /** The same validated deletion source feeds the register and legacy deduplication. */
+    public function removedQuery(Event $event): \Illuminate\Database\Query\Builder
+    {
+        $beforeEvent = $this->json('a.before', 'event_id');
+        $beforeCategory = $this->json('a.before', 'category_event_id');
+        $removed = DB::table('audit_events as a')->join('category_events as c', function ($join) use ($beforeCategory) {
+            $join->whereRaw("c.id = $beforeCategory");
+        })->where('a.event_id', $event->id)->where('c.event_id', $event->id)
+            ->whereRaw("$beforeEvent = ?", [$event->id])
+            ->where('a.subject_type', EventNomination::class)->where('a.action', 'event-nomination.deleted')->where('a.outcome', 'succeeded')
+            ->whereRaw($this->json('a.before', 'id').' = a.subject_id')
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('event_nominations as retained')->whereColumn('retained.id', 'a.subject_id'))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('audit_events as newer')
+                ->whereColumn('newer.event_id', 'a.event_id')->whereColumn('newer.subject_type', 'a.subject_type')
+                ->whereColumn('newer.subject_id', 'a.subject_id')->whereColumn('newer.action', 'a.action')
+                ->where('newer.outcome', 'succeeded')->whereColumn('newer.id', '>', 'a.id'))
+            ->selectRaw("CAST(a.subject_id AS UNSIGNED) as id, c.id as category_event_id, a.id as audit_id, 'removed' as state");
+        // Reject malformed identifiers rather than allowing SQL coercion to invent a match.
+        if (DB::getDriverName() === 'sqlite') {
+            $removed->whereRaw("a.subject_id != '' AND a.subject_id NOT GLOB '*[^0-9]*'");
+        } else {
+            $removed->whereRaw("a.subject_id REGEXP '^[0-9]+$'");
+        }
+        foreach (['id', 'event_id', 'category_event_id'] as $key) {
+            $value = $this->json('a.before', $key);
+            $removed->whereRaw(DB::getDriverName() === 'sqlite'
+                ? "$value IS NOT NULL AND CAST($value AS TEXT) != '' AND CAST($value AS TEXT) NOT GLOB '*[^0-9]*'"
+                : "$value REGEXP '^[0-9]+$'");
+        }
+        return $removed;
     }
 
     private function json(string $column, string $key): string

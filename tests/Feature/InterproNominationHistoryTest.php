@@ -13,6 +13,12 @@ class InterproNominationHistoryTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function beforeRefreshingDatabase(): void
+    {
+        $this->assertTrue((DB::getDriverName() === 'sqlite' && DB::connection()->getDatabaseName() === ':memory:')
+            || (DB::getDriverName() === 'mysql' && DB::connection()->getDatabaseName() === 'ct_testing'));
+    }
+
     public function test_complete_register_counts_archived_withdrawals_and_removed_history_once(): void
     {
         [$event, $category, $actor, $batch] = $this->scenario();
@@ -24,6 +30,10 @@ class InterproNominationHistoryTest extends TestCase
         $this->nominee($event, $category, $batch, 'Cancelled', 'cancelled');
         $this->deleted($event, $category, 90001, 'Removed');
         $this->deleted($event, $category, 90001, 'Removed');
+        \Illuminate\Support\Facades\Schema::withoutForeignKeyConstraints(function () use ($event, $category, $batch) {
+            DB::table('interprovincial_trial_invitations')->insert(['batch_id' => $batch->id, 'event_id' => $event->id,
+                'category_event_id' => $category->id, 'nomination_id' => 90001, 'player_id' => null, 'status' => 'sent']);
+        });
         $history = app(NominationHistory::class)->build($event);
         $this->assertSame(6, $history['rows']->total());
         $this->assertSame(2, (int) $history['counts']['withdrawn']);
@@ -36,7 +46,12 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame(6, $groups['all']['count']);
         $this->assertSame(2, $groups['withdrawn']['count']);
         $this->assertSame(1, $groups['registered']['count']);
+        $this->assertSame(2, $groups['declined-removed']['count']);
+        $combined = $this->actingAs($actor)->get(route('backend.interprovincial-trials.invitations.index', [$event, 'nomination_status' => 'declined-removed']))
+            ->assertOk()->assertSee('Declined Candidate')->assertSee('Removed Candidate')->assertSee('Declined / removed');
+        $this->assertSame(2, $combined->viewData('nominations')->total());
         $all = $this->actingAs($actor)->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk()->assertSee('Removed Candidate')->assertSee('Reason not recorded');
+        $this->assertSame(0, $all->viewData('historicalInvitations')->total());
         if (getenv('CT_NOMINATION_HISTORY_QA_HTML')) {
             file_put_contents(storage_path('framework/testing/interpro-nomination-history-qa.html'), $all->getContent());
             file_put_contents(storage_path('framework/testing/interpro-nomination-history-withdrawn-qa.html'), $filtered->getContent());
@@ -81,7 +96,6 @@ class InterproNominationHistoryTest extends TestCase
 
     private function scenario(): array
     {
-        $this->assertSame(':memory:', DB::connection()->getDatabaseName());
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $actor = User::factory()->create()->assignRole('super-user');
         $type = EventType::forceCreate(['name' => 'History trials', 'type' => EventType::INDIVIDUAL, 'code' => EventType::INTERPROVINCIAL_TRIALS_CODE]);

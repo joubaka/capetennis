@@ -413,6 +413,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   history. Use explicit current-selector filters rather than a global model
   scope; archive restoration never restores participation or displays a nominee
   whose latest response remains withdrawn or declined.
+  The backend nomination register includes archived nominees and validated
+  deletion-audit history in one paginated list. Status filters and counts cover
+  the whole event; an archived withdrawal still counts as Withdrawn, while a
+  removed nomination does not establish a decline. Historical rows are read-only.
+  Verify `NominationHistory` and `InterproNominationHistoryTest` before changing
+  this projection; audit snapshots must remain scoped to the exact event and
+  category and expose only reviewed presentation fields.
   See `docs/interpro-nomination-archive.md`, RK-064 and
   `InterproNominationArchiveTest`; deployment and live apply need separate authority.
 
