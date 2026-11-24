@@ -5,7 +5,7 @@
 @if(session('success'))<div class="alert alert-success">{{ session('success') }}</div>@endif
 @if($errors->any())<div class="alert alert-danger">{{ $errors->first() }}</div>@endif
 <p>Participation fee: <strong>R{{ number_format($order->total_amount,2) }}</strong></p>
-@if($participation->isPaid())<div class="alert alert-success">Payment confirmed.</div><form method="post" action="{{ route('interprovincial-trials.participation.withdraw',[$event,$participation]) }}">@csrf<button class="btn btn-outline-warning">Withdraw participation</button></form>
+@if($participation->isPaid())<div class="alert alert-success">Payment confirmed.</div>@if($event->allowsWithdrawalBy(auth()->user()))<form method="post" action="{{ route('interprovincial-trials.participation.withdraw',[$event,$participation]) }}">@csrf<button class="btn btn-outline-warning">Withdraw participation</button></form>@else<p>This event has started. Please contact an event administrator to withdraw.</p>@endif
 @elseif($payfast)<p>Your checkout is prepared for secure payment.</p>{!! $payfast->getForm() !!}<button type="submit" form="payfastForm" class="btn btn-primary">Continue to PayFast</button>
 @elseif($order->payfast_handed_off_at)<div class="alert alert-info">PayFast payment is awaiting verification. Your checkout cannot be changed while it is resolving.</div>
 @else

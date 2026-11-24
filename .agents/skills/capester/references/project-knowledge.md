@@ -372,6 +372,16 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Participant withdrawal closes for ordinary users at the beginning of the
+  event's start date in the application timezone. Only an otherwise authorized
+  admin or super-user bypasses this cutoff; convenor/regional-manager status
+  alone does not. Keep this distinct from refund deadlines and canonical unpaid
+  checkout cancellation/expiry, which must still release reservations after the
+  event starts. A paid team refund choice can complete active roster removal,
+  so its submission also needs the cutoff; individual refunds after completed
+  withdrawal remain separate. Verify `Event::allowsWithdrawalBy`, `EntryService`,
+  `TeamPaymentService`, `TeamPlayerWithdrawController` and their withdrawal tests.
+
 - Individual PayFast browser returns must report saved order state; reaching a
   success URL is not settlement. Keep the entire callback settlement, receipt,
   wallet debit and entry/invitation confirmation in one retried transaction,

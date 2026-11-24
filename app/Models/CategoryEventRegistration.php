@@ -506,6 +506,11 @@ class CategoryEventRegistration extends Model
 
     $event = $this->categoryEvent->event;
 
+    if (!$event->allowsWithdrawalBy($user)) {
+      return ['ok' => false, 'reason' => 'event_started', 'refund_allowed' => false,
+        'message' => 'This event has started. Please contact an event administrator to withdraw.'];
+    }
+
     // A finalised category normally blocks self-service changes. The exception
     // is a generated, published Flexible Monrad draw: the player may still
     // withdraw, but the published slot is retained for the organiser's explicit

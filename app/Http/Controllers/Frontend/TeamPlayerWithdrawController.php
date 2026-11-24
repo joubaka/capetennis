@@ -39,6 +39,7 @@ class TeamPlayerWithdrawController extends Controller
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
+    $event->assertWithdrawalAllowedFor($user);
 
     // Find the team slot for this player
     $teamPlayer = TeamPlayer::where('team_id', $team->id)
@@ -96,6 +97,7 @@ class TeamPlayerWithdrawController extends Controller
 
     DB::transaction(function () use ($teamPlayer, $team, $player, $eventId, $user): void {
       app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $eventId);
+      \App\Models\Event::findOrFail($eventId)->assertWithdrawalAllowedFor($user);
       Team::query()->lockForUpdate()->findOrFail($team->id);
       $teamPlayer = TeamPlayer::query()->lockForUpdate()->findOrFail($teamPlayer->id);
       if ((int) $teamPlayer->player_id !== (int) $player->id || (int) $teamPlayer->pay_status !== 0) {
@@ -156,6 +158,7 @@ class TeamPlayerWithdrawController extends Controller
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
+    $event->assertWithdrawalAllowedFor($user);
 
     // Load payment order if exists
     $order = $this->paymentOrder($team, $player, (int) $eventId, $user);
@@ -211,6 +214,7 @@ class TeamPlayerWithdrawController extends Controller
     if (! app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->teamBelongsToEvent($team, $event)) {
       abort(404, 'Team does not belong to this event.');
     }
+    $event->assertWithdrawalAllowedFor($user);
 
     $order = $this->paymentOrder($team, $player, (int) $eventId, $user);
 

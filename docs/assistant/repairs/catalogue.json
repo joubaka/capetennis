@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-071",
+      "title": "Self-service withdrawal remains available after an event starts",
+      "scope": "Individual, team-player and Trials participation withdrawals; preserves existing administrator authorization and refund rules.",
+      "symptoms": "A payer can withdraw on or after the event start date when the refund deadline is absent or later, or complete an active team withdrawal using an earlier refund-choice page.",
+      "cause": "Refund deadlines alone do not establish whether participant self-service withdrawal is still allowed. Team refund submission also completes active roster removal.",
+      "fix": "Use Event::allowsWithdrawalBy and assertWithdrawalAllowedFor at canonical participant withdrawal boundaries and matching UI projections. Self-service closes at the beginning of the date-cast event start date in the application timezone. Only an otherwise authorized admin or super-user bypasses this cutoff; event and ownership checks still apply. Guard team refund choice/submission because participation remains active until completion. Keep completed individual refunds separate. Canonical unpaid cancellation and expiry use the private lifecycle writer after existing payment-evidence guards, so reservations can still be released after the event starts.",
+      "verification": "On 2026-11-24 the isolated SQLite RegistrationWithdrawTest, TeamPlayerWithdrawalSafetyTest, UnpaidCheckoutExpiryTest, TrialParticipationPaymentsTest and repair-library checks passed 68 tests and 935 assertions. Coverage includes start-day boundary, admin/super retention, convenor/regional-manager denial, stale team refund choice, preserved payment/roster/wallet state on denial and idempotent unpaid expiry with released reservations. Independent quality and financial-security code reviews found no remaining material issue. These are local checks, not production verification.",
+      "limits": "Guide only. No new financial permission, refund-deadline override, player ownership or event-management authority. A missing start date retains existing behavior. Invitation decline, completed individual refund requests and unpaid checkout cancellation are distinct operations. No migration or live action is authorized by this record.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Models/Event.php", "app/Models/CategoryEventRegistration.php", "app/Domain/Entries/Services/EntryService.php", "app/Domain/Payments/Services/TeamPaymentService.php", "app/Http/Controllers/Frontend/TeamPlayerWithdrawController.php"],
+      "tests": ["tests/Feature/RegistrationWithdrawTest.php", "tests/Feature/TeamPlayerWithdrawalSafetyTest.php", "tests/Feature/UnpaidCheckoutExpiryTest.php", "tests/Feature/TrialParticipationPaymentsTest.php"]
+    },
+    {
       "id": "RK-070",
       "title": "Excluded CTR category still appears to block draw creation",
       "scope": "CTR Certified planner previews with pending category exclusions; not cancellation of event categories, registrations or payments.",

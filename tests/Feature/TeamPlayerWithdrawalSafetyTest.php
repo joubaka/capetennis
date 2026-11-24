@@ -22,6 +22,53 @@ class TeamPlayerWithdrawalSafetyTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_started_event_blocks_paid_and_unpaid_team_withdrawals_without_changes(): void
+    {
+        foreach ([0, 1] as $paid) {
+            [$user, $event, $team, $player] = $this->paidTeamPlayer();
+            $event->update(['start_date' => today(), 'withdrawal_deadline' => now()->addWeek()]);
+            TeamPlayer::where('team_id', $team->id)->update(['pay_status' => $paid]);
+            $order = $paid ? $this->paidOrder($user, $event, $team, $player) : null;
+
+            $this->actingAs($user)->post(route('team.player.withdraw', [$team, $player, $event]))
+                ->assertSessionHasErrors('withdrawal');
+            $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'player_id' => $player->id, 'pay_status' => $paid]);
+            if ($order) $this->assertNull($order->fresh()->withdrawn_at);
+        }
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_refund_choice_opened_before_start_cannot_complete_withdrawal_after_start(): void
+    {
+        [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $event->update(['start_date' => today()->addDay(), 'withdrawal_deadline' => now()->addWeek()]);
+        $order = $this->paidOrder($user, $event, $team, $player);
+        $this->actingAs($user)->post(route('team.player.withdraw', [$team, $player, $event]))->assertSessionHasNoErrors();
+        $withdrawnAt = $order->fresh()->withdrawn_at->toDateTimeString();
+        $this->travelTo(today()->addDay());
+
+        $this->post(route('team.player.refund.request', [$team, $player, $event]), ['method' => 'wallet'])
+            ->assertSessionHasErrors('withdrawal');
+        $this->assertDatabaseHas('team_players', ['team_id' => $team->id, 'player_id' => $player->id, 'pay_status' => 1]);
+        $this->assertSame($withdrawnAt, $order->fresh()->withdrawn_at->toDateTimeString());
+        $this->assertSame('not_refunded', $order->fresh()->refund_status);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_canonical_team_withdrawal_rejects_started_event_for_payer(): void
+    {
+        [$user, $event, $team, $player] = $this->paidTeamPlayer();
+        $event->update(['start_date' => today()->subDay()]);
+        $order = $this->paidOrder($user, $event, $team, $player);
+        try {
+            app(\App\Domain\Payments\Services\TeamPaymentService::class)->recordWithdrawal($order, $user);
+            $this->fail('Expected start-day protection.');
+        } catch (\Illuminate\Validation\ValidationException $exception) {
+            $this->assertArrayHasKey('withdrawal', $exception->errors());
+        }
+        $this->assertNull($order->fresh()->withdrawn_at);
+    }
+
     public function test_refund_cannot_be_requested_before_paid_player_is_withdrawn(): void
     {
         [$user, $event, $team, $player] = $this->paidTeamPlayer();

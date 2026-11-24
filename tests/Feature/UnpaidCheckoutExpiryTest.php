@@ -126,6 +126,27 @@ class UnpaidCheckoutExpiryTest extends TestCase
         $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
+    public function test_started_event_still_expires_unpaid_checkout_and_releases_reservation(): void
+    {
+        $event = Event::factory()->create(['start_date' => today()->subDay()]);
+        $team = Team::factory()->create(['category_event_id' => CategoryEvent::factory()->create(['event_id' => $event->id])->id]);
+        $player = Player::factory()->create();
+        $payer = User::factory()->create();
+        $slot = TeamPlayer::create(['team_id' => $team->id, 'player_id' => $player->id, 'rank' => 1, 'pay_status' => 0]);
+        $order = TeamPaymentOrder::create(['user_id' => $payer->id, 'team_id' => $team->id, 'event_id' => $event->id,
+            'player_id' => $player->id, 'total_amount' => 100, 'wallet_reserved' => 25, 'payfast_amount_due' => 75,
+            'pay_status' => false, 'wallet_debited' => false, 'payfast_paid' => false]);
+        $order->forceFill(['created_at' => now()->subMinutes(30)])->save();
+
+        $this->assertTrue(app(UnpaidCheckoutExpiryService::class)->expire($order));
+        $this->assertFalse(app(UnpaidCheckoutExpiryService::class)->expire($order));
+        $this->assertSame(0.0, $order->fresh()->wallet_reserved);
+        $this->assertSame(0.0, $order->fresh()->payfast_amount_due);
+        $this->assertNotNull($order->fresh()->withdrawn_at);
+        $this->assertSame($player->id, $slot->fresh()->player_id);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
     public function test_command_is_preview_only_by_default_and_shared_policy_is_thirty_minutes(): void
     {
         [$order] = $this->registration();

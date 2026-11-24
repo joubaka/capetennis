@@ -357,6 +357,7 @@ class EntryService
         $categoryName = optional($entry->categoryEvent?->category)->name ?? '';
 
         DB::transaction(function () use ($entry, $actingUser, $check, $player, $eventName, $categoryName) {
+            $entry->categoryEvent->event->assertWithdrawalAllowedFor($actingUser);
             FinanceMutationScope::run('refund_state_write', fn () => $entry->update([
                 'status'         => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'   => now(),
@@ -402,6 +403,7 @@ class EntryService
         CategoryEventRegistration $entry,
         User $actingUser
     ): void {
+        $entry->categoryEvent?->event?->assertWithdrawalAllowedFor($actingUser);
         if ($entry->status === 'pending_checkout'
             || ($entry->categoryEvent?->event?->isInterprovincialTrials() && !$entry->is_paid)) {
             throw new \RuntimeException('Cancel the unpaid checkout instead of withdrawing an entry.');

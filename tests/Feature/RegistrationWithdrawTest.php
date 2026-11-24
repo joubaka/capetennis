@@ -32,6 +32,50 @@ class RegistrationWithdrawTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
+    public function test_owner_cannot_withdraw_at_start_day_even_when_refund_deadline_is_later(): void
+    {
+        $this->travelTo(now()->startOfDay());
+        $user = User::factory()->create();
+        $entry = CategoryEventRegistration::factory()->paid()->create(['user_id' => $user->id, 'status' => 'active']);
+        $entry->categoryEvent->event->update(['start_date' => today(), 'withdrawal_deadline' => now()->addWeek()]);
+
+        $this->actingAs($user)->post(route('registrations.withdraw', $entry))->assertSessionHasErrors();
+        $this->assertNull($entry->fresh()->withdrawn_at);
+        $this->assertSame('active', $entry->fresh()->status);
+        $this->assertSame(1, (int) $entry->fresh()->payment_status_id);
+        $this->assertSame('event_started', $entry->fresh()->canWithdraw($user)['reason']);
+    }
+
+    public function test_owner_can_withdraw_immediately_before_start_day(): void
+    {
+        $this->travelTo(now()->endOfDay());
+        $user = User::factory()->create();
+        $entry = CategoryEventRegistration::factory()->create(['user_id' => $user->id, 'status' => 'active']);
+        $entry->categoryEvent->event->update(['start_date' => today()->addDay(), 'withdrawal_deadline' => now()->addWeek()]);
+
+        $this->actingAs($user)->post(route('registrations.withdraw', $entry))->assertSessionHasNoErrors();
+        $this->assertNotNull($entry->fresh()->withdrawn_at);
+    }
+
+    public function test_only_admin_and_super_user_bypass_start_day_in_admin_service(): void
+    {
+        Role::firstOrCreate(['name' => 'convenor', 'guard_name' => 'web']);
+        foreach (['admin', 'super-user', 'convenor'] as $role) {
+            $user = User::factory()->create()->assignRole($role);
+            $entry = CategoryEventRegistration::factory()->create(['status' => 'active']);
+            $entry->categoryEvent->event->update(['start_date' => today()->subDay()]);
+            try {
+                app(\App\Domain\Entries\Services\EntryService::class)->withdrawEntryAsAdmin($entry, $user);
+                $this->assertNotSame('convenor', $role);
+                $this->assertNotNull($entry->fresh()->withdrawn_at);
+            } catch (\Illuminate\Validation\ValidationException $exception) {
+                $this->assertSame('convenor', $role);
+                $this->assertArrayHasKey('withdrawal', $exception->errors());
+                $this->assertNull($entry->fresh()->withdrawn_at);
+            }
+        }
+    }
+
     public function test_owner_can_withdraw_own_registration(): void
     {
         $user = User::factory()->create();

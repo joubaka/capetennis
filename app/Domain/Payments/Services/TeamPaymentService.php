@@ -969,10 +969,17 @@ class TeamPaymentService
 
     public function recordWithdrawal(TeamPaymentOrder $order, ?User $actor): TeamPaymentOrder
     {
-        return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $actor) {
-            return DB::transaction(function () use ($order, $actor) {
+        return $this->recordWithdrawalState($order, $actor, true);
+    }
+
+    /** Unpaid cancellation/expiry closes a checkout without withdrawing a participant. */
+    private function recordWithdrawalState(TeamPaymentOrder $order, ?User $actor, bool $participantWithdrawal): TeamPaymentOrder
+    {
+        return FinanceMutationScope::run('team_payment_state_write', function () use ($order, $actor, $participantWithdrawal) {
+            return DB::transaction(function () use ($order, $actor, $participantWithdrawal) {
                 app(\App\Services\InterprovincialTrials\TrialParticipationService::class)->lockForOrder((int)$order->id);
             $locked = TeamPaymentOrder::query()->lockForUpdate()->findOrFail($order->id);
+                if ($participantWithdrawal) $locked->event->assertWithdrawalAllowedFor($actor);
                 if ($locked->effective_player_id !== $order->effective_player_id) {
                     throw ValidationException::withMessages(['payment' => 'Payment coverage changed. Refresh before withdrawing this player.']);
                 }
@@ -1101,7 +1108,7 @@ class TeamPaymentService
 
             $cancelled = $this->cancelPayment($locked);
 
-            return $this->recordWithdrawal($cancelled, $actor);
+            return $this->recordWithdrawalState($cancelled, $actor, false);
         });
     }
 

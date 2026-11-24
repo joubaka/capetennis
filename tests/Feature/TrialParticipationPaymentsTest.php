@@ -11,6 +11,40 @@ use Tests\TestCase;
 class TrialParticipationPaymentsTest extends TestCase {
     use RefreshDatabase;
     private Event $event; private User $admin;private User $payer;private TrialSquadSlot $slot;
+    public function test_super_user_can_withdraw_started_event_participation(): void {
+        Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
+        $super = User::factory()->create()->assignRole('super-user');
+        $service = app(TrialParticipationService::class);
+        $participation = $service->begin($this->slot, $this->payer);
+        $service->markPaid($participation, $this->admin, 'BANK-SUPER-START');
+        $this->event->update(['start_date' => today()->subDay()]);
+        $this->actingAs($super)->post(route('interprovincial-trials.participation.withdraw', [$this->event, $participation]))
+            ->assertSessionHasNoErrors();
+        $this->assertNotNull($participation->order->fresh()->withdrawn_at);
+        $this->assertSame('declined', $this->slot->fresh()->response);
+        $this->assertTrue((bool) $participation->order->fresh()->pay_status);
+    }
+    public function test_started_event_blocks_payer_and_regional_manager_but_allows_event_admin_withdrawal(): void {
+        $service = app(TrialParticipationService::class);
+        $participation = $service->begin($this->slot, $this->payer);
+        $service->markPaid($participation, $this->admin, 'BANK-START');
+        $manager = User::factory()->create();
+        $region = DB::table('event_regions')->insertGetId(['event_id' => $this->event->id, 'region_id' => 1]);
+        DB::table('event_region_managers')->insert(['event_id' => $this->event->id, 'region_id' => 1, 'event_region_id' => $region, 'user_id' => $manager->id]);
+        $this->event->update(['start_date' => today()]);
+        foreach ([$this->payer, $manager] as $actor) {
+            $this->actingAs($actor)->post(route('interprovincial-trials.participation.withdraw', [$this->event, $participation]))
+                ->assertSessionHasErrors('withdrawal');
+            $this->assertNull($participation->order->fresh()->withdrawn_at);
+            $this->assertNotSame('declined', $this->slot->fresh()->response);
+        }
+        $this->actingAs($this->admin)->post(route('interprovincial-trials.participation.withdraw', [$this->event, $participation]))
+            ->assertSessionHasNoErrors();
+        $this->assertNotNull($participation->order->fresh()->withdrawn_at);
+        $this->assertSame('declined', $this->slot->fresh()->response);
+        $this->assertTrue((bool) $participation->order->fresh()->pay_status);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
     public function test_expired_participation_checkout_detaches_payer_without_losing_squad_and_restarts(): void {
         $service = app(TrialParticipationService::class);
         $participation = $service->begin($this->slot, $this->payer);

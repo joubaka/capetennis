@@ -145,6 +145,22 @@ class Event extends Model
     return !$this->withdrawal_deadline || now()->lte($this->withdrawal_deadline);
   }
 
+  /** Start dates are calendar dates: self-service closes at the start of that day. */
+  public function allowsWithdrawalBy(?User $actor): bool
+  {
+    return !$this->start_date || now()->lt($this->start_date->copy()->startOfDay())
+      || ($actor && $actor->hasAnyRole(['admin', 'super-user']));
+  }
+
+  public function assertWithdrawalAllowedFor(?User $actor): void
+  {
+    if (!$this->allowsWithdrawalBy($actor)) {
+      throw \Illuminate\Validation\ValidationException::withMessages([
+        'withdrawal' => 'This event has started. Please contact an event administrator to withdraw.',
+      ]);
+    }
+  }
+
   /*
   |--------------------------------------------------------------------------
   | RELATIONSHIPS

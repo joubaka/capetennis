@@ -248,7 +248,7 @@ class EventController extends Controller
     // FLAGS
     $signUp = $event->registrationIsOpen() ? 'open' : 'closed';
     $canEnter = $event->registrationIsOpen();
-    $canWithdraw = now()->lte($withdrawalCloseAt);
+    $canWithdraw = now()->lte($withdrawalCloseAt) && $event->allowsWithdrawalBy(auth()->user());
 
     // FORMATTED OUTPUT
     $sDate = $this->convertDate($startDate);
