@@ -214,6 +214,9 @@
     </div>
   </div>
   {{-- ── SUMMARY CARDS ───────────────────────────────────────────────── --}}
+  <div class="card mb-4"><div class="card-body">
+    @include('backend.event.partials.entry-withdrawal-summary')
+  </div></div>
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-primary border-3 h-100">
@@ -267,7 +270,7 @@
     <div class="col-6 col-md-3">
       <div class="card finance-card border-start border-secondary border-3 h-100">
         <div class="card-body">
-          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Registration entries</small>
+          <small class="text-muted d-block mb-1"><i class="ti ti-users me-1"></i>Entries in payment records</small>
           <h5 class="mb-0">{{ $totalEntries }}</h5>
           @if($event->target_entries)
             <div class="progress mt-2" style="height:4px">

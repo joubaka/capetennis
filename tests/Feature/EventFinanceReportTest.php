@@ -51,6 +51,8 @@ class EventFinanceReportTest extends TestCase
             ->assertSee('Court Convenor Guide')->assertSee('Copy guide');
         $this->assertEquals(123.50, $html->viewData('totalExpenses'));
         $this->assertEquals(-123.50, $html->viewData('netProfit'));
+        $html->assertSee('Entry and withdrawal summary')->assertSee('Withdrawal refund status');
+        $this->assertSame($pdfData['entrySummary'], $html->viewData('entrySummary'));
         if (getenv('CT_FINANCE_REPORT_QA') === '1') {
             $path = storage_path('app/finance-report-qa');
             if (!is_dir($path)) mkdir($path, 0777, true);
@@ -124,6 +126,40 @@ class EventFinanceReportTest extends TestCase
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
             $this->assertSame(409, $exception->getStatusCode());
         }
+    }
+
+    public function test_withdrawal_drilldown_is_private_event_scoped_paginated_and_read_only(): void
+    {
+        $division = \App\Models\CategoryEvent::factory()->create(['event_id' => $this->event->id]);
+        $entries = \App\Models\CategoryEventRegistration::factory()->count(27)->withdrawn()->create(['category_event_id' => $division->id, 'payment_status_id' => 1, 'deleted_at' => now()]);
+        $player = \App\Models\Player::factory()->create(['name' => 'Private', 'surname' => 'Withdrawn', 'email' => 'hidden-contact@example.test']);
+        $entries->last()->registration->players()->attach($player);
+        $foreign = \App\Models\CategoryEventRegistration::factory()->withdrawn()->create();
+        $url = route('admin.events.finances', ['event' => $this->event, 'withdrawals' => 1]);
+        $before = EventExpense::count();
+        $this->get($url)->assertRedirect('login');
+        $this->actingAs(User::factory()->create())->get($url)->assertForbidden();
+        $response = $this->actingAs($this->admin)->get($url);
+        $response->assertOk()->assertSee('Private Withdrawn')->assertSee('Archived withdrawal')->assertDontSee('hidden-contact@example.test');
+        $page = $response->viewData('withdrawals');
+        $this->assertSame(27, $page->total());
+        $this->assertCount(25, $page);
+        $this->assertFalse($page->pluck('id')->contains($foreign->id));
+        $this->assertSame($before, EventExpense::count());
+        $this->assertSame(2, $this->get($url.'&page=2')->viewData('withdrawals')->count());
+        Bus::assertNothingDispatched();
+    }
+
+    public function test_pdf_omits_empty_divisions_and_unrelated_refund_rows(): void
+    {
+        $summary = ['team' => false, 'columns' => \App\Domain\Finance\Services\EventEntrySummary::COLUMNS,
+            'totals' => ['recorded' => 1, 'confirmed' => 1, 'unpaid' => 0, 'withdrawn' => 0, 'completed' => 0, 'pending' => 0, 'waived' => 0, 'no_refund' => 0]];
+        $summary['divisions'] = [['name' => 'Entered division', ...$summary['totals']], ['name' => 'Empty division', ...array_fill_keys(array_keys($summary['totals']), 0)]];
+        $html = view('backend.event.partials.entry-withdrawal-summary', ['event' => $this->event, 'entrySummary' => $summary, 'entrySummaryPdf' => true])->render();
+        $this->assertStringNotContainsString('Empty division', $html);
+        $this->assertSame(1, substr_count($html, 'Entered division'));
+        $this->assertStringContainsString('No withdrawals recorded.', $html);
+        $this->assertStringNotContainsString('View withdrawal records', $html);
     }
 
     private function input(): array

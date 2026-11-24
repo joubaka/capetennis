@@ -74,7 +74,7 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
     private function assertParity(Event $event): array
     {
         $ledger = app(FinancialLedgerService::class);
-        // The detailed route deliberately retains the original order-resolution path.
+        // Detailed and summary outputs share validated order metadata.
         $baseline = $ledger->buildForEvent($event);
         $optimized = $ledger->buildPaymentRows($event, (float) $event->cape_tennis_fee, summaryOnly: true);
         $money = fn ($rows) => $rows->map(fn ($row) => array_map(fn ($key) => $row->{$key} ?? null,
@@ -243,7 +243,9 @@ class FinancialLedgerSummaryPerformanceTest extends TestCase
             return $baseline;
         });
         $this->assertSame($small['queries'], $large['queries']);
-        $this->assertLessThan($legacy['queries'] / 3, $large['queries']);
+        // Detailed receipt resolution is now batched too; summary must remain
+        // no more expensive rather than depending on a slow detailed baseline.
+        $this->assertLessThanOrEqual($legacy['queries'], $large['queries']);
         $this->assertSame($legacy['value']['totals']['registration_net'], $large['value']['registration_net']);
         $this->assertParity($this->event);
         if ($path = getenv('FINANCE_SUMMARY_METRICS_PATH')) {

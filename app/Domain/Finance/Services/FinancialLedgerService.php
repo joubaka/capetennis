@@ -210,8 +210,8 @@ class FinancialLedgerService
             ->orderByDesc('created_at')
             ->get();
 
-        $context = $summaryOnly && $rawTransactions->isNotEmpty()
-            ? $this->summaryReceiptContext($event, $rawTransactions) : null;
+        $context = $rawTransactions->isNotEmpty()
+            ? $this->receiptContext($event, $rawTransactions) : null;
         $pfRows = $rawTransactions->map(fn ($tx) => $this->mapPayfastRow($tx, $feePerEntry, $context, $event));
 
         // ── Wallet-only individual orders (no PayFast tx at all) ──────────
@@ -702,24 +702,26 @@ class FinancialLedgerService
     }
 
     /** Fresh lookups for this event build only; no persistent financial cache. */
-    private function summaryReceiptContext(Event $event, Collection $transactions): array
+    private function receiptContext(Event $event, Collection $transactions): array
     {
         $individualIds = $transactions->filter(fn ($tx) => blank($tx->custom_str5))->pluck('custom_int5')->filter()->unique();
         $teamIds = $transactions->where('custom_str5', 'TeamOrder')->pluck('custom_int5')->filter()->unique();
-        $individualOrders = RegistrationOrder::with(['items.player', 'items.category_event.category'])
-            ->whereIn('id', $individualIds)
-            ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $event->id))
-            ->whereDoesntHave('items.category_event', fn ($query) => $query->where('event_id', '!=', $event->id))
-            ->whereDoesntHave('items', fn ($query) => $query->whereDoesntHave('category_event'))
-            ->get()->keyBy('id');
+        // Load only receipt-referenced baskets, then validate every loaded item.
+        // Nested EXISTS / NOT EXISTS plans can scan the complete order history
+        // repeatedly on MySQL even when the outer order ID is known.
+        $referencedOrders = RegistrationOrder::with(['items.player', 'items.category_event.category'])
+            ->whereIn('id', $individualIds)->get()->keyBy('id');
+        $individualOrders = $referencedOrders->filter(fn ($order) => $order->items->isNotEmpty()
+            && $order->items->every(fn ($item) => $item->category_event !== null
+                && (string) $item->category_event->event_id === (string) $event->id));
         $teamOrders = TeamPaymentOrder::with(['player', 'beneficiary', 'team.category.category'])
             ->whereIn('id', $teamIds)->where('event_id', $event->id)->get()->keyBy('id');
         // Reconciliation intentionally has broader eligibility than order metadata:
         // keep the original service's audit checks for cancelled unpaid candidates.
-        $reconciliationCandidates = RegistrationOrder::whereIn('id', $individualIds)
-            ->where('status', 'cancelled')->where('pay_status', false)
-            ->whereHas('items.category_event', fn ($query) => $query->where('event_id', $event->id))
-            ->get(['id'])->keyBy('id');
+        $reconciliationCandidates = $referencedOrders->filter(fn ($order) => $order->status === 'cancelled'
+            && ! $order->pay_status
+            && $order->items->contains(fn ($item) => $item->category_event !== null
+                && (string) $item->category_event->event_id === (string) $event->id));
 
         return [
             'individual_orders' => $individualOrders,
@@ -900,17 +902,18 @@ class FinancialLedgerService
 
     private function buildWalletOnlyRows(Event $event, float $feePerEntry, bool $summaryOnly = false): Collection
     {
-        $walletOnlyOrderIds = RegistrationOrder::whereHas('items', function ($q) use ($event) {
-                $q->whereHas('category_event', fn($q2) => $q2->where('event_id', $event->id));
-            })
-            ->where('wallet_reserved', '>', 0)
+        $walletOnlyOrderIds = RegistrationOrder::query()
+            ->join('registration_order_items as wallet_items', 'wallet_items.order_id', '=', 'registration_orders.id')
+            ->join('category_events as wallet_categories', 'wallet_categories.id', '=', 'wallet_items.category_event_id')
+            ->where('wallet_categories.event_id', $event->id)
+            ->where('registration_orders.wallet_reserved', '>', 0)
             ->where(function ($q) {
                 $q->whereNull('payfast_amount_due')->orWhere('payfast_amount_due', 0);
             })
-            ->pluck('id');
+            ->distinct()->pluck('registration_orders.id');
 
-        $orders = $summaryOnly ? RegistrationOrder::with(['items.player', 'items.category_event.category'])
-            ->whereIn('id', $walletOnlyOrderIds)->get()->keyBy('id') : null;
+        $orders = RegistrationOrder::with(['items.player', 'items.category_event.category'])
+            ->whereIn('id', $walletOnlyOrderIds)->get()->keyBy('id');
 
         return WalletTransaction::with(['wallet.payable'])
             ->whereIn('source_id', $walletOnlyOrderIds)

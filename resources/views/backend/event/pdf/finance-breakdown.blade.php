@@ -2,11 +2,15 @@
 <html lang="en"><head><meta charset="utf-8"><title>Income and expense breakdown</title>
 <style>
 @page { margin: 30px; } body { font-family: "DejaVu Sans", sans-serif; font-size: 10px; color: #26374a; }
-h1 { font-size: 19px; margin-bottom: 5px; } h2 { font-size: 13px; margin-top: 22px; border-bottom: 1px solid #b7d6d0; padding-bottom: 6px; }
+h1 { font-size: 19px; margin-bottom: 5px; } h2 { font-size: 13px; margin-top: 22px; border-bottom: 1px solid #b7d6d0; padding-bottom: 6px; } h2, h3 { page-break-after: avoid; }
 table { width: 100%; border-collapse: collapse; margin: 8px 0; } th { background: #edf4f3; text-align: left; } th, td { padding: 7px; border-bottom: 1px solid #e2e7eb; } tr { page-break-inside: avoid; } thead { display: table-header-group; } .amount { text-align: right; white-space: nowrap; } .muted { color: #68798a; } .total { font-weight: bold; } .payee { page-break-inside: avoid; }
+.entry-summary-table { table-layout: fixed; }
+.entry-summary-table th, .entry-summary-table td { white-space: normal; overflow-wrap: break-word; }
+.entry-summary-table th:first-child, .entry-summary-table td:first-child { width: 29%; }
 </style></head><body>
 <h1>{{ $event->name }}</h1><strong>Income and expense breakdown</strong>
 <p class="muted">Generated {{ now()->timezone('Africa/Johannesburg')->format('d M Y H:i') }} SAST · Private financial report</p>
+@include('backend.event.partials.entry-withdrawal-summary', ['entrySummaryPdf' => true, 'entrySummaryTotalsOnly' => true])
 <h2>Registration income and expenses</h2>
 <table><tbody>
 <tr><td>Registration gross income</td><td class="amount">R {{ number_format($totalGross, 2) }}</td></tr>
@@ -16,9 +20,10 @@ table { width: 100%; border-collapse: collapse; margin: 8px 0; } th { background
 <tr><td>Registration net income (after fees and refunds)</td><td class="amount">R {{ number_format($netRegistrationIncome, 2) }}</td></tr>
 <tr><td>Operational expenses</td><td class="amount">R {{ number_format($totalExpenses, 2) }}</td></tr>
 <tr class="total"><td>Registration {{ $netProfit < 0 ? 'loss' : 'profit' }}</td><td class="amount">R {{ number_format($netProfit, 2) }}</td></tr>
-<tr><td>Registration entries</td><td class="amount">{{ $totalEntries }}</td></tr>
+<tr><td>Entries in payment records</td><td class="amount">{{ $totalEntries }}</td></tr>
 </tbody></table>
 <p class="muted">System fees are already deducted from registration income. Clothing and other event income are kept separate from registration profit.</p>
+@include('backend.event.partials.entry-withdrawal-summary', ['entrySummaryPdf' => true, 'entrySummaryDetailsOnly' => true])
 <h2>Operational expense detail</h2>
 <table><thead><tr><th>Expense</th><th>Paid by</th><th class="amount">Amount</th></tr></thead><tbody>
 @forelse($expenses->reject(fn($expense) => in_array($expense->expense_type, ['payfast', 'cape_tennis_fee'])) as $expense)

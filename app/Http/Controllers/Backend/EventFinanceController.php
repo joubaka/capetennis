@@ -35,6 +35,13 @@ class EventFinanceController extends Controller
     {
         $this->authorize('event-finance.view', $event);
 
+        if ($request->boolean('withdrawals')) {
+            return response()->view('backend.event.finance-withdrawals', [
+                'event' => $event,
+                'withdrawals' => app(\App\Domain\Finance\Services\EventEntrySummary::class)->withdrawals($event),
+            ])->header('Cache-Control', 'private, no-store');
+        }
+
         $financeTabs = [
             'breakdown' => ['label' => 'Breakdown', 'icon' => 'ti-chart-pie'],
             'transactions' => ['label' => 'Transactions', 'icon' => 'ti-receipt'],
@@ -80,6 +87,7 @@ class EventFinanceController extends Controller
         $registrationRefundImpact = round($netRegistrationIncome - ($totalGross - $totalPayfastFees - $totalCapeTennisFees), 2);
         $entryRows = $paymentRows->whereIn('type', ['payment', 'admin_entry_fee']);
         $totalEntries = $entryRows->sum(fn ($row) => $row->entryCount ?? 1);
+        $entrySummary = app(\App\Domain\Finance\Services\EventEntrySummary::class)->build($event);
 
         $receiptReport = app(EventFinanceReceiptReport::class)->build($event, $eventTransactions);
         $clothingReceipts = $receiptReport['clothing'];
@@ -187,6 +195,7 @@ class EventFinanceController extends Controller
             'totalPayfastFees',
             'totalCapeTennisFees',
             'totalEntries',
+            'entrySummary',
             'feePerEntry',
             'netRegistrationIncome',
             'registrationRefundImpact',
