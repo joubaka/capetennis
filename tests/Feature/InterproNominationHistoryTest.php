@@ -445,6 +445,80 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame($before, $this->retainedCheckoutRows());
         $this->assertNull(EventNomination::find($nomination->id));
     }
+    public function test_legacy_receipt_schema_reconnects_exact_private_entry_without_changing_history(): void
+    {
+        $this->useLegacyReceiptSchema();
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $this->actingAs($actor);
+        $nomination->delete();
+        $entry = app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin($category, $nomination->player_id, $actor, 'paid_privately');
+        // One service transaction can cross a wall-clock second boundary.
+        DB::table('category_event_registrations')->where('id', $entry->id)->update(['created_at' => now()->subSecond()]);
+        DB::table('activity_log')->where('subject_type', \App\Models\CategoryEventRegistration::class)->where('subject_id', $entry->id)
+            ->where('description', 'Player registered offline by admin (private collection not reconciled)')->update(['created_at' => now()->addSecond()]);
+        $before = $this->retainedCheckoutRows();
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination->id]);
+        $data = ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Reconnect exact existing private entry', 'confirm' => 1];
+        $this->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $marker = EventNomination::findOrFail($nomination->id)->actionableInvitation;
+        $this->assertSame($entry->registration_id, $marker->registration_id);
+        $this->assertSame('paid_confirmed', $marker->status);
+        $this->assertNull($marker->paid_at);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+    }
+
+    public function test_legacy_receipt_schema_rejects_stale_duplicate_wrong_actor_or_unrelated_creation_evidence(): void
+    {
+        $this->useLegacyReceiptSchema();
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $this->actingAs($actor);
+        $nomination->delete();
+        $entry = app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin($category, $nomination->player_id, $actor, 'paid_privately');
+        $receipt = DB::table('transactions_pf')->where('event_id', $event->id)->where('player_id', $nomination->player_id)->sole();
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination->id]);
+        $data = ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Reconnect exact existing private entry', 'confirm' => 1];
+        DB::table('transactions_pf')->where('id', $receipt->id)->update(['custom_int4' => User::factory()->create()->id]);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        DB::table('transactions_pf')->where('id', $receipt->id)->update(['custom_int4' => $actor->id, 'created_at' => now()->subDay()]);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        DB::table('transactions_pf')->where('id', $receipt->id)->update(['created_at' => null]);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        DB::table('transactions_pf')->where('id', $receipt->id)->update(['created_at' => $receipt->created_at]);
+        $audit = (array) DB::table('activity_log')->where('subject_type', \App\Models\CategoryEventRegistration::class)->where('subject_id', $entry->id)
+            ->where('description', 'Player registered offline by admin (private collection not reconciled)')->sole();
+        unset($audit['id']);
+        $duplicateAuditId = DB::table('activity_log')->insertGetId($audit);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        DB::table('activity_log')->where('id', $duplicateAuditId)->delete();
+        $duplicate = (array) $receipt;
+        unset($duplicate['id']);
+        DB::table('transactions_pf')->insert($duplicate);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $before = $this->retainedCheckoutRows();
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $this->assertNull(EventNomination::find($nomination->id));
+    }
+
+    private function useLegacyReceiptSchema(): void
+    {
+        if (DB::getDriverName() !== 'sqlite' || DB::connection()->getDatabaseName() !== ':memory:') {
+            $this->markTestSkipped('Legacy schema DDL regression requires isolated in-memory SQLite.');
+        }
+        \Illuminate\Support\Facades\Schema::table('transactions_pf', fn ($table) => $table->dropColumn('registration_id'));
+        $this->assertFalse(\Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'registration_id'));
+    }
     private function retainedCheckoutRows(): array
     {
         $rows = [];

@@ -63,6 +63,7 @@ class NominationReactivationService
                 'source_audit_id' => $state['audit_id'], 'before' => $snapshot, 'retained_invitation_ids' => $invitations->pluck('id')->all(),
                 'reconnected_existing_private_entry_id' => $privateEntry['id'] ?? null,
                 'reconciled_payment' => false,
+                'receipt_identity' => $history['receipt_identity'] ?? 'none',
                 'retained_cancelled_order_ids' => array_column($history['orders'], 'id'),
                 'retained_deleted_entry_ids' => collect($history['entries'])->filter(fn ($entry) => $entry['deleted_at'] !== null)->pluck('id')->all(),
             ])->log('Nomination reactivated by event administrator');
@@ -101,6 +102,15 @@ class NominationReactivationService
         if ($entries->isEmpty() && $items->isEmpty()) return array_fill_keys(['entries', 'orders', 'items', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs', 'proofs', 'registration_players', 'entry_registrations', 'entry_receipts', 'entry_audits', 'entry_items', 'entry_invitations'], []);
         $registrationIds = $items->pluck('registration_id')->merge($entries->pluck('registration_id'))->unique();
         $orderIds = $items->pluck('order_id')->unique();
+        $receiptIdentity = \Illuminate\Support\Facades\Schema::hasColumns('transactions_pf', ['event_id', 'category_event_id', 'player_id'])
+            ? (\Illuminate\Support\Facades\Schema::hasColumn('transactions_pf', 'registration_id') ? 'registration_id' : 'legacy_tuple')
+            : 'unsupported';
+        $receiptQuery = match ($receiptIdentity) {
+            'registration_id' => DB::table('transactions_pf')->whereIn('registration_id', $registrationIds),
+            // All receipts for the numeric event/player tuple are reviewed, not a convenient matching subset.
+            'legacy_tuple' => DB::table('transactions_pf')->where('event_id', $event->id)->where('player_id', $playerId),
+            default => DB::table('transactions_pf')->whereRaw('1 = 0'),
+        };
         $queries = [
             'orders' => DB::table('registration_orders')->whereIn('id', $orderIds),
             'proofs' => DB::table('trial_payment_proofs')->whereIn('order_id', $orderIds),
@@ -115,15 +125,13 @@ class NominationReactivationService
                 ->whereIn('description', ['Expired unresolved PayFast handoff retained for reconciliation', 'registration checkout handed off to PayFast', 'supervised unresolved PayFast handoff released', 'supervised unresolved PayFast checkout cancelled']),
             'registration_players' => DB::table('player_registrations')->whereIn('registration_id', $registrationIds),
             'entry_registrations' => DB::table('category_event_registrations')->whereIn('registration_id', $registrationIds),
-            'entry_receipts' => \Illuminate\Support\Facades\Schema::hasColumns('transactions_pf', ['registration_id', 'event_id', 'category_event_id', 'player_id'])
-                ? DB::table('transactions_pf')->whereIn('registration_id', $registrationIds)
-                : DB::table('transactions_pf')->whereRaw('1 = 0'),
+            'entry_receipts' => $receiptQuery,
             'entry_invitations' => DB::table('interprovincial_trial_invitations')->whereIn('registration_id', $registrationIds),
             'entry_audits' => DB::table('activity_log')->where('subject_type', CategoryEventRegistration::class)->whereIn('subject_id', $entries->pluck('id'))
                 ->where('description', 'Player registered offline by admin (private collection not reconciled)'),
             'entry_items' => DB::table('registration_order_items')->whereIn('registration_id', $registrationIds),
         ];
-        $history = ['entries' => $entries->map->getAttributes()->all()];
+        $history = ['entries' => $entries->map->getAttributes()->all(), 'receipt_identity' => $receiptIdentity];
         foreach ($queries as $key => $query) {
             if ($lock) $query->lockForUpdate();
             // Stable row ordering keeps the review hash independent of query plans.
@@ -149,15 +157,17 @@ class NominationReactivationService
         $this->ensure(count($players) === 1 && (int) $players[0]['registration_id'] === (int) $entry['registration_id'] && (int) $players[0]['player_id'] === $playerId, $message);
         $this->ensure(count($history['entry_receipts']) === 1, $message);
         $receipt = $history['entry_receipts'][0];
-        $this->ensure((int) $receipt['registration_id'] === (int) $entry['registration_id']
+        if ($history['receipt_identity'] === 'legacy_tuple') $this->ensure(count($history['entry_audits']) === 1, $message);
+        $this->ensure(($history['receipt_identity'] === 'legacy_tuple' || (int) ($receipt['registration_id'] ?? 0) === (int) $entry['registration_id'])
             && (int) $receipt['event_id'] === (int) $category->event_id && (int) $receipt['custom_int3'] === (int) $category->event_id
             && (int) $receipt['category_event_id'] === (int) $category->id && (int) $receipt['player_id'] === $playerId
             && (int) $receipt['custom_int4'] === (int) $entry['user_id'] && !$receipt['pf_payment_id'] && !$receipt['custom_int5']
             && ! $receipt['is_test'] && ! $receipt['custom_str5']
             && $receipt['transaction_type'] === 'Registration' && $receipt['item_name'] === 'Admin Entry'
             && (float) $receipt['amount_gross'] === 0.0 && (float) $receipt['amount_fee'] === 0.0 && (float) $receipt['amount_net'] === 0.0, $message);
-        $this->ensure(collect($history['entry_audits'])->contains(function ($audit) use ($entry) {
+        $this->ensure(collect($history['entry_audits'])->contains(function ($audit) use ($entry, $receipt, $history) {
             $properties = json_decode($audit['properties'], true);
+            if ($history['receipt_identity'] === 'legacy_tuple' && ! $this->sameAdministrativeCreation($entry, $receipt, $audit)) return false;
             return (int) $audit['subject_id'] === (int) $entry['id'] && $audit['causer_type'] === User::class
                 && (int) $audit['causer_id'] === (int) $entry['user_id']
                 && ($properties['canonical_payment_status_id'] ?? null) === 1 && ($properties['transaction_amount'] ?? null) === 0
@@ -166,6 +176,19 @@ class NominationReactivationService
                 && ($properties['financial_amount_recorded'] ?? null) === false;
         }), $message);
         return $entry;
+    }
+    private function sameAdministrativeCreation(array $entry, array $receipt, array $audit): bool
+    {
+        if (empty($entry['created_at']) || empty($receipt['created_at']) || empty($audit['created_at'])) return false;
+        try {
+            $entryAt = \Illuminate\Support\Carbon::parse($entry['created_at'])->timestamp;
+            $receiptAt = \Illuminate\Support\Carbon::parse($receipt['created_at'])->timestamp;
+            $auditAt = \Illuminate\Support\Carbon::parse($audit['created_at'])->timestamp;
+        } catch (\Throwable) {
+            return false;
+        }
+        return $receiptAt >= $entryAt - 2 && $auditAt >= $receiptAt - 2
+            && abs($auditAt - $entryAt) <= 120 && abs($receiptAt - $entryAt) <= 120;
     }
     private function assertClosedUnpaidHistory(array $history, CategoryEvent $category, int $playerId): void
     {

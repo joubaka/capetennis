@@ -133,6 +133,20 @@ restores nomination visibility, creates no participation or financial record, an
 never converts an operational private note into a reconciled receipt. Both
 confirmation and stale-state review cover this existing-entry path.
 
+
+On legacy schemas without `transactions_pf.registration_id`, the review records an
+explicit `legacy_tuple` receipt identity mode. It examines the entire numeric
+event/player receipt set and requires exactly one zero-money administrative
+receipt, one event entry, one single-player registration and one canonical offline
+creation audit. Event, category, player and original actor IDs must agree in every
+source. Receipt creation must follow entry creation and precede its audit within
+120 seconds, allowing two seconds of timestamp precision tolerance; this is extra
+source consistency, never identity matching by name or date. Missing/invalid
+timestamps, duplicate receipts/audits or conflicting records fail closed. Modern
+schemas always require the explicit registration link and never fall back from a
+mismatched ID. Schema mode and all candidate receipts are included in the displayed
+revision and locked apply review. No migration or financial mutation is required.
+
 ## Unanswered nominees on the Entries page
 
 The Entries page has a separate follow-up workflow for current published
