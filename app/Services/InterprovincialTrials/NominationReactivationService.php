@@ -140,8 +140,20 @@ class NominationReactivationService
         return $history;
     }
 
+    /** Internal reviewed correction evidence; this method changes no state. */
+    public function reviewPrivateAdminCorrection(Event $event, CategoryEvent $category, EventNomination $nomination, User $actor): array
+    {
+        abort_unless(DB::transactionLevel() > 0 && $actor->hasRole('super-user'), 403);
+        abort_unless($event->isInterprovincialTrials() && (int) $category->event_id === (int) $event->id
+            && (int) $nomination->event_id === (int) $event->id && (int) $nomination->category_event_id === (int) $category->id
+            && $nomination->player_id && !$nomination->archived_at, 404);
+        $history = $this->history($event, (int) $nomination->player_id, true);
+        $entry = $this->existingPrivateEntry($history, $category, (int) $nomination->player_id, (int) $nomination->id);
+        $this->ensure($entry !== null, 'An exact active private-admin entry is required for this correction.');
+        return ['entry' => $entry, 'history' => $history];
+    }
     /** Reconnect an existing operational private entry; never manufacture a reconciled payment. */
-    private function existingPrivateEntry(array $history, CategoryEvent $category, int $playerId): ?array
+    private function existingPrivateEntry(array $history, CategoryEvent $category, int $playerId, ?int $correctionNominationId = null): ?array
     {
         $candidates = collect($history['entries'])->filter(fn ($entry) => !$entry['deleted_at'] && $entry['status'] === 'active' && $entry['admin_payment_status'] === 'paid');
         if ($candidates->isEmpty()) return null;
@@ -152,7 +164,17 @@ class NominationReactivationService
             && !$entry['pf_transaction_id'] && !$entry['wallet_transaction_id'] && !$entry['withdrawn_at'] && !$entry['refunded_at'] && !$entry['refund_waived_at']
             && (float) $entry['refund_gross'] === 0.0 && (float) $entry['refund_fee'] === 0.0 && (float) $entry['refund_net'] === 0.0
             && ($entry['refund_status'] === null || in_array($entry['refund_status'], CategoryEventRegistration::NO_REFUND_STATUSES, true)), $message);
-        foreach (['items', 'orders', 'entry_items', 'entry_invitations', 'proofs', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs'] as $key) $this->ensure($history[$key] === [], $message);
+        foreach (['items', 'orders', 'entry_items', 'proofs', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs'] as $key) $this->ensure($history[$key] === [], $message);
+        if ($correctionNominationId === null) {
+            $this->ensure($history['entry_invitations'] === [], $message);
+        } else {
+            $this->ensure(count($history['entry_invitations']) === 1, $message);
+            $marker = $history['entry_invitations'][0];
+            $this->ensure((int) $marker['event_id'] === (int) $category->event_id && (int) $marker['category_event_id'] === (int) $category->id
+                && (int) $marker['nomination_id'] === $correctionNominationId && (int) $marker['player_id'] === $playerId
+                && (int) $marker['registration_id'] === (int) $entry['registration_id'] && $marker['status'] === 'paid_confirmed'
+                && !$marker['order_id'] && !$marker['accepted_at'] && !$marker['withdrawn_at'], $message);
+        }
         $players = $history['registration_players'];
         $this->ensure(count($players) === 1 && (int) $players[0]['registration_id'] === (int) $entry['registration_id'] && (int) $players[0]['player_id'] === $playerId, $message);
         $this->ensure(count($history['entry_receipts']) === 1, $message);

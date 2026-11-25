@@ -475,6 +475,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   reviewed re-add action is a narrow exception to read-only history: it requires
   an integrity-verified deletion audit for deleted rows, retains the original
   nomination ID and responses. It permits only fully cancelled, unpaid, never-handed-off single-player checkout history with its matching soft-deleted pending entry, preserving historical rows. A separate strict exception reconnects one existing active private-admin registration using its exact zero-money administrative receipt and canonical offline audit; the current private note must be paid, all financial records stay unchanged and the linked operational marker has no invented payment date. If the receipt registration column is absent, explicit legacy mode requires the sole complete event/player receipt set with exact category/creator IDs, one entry and canonical audit, plus bounded source-time consistency; modern mismatched registration IDs never fall back. Other active, paid, withdrawn, unresolved or ambiguous history remains blocked.
+  If the existing private-admin entry itself was mistaken and no private funds
+  were collected, use the separate reviewed EntryService correction rather than
+  re-add, payment-note reset, withdrawal or refund. It retires the exact entry and
+  archives only its zero-money receipt while preserving original snapshots and
+  superseding the exact audited entitlement for normal sponsored checkout/retry.
+  See RK-075, `PrivateTrialAdminEntryCorrectionTest` and the correction section in
+  `docs/interpro-nomination-archive.md`; live action still requires authorization.
   Verify `NominationReactivationService` and `InterproNominationHistoryTest`;
   archive-only restoration still never reverses a withdrawal.
   Verify `NominationHistory` and `InterproNominationHistoryTest` before changing

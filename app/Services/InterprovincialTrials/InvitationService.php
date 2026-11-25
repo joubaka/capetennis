@@ -124,27 +124,18 @@ class InvitationService
                 throw ValidationException::withMessages(['invitation' => 'This nomination is no longer available for registration.']);
             }
 
+            // Historical paid/pending attempts keep precedence, except the exact
+            // private marker retired by the canonical admin-error correction.
             $existingOrderAttempt = InterprovincialTrialInvitation::query()
-                ->where('event_id', $lockedEvent->id)
-                ->where('category_event_id', $lockedCategory->id)
-                ->where('nomination_id', $lockedNomination->id)
-                ->where('player_id', $lockedNomination->player_id)
-                ->whereIn('status', [
-                    InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT,
-                    InterprovincialTrialInvitation::PAID_CONFIRMED,
-                ])
-                ->latest('id')
-                ->first();
-
-            $invitation = $existingOrderAttempt ?: InterprovincialTrialInvitation::query()
-                ->where('event_id', $lockedEvent->id)
-                ->where('category_event_id', $lockedCategory->id)
-                ->where('nomination_id', $lockedNomination->id)
-                ->where('player_id', $lockedNomination->player_id)
-                ->whereIn('status', ['queued', 'sent', 'open_registration'])
-                ->latest('id')
-                ->first();
-
+                ->where('event_id', $lockedEvent->id)->where('category_event_id', $lockedCategory->id)
+                ->where('nomination_id', $lockedNomination->id)->where('player_id', $lockedNomination->player_id)
+                ->whereIn('status', [InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT, InterprovincialTrialInvitation::PAID_CONFIRMED])
+                ->latest('id')->get()->first(fn ($row) => ! app(\App\Domain\Entries\Services\PrivateTrialAdminEntryCorrectionService::class)->isRetiredPrivateAdminMarker($row));
+            $available = InterprovincialTrialInvitation::query()
+                ->where('event_id', $lockedEvent->id)->where('category_event_id', $lockedCategory->id)
+                ->where('nomination_id', $lockedNomination->id)->where('player_id', $lockedNomination->player_id)
+                ->whereIn('status', ['queued', 'sent', 'open_registration'])->latest('id')->first();
+            $invitation = $existingOrderAttempt ?: $available;
             if (! $invitation) {
                 $batch = InterprovincialTrialInvitationBatch::create([
                     'event_id' => $lockedEvent->id,

@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-075",
+      "title": "Correct a mistaken private-admin Interpro entry for normal registration",
+      "scope": "One exact operational private-admin trial registration where the reviewing operator confirms no private funds were collected; preserve original history while enabling ordinary nominated registration.",
+      "symptoms": "A nominated player shows Registered because an erroneous paid-private administrative entry exists, although the player still needs to register and pay normally.",
+      "cause": "An active administrative entitlement blocks duplicate registration. Changing its private payment note or appending an open nomination marker alone does not retire that entitlement or the historical paid marker; leaving its zero-money receipt active also duplicates Cape Tennis fee liability after a new payment.",
+      "fix": "Use the reviewed interpro:correct-private-admin-entry preview/apply command with exact event/category/player/nomination/entry/receipt IDs, super-user actor, reason and explicit no-funds-collected confirmation. EntryService validates current publication/registration gates, exact canonical private-entry provenance, no settlement or dependent participation, and actor-bound stale-state confirmation. Soft-delete the mistaken entry with cancelled_admin_error, archive only its exact zero-money receipt through FinancialLedgerService and append open_registration. Preserve all original payment/private-note fields, receipt amounts and fee snapshots. Exclude only the precisely audited retired private marker from historical checkout precedence; keep real paid/pending protections and normal sponsored checkout/retry.",
+      "verification": "Isolated SQLite correction, nomination history/archive and repair-library checks passed 38 tests and 1012 assertions. Coverage includes modern/legacy receipt schemas, zero-write preview, audit/replay and immutable history, fresh-payer checkout, cancellation/restart/payment, exact single fee liability, stale/role/event/settlement protections, competition-dependency rejection, atomic rollback on ledger failure and genuine paid/pending precedence. These are focused local results, not full-suite or live proof.",
+      "limits": "Guide only; no UI assistant action is granted. Requires explicit operator confirmation that the private entry was erroneous and no private funds were collected. Reject ambiguous, paid/provider/wallet, refund, checkout, competition, selection or payout dependencies. Creates no withdrawal, refund, wallet transaction, ownership link or email. Does not reopen event registration or authorize production/deployment. The payer must still complete registration and payment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Entries/Services/PrivateTrialAdminEntryCorrectionService.php", "app/Domain/Entries/Services/EntryService.php", "app/Domain/Finance/Services/FinancialLedgerService.php", "app/Services/InterprovincialTrials/InvitationService.php", "app/Console/Commands/CorrectPrivateTrialAdminEntry.php", "docs/interpro-nomination-archive.md"],
+      "tests": ["tests/Feature/PrivateTrialAdminEntryCorrectionTest.php", "tests/Feature/InterproNominationHistoryTest.php", "tests/Unit/Assistant/AssistantRepairLibraryTest.php"]
+    },
+    {
       "id": "RK-074",
       "title": "Re-add Interpro nominee blocked by retained checkout or private-entry history",
       "scope": "Nomination-only restoration around a fully cancelled unpaid single-player checkout, or one exact canonical active private-admin registration; no financial or participation records are changed.",

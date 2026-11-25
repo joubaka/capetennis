@@ -41,6 +41,27 @@ use Illuminate\Validation\ValidationException;
  */
 class EntryService
 {
+    /** Exact operator-reviewed correction, independent of withdrawal/refund workflows. */
+    public function correctPrivateTrialAdminEntry(User $actor, array $ids, string $reason, bool $noFundsCollected, ?string $confirmation = null): array
+    {
+        return app(PrivateTrialAdminEntryCorrectionService::class)->run($actor, $ids, $reason, $noFundsCollected, $confirmation);
+    }
+
+    /** Only the correction service may retire this operational entry; preserve its paid/private snapshots. */
+    public function retireErroneousPrivateTrialEntry(CategoryEventRegistration $entry, User $actor): void
+    {
+        abort_unless($actor->hasRole('super-user') && DB::transactionLevel() > 0
+            && FinanceMutationScope::allows('private_trial_admin_correction'), 403);
+        abort_unless(!$entry->trashed() && $entry->status === 'active' && $entry->admin_payment_status === 'paid'
+            && (int) $entry->payment_status_id === 1 && !$entry->withdrawn_at && !$entry->refunded_at
+            && !$entry->pf_transaction_id && !$entry->wallet_transaction_id, 422);
+        if ($this->registrationHasCompetitionHistory((int) $entry->registration_id)
+            || DB::table('draw_registrations')->where('registration_id', $entry->registration_id)->exists()) {
+            throw ValidationException::withMessages(['correction' => 'Competition participation prevents this administrative correction.']);
+        }
+        $entry->forceFill(['status' => 'cancelled_admin_error'])->save();
+        $entry->delete();
+    }
     public function correctIndividualBeneficiary(User $actor, int $orderId, int $targetPlayerId, string $reason, ?string $confirmation = null): array
     {
         return app(IndividualBeneficiaryCorrectionService::class)->run($actor, $orderId, $targetPlayerId, $reason, $confirmation);

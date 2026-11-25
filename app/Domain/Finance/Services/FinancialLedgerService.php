@@ -33,6 +33,22 @@ use Illuminate\Support\Collection;
  */
 class FinancialLedgerService
 {
+    /** Archive a genuine zero-money source after an exact private-admin mistake review. */
+    public function archiveErroneousPrivateAdminReceipt(Event $event, Transaction $receipt, string $archivedAt): void
+    {
+        abort_unless(\App\Support\FinanceMutationScope::allows('private_trial_admin_correction')
+            && \Illuminate\Support\Facades\DB::transactionLevel() > 0, 403);
+        if ((int) $receipt->event_id !== (int) $event->id || $receipt->item_name !== 'Admin Entry'
+            || $receipt->transaction_type !== 'Registration' || $receipt->archived_at !== null
+            || filled($receipt->pf_payment_id) || filled($receipt->custom_int5) || filled($receipt->custom_str5)
+            || filled($receipt->payment_status) || (bool) $receipt->is_test
+            || (float) $receipt->amount_gross !== 0.0 || (float) $receipt->amount_net !== 0.0 || (float) $receipt->amount_fee !== 0.0) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['correction' => 'Only the exact unarchived zero-money administrative receipt may be retired.']);
+        }
+        $affected = \Illuminate\Support\Facades\DB::table('transactions_pf')->where('id', $receipt->id)
+            ->whereNull('archived_at')->update(['archived_at' => $archivedAt]);
+        if ($affected !== 1) throw \Illuminate\Validation\ValidationException::withMessages(['correction' => 'Receipt state changed. Preview the correction again.']);
+    }
     /** Internal half of the reviewed free-test archive; never changes money amounts. */
     public function archiveFreeTestReceipt(Event $event, Transaction $receipt, string $archivedAt): void
     {

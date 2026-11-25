@@ -168,3 +168,35 @@ move updates its category. Both actions record an audit. This workflow does not
 replace the reviewed withdrawn-participation command described above.
 
 Tests: `tests/Feature/EventEntryNomineeFollowUpActionsTest.php`.
+
+## Correct a mistaken private-admin entry
+
+Restoring an existing private-admin entry means the player is already registered.
+When the operator confirms that this entry was a mistake and no private funds
+were collected, use the separate reviewed correction rather than changing its
+payment note or recording a player withdrawal.
+
+`interpro:correct-private-admin-entry EVENT CATEGORY PLAYER NOMINATION ENTRY RECEIPT`
+requires an existing super-user actor, an explicit reason and
+`--confirm-no-funds-collected`. The first run previews without writes; applying
+requires `--apply --confirmation=TOKEN` from that exact actor-bound, fifteen-minute
+preview. Review exact numeric IDs and current evidence before any live apply.
+
+The canonical EntryService correction requires a current published nomination,
+open registration, sole exact single-player private-admin entry and zero-money
+receipt with canonical creation provenance. It rejects settlement, checkout,
+refund, competition, adjustment, selection and payout dependencies. Original
+entry payment/private-note fields and receipt amounts/fee snapshots stay intact.
+The erroneous entry is soft-deleted with `cancelled_admin_error`; the ledger
+archives its exact zero-money receipt to remove the erroneous fee liability.
+It creates no withdrawal, refund, wallet transaction, ownership link or email.
+
+A fresh `open_registration` lifecycle marker restores normal sponsored checkout.
+Only the exact audited retired administrative entitlement is excluded from old
+paid-marker selection; genuine paid and pending checkout protections remain.
+Old signed links stay superseded, and cancelling/restarting a new checkout must
+not reactivate the retired admin entitlement. Registration and payment still
+have to be completed by the payer.
+
+No migration is needed for this correction. Deployment and live application are
+separate authorized actions. The preview is not proof of a completed correction.
