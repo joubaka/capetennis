@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-078",
+      "title": "Interpro playoff preview shows a tiny table instead of a bracket",
+      "scope": "Read-only screen and print presentation of the four-group Interpro round-robin feed-in preset.",
+      "symptoms": "The Playoffs tab shows a dense match table with no connected bracket paths, and desktop zoom controls are hidden.",
+      "cause": "The special preset bypasses the generic graphical renderer and previously returned only its print-oriented route table; shared zoom controls were hidden on desktop.",
+      "fix": "Render three native-size diagrams from the exact InterproRoundRobinFormat template for the championship, positions 3–8 and positions 9–12. Preserve all eighteen match identities, canonical score and carried-result labels, explicit cross-panel sources and distinct winner/loser connectors. Scroll diagrams horizontally instead of shrinking player names, expose shared zoom controls and retain the original route table for printing. See docs/draw-knowledge/interpro-round-robin-feed-in.md.",
+      "verification": "On 2026-11-25 the focused InterproRoundRobinFormatTest passed 9 tests and 121 assertions; the final fictional render/export regression passed 1 test and 58 assertions. Browser verification passed 18 desktop/phone/admin/public states plus table-only print/PDF and print-handler failure checks. It covers readable cards, reachable final rounds, zoom/reset and public prose/final-position containment. Route registration, isolated Blade compilation and independent visual review passed. These local checks do not establish deployment or live behavior.",
+      "limits": "Guide only. Presentation does not regenerate fixtures, change participants, scores, schedules or publication, or authorize deployment. Generic playoff renderers must not replace this preset's fixed topology.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/InterproRoundRobinFormat.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md"],
+      "tests": ["tests/Feature/Draw/InterproRoundRobinFormatTest.php", "tests/Browser/interpro-preview.cjs"]
+    },
+    {
       "id": "RK-077",
       "title": "Pending full bank refund retry deducts a new handling fee",
       "scope": "Individual PayFast-backed pending bank refund retries through backend, legacy admin and bulk completion; excludes initial approvals and team refunds.",

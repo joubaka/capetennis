@@ -110,6 +110,31 @@ if (process.argv.includes('--serve')) {
           }
           report.push({ stage, width, contained: true });
         }
+        // The same Blade response is also hosted by the published draw page.
+        // Use its actual inline wrapper rules and public stylesheet, retaining
+        // the real rendered fictional bracket rather than a handwritten graph.
+        await page.goto('http://localhost/carry.html', { waitUntil: 'networkidle' });
+        await page.evaluate(() => {
+          document.querySelector('link[href$="draw-workspace.css"]').remove();
+          const host = document.querySelector('#main-bracket-wrapper');
+          const adminInner = host.querySelector('#bracket-zoom-inner');
+          adminInner.replaceWith(...adminInner.childNodes);
+          host.className = 'bracket-zoom-inner';
+          const scroll = document.createElement('div');
+          scroll.className = 'bracket-zoom-scroll';
+          host.replaceWith(scroll);
+          scroll.append(host);
+        });
+        const publicTemplate = fs.readFileSync(path.join(root, 'resources/views/frontend/roundrobin/show.blade.php'), 'utf8');
+        await page.addStyleTag({ content: publicTemplate.match(/<style>([\s\S]*?)<\/style>/)[1] });
+        await page.addStyleTag({ content: fs.readFileSync(path.join(publicRoot, 'css/public-draw.css'), 'utf8') });
+        assert.equal(await page.locator('body').evaluate(el => el.scrollWidth <= window.innerWidth + 1), true, `public ${width}: page containment`);
+        assert.equal(await page.locator('.interpro-feed-in').evaluate(el => el.getBoundingClientRect().width <= window.innerWidth), true, `public ${width}: prose stays within the viewport`);
+        assert.equal(await page.locator('.interpro-feed-in > p').evaluateAll(elements => elements.every(el => el.getBoundingClientRect().right <= window.innerWidth)), true, `public ${width}: paragraph containment`);
+        assert.equal(await page.locator('.ct-final-position').evaluateAll(elements => elements.every(el => el.getBoundingClientRect().right <= window.innerWidth)), true, `public ${width}: final position containment`);
+        assert.ok(await page.locator('.interpro-match-name').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize)) >= 14);
+        await page.screenshot({ path: path.join(output, `public-${width}.png`), fullPage: true });
+        report.push({ stage: 'public', width, contained: true });
       }
       await page.setViewportSize({ width: 1123, height: 794 });
       await page.emulateMedia({ media: 'print' });

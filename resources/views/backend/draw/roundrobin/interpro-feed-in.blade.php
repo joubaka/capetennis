@@ -18,6 +18,7 @@
     ?? ($fixture->isWalkover() ? 'W/O' : $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => $set->registration1_score.'-'.$set->registration2_score)->implode(', ').($fixture->isRetired() ? ' RET' : ''))) : '';
 @endphp
 <style>
+  .bracket-zoom-inner:has(> .interpro-feed-in) { display: block; width: 100%; }
   .interpro-feed-in { font-size: 16px; line-height: 1.5; }
   .interpro-feed-in h4 { font-size: 22px; }
   .interpro-feed-in h5 { font-size: 18px; margin: 24px 0 10px; }
