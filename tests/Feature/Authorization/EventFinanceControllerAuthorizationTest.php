@@ -152,7 +152,10 @@ class EventFinanceControllerAuthorizationTest extends TestCase
 
     public function test_finance_tabs_return_only_the_requested_authorized_event_fragment(): void
     {
-        $this->eventA->update(['name' => 'Synthetic finance tab event']);
+        $type = \App\Models\EventType::forceCreate(['name' => 'Synthetic finance teams', 'type' => \App\Models\EventType::TEAM]);
+        $this->eventA->update(['name' => 'Synthetic finance tab event', 'eventType' => $type->id]);
+        $this->eventA->refresh();
+        $this->assertTrue(\App\Support\EventCapabilities::clothing($this->eventA));
         $this->admin->update(['name' => 'Synthetic Finance Admin']);
         $tabs = ['breakdown', 'transactions', 'income', 'clothing', 'expenses', 'reconciliation'];
         $directory = storage_path('app/finance-tabs-qa');

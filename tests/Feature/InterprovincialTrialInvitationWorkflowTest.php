@@ -492,7 +492,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             ->assertSee("searchFields.val('').trigger('input')", false)
             ->assertSee("trigger('focus')", false)
             ->assertSee("fetch(form.action", false)
-            ->assertSee('list.innerHTML = data.html', false)
+            ->assertSee('const rebuildCategory = data => { window.location.reload(); };', false)
             ->assertSee('data-send-preview-mode="new"', false)
             ->assertSee('id="interpro-send-preview-modal"', false)
             ->assertSee(json_encode(route('backend.interprovincial-trials.invitations.send-preview', $this->event)), false)
@@ -1514,9 +1514,9 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $invitation->update(['status' => InterprovincialTrialInvitation::PAID_CONFIRMED]);
         $this->actingAs($owner)->get($url)->assertOk()->assertSee('Registered');
         $invitation->update(['status' => InterprovincialTrialInvitation::DECLINED]);
-        $this->actingAs($owner)->get($url)->assertOk()->assertSee('Declined');
+        $this->actingAs($owner)->get($url)->assertOk()->assertDontSee('id="trial-nomination-'.$nomination->id.'"', false);
         $invitation->update(['status' => InterprovincialTrialInvitation::WITHDRAWN]);
-        $this->actingAs($owner)->get($url)->assertOk()->assertSee('Not registered')->assertSee('Register');
+        $this->actingAs($owner)->get($url)->assertOk()->assertDontSee('id="trial-nomination-'.$nomination->id.'"', false);
     }
 
     public function test_owner_can_decline_once_without_financial_writes_and_declined_cannot_register(): void
@@ -1784,7 +1784,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
         $response->assertSee('Review emails for newly nominated')->assertSee('Review emails for players not registered')
             ->assertSee('interpro-send-preview-modal')
-            ->assertSee('<div class="border rounded overflow-hidden interpro-nomination-table" role="table"', false)
+            ->assertSee('<div class="interpro-nomination-table" role="table"', false)
             ->assertDontSee(route('backend.interprovincial-trials.invitations.send-current', $this->event), false)
             ->assertDontSee('data-send-invitations', false);
         foreach ($before as $table => $count) {
@@ -1823,7 +1823,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
         $response = $this->actingAs($this->admin)
             ->get(route('backend.interprovincial-trials.invitations.index', $this->event))
             ->assertOk()
-            ->assertSee('Showing 1–100 of 105 nominations');
+            ->assertSee('Showing 1–100 of 105 matching nominations');
         $page = $response->viewData('nominations');
         $this->assertSame(100, $page->count());
         $this->assertSame(105, $page->total());

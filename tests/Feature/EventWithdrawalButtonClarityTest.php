@@ -20,9 +20,9 @@ class EventWithdrawalButtonClarityTest extends TestCase
     {
         $template = file_get_contents(resource_path('views/frontend/event/show.blade.php'));
 
-        $this->assertStringContainsString('aria-label="Withdraw entry for {{ $registration->display_name }}"', $template);
+        $this->assertStringContainsString('aria-label="Withdraw {{ $registration->display_name }} from {{ $registration->categoryEvent?->category?->name ?? \'Division not specified\' }}"', $template);
         $this->assertStringContainsString('ti ti-x me-1', $template);
-        $this->assertStringContainsString('<span class="small">Withdraw</span>', $template);
+        $this->assertStringContainsString('<span>Withdraw {{ $registration->display_name }}', $template);
     }
 
     public function test_team_withdrawal_control_pairs_its_cross_with_an_explicit_label(): void

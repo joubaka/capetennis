@@ -93,13 +93,30 @@ for (const bundle of bundles) assert.ok(fs.statSync(path.join(publicRoot, bundle
 
     const translations = await page.evaluate(async () => {
       if (typeof window.i18next?.init !== 'function' || !window.i18NextHttpBackend || !window.languageDetector) throw new Error('Emitted i18n UMD exports are unavailable');
-      await i18next.use(i18NextHttpBackend).init({ lng: 'en', fallbackLng: false, resources: { en: { translation: { greeting: 'Hello {{name}}' } } } });
-      return { translation: i18next.t('greeting', { name: 'Cape Tennis' }), language: i18next.language };
+      await i18next.use(languageDetector).use(i18NextHttpBackend).init({ lng: 'en', fallbackLng: false, resources: { en: { translation: { greeting: 'Hello {{name}}' } } } });
+      const builtIns = [Object.prototype.hasOwnProperty, Object.prototype.toString, Object.prototype.valueOf];
+      const originalCalls = builtIns.map(fn => fn.call);
+      const originalDescriptors = builtIns.map(fn => Object.getOwnPropertyDescriptor(fn, 'call'));
+      try {
+        // GHSA-6jcc-5g8w-32mx: deep resource merges must not recurse into inherited built-ins.
+        i18next.addResourceBundle('en', 'translation', {
+          hasOwnProperty: { call: 'corrupted' }, toString: { call: 'corrupted' }, valueOf: { call: 'corrupted' }
+        }, true, true);
+        return {
+          translation: i18next.t('greeting', { name: 'Cape Tennis' }), language: i18next.language,
+          sharedBuiltInsIntact: builtIns.every((fn, index) => fn.call === originalCalls[index])
+        };
+      } finally {
+        builtIns.forEach((fn, index) => {
+          if (originalDescriptors[index]) Object.defineProperty(fn, 'call', originalDescriptors[index]);
+          else delete fn.call;
+        });
+      }
     });
-    assert.deepEqual(translations, { translation: 'Hello Cape Tennis', language: 'en' });
+    assert.deepEqual(translations, { translation: 'Hello Cape Tennis', language: 'en', sharedBuiltInsIntact: true });
     assert.deepEqual(errors, []);
     assert.deepEqual(external, [], 'Bundled vendor smoke test must not contact external services');
-    console.log('PASS: emitted Shepherd tour callbacks, nested/recursive and pollution-safe merge; KaTeX render/inherited-trust protection; local-resource i18n initialization.');
+    console.log('PASS: emitted Shepherd tour callbacks, nested/recursive and pollution-safe merge; KaTeX render/inherited-trust protection; local-resource i18n plugins, interpolation and inherited-built-in merge protection.');
   } finally {
     await browser.close();
   }

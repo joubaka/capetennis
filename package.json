@@ -56,7 +56,7 @@
     "flatpickr": "~4.6.13",
     "hammerjs": "~2.0.8",
     "highlight.js": "~11.6.0",
-    "i18next": "~21.9.2",
+    "i18next": "26.3.4",
     "i18next-browser-languagedetector": "~6.1.5",
     "i18next-http-backend": "4.0.4",
     "jkanban": "~1.3.1",

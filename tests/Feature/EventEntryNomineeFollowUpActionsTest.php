@@ -160,8 +160,8 @@ class EventEntryNomineeFollowUpActionsTest extends TestCase
         $generic = Event::factory()->create();
         $genericCategory = CategoryEvent::factory()->for($generic)->create(['nominations_published' => true]);
         $genericNominee = $this->nominee($genericCategory);
-        $this->action($actor, $generic, $genericCategory, $genericNominee, 'remove')->assertUnprocessable();
-        $this->actingAs($actor)->get(route('admin.events.entries.new', $generic))->assertOk()->assertSee('Email this player')->assertDontSee('data-action="remove"', false);
+        $this->action($actor, $generic, $genericCategory, $genericNominee, 'remove')->assertForbidden();
+        $this->actingAs($actor)->get(route('admin.events.entries.new', $generic))->assertOk()->assertDontSee('Email this player')->assertDontSee('data-action="remove"', false);
         $this->assertDatabaseCount('event_nominations', 2);
         $assigned = $this->actor('admin');
         DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $assigned->id]);

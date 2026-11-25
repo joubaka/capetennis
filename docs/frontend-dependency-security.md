@@ -47,3 +47,38 @@ score mutations need the reviewed revision after fixture setup, and scheduling
 needs the owning Event. Their corrected fixtures and score-revision regressions
 passed together: 50 tests and 230 assertions on PHP 8.5 with isolated SQLite.
 No application authorization or stale-write protection was relaxed.
+
+## i18next inherited built-in protection
+
+The direct i18next dependency is pinned to 26.3.4, the first patched release for
+[GHSA-6jcc-5g8w-32mx](https://github.com/advisories/GHSA-6jcc-5g8w-32mx)
+(CVE-2026-63402). Earlier core versions could recurse into inherited built-ins
+when deeply merging resource bundles with overwrite enabled, corrupting shared
+functions and causing denial of service. Keep the security audit fail-closed;
+this finding must not be added to its temporary exception.
+
+The emitted i18n bundle regression initializes the existing language detector and
+HTTP backend with local resources, checks interpolation, and deeply merges keys
+matching inherited built-ins. Shared `hasOwnProperty`, `toString` and `valueOf`
+functions must remain intact. The test restores built-in descriptors even when
+checking a vulnerable historical bundle. A lockfile update alone is insufficient:
+production serves the checked-in bundle and its matching manifest entry.
+
+This is a major upgrade from the previous 21.9.2 pin. The existing import/export
+entry point remains; no application custom initialization, legacy plural resources
+or removed formatting API was found in the owning source. Review the upstream
+[migration guide](https://www.i18next.com/misc/migration-guide) when adding such
+features. i18next 24 and later require `Intl` and modern JSON plural formats;
+26 removes the old `interpolation.format` and `initImmediate` options. The modern
+Edge emitted-bundle smoke does not establish compatibility with every legacy
+browser named in the repository's existing browserslist. No browser polyfill or
+unrelated dependency change is included in this security fix.
+
+Verified locally on 2026-11-25: the unchanged audit-wrapper and Shepherd merge
+checks passed (8 tests total), and live npm audit reported zero vulnerabilities.
+A fresh isolated full production build completed successfully. The emitted-bundle
+harness reproduced the built-in corruption against the retained vulnerable
+21.9.2 build, then passed against the patched build with the same attack and
+plugin/interpolation checks. Only the affected i18n bundle and its matching
+manifest value were copied to the checked-in public assets. These checks do not
+establish a deployment or extend the legacy-browser compatibility claim above.

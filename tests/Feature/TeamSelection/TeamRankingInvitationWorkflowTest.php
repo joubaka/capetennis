@@ -5382,7 +5382,7 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->post($url, $payload)->assertRedirect()->assertSessionHasNoErrors();
         $this->postJson($url, array_replace($payload, ['reference' => 'different']))->assertUnprocessable();
         $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
-        Queue::assertNothingPushed();
+        $this->assertWithdrawalNoticeJobs($event, $team, $selected, $order);
         Mail::assertNothingSent();
         \Illuminate\Support\Facades\Http::assertNothingSent();
     }
@@ -5477,8 +5477,31 @@ class TeamRankingInvitationWorkflowTest extends TestCase
         $this->postJson($url, $payload)->assertRedirect();
         $this->postJson($url, array_replace($payload, ['override_reason' => 'Different reason']))->assertUnprocessable();
         $this->assertSame(1, \Spatie\Activitylog\Models\Activity::where('description', 'super user recorded team cash refund to original payer')->count());
-        Queue::assertNothingPushed();
+        if ($disposition === 'remove') {
+            $this->assertWithdrawalNoticeJobs($event, $team, $selected, $order);
+        } else {
+            Queue::assertNothingPushed();
+        }
         Mail::assertNothingSent();
+    }
+
+    private function assertWithdrawalNoticeJobs(Event $event, Team $team, TeamSelectionInvitation $selected, TeamPaymentOrder $order): void
+    {
+        $activity = \Spatie\Activitylog\Models\Activity::where('description', 'team participant withdrawal completed')
+            ->where('properties->order_id', $order->id)->sole();
+        $this->assertSame($event->id, (int) $activity->properties['event_id']);
+        $this->assertSame($team->id, (int) $activity->properties['team_id']);
+        $this->assertSame((int) $selected->player_id, (int) $activity->properties['player_id']);
+        $logs = BulkEmailLog::where('mail_type', 'team_withdrawal_notification')
+            ->where('payload->event_id', $event->id)->where('related_type', $activity->getMorphClass())
+            ->where('related_id', $activity->id)->get();
+        $this->assertNotEmpty($logs);
+        $this->assertSame($logs->count(), $logs->unique('recipient_email')->count());
+        Queue::assertCount($logs->count());
+        Queue::assertPushed(\App\Jobs\SendBulkEmailJob::class, $logs->count());
+        foreach ($logs as $log) {
+            Queue::assertPushed(\App\Jobs\SendBulkEmailJob::class, fn ($job) => $job->logId === $log->id);
+        }
     }
 
     public function test_cash_refund_rejects_unverified_stale_unauthorized_and_expired_requests_without_payment_or_roster_changes(): void

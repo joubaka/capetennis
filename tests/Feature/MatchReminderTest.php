@@ -16,12 +16,15 @@ class MatchReminderTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-10-07 23:30:00', 'Africa/Johannesburg'));
+        $clock = CarbonImmutable::parse('2026-10-07 23:30:00', 'Africa/Johannesburg');
+        CarbonImmutable::setTestNow($clock);
+        $this->travelTo($clock);
     }
 
     protected function tearDown(): void
     {
         CarbonImmutable::setTestNow();
+        $this->travelBack();
         parent::tearDown();
     }
 
@@ -45,6 +48,9 @@ class MatchReminderTest extends TestCase
         DB::table('published_schedule_assignments')->insert(['event_id' => $event->id, 'draw_id' => $draw->id,
             'fixture_kind' => 'individual', 'fixture_id' => $fixture->id, 'scheduled_at' => $time,
             'venue_id' => $venueId, 'court' => '4', 'duration' => 75, 'published_at' => now()]);
+        // Raw published snapshots must be read as a fresh public request.
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         return $fixture;
     }
 
@@ -232,6 +238,9 @@ class MatchReminderTest extends TestCase
                 'venue_id' => DB::table('venues')->insertGetId(['name' => 'Team Club']), 'court' => '1', 'duration' => 120,
                 'published_at' => now()]);
         }
+        // Finish raw snapshot setup before either service reads this request's caches.
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $data = app(MatchReminderService::class)->for($user);
         $this->assertCount(1, $data['players'][0]['matches']);
         $match = $data['players'][0]['matches'][0];

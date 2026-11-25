@@ -97,7 +97,9 @@ class TeamReplacementPaymentCorrectionTest extends TestCase
     public function test_preview_is_read_only_and_correction_compensates_refund_and_restores_original_coverage_exactly_once(): void
     {
         foreach ([false, true] as $imported) {
+            // Setup completes a withdrawal with its own managed notices.
             $s = $this->scenario($imported);
+            Mail::fake();
             $service = app(TeamReplacementPaymentCorrectionService::class);
             $sourceBefore = $s['source']->fresh()->getAttributes();
             $closedBefore = $s['replacement']->fresh()->getAttributes();

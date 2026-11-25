@@ -53,6 +53,10 @@ class EventPagePerformanceTest extends TestCase
         $this->insertSnapshot($event, $foreignDraw->id, $foreign->id, $venue->id, 'team', '2026-10-10 07:00:00');
         $this->insertSnapshot($event, $draw->id, 999999, $venue->id, 'team', '2026-10-10 06:00:00');
         $service = app(\App\Services\Scheduling\SchedulePublicationService::class);
+        // Raw snapshot fixtures bypass the canonical publisher's cache invalidation.
+        // Begin the public read with the fresh per-request caches a real GET receives.
+        request()->attributes->remove('published_schedule_rows_'.$event->id);
+        request()->attributes->remove('published_schedule_rows_'.$event->id.'_timing');
         $timing = $service->publishedRows($event, includeParticipants: false);
         $this->assertSame(['individual:'.$first->id, 'team:'.$teamFixture->id], $timing->pluck('fixture_key')->all());
         $this->assertArrayNotHasKey('participants', $timing->first());

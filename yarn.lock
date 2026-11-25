@@ -800,7 +800,7 @@
     "@babel/types" "^7.4.4"
     esutils "^2.0.2"
 
-"@babel/runtime@^7.15.4", "@babel/runtime@^7.17.2", "@babel/runtime@^7.19.0":
+"@babel/runtime@^7.15.4", "@babel/runtime@^7.19.0":
   version "7.29.7"
   resolved "https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.7.tgz"
   integrity sha512-Nq8OhGWiZIZGV6hLHoyAKLLcJihP/xFeBMGJoUrxTX2psI8dCifzLhZISFb+VWS3wFMRDmCGw5R+dOySCqPLhw==
@@ -3536,12 +3536,10 @@ i18next-http-backend@4.0.4:
   resolved "https://registry.npmjs.org/i18next-http-backend/-/i18next-http-backend-4.0.4.tgz"
   integrity sha512-nG9OQKvUsPiTVUBg1rCGmvmWhzxC9GOxVbGdTYyejHVMSUjutt1hiBNVSzhB/ZE7keL9Xkb880kUfhDovV5T5g==
 
-i18next@~21.9.2:
-  version "21.9.2"
-  resolved "https://registry.npmjs.org/i18next/-/i18next-21.9.2.tgz"
-  integrity sha512-00fVrLQOwy45nm3OtC9l1WiLK3nJlIYSljgCt0qzTaAy65aciMdRy9GsuW+a2AtKtdg9/njUGfRH30LRupV7ZQ==
-  dependencies:
-    "@babel/runtime" "^7.17.2"
+i18next@26.3.4:
+  version "26.3.4"
+  resolved "https://registry.npmjs.org/i18next/-/i18next-26.3.4.tgz"
+  integrity sha512-pa7m0d7pBDqGHZxljT+WPFeyFgQ7P7SciPPo1tTqYuO0z4sqADYhwnBESmmGp/wEof1inwdls/k8ZgTg8rxFHA==
 
 iconv-lite@^0.6.3:
   version "0.6.3"

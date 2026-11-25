@@ -51,6 +51,20 @@ class SeriesCtrLeaderboardTest extends TestCase
         return $snapshot;
     }
 
+    private function assertCtrBadgePresence($response, bool $expected): void
+    {
+        $dom = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        try {
+            $dom->loadHTML($response->getContent());
+            $badges = (new \DOMXPath($dom))->query('//*[@data-ctr-rating]');
+            $this->assertSame($expected, $badges->length > 0, 'Check rendered rating elements, not CSS selectors.');
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
     public function test_guests_and_nonmembers_never_load_or_render_private_ctr_even_with_requested_membership_parameters(): void
     {
         Cache::store('array')->flush();
@@ -58,12 +72,12 @@ class SeriesCtrLeaderboardTest extends TestCase
         $series = $this->ranking($player);
         $this->mock(PlayerAbilitySnapshotStore::class)->shouldNotReceive('current');
         $url = route('frontend.ranking.show', $series).'?member=1&ctr=1';
-        $this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
-        $this->actingAs(User::factory()->create())->get($url)->assertOk()
-            ->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
+        $this->assertCtrBadgePresence($this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false), false);
+        $this->assertCtrBadgePresence($this->actingAs(User::factory()->create())->get($url)->assertOk()
+            ->assertDontSee('data-ctr-top-ten', false), false);
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
         // A feature switch without an authoritative entitlement provider grants nothing.
-        $this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
+        $this->assertCtrBadgePresence($this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false), false);
     }
 
     public function test_future_discovery_entitlement_is_separate_fails_closed_and_does_not_grant_player_history(): void
@@ -81,14 +95,15 @@ class SeriesCtrLeaderboardTest extends TestCase
         Gate::define('player-premium-rating-discovery', function (User $user) use ($member, &$active) { return $active && $user->id === $member->id; });
         $url = route('frontend.ranking.show', $series);
         // An explicit discovery entitlement is independent of the public sales switch.
-        $this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertSee('data-ctr-rating', false);
+        $this->assertCtrBadgePresence($this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false), true);
         SiteSetting::set(PlayerRatingAccess::SETTING, '1');
-        $this->actingAs($other)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
-        $this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertSee('data-ctr-rating', false)->assertSee('CTR 72.4')->assertHeader('Cache-Control', 'no-store, private');
+        $this->assertCtrBadgePresence($this->actingAs($other)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false), false);
+        $this->assertCtrBadgePresence($this->actingAs($member)->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)
+            ->assertSee('CTR 72.4')->assertHeader('Cache-Control', 'no-store, private'), true);
         $this->assertFalse(app(PlayerRatingAccess::class)->allows($member, $player));
         $this->assertDatabaseMissing('user_players', ['user_id' => $member->id, 'player_id' => $player->id]);
         $active = false;
-        $this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false)->assertDontSee('data-ctr-rating', false);
+        $this->assertCtrBadgePresence($this->get($url)->assertOk()->assertDontSee('data-ctr-top-ten', false), false);
     }
 
     public function test_super_user_sees_ctr_only_for_current_public_series_participants_without_changing_rankings(): void

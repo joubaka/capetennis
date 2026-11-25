@@ -28,12 +28,12 @@ class CtrLandingPresentationTest extends TestCase
         $publicPathway = ['publicPathwayStage' => 'red', 'publicPathwayEvents' => ['stage' => 'red', 'events' => [], 'limited' => false]];
         $html = Blade::render($style[1].$content[1], ['isSuperUser' => false] + $publicPathway);
         foreach (['R699.00', 'PayFast plans renew automatically until cancelled', 'Annual wallet payments are once off.',
-            'No actual player data', 'Choose your player', 'Purchase details', 'Private history requires a linked account'] as $text) {
+            'Example opponent record · fictional results', 'Choose your player', 'Purchase details', 'Private history requires a linked account'] as $text) {
             $this->assertStringContainsString($text, $html);
         }
         $this->assertStringNotContainsString('R69.00', $html);
         $this->assertStringContainsString('monthly reports', $html);
-        $this->assertStringContainsString('Draw alerts are not included.', $html);
+        $this->assertStringContainsString('Event email updates, including draw alerts, are coming soon and are not included in the current purchase.', $html);
         $this->assertStringNotContainsString('Open CTR ratings', $html);
         $this->assertStringNotContainsString('data-player-plus-benefits', $html);
         if (getenv('CT_CTR_LANDING_QA_HTML') === '1') {

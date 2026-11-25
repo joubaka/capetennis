@@ -15,7 +15,8 @@ class EventEntryNomineeFollowUpTest extends TestCase
     public function test_follow_up_rows_include_only_current_unanswered_nominees_and_preserve_confirmed_counts(): void
     {
         $actor = $this->actor('super-user');
-        $event = Event::factory()->create();
+        $type = \App\Models\EventType::forceCreate(['name' => 'Synthetic follow-up trials', 'type' => \App\Models\EventType::INDIVIDUAL, 'code' => \App\Models\EventType::INTERPROVINCIAL_TRIALS_CODE]);
+        $event = Event::factory()->create(['eventType' => $type->id]);
         $category = CategoryEvent::factory()->for($event)->create(['nominations_published' => true]);
         $waiting = $this->nominee($category, 'Waiting');
         $this->invitation($waiting, $actor, 'sent');
@@ -52,7 +53,8 @@ class EventEntryNomineeFollowUpTest extends TestCase
 
     public function test_contacts_require_assigned_admin_and_are_denied_to_unrelated_users(): void
     {
-        $event = Event::factory()->create();
+        $type = \App\Models\EventType::forceCreate(['name' => 'Synthetic follow-up trials', 'type' => \App\Models\EventType::INDIVIDUAL, 'code' => \App\Models\EventType::INTERPROVINCIAL_TRIALS_CODE]);
+        $event = Event::factory()->create(['eventType' => $type->id]);
         $category = CategoryEvent::factory()->for($event)->create(['nominations_published' => true]);
         $this->nominee($category, 'PrivateContact');
         $admin = $this->actor('admin');
