@@ -1,7 +1,7 @@
 <div class="row">
   <div class="col-xl-8 col-lg-7 col-md-7">
-    @include('frontend.event.partials.event-information')
     @include('frontend.event.partials.event-announcements')
+    @include('frontend.event.partials.event-information')
   </div>
 
   <div class="col-xl-4 col-lg-5 col-md-5">

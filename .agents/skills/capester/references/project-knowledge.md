@@ -161,6 +161,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Product and browser preferences
 
+- Public event pages use a consistent hierarchy across formats: announcements
+  lead the main content above information, draws and registration controls,
+  retaining format-specific workflows. Check responsive CSS order as well as
+  Blade order, especially Masters mobile. See
+  `docs/architecture/event-type-template-parity.md` and
+  `PublicEventPresentationTest`. Local changes do not establish deployment.
+
 - Registration player confirmation must end with an explicit saved button state,
   not hidden loading markup. Keep the served standalone checkout script and its
   resource counterpart aligned; ambiguous saves require read-only confirmation

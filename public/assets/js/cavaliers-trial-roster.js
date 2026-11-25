@@ -171,11 +171,7 @@
         menu.append(
           item(`Move to ${opposite === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, opposite, key), draft[opposite].length >= limits[opposite]),
           item('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0),
-          item('Mark declined', () => {
-            draft.declined.push(draft[key].splice(index, 1)[0]);
-            skippedCandidates.add(player.id);
-            changed();
-          }),
+          item('Mark declined', () => transferPlayer(player, 'declined', key)),
           item(meritCandidates.some(({ id }) => id === player.id) ? 'Return to merit list' : `Remove from ${key === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, null, key))
         );
         menu.lastElementChild.classList.add('text-danger');
@@ -584,8 +580,8 @@
   }
 
   async function transferPlayer(player, target, source = null) {
-    if (!draft || busy || stale || (target && !Object.hasOwn(limits, target))) return;
-    if (target && draft[target].length >= limits[target]) return;
+    if (!draft || busy || stale || (target && !['selected', 'reserves', 'declined'].includes(target))) return;
+    if (target && draft[target].length >= (target === 'declined' ? 256 : limits[target])) return;
     if (!source && rosterIds().has(player.id)) return;
     const proposed = { ...draft, ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, draft[key].slice()])) };
     if (source) {
@@ -609,6 +605,11 @@
       if (typeof revision !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(revision)) throw new Error('The save could not be confirmed.');
       draft = { ...proposed, revision };
       dirty = false;
+      if (target === 'declined') {
+        skippedCandidates.add(player.id);
+        await transferNominations(draft.selected.length > 0, `${player.name} marked declined. Draft saved. `);
+        return;
+      }
       if (target) skippedCandidates.delete(player.id);
       else skippedCandidates.add(player.id);
       setStatus(target ? `${player.name} added to the end of ${target === 'selected' ? 'nominations' : 'reserves'}. Draft saved.`
@@ -791,10 +792,10 @@
     publicationReview.showModal();
   }
 
-  async function transferNominations(makePublic) {
+  async function transferNominations(makePublic, prefix = '') {
     const option = division.selectedOptions[0];
     const name = option.textContent.trim();
-    if (!makePublic && !window.confirm(`Hide nominations for ${name} from the public event page?`)) return;
+    if (!makePublic && !prefix && !window.confirm(`Hide nominations for ${name} from the public event page?`)) return;
 
     busy = true;
     searchVersion++;
@@ -811,13 +812,13 @@
           publish: makePublic,
         }),
       });
-      setStatus(makePublic
+      setStatus(prefix + (makePublic
         ? `${draft.publication.players.length} selected players published for ${name}.`
-        : `Nominations for ${name} are now private.`);
+        : `Nominations for ${name} are now private.`));
     } catch (error) {
       stale = error.status === 409;
       reload.classList.toggle('d-none', !stale);
-      setStatus(error.message, true);
+      setStatus(prefix + (prefix ? 'Publication was not confirmed. ' : '') + error.message, true);
     } finally {
       busy = false;
       render();

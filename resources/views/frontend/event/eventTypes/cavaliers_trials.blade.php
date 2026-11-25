@@ -28,8 +28,8 @@
         <div class="row">
             <!-- Connections -->
             <div class="col-lg-12 col-xl-12 ">
-                @include('frontend.event.partials.event-information')
                 @include('frontend.event.partials.event-announcements')
+                @include('frontend.event.partials.event-information')
 
                 <div class="card p-4 mt-4 ">
                     <h5 class="pb-1 mb-4">Nominations</h5>

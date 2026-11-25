@@ -27,7 +27,15 @@ function installFixture() {
       if (mode === 'invalid200') return response({});
       return response({revision: fixture.draft.revision});
     }
-    if (options.method && options.method !== 'GET') { fixture.publicationCalls++; return response({message: 'No publication is allowed in this fixture.'}, 403); }
+    if (options.method && options.method !== 'GET') {
+      fixture.publicationCalls++;
+      if (!fixture.allowPublication) return response({message: 'No publication is allowed in this fixture.'}, 403);
+      const body = JSON.parse(options.body);
+      fixture.lastPublication = body;
+      if (body.revision !== fixture.draft.revision || body.fingerprint !== publication.fingerprint) return response({message: 'Stale publication.'}, 409);
+      fixture.draft.publication = {...publication, players: body.publish ? fixture.draft.selected : fixture.draft.publication.players, published: body.publish};
+      return response(fixture.draft.publication);
+    }
     if (url.pathname.endsWith('/candidates')) return response({candidates});
     if (url.pathname.endsWith('/players')) return response(candidates.filter(item => item.name.toLowerCase().includes((url.searchParams.get('q') || '').toLowerCase())));
     if (url.pathname.endsWith('/setup')) return response({regions: [], region_ids: [], excluded_result_region_ids: []});

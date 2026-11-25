@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-076",
+      "title": "Event announcements appear below information or controls",
+      "scope": "Shared public event presentation across supported format templates.",
+      "symptoms": "Visitors encounter information, draws or entry controls before a published announcement; mobile Masters may differ from desktop.",
+      "cause": "Format templates included shared sections in different orders, and Masters mobile CSS separately ordered information ahead of announcements.",
+      "fix": "Keep the shared event shell and announcement partial. Place announcements first in each format's main content and align responsive CSS order. Preserve format-specific features, publication gates and read status. Follow the event template parity document.",
+      "verification": "On 2026-11-25 PublicEventPresentationTest and EventAnnouncementPresentationTest passed 14 tests and 67 assertions locally, covering supported templates and Masters responsive ordering. Production layout deployment is not implied.",
+      "limits": "Guide only. Presentation ordering does not authorize publication, email, admission changes or deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["docs/architecture/event-type-template-parity.md"],
+      "tests": ["tests/Unit/PublicEventPresentationTest.php", "tests/Feature/EventAnnouncementPresentationTest.php"]
+    },
+    {
       "id": "RK-075",
       "title": "Correct a mistaken private-admin Interpro entry for normal registration",
       "scope": "One exact operational private-admin trial registration where the reviewing operator confirms no private funds were collected; preserve original history while enabling ordinary nominated registration.",

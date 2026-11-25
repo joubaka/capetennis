@@ -49,7 +49,7 @@ the existing merit order. Its explicit Add to nominations/Add reserve buttons,
 the equivalent player-search additions, and roster move/remove actions save the
 full current private draft immediately through its revision-checked PUT. This
 includes pending manual draft edits; new or moved players append to the chosen
-list. Up/down, swap and decline edits retain their explicit Save draft workflow.
+list. Up/down, swap and undo-decline edits retain their explicit Save draft workflow.
 Numbering and the next-ten pool update after a confirmed save, without a page
 refresh. A rejected validation leaves the prior local draft and pending edits
 intact. A stale revision or ambiguous network/server outcome requires reloading
@@ -59,8 +59,14 @@ manually searched player does not invent candidate eligibility or source rank.
 See `CavaliersTrialRosterDraftTest` and the fictional actual-JS browser regression
 `tests/Frontend/cavaliers-roster-transfer.browser.cjs` for persistence, ordering,
 failure, capacity and publication-boundary coverage.
-Staff can record or undo a decline in the private draft. Saving a draft
-preserves the last public list. Publishing from the roster requires reviewing
+Staff marking a player declined immediately save the full draft and automatically
+publish its selected list through the revision/fingerprint-checked endpoints.
+New declines require the canonical participation check: active registrations or
+unresolved/payment-evidenced checkouts require review without changing money or
+entry state. If no selected players remain, the list is hidden instead. A failed
+save prevents publication; a failed publication is reported separately from the
+confirmed saved decline. Undo decline remains a private staged edit. Saving a draft
+otherwise preserves the last public list. Manual publishing requires reviewing
 the differences against the current nominations and applies the saved order.
 Unpublishing hides the list and retains its nominations.
 The registration-facing public Cavaliers nomination list displays unregistered
@@ -196,6 +202,10 @@ not a production inventory and does not authorise a stored type backfill.
    information, announcements, document presentation, headers and navigation where
    their contracts match. Preserve section anchors, responsive ordering, form
    fields, route names and JavaScript hooks.
+   Announcements are the first main-column content after the shared event header
+   in every format, ahead of event information and draw shortcuts on desktop and
+   mobile. Preserve the common announcement card, read tracking and empty state;
+   Masters mobile CSS must retain this order when flattening its columns.
 3. Match both document-route requirements (`auth` and `super-user|admin`) and the
    server-side `event.manage` ability when displaying document mutations.
    `User::is_admin()` returns a collection and is not a boolean check. A roleless

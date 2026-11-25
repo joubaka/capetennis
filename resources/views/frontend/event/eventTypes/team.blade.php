@@ -116,6 +116,8 @@
     <div class="col-xl-8 col-lg-7 col-md-7">
 
 
+      @include('frontend.event.partials.event-announcements')
+
       {{-- 🔹 Draws and Order of Play (Mobile / Tablet only) --}}
       <div id="event-draws-mobile" class="card d-block d-md-none mb-4" tabindex="-1" data-event-draw-section aria-label="Published draws">
         <div class="card-body">
@@ -123,7 +125,6 @@
         </div>
       </div>
       @include('frontend.event.partials.event-information')
-      @include('frontend.event.partials.event-announcements')
 
 
       {{-- 🔹 Regions & Teams --}}

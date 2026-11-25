@@ -4,6 +4,8 @@
   {{-- LEFT COLUMN --}}
   <div class="col-xl-8 col-lg-7 col-md-7">
 
+    @include('frontend.event.partials.event-announcements')
+
     @if(($drawPublicationSummary['total'] ?? 0) > 0)
       <div class="mb-4">
         <a href="#event-draws-match-times" class="btn btn-primary w-100">
@@ -14,7 +16,6 @@
       </div>
     @endif
 
-    @include('frontend.event.partials.event-announcements')
     @include('frontend.event.partials.event-draws')
     @include('frontend.event.partials.event-information')
 

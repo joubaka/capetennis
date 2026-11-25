@@ -1,5 +1,23 @@
 # Draw workspace browser regressions
 
+## Cavaliers roster transfers and admin declines
+
+Export the actual Blade fragment by setting `CT_ROSTER_TRANSFER_QA_OUTPUT` to
+`storage/app/testing/cavaliers-decline-qa` while running
+`php vendor/bin/phpunit tests/Feature/CavaliersTrialRosterDraftTest.php` against
+the configured test database. Keep the same output variable when running
+`node --test tests/Frontend/cavaliers-roster-transfer.browser.cjs`.
+Use Node 20+ (the Codex bundled runtime is suitable), an existing Playwright
+installation on `NODE_PATH`, and optionally `CT_BROWSER_EXECUTABLE` pointing
+to installed Chrome. No application dependency changes are needed.
+
+The fictional harness intercepts all requests. It verifies private transfers,
+decline save rejection, publication failure, automatic publication with the
+saved revision, and hiding the list after its last selected player declines.
+Backend tests separately check authorization, division isolation, stale
+fingerprints and participation guards before save and at publication. No live
+nomination, registration, payment or email is changed by this harness.
+
 ## CTR Certified planner
 
 Export fictional full-page states from `CtrDrawPlannerTest` with

@@ -6,7 +6,7 @@ const path = require('node:path');
 const {chromium} = require('playwright');
 const {buildFixture} = require('./cavaliers-roster-transfer-fixture.cjs');
 
-test('roster transfers persist ordered full drafts, refill merit, reject caps and recover ambiguous failures without publishing', async () => {
+test('roster transfers stay private while declines save and publish automatically with guarded failures', async () => {
   const directory = process.env.CT_ROSTER_TRANSFER_QA_OUTPUT || 'storage/app/testing/cavaliers-transfer-qa';
   const html = buildFixture(fs.readFileSync(path.join(directory, 'roster.html'), 'utf8'));
   const browser = await chromium.launch({headless: true, executablePath: process.env.CT_BROWSER_EXECUTABLE});
@@ -68,6 +68,30 @@ test('roster transfers persist ordered full drafts, refill merit, reject caps an
     assert.equal(await page.locator('[data-merit-list] [data-transfer-target="selected"]').first().isDisabled(), true);
     assert.equal(await page.locator('[data-merit-list] [data-transfer-target="reserves"]').first().isDisabled(), true);
     assert.equal(await page.evaluate(() => window.rosterTransferFixture.publicationCalls), 0);
+    // Declines save first, then publish automatically; ordinary transfers above never publish.
+    await page.fill('[data-fixture-delay]', '0');
+    await page.selectOption('[data-fixture-mode]', 'reject422');
+    await action('selected', 0, 'Mark declined');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('Transfer rejected.'));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.publicationCalls), 0);
+    await action('selected', 0, 'Mark declined');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('Publication was not confirmed.'));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.declined.some(p => p.id === 1)), true);
+    assert.equal(await page.locator('[data-save]').isDisabled(), true);
+    await page.evaluate(() => { window.rosterTransferFixture.allowPublication = true; });
+    await action('selected', 0, 'Mark declined');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('selected players published'));
+    assert.deepEqual(await page.evaluate(() => ({revision: window.rosterTransferFixture.lastPublication.revision, publish: window.rosterTransferFixture.lastPublication.publish})),
+      await page.evaluate(() => ({revision: window.rosterTransferFixture.draft.revision, publish: true})));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.publication.players.some(p => [1,2].includes(p.id))), false);
+    // The last selected decline hides the public list rather than attempting an empty publication.
+    await page.evaluate(() => { window.rosterTransferFixture.draft.selected = window.rosterTransferFixture.draft.selected.slice(0, 1); });
+    await page.locator('[data-fixture-reload]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-list="selected"] > li').length === 1);
+    await action('selected', 0, 'Mark declined');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('now private.'));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.lastPublication.publish), false);
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.publication.published), false);
     assert.deepEqual(errors, []);
     for (const width of [480,768,1280]) { await page.setViewportSize({width,height:900}); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
   } finally { await browser.close(); }

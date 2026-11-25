@@ -16,6 +16,8 @@ class PublicEventPresentationTest extends TestCase
             ['masters.blade.php'],
             ['cavaliers_trials.blade.php'],
             ['parentChildDoubles.blade.php'],
+            ['interprovincial-trials.blade.php'],
+            ['default.blade.php'],
         ];
     }
 
@@ -32,6 +34,24 @@ class PublicEventPresentationTest extends TestCase
             "frontend.event.partials.event-announcements",
             $html
         );
+        $this->assertLessThan(
+            strpos($html, "@include('frontend.event.partials.event-information')"),
+            strpos($html, "@include('frontend.event.partials.event-announcements')"),
+            'Announcements must precede event information in every public format.'
+        );
+
+        $drawShortcut = match ($template) {
+            'individual.blade.php' => "@if((\$drawPublicationSummary",
+            'team.blade.php', 'interprovincial-trials.blade.php' => '<div id="event-draws-mobile"',
+            default => null,
+        };
+        if ($drawShortcut !== null) {
+            $this->assertLessThan(
+                strpos($html, $drawShortcut),
+                strpos($html, "@include('frontend.event.partials.event-announcements')"),
+                'Draw shortcuts must not displace announcements on narrow screens.'
+            );
+        }
     }
 
     public function test_masters_only_flattens_columns_below_the_desktop_breakpoint(): void
@@ -39,6 +59,8 @@ class PublicEventPresentationTest extends TestCase
         $html = file_get_contents(resource_path('views/frontend/event/eventTypes/masters.blade.php'));
 
         $this->assertStringContainsString('@media(max-width:991.98px)', $html);
+        $this->assertStringContainsString('.masters-announcements{order:1}', $html);
+        $this->assertStringContainsString('.masters-information{order:2}', $html);
         $this->assertStringNotContainsString(
             '.masters-public-event .masters-flow{display:flex;flex-direction:column}.masters-public-event .masters-flow>.col-xl-8',
             preg_replace('/@media\(max-width:991\.98px\)\{.*$/s', '', $html)

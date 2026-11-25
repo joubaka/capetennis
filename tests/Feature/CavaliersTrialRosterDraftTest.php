@@ -28,6 +28,53 @@ class CavaliersTrialRosterDraftTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_admin_decline_requires_participation_review_before_saving(): void
+    {
+        [$event, $division] = $this->division();
+        $this->actingAs($this->administrator($event));
+        $player = Player::factory()->create();
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $revision = $this->putJson($url, ['revision' => null, 'selected' => [$player->id], 'reserves' => []])
+            ->assertOk()->json('revision');
+        $this->pendingCheckout($event, $division, $player);
+        $this->putJson($url, ['revision' => $revision, 'selected' => [], 'reserves' => [], 'declined' => [$player->id]])
+            ->assertUnprocessable()->assertJsonValidationErrors('nomination');
+        $this->getJson($url)->assertJsonPath('revision', $revision)->assertJsonPath('selected.0.id', $player->id)->assertJsonPath('declined', []);
+    }
+
+    public function test_publication_rechecks_participation_after_decline_was_saved(): void
+    {
+        [$event, $division] = $this->division();
+        $this->actingAs($this->administrator($event));
+        [$player, $remaining] = Player::factory()->count(2)->create()->all();
+        $nomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $player->id]);
+        $division->update(['nominations_published' => true]);
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $revision = $this->putJson($url, ['revision' => null, 'selected' => [$remaining->id], 'reserves' => [], 'declined' => [$player->id]])
+            ->assertOk()->json('revision');
+        $fingerprint = $this->getJson($url)->json('publication.fingerprint');
+        $this->pendingCheckout($event, $division, $player);
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $division]),
+            ['publish' => true, 'revision' => $revision, 'fingerprint' => $fingerprint])
+            ->assertUnprocessable()->assertJsonValidationErrors('nomination');
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id, 'player_id' => $player->id]);
+        $this->assertDatabaseCount('event_nominations', 1);
+        $this->assertDatabaseHas('registration_orders', ['status' => 'pending', 'pay_status' => false]);
+    }
+
+    private function pendingCheckout(Event $event, CategoryEvent $division, Player $player): void
+    {
+        $payer = $this->administrator($event);
+        $registration = \App\Models\Registration::create([]);
+        $registration->players()->attach($player);
+        $order = \App\Models\RegistrationOrder::create(['user_id' => $payer->id, 'total_fee' => 100,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 100, 'wallet_debited' => false,
+            'payfast_paid' => false, 'pay_status' => false, 'status' => 'pending']);
+        (new \App\Models\RegistrationOrderItems())->forceFill(['order_id' => $order->id,
+            'registration_id' => $registration->id, 'category_event_id' => $division->id,
+            'player_id' => $player->id, 'user_id' => $payer->id, 'item_price' => 100])->save();
+    }
+
     public function test_only_event_252_under_13_girls_can_save_and_publish_33_selected_players(): void
     {
         Mail::fake();

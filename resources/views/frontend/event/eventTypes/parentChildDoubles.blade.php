@@ -7,8 +7,8 @@
         <div class="row">
             <!-- Connections -->
             <div class="col-lg-12 col-xl-12 ">
-                @include('frontend.event.partials.event-information')
                 @include('frontend.event.partials.event-announcements')
+                @include('frontend.event.partials.event-information')
 
 
 

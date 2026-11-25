@@ -23,8 +23,9 @@
     <!-- ================= LEFT COLUMN ================= -->
     <div class="col-xl-8 col-lg-7 col-md-7">
 
-      @include('frontend.event.partials.event-information')
       @include('frontend.event.partials.event-announcements')
+
+      @include('frontend.event.partials.event-information')
 
    
       {{-- 🔹 MObile version only --}}

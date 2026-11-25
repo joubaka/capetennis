@@ -161,6 +161,9 @@ class CavaliersTrialRosterController extends Controller
 
         $conflict = 'This draft changed in another session. Reload it before editing again.';
         abort_unless($data['revision'] === $draft?->revision, 409, $conflict);
+        foreach (array_diff($declined, $previousDeclines) as $playerId) {
+            app(\App\Services\CavaliersNominationDecline::class)->assertNoParticipation($categoryEvent, $playerId);
+        }
         $existing = $draft ? [...json_decode($draft->selected, true), ...json_decode($draft->reserves, true)] : [];
         $players = Player::query()->select('id', 'name', 'surname')->whereIn('id', $ids)->get()->keyBy('id');
         if ($players->count() !== count($ids)) {
@@ -239,6 +242,12 @@ class CavaliersTrialRosterController extends Controller
 
             $retained = $existing->whereIn('player_id', $selected)->keyBy('player_id');
             $remove = $existing->diff($retained);
+            $declined = json_decode($draft->declined ?? '[]', true, flags: JSON_THROW_ON_ERROR);
+            foreach ($remove as $nomination) {
+                if (in_array((int) $nomination->player_id, $declined, true)) {
+                    app(\App\Services\CavaliersNominationDecline::class)->assertNoParticipation($division, (int) $nomination->player_id, true);
+                }
+            }
             abort_if(\App\Models\InterprovincialTrialInvitation::query()->whereIn('nomination_id', $remove->modelKeys())->exists(),
                 422, 'A nomination to remove is linked to an invitation. Review it before publishing.');
             foreach ($remove as $nomination) {

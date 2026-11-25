@@ -33,7 +33,7 @@ final class CavaliersNominationDecline
             ->get(['id', 'event_id', 'player_id', 'roster_position'])->toArray(), JSON_THROW_ON_ERROR));
     }
 
-    private function assertNoParticipation(CategoryEvent $division, int $playerId, bool $lock = false): void
+    public function assertNoParticipation(CategoryEvent $division, int $playerId, bool $lock = false): void
     {
         $fail = fn () => throw ValidationException::withMessages(['nomination' => 'This player has a registration, checkout or payment record that must be reviewed first. Use the existing checkout or withdrawal process, or contact the event manager.']);
         $entries = CategoryEventRegistration::withTrashed()->where('category_event_id', $division->id)
