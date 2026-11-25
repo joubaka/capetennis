@@ -2,9 +2,9 @@
 @php
   $canBrowse = $ratingTopTen['can_browse'] ?? false;
   $ageLabel = $ratingTopTen['age_options'][$ratingTopTen['selected_age']] ?? 'Age group unavailable';
-  $genderLabel = \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? 'Gender unavailable';
+  $genderLabel = \App\Services\Performance\PlayerRatingProfileDirectory::GENDERS[$ratingTopTen['filters']['rating_gender']] ?? ($ratingTopTen['filters']['rating_gender'] === '' ? 'All genders' : 'Gender unavailable');
   $positionLabels = $canBrowse
-      ? ['age' => 'CTR · '.$ageLabel.' · all genders', 'overall' => 'CTR · all ages and genders']
+      ? ['age' => 'CTR · '.$ageLabel.' · '.$genderLabel, 'overall' => 'CTR · all ages · '.$genderLabel]
       : ['age' => 'CTR · '.$ageLabel.' · '.$genderLabel];
   $hasRatingPosition = !empty($ratingTopTen['summary']['age']['player']) || ($canBrowse && !empty($ratingTopTen['summary']['overall']['player']));
 @endphp

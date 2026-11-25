@@ -1431,6 +1431,7 @@ class TeamPaymentService
             app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->markWithdrawn($event->id, $team->id, $expectedPlayerId, $actor, allowAutomaticReplacement: false);
             $requested = app(\App\Domain\Finance\Services\RefundRequestService::class)->requestSelectedTeamCashRefund($withdrawn, $selected->fresh(), $actor, $reference, $reason, 'remove', $deadlineOverride, $overrideReason);
             app(\App\Domain\Refunds\Services\RefundExecutionService::class)->recordTeamCashRefund($requested, $actor, $reference, $reason, 'remove', $deadlineOverride, $overrideReason);
+            app(\App\Services\TeamWithdrawalNotificationService::class)->completed($team, \App\Models\Player::findOrFail($expectedPlayerId), $event, $actor, $withdrawn);
         });
     }
 

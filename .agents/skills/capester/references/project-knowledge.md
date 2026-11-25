@@ -382,6 +382,18 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   withdrawal remain separate. Verify `Event::allowsWithdrawalBy`, `EntryService`,
   `TeamPaymentService`, `TeamPlayerWithdrawController` and their withdrawal tests.
 
+- Completed team withdrawal mail uses an atomic completion activity's actor and
+  time, not the payment order's `withdrawn_at`, which may only mark opening the
+  refund chooser while the roster place remains active. Unpaid roster removals
+  use the same completion evidence without creating payment orders. Keep managed
+  notification-only dispatch, current recipient/source checks, settings and
+  deduplication; old drafts are not retroactively sent. Individual/default/custom,
+  additional-contact, daily and Masters notices show persisted player/actor/time
+  facts and label missing history honestly. See `docs/event-email-communications.md`,
+  RK-072, `AutomaticWithdrawalEmailTest` and
+  `IndividualWithdrawalMailAuthorizationTest`; local tests do not prove deployment
+  or inbox delivery.
+
 - Individual PayFast browser returns must report saved order state; reaching a
   success URL is not settlement. Keep the entire callback settlement, receipt,
   wallet debit and entry/invitation confirmation in one retried transaction,
@@ -448,7 +460,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   The backend nomination register includes archived nominees and validated
   deletion-audit history in one paginated list. Status filters and counts cover
   the whole event; an archived withdrawal still counts as Withdrawn, while a
-  removed nomination does not establish a decline. Historical rows are read-only.
+  removed nomination does not establish a decline. The nomination register's
+  reviewed re-add action is a narrow exception to read-only history: it requires
+  an integrity-verified deletion audit for deleted rows, retains the original
+  nomination ID and responses, and rejects registration or checkout history.
+  Verify `NominationReactivationService` and `InterproNominationHistoryTest`;
+  archive-only restoration still never reverses a withdrawal.
   Verify `NominationHistory` and `InterproNominationHistoryTest` before changing
   this projection; audit snapshots must remain scoped to the exact event and
   category and expose only reviewed presentation fields.
@@ -492,6 +509,12 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Separate event-year cohorts from transaction dates, wallet spending from fresh
   bank deposits, pending liabilities from reversals, and current from stored fees.
 - Recording an already-paid director payment does not initiate a bank transfer.
+  Event payout requests are a separate inert review workflow: interim amounts
+  leave a positive registration balance; final requests require an audited
+  completion attestation bound to current dates and completed status. Editable
+  legacy status alone never qualifies. Pending registration refunds block
+  requests; clothing is excluded and event funds are not a director entitlement.
+  See `docs/event-payout-requests.md` and `EventPayoutRequestTest`.
   For full-net settlement inspect `EventDirectorNetSettlementService` and its
   related reconciliation/clothing services: preserve exact cents, signed current
   previews, event-scoped recipients, idempotency and linked atomic records.

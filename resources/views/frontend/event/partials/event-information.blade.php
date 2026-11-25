@@ -13,7 +13,7 @@
       </div>
     </div>
 
-    @if(filled(strip_tags($event->information ?? '')))
+    @if(app(\App\Services\RichTextSanitizer::class)->hasEventContent($event->information))
       <div class="event-information-content">
         {!! $event->information !!}
       </div>

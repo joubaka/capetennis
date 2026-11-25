@@ -20,6 +20,23 @@
 @section('page-style')
 <link rel="stylesheet" href="{{ asset('assets/vendor/css/pages/page-profile.css') }}">
 <style>
+  .event-ctr-certified {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .3rem .75rem .3rem .35rem;
+    border: 1px solid #dce5ef;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #172e45;
+    font-size: .8rem;
+    font-weight: 700;
+    margin-bottom: .75rem;
+  }
+  .event-ctr-certified .ti { color: #285a87; }
+  .event-withdraw-entry { max-width: 100%; white-space: normal; text-align: left; min-height: 44px; }
+  .event-withdraw-entry > span { min-width: 0; overflow-wrap: anywhere; }
+  .event-withdraw-entry small { display: block; font-weight: 400; }
   .public-event-view .event-section-card {
     border: 1px solid #e1e8ee;
     box-shadow: 0 .25rem 1rem rgba(23, 46, 69, .06);
@@ -331,7 +348,13 @@
         <div class="flex-grow-1 mt-3 mt-sm-5">
           <div class="mx-4">
             <h4>{{ $event->name }}</h4>
-            @if($event->isCtrCertified())<span class="badge bg-success">CTR Certified</span>@endif
+            @if($event->isCtrCertified())
+              <span class="event-ctr-certified" aria-label="CTR Certified">
+                <x-ctr-mark />
+                <span><span class="visually-hidden">CTR </span>Certified</span>
+                <i class="ti ti-shield-check" aria-hidden="true"></i>
+              </span>
+            @endif
 
             <ul class="list-inline d-flex gap-2 flex-wrap">
               @if($event->isIndividual())
@@ -395,12 +418,15 @@
 
 @if($canWithdraw['ok'])
   <button type="button"
-          class="btn btn-danger btn-sm m-1 withDrawPlayer"
+          class="btn btn-danger btn-sm m-1 withDrawPlayer event-withdraw-entry"
           data-url="{{ route('registrations.withdraw', $registration) }}"
-          aria-label="Withdraw entry for {{ $registration->display_name }}"
-          title="Withdraw this player from the event">
+          data-player-name="{{ $registration->display_name }}"
+          data-division-name="{{ $registration->categoryEvent?->category?->name ?? 'Division not specified' }}"
+          aria-label="Withdraw {{ $registration->display_name }} from {{ $registration->categoryEvent?->category?->name ?? 'Division not specified' }}">
     <i class="ti ti-x me-1" aria-hidden="true"></i>
-    <span class="small">Withdraw</span>
+    <span>Withdraw {{ $registration->display_name }}
+      <small>{{ $registration->categoryEvent?->category?->name ?? 'Division not specified' }}</small>
+    </span>
   </button>
 @endif
 @if($registration->status === 'withdrawn')
@@ -464,6 +490,8 @@
 
 {{-- ================= PAGE JS (ONLY PLACE FOR JS) ================= --}}
 @section('page-script')
+<link rel="stylesheet" href="{{ asset('css/event-rich-text.css') }}">
+<script src="{{ asset('js/event-rich-text.js') }}"></script>
 
 @include('frontend.event.partials.team-payment-recovery-script')
 

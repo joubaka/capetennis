@@ -623,6 +623,7 @@ Route::prefix('backend')->middleware('auth')->group(function () {
     Route::put('events/{event}/nominations/publication', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'publication'])->name('nominations.publication');
     Route::post('events/{event}/categories/{categoryEvent}/nominations', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'nominate'])->name('nominations.store');
     Route::delete('events/{event}/categories/{categoryEvent}/nominations/{nomination}', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'removeNomination'])->name('nominations.destroy');
+    Route::post('events/{event}/categories/{categoryEvent}/nominations/{nominationId}/reactivate', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'reactivateNomination'])->whereNumber('nominationId')->name('nominations.reactivate');
     Route::post('events/{event}/categories/{categoryEvent}/nominations/{nomination}/administer', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'administerNomination'])->name('nominations.administer');
     Route::post('events/{event}/invitations/prepare', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'prepare'])->name('invitations.prepare');
     Route::post('events/{event}/invitations/send', [\App\Http\Controllers\Backend\InterprovincialTrialInvitationController::class, 'sendCurrent'])->name('invitations.send-current');
@@ -1179,6 +1180,13 @@ Route::get(
 )->middleware('role:super-user|admin|convenor')->name('admin.events.transactions');
 
 /////////////////////////event finances (convenor)
+Route::middleware('auth')->group(function () {
+  Route::get('event/{event}/payout-requests', [\App\Http\Controllers\Backend\EventPayoutRequestController::class, 'show'])->name('admin.events.payout-requests');
+  Route::post('event/{event}/payout-requests', [\App\Http\Controllers\Backend\EventPayoutRequestController::class, 'store'])->name('admin.events.payout-requests.store');
+  Route::post('event/{event}/payout-completion', [\App\Http\Controllers\Backend\EventPayoutRequestController::class, 'complete'])->name('admin.events.payout-requests.complete');
+  Route::get('superadmin/payout-requests', [\App\Http\Controllers\Backend\EventPayoutRequestController::class, 'index'])->name('superadmin.payout-requests');
+  Route::post('superadmin/payout-requests/{event}/{payoutRequest}', [\App\Http\Controllers\Backend\EventPayoutRequestController::class, 'review'])->name('superadmin.payout-requests.review');
+});
 
 Route::get('event/{event}/finances/report.pdf', [\App\Http\Controllers\Backend\EventFinanceController::class, 'downloadReport'])->name('admin.events.finances.report.pdf');
 Route::post('event/{event}/finances/report/email', [\App\Http\Controllers\Backend\EventFinanceController::class, 'emailReport'])->middleware('throttle:10,1')->name('admin.events.finances.report.email');

@@ -53,6 +53,18 @@
   </div>
   <div class="interpro-nomination-row__actions" role="cell">
     <span class="interpro-cell-label w-100" aria-hidden="true">Actions</span>
+    @if($presentation['reactivation_revision'] ?? null)
+      <details><summary class="btn btn-sm btn-outline-primary interpro-row-action">Re-add nomination</summary>
+        <form method="POST" action="{{ route('backend.interprovincial-trials.nominations.reactivate', [$event, $categoryEvent, $nomination->id]) }}" class="mt-2">
+          @csrf<input type="hidden" name="revision" value="{{ $presentation['reactivation_revision'] }}">
+          <label class="form-label small" for="reactivation-reason-{{ $nomination->id }}">Reason for re-adding</label>
+          <input id="reactivation-reason-{{ $nomination->id }}" name="reason" class="form-control form-control-sm" minlength="5" maxlength="1000" required>
+          <p class="small text-muted">Re-adds this player to the same category. If nominations are public, the player will appear publicly again. Previous history is retained. Registration and payment must still be completed separately; no email is sent.</p>
+          <label class="small d-block"><input type="checkbox" name="confirm" value="1" required> Confirm the player is available again</label>
+          <button class="btn btn-sm btn-primary mt-2 interpro-row-action">Confirm re-add</button>
+        </form>
+      </details>
+    @endif
     @if($presentation['historical'] ?? false)
       <span class="small text-muted">Retained history</span>
     @else

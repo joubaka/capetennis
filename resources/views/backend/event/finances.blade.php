@@ -590,6 +590,7 @@
   </section>
   @endfragment
 
+  @if(isset($financeTabs['clothing']))
   @fragment('finance-clothing')
   <section class="finance-tab-panel" id="finance-panel-clothing" role="tabpanel" aria-labelledby="finance-tab-clothing" tabindex="0" @if($activeFinanceTab !== 'clothing') hidden @endif>
   <div class="card mb-4" id="finance-clothing">
@@ -604,6 +605,7 @@
   </section>
   @endfragment
 
+  @endif
   @fragment('finance-expenses')
   <section class="finance-tab-panel" id="finance-panel-expenses" role="tabpanel" aria-labelledby="finance-tab-expenses" tabindex="0" @if($activeFinanceTab !== 'expenses') hidden @endif>
   {{-- ══════════════════════════════════════════════════════════════════════
@@ -917,7 +919,7 @@
        SECTION 3 – RECONCILIATION / RECON
   ══════════════════════════════════════════════════════════════════════ --}}
   @include('backend.event.partials.expense-reimbursements')
-  @if(auth()->user()?->hasRole('super-user'))
+  @if(auth()->user()?->hasRole('super-user') && \App\Support\EventCapabilities::teamPayments($event))
     <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2">
       <span>Players showing “Payment being checked” need a late payment review.</span>
       <a class="btn btn-outline-primary" style="min-height:44px" href="{{ route('backend.late-team-payments.index', $event) }}">Review late team payments</a>

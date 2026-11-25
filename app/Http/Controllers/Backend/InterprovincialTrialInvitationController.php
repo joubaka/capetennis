@@ -40,7 +40,7 @@ class InterprovincialTrialInvitationController extends Controller
         $successfulInitialIds = $this->successfulInitialInvitationIds($invitations);
         $failedFollowUpIds = $this->failedFollowUpInvitationIds($invitations);
         $latestInvitationsByNomination = $invitations->keyBy(fn (InterprovincialTrialInvitation $invitation): int => (int) $invitation->nomination_id);
-        $nominationPresentations = $nominations->getCollection()->mapWithKeys(function (EventNomination $nomination) use ($latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
+        $nominationPresentations = $nominations->getCollection()->mapWithKeys(function (EventNomination $nomination) use ($event, $latestInvitationsByNomination, $successfulInitialIds, $failedFollowUpIds): array {
             $invitation = $latestInvitationsByNomination->get((int) $nomination->id);
 
             $presentation = $this->invitationPresentation($invitation, $successfulInitialIds->contains((int) $invitation?->id), $failedFollowUpIds->contains((int) $invitation?->id));
@@ -52,6 +52,10 @@ class InterprovincialTrialInvitationController extends Controller
             if ($nomination->archived_at || $nomination->removed_at) {
                 foreach (['can_remove', 'can_administer', 'can_resend', 'can_retry_follow_up'] as $flag) $presentation[$flag] = false;
                 $presentation['historical'] = true;
+            }
+            if ($nomination->player_id && in_array($nomination->history_state, ['removed', 'archived', 'declined'], true)) {
+                $category = $event->categoryEvents->firstWhere('id', $nomination->category_event_id);
+                $presentation['reactivation_revision'] = app(\App\Services\InterprovincialTrials\NominationReactivationService::class)->revision($event, $category, (int) $nomination->id);
             }
             return [$nomination->id => $presentation];
         });
@@ -343,6 +347,14 @@ class InterprovincialTrialInvitationController extends Controller
         $data = $request->validate(['action' => 'required|in:decline,paid_privately']);
         $service->act($event, $categoryEvent, $nomination, $request->user(), $data['action']);
         return back()->with('success', $data['action'] === 'decline' ? 'Nomination declined; history retained.' : 'Paid privately recorded and entry created. This is not a reconciled payment receipt.');
+    }
+
+    public function reactivateNomination(Request $request, Event $event, CategoryEvent $categoryEvent, int $nominationId, \App\Services\InterprovincialTrials\NominationReactivationService $service)
+    {
+        $this->authorizeEvent($event);
+        $data = $request->validate(['revision' => 'required|string|size:64', 'reason' => 'required|string|min:5|max:1000', 'confirm' => 'accepted']);
+        $service->reactivate($event, $categoryEvent, $nominationId, $request->user(), $data['revision'], $data['reason']);
+        return back()->with('success', 'Nomination reactivated. Previous history was retained; no registration or email was created. Existing nomination publication settings still apply.');
     }
 
     public function publication(Request $request, Event $event)

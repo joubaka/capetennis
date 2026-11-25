@@ -555,6 +555,8 @@
 @endsection
 
 @section('page-script')
+<link rel="stylesheet" href="{{ asset('css/event-rich-text.css') }}">
+<script src="{{ asset('js/event-rich-text.js') }}"></script>
 
 <script>
 $(function () {
@@ -987,7 +989,7 @@ $(function () {
   /* =========================
      QUILL AUTOSAVE
   ========================= */
-  const quill = new Quill('#info-editor', { theme: 'snow' });
+  const quill = new EventRichTextEditor('#info-editor');
   let infoTimer = null;
 
   quill.on('text-change', function () {

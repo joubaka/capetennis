@@ -16,6 +16,27 @@ class Event extends Model
 {
   use HasFactory;
 
+  protected static function booted(): void
+  {
+    static::updated(function (Event $event): void {
+      if ($event->wasChanged('eventType')) $event->unsetRelation('eventTypeModel');
+    });
+  }
+
+  public function save(array $options = [])
+  {
+    if (! $this->exists || ! $this->isDirty('eventType')) return parent::save($options);
+
+    return \Illuminate\Support\Facades\DB::transaction(function () use ($options) {
+      $current = static::query()->whereKey($this->getKey())->lockForUpdate()->firstOrFail();
+      if ((int) $current->eventType !== (int) $this->getRawOriginal('eventType')) {
+        throw \Illuminate\Validation\ValidationException::withMessages(['eventType' => 'The event format changed. Reload the event before saving.']);
+      }
+      app(\App\Services\EventFormatTransition::class)->assertAllowed($current, (int) $this->eventType);
+      return parent::save($options);
+    });
+  }
+
   public function ctrCertification()
   {
     return $this->hasOne(CtrEventCertification::class);
@@ -93,13 +114,16 @@ class Event extends Model
 
   public function setInformationAttribute(?string $value): void
   {
-    $this->attributes['information'] = app(RichTextSanitizer::class)->sanitize($value);
+    app(RichTextSanitizer::class)->validateEventContent($value, 'information');
+    $clean = app(RichTextSanitizer::class)->sanitizeEventContent($value);
+    app(RichTextSanitizer::class)->validateEventContent($clean, 'information');
+    $this->attributes['information'] = $clean;
   }
 
   public function getInformationAttribute(?string $value): ?string
   {
     // Sanitize historical content as it is read as well as all new writes.
-    return app(RichTextSanitizer::class)->sanitize($value);
+    return app(RichTextSanitizer::class)->sanitizeEventContent($value);
   }
 
   /**

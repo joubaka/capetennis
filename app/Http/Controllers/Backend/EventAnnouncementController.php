@@ -205,9 +205,9 @@ class EventAnnouncementController extends Controller
 
   private function ensureMessageHasContent(string $message): void
   {
-    $plainText = trim(html_entity_decode(strip_tags($message), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    app(\App\Services\RichTextSanitizer::class)->validateEventContent($message, 'message');
 
-    if ($plainText === '') {
+    if (! app(\App\Services\RichTextSanitizer::class)->hasEventContent($message)) {
       throw ValidationException::withMessages([
         'message' => 'Enter an announcement message before saving.',
       ]);

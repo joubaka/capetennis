@@ -413,7 +413,7 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([], $unknown['lists']['overall']['players']);
     }
 
-    public function test_selected_player_defaults_to_age_group_and_keeps_overall_summary_when_filters_change(): void
+    public function test_selected_player_rank_cards_follow_gender_filter_without_changing_scores(): void
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-11-01'));
         foreach (range(1, 13) as $id) $this->player($id);
@@ -425,15 +425,25 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame('u13', $result['filters']['rating_age']);
         $this->assertSame('boys', $result['filters']['rating_gender']);
         $this->assertSame(['overall'], array_keys($result['lists']));
-        $this->assertSame(13, $result['summary']['age']['player']['position']);
-        $this->assertSame(13, $result['summary']['overall']['player']['position']);
+        $this->assertSame(12, $result['summary']['age']['player']['position']);
+        $this->assertSame(12, $result['summary']['overall']['player']['position']);
+        $this->assertSame($result['summary']['age']['player'], collect($result['lists']['overall']['players'])->firstWhere('id', 13));
+        $all = $this->build($snapshot, selected: $selected, filters: ['rating_gender' => '']);
+        $this->assertSame(13, $all['summary']['age']['player']['position']);
+        $this->assertSame(13, $all['summary']['overall']['total']);
+        $this->assertSame($result['summary']['age']['player']['score'], $all['summary']['age']['player']['score']);
+        $boysHtml = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $result, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
+        $this->assertStringContainsString('CTR · all ages · Boys', $boysHtml);
         $this->assertSame(range(2, 13), array_column($result['lists']['overall']['players'], 'id'));
         $filtered = $this->build($snapshot, selected: $selected, filters: ['rating_age' => 'u13', 'rating_gender' => 'girls', 'rating_level' => 'red']);
         $this->assertSame([1], array_column($filtered['lists']['red']['players'], 'id'));
-        $this->assertSame($result['summary'], $filtered['summary']);
+        foreach (['age', 'overall'] as $scope) {
+            $this->assertNull($filtered['summary'][$scope]['player']);
+            $this->assertSame(1, $filtered['summary'][$scope]['total']);
+        }
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $filtered, 'ratingPlayer' => $selected,
             'ratingHistory' => ['cohort' => 'overall', 'month' => 11, 'scope' => 'new', 'scale' => 'focused']])->render();
-        $this->assertStringContainsString('Rating position #13 of 13', strip_tags($html));
+        $this->assertStringContainsString('No comparable position yet.', strip_tags($html));
         $this->assertStringContainsString('name="rating_age"', $html);
         $this->assertStringContainsString('CTR', $html);
         $this->assertStringContainsString('value="overall"', $html);
@@ -553,13 +563,15 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame(67.9, $result['summary']['age']['player']['score']);
         $this->assertSame(67.9, $result['summary']['overall']['player']['score']);
         $this->assertSame(1, $result['summary']['age']['player']['position']);
-        $this->assertSame(2, $result['summary']['overall']['player']['position']);
+        $this->assertSame(1, $result['summary']['overall']['player']['position']);
         $this->assertSame([1, 2], array_column($result['lists']['overall']['players'], 'id'));
 
         $all = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'overall', 'rating_age' => '', 'rating_gender' => '']);
         $this->assertSame([3, 1, 2], array_column($all['lists']['overall']['players'], 'id'));
         $this->assertSame(67.9, $all['lists']['overall']['players'][1]['score']);
-        $this->assertSame($result['summary'], $all['summary']);
+        $this->assertSame($result['summary']['age'], $all['summary']['age']);
+        $this->assertSame(2, $all['summary']['overall']['player']['position']);
+        $this->assertSame(3, $all['summary']['overall']['total']);
         $legacy = $this->build($snapshot, selected: $selected, filters: ['rating_level' => 'standard']);
         $this->assertSame('overall', $legacy['filters']['rating_level']);
         $this->assertSame($result['lists'], $legacy['lists']);
@@ -588,7 +600,14 @@ class PlayerRatingTopTenTest extends TestCase
         $this->assertSame([2, 1], array_column($all['lists']['overall']['players'], 'id'));
         $boys = $this->build($snapshot, selected: $selected, filters: ['rating_gender' => 'boys']);
         $this->assertSame([2], array_column($boys['lists']['overall']['players'], 'id'));
-        $this->assertSame($default['summary'], $all['summary']);
+        foreach (['age', 'overall'] as $scope) {
+            $this->assertSame(1, $default['summary'][$scope]['player']['position']);
+            $this->assertSame(1, $default['summary'][$scope]['total']);
+            $this->assertSame(2, $all['summary'][$scope]['player']['position']);
+            $this->assertSame(2, $all['summary'][$scope]['total']);
+            $this->assertNull($boys['summary'][$scope]['player']);
+            $this->assertSame(1, $boys['summary'][$scope]['total']);
+        }
 
         $html = view('frontend.my-tennis.rating-top-ten', ['ratingTopTen' => $default, 'ratingPlayer' => $selected, 'ratingHistory' => []])->render();
         $this->assertMatchesRegularExpression('/value="girls"\\s+selected/', $html);

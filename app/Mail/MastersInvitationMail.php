@@ -51,6 +51,7 @@ class MastersInvitationMail extends Mailable
                     default => 'You have been invited to this event.',
                 }),
                 'eventName' => $event?->name ?? 'Cape Tennis',
+                'withdrawalSummary' => $this->kind === 'withdrawn' ? \App\Services\MastersWithdrawalNoticeFacts::html($this->invitation) : null,
                 'eventUrl' => $event?->published ? route('events.show', $event) : null,
             ]);
         }

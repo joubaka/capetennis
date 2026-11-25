@@ -9,7 +9,7 @@
     $event        = $registration->categoryEvent?->event;
     $eventName    = $event?->name ?? 'the event';
     $categoryName = $registration->categoryEvent?->category?->name ?? '';
-    $withdrawnAt  = $registration->withdrawn_at?->format('d M Y H:i') ?? now()->format('d M Y H:i');
+    $withdrawnAt  = \App\Services\WithdrawalNoticeFacts::time($registration->withdrawn_at);
 @endphp
 
 Hi {{ $playerName }},
@@ -22,10 +22,12 @@ Your withdrawal from **{{ $eventName }}** has been confirmed.
 
 ---
 
+**Player withdrawn:** {{ $playerName }}
+
 **Event:** {{ $eventName }}  
 **Category:** {{ $categoryName }}  
 **Withdrawn on:** {{ $withdrawnAt }}  
-**Initiated by:** {{ $initiatedBy === 'admin' ? 'Event administrator' : 'You' }}
+**Performed by:** {{ \App\Services\WithdrawalNoticeFacts::actor($registration->withdrawn_by) }}
 
 ---
 

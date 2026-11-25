@@ -14,7 +14,7 @@ class TeamLatePaymentController extends Controller
 {
     public function index(Request $request, Event $event)
     {
-        $this->authorizeOperator($request);
+        $this->authorizeOperator($request, $event);
         $orders = TeamPaymentOrder::where('event_id', $event->id)
             ->where('collection_status', 'reconciliation_required')->where('pay_status', false)
             ->with(['player:id,name,surname', 'team:id,name'])->orderBy('id')->paginate(20);
@@ -84,6 +84,8 @@ class TeamLatePaymentController extends Controller
     private function authorizeOperator(Request $request, ?Event $event = null, ?TeamPaymentOrder $order = null): void
     {
         abort_unless($request->user()?->hasRole('super-user'), 403);
+        abort_unless($event && (\App\Support\EventCapabilities::teamPayments($event)
+            || TeamPaymentOrder::where('event_id', $event->id)->exists()), 404);
         if ($order) abort_unless((int) $order->event_id === (int) $event->id, 404);
     }
 

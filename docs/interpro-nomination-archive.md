@@ -49,7 +49,10 @@ Its server-side status links show whole-event totals across all pages, with
 Withdrawn and Cancelled kept separate, and Declined / removed combined in one
 filter while each row retains its factual Declined or Removed label. An archived withdrawal
 counts once as Withdrawn and carries an Archived nomination badge with its date
-and reason. Historical rows offer no registration or editing controls.
+and reason. Historical rows retain their history presentation. Profile-backed
+removed, declined and archived rows offer a separate reviewed **Re-add nomination**
+action for super-users and assigned event administrators; it is not withdrawal
+restoration or payment reconciliation.
 Readiness and operational audiences still exclude archived nominees.
 
 Removed nominations are reconstructed only from the latest successful exact-event
@@ -65,6 +68,29 @@ counts rather than recalculating them from the visible page.
 Generic and dedicated hard-delete
 routes cannot remove archived Interpro nomination history. A retained ID also
 prevents silently renominating the same player through duplicate insertion.
+
+## Re-adding an available nominee
+
+The nomination register's Re-add nomination control requires a reason, availability
+confirmation and the unchanged displayed revision. `NominationReactivationService`
+locks the event, category, nomination and invitations, validates the exact tuple,
+and rejects locked categories, conflicting nominees, active delivery and any event
+checkout or entry history (including deleted/withdrawn entries). Use Entries for
+participation or financial history; this action cannot reverse it.
+
+A deleted row requires the latest validated exact-event deletion snapshot and a
+valid `AuditIntegrity` hash. Only the original ID, event, category and verified
+existing player identity are restored. Missing/profileless identity cannot be
+recovered through this control. Existing archived rows are unarchived. Prior
+invitations, declines and deletion evidence remain unchanged; a new unsent
+`open_registration` invitation records the current active nomination. No entry,
+checkout, payment, account link or mail dispatch is created. Repeated/stale
+submissions fail without duplicate rows. The activity records the actor and reason.
+
+Existing category publication settings apply: a public category shows the returned
+nominee immediately, while a private category stays private. The confirmation
+states this explicitly. This workflow changes neither publication flags nor the
+registration window. Regression coverage is in `InterproNominationHistoryTest`.
 
 Migration:
 `database/migrations/2026_11_19_130000_add_archive_to_event_nominations.php`.

@@ -139,7 +139,8 @@ class PlayerRatingTopTen
                 continue;
             }
             if ($selected && $key === 'overall') {
-                $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($players, fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge))), 'overall' => $players];
+                $summaryPlayers = array_values(array_filter($players, fn ($p) => $gender === '' || $p['gender'] === $gender));
+                $populations = ['age' => $selectedAge === 'unknown' ? [] : array_values(array_filter($summaryPlayers, fn ($p) => $this->matchesAgeScope($p['age'], $selectedAge))), 'overall' => $summaryPlayers];
                 foreach ($populations as $scope => $population) {
                     $ranked = $this->positions($population);
                     $result['summary'][$scope] = ['player' => collect($ranked)->firstWhere('id', (int) $selected->id), 'total' => count($ranked)];

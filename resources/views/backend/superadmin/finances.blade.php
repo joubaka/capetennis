@@ -15,6 +15,7 @@
 @endsection
 
 @section('content')
+<a class="btn btn-outline-primary mb-3" href="{{ route('superadmin.payout-requests') }}">Review event payout requests</a>
 <div class="operational-page">
 @include('backend.partials.operational-controls')
 <div class="container-xl">

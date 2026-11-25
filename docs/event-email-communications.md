@@ -6,7 +6,15 @@ On the Interprovincial Trials Nominations page, **Email nominated players** open
 
 Choose everyone, nominees, a region, a team or an individual, then refine the player status. Interpro teams use category and tier selections. Search the bounded individual selectors by name when needed. Player messages include linked parent contacts; manager messages contain only the selected roster. Missing or invalid contacts appear in the preview.
 
-Review the exact recipients and every message before approving. Contact, roster or message changes invalidate a preview. Approval queues the reviewed snapshot once. Registration, withdrawal and refund messages wait as system drafts for review. Reminder schedules identify when review is due; they never send automatically. Existing managed mail transport and the `outbound-mail` rate limit remain in use.
+Review the exact recipients and every message before approving. Contact, roster or message changes invalidate a preview. Approval queues the reviewed snapshot once. Transactional messages retain their owning workflow: automatic payment confirmations and withdrawal notices are exceptions to manual review; refund messages remain system drafts. Reminder schedules identify when review is due; they never send automatically. Existing managed mail transport and the `outbound-mail` rate limit remain in use.
+
+## Withdrawal notices
+
+Completed team withdrawals automatically queue notification-only notices through managed mail, without a Communications approval step. A paid entry's refund-choice page is not a completed withdrawal: the notice follows actual roster removal. Unpaid team withdrawals use the same completion workflow without creating a payment order. Each completion retains an audit record identifying its event, team, player, actual account actor and completion time; managed mail deduplicates against that record and checks the source and recipients again before transport. Existing drafts are not sent retroactively.
+
+The existing player/team withdrawal email switches continue to apply. Staff copies go to the exact event's assigned administrators and platform super-users; player/payer contacts receive notification-only copies. Notices identify the withdrawn player separately from the account that performed the withdrawal, and show the recorded date and time with the application timezone. Missing historical actor/time evidence is labelled unavailable rather than inferred from the player, payer or current time. Customized individual withdrawal messages retain a factual withdrawal summary.
+
+Local tests use in-memory mail transports. Queuing or transport acceptance does not prove inbox delivery; production deployment, configured switches and working queue processing remain separate requirements.
 
 ## Knowing what was sent
 

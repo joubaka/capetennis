@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-072",
+      "title": "Team withdrawal emails stay as drafts or misidentify the withdrawal actor",
+      "scope": "Completed individual, team and Trials withdrawals and existing Masters/daily withdrawal notices; notification-only mail, not invitation declines or refund execution.",
+      "symptoms": "A completed team withdrawal produces no automatic staff notice, a withdrawal message calls the payer the player, or custom messages omit the recorded withdrawal details.",
+      "cause": "Team communications created review drafts. Team order withdrawn_at can mark entry into a refund chooser before actual roster removal. Individual templates inferred the actor and specialized templates lacked factual summaries.",
+      "fix": "Record a team completion activity atomically with canonical roster removal, including event/player/order identity, actual actor and completion time. Dispatch managed notification-only messages after commit, deduplicated by activity and recipient; recheck source, current contacts, event staff, settings and exact content at transport. Unpaid removals use the completion activity without fabricating payment orders. Use persisted withdrawal facts in default/custom individual, additional-contact, daily and Masters notices; label missing history Not recorded. The narrow individual/daily transport exception rebuilds canonical event-scoped content and recipients. Preserve old drafts and separate refund review. See docs/event-email-communications.md.",
+      "verification": "The isolated SQLite-memory combined withdrawal, communications, individual transport, administrator and Trials regression run passed 99 tests and 807 assertions with array mail transports. The final AutomaticWithdrawalEmailTest run passed 5 tests and 61 assertions, including an additional mail-preparation failure regression. Coverage includes actual managed transport, completion rather than refund-choice timestamps, no-order rollback, replay, current recipient/settings/source checks, exact individual HTML/plain-text validation and Masters/custom/daily facts. Independent security and quality review found no material blocker. Route registration, Blade compilation, syntax, whitespace and repair-library checks also passed. Local verification does not establish production delivery.",
+      "limits": "Guide only. No retroactive sending, new player ownership, recipient access, refund permission, payment mutation or production mail authority. Preserve email switches, managed transport and outbound-mail limiting. Queue or mail-server acceptance is not inbox delivery.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/TeamWithdrawalNotificationService.php", "app/Services/IndividualWithdrawalMailAuthorization.php", "app/Services/WithdrawalNoticeFacts.php", "app/Services/MastersWithdrawalNoticeFacts.php", "app/Listeners/RequireEventEmailReview.php"],
+      "tests": ["tests/Feature/AutomaticWithdrawalEmailTest.php", "tests/Feature/IndividualWithdrawalMailAuthorizationTest.php", "tests/Feature/WithdrawalNotificationTest.php", "tests/Feature/TeamPlayerWithdrawalSafetyTest.php"]
+    },
+    {
       "id": "RK-071",
       "title": "Self-service withdrawal remains available after an event starts",
       "scope": "Individual, team-player and Trials participation withdrawals; preserves existing administrator authorization and refund rules.",

@@ -129,6 +129,7 @@ class TrialParticipationService {
             $withdrawn = $this->payments->recordWithdrawal($order, $actor);
             app(TrialSelectionReviewService::class)->respond($participation->slot, $actor, 'declined', $manager ? 'Participation withdrawn by regional administrator.' : null);
             activity('interprovincial-trials')->performedOn($participation)->causedBy($actor)->withProperties(['order_id' => $order->id])->log('Regional participation withdrawn; replacement review required');
+            app(\App\Services\TeamWithdrawalNotificationService::class)->participationCompleted($participation, $actor);
             return $withdrawn;
         });
     }

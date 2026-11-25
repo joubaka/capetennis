@@ -174,6 +174,7 @@ class EventCommunicationService
         }
         $nominations = EventNomination::with(['player.user', 'player.users', 'categoryEvent.category'])
             ->where('event_id', $event->id)
+            ->when(! \App\Support\EventCapabilities::nominations($event), fn ($q) => $q->whereRaw('1 = 0'))
             ->where(fn ($q) => $q->whereNull('category_event_id')->orWhereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id)))
             ->get();
         foreach ($nominations as $nomination) {
@@ -247,6 +248,7 @@ class EventCommunicationService
             $registrationIds = $event->registrations()->select('category_event_registrations.registration_id');
             $playerIds = DB::table('player_registrations')->whereIn('registration_id', $registrationIds)->select('player_id');
             $nominations = EventNomination::where('event_id', $event->id)
+                ->when(! \App\Support\EventCapabilities::nominations($event), fn ($q) => $q->whereRaw('1 = 0'))
                 ->where(fn ($q) => $q->whereNull('category_event_id')->orWhereHas('categoryEvent', fn ($q) => $q->where('event_id', $event->id)));
             $players = Player::where(function ($q) use ($playerIds, $nominations, $event) {
                 $q->whereIn('id', $playerIds)->orWhereIn('id', (clone $nominations)->select('player_id'));
@@ -286,6 +288,7 @@ class EventCommunicationService
     public function plan(Event $event, User $actor, array $options, string $subject, string $body, bool $lockLifecycle = false): array
     {
         if (! empty($options['followup_nomination_id'])) {
+            abort_unless(\App\Support\EventCapabilities::nominations($event), 422);
             $followUp = app(NomineeFollowUpService::class);
             if ($lockLifecycle) {
                 Event::whereKey($event->id)->lockForUpdate()->firstOrFail();
@@ -417,7 +420,10 @@ class EventCommunicationService
         }
         if (! $event->isTeam() && ! $event->isInterprovincialTrials()) {
             $this->regions($event, $actor);
-            abort_unless(in_array($options['scope'] ?? null, ($event->isMasters() ? ['all', 'registrations', 'nominations', 'individual', 'invitations'] : ['all', 'registrations', 'nominations', 'individual']), true)
+            $scopes = ['all', 'registrations', 'individual'];
+            if (\App\Support\EventCapabilities::nominations($event)) $scopes[] = 'nominations';
+            if ($event->isMasters()) $scopes[] = 'invitations';
+            abort_unless(in_array($options['scope'] ?? null, $scopes, true)
                 && ($options['recipients'] ?? null) === 'players', 422);
         }
         if ($event->isTeam() || $event->isInterprovincialTrials()) {
@@ -696,6 +702,8 @@ class EventCommunicationService
 
     private function invitationRetryRecipient(Event $event, BulkEmailLog $log): array
     {
+        abort_unless($log->mail_type === 'interprovincial_trial_invitation'
+            ? $event->isInterprovincialTrials() : $event->isTeam(), 422);
         abort_unless($log->status === 'failed' && ! $log->sent_at && ! $log->accepted_at, 422);
         $payload = $log->payload;
         if (empty($payload['rendered_html']) || empty($payload['rendered_subject'])) {

@@ -4,6 +4,9 @@
 <p>Player: {{ $invitation->player?->full_name ?? $invitation->player_id }}</p>
 <p>Ranking position: {{ $invitation->ranking_position }}</p>
 <p>Invitation status: {{ $invitation->status }}</p>
+@if($action === 'withdrawn')
+    {!! \App\Services\MastersWithdrawalNoticeFacts::html($invitation) !!}
+@endif
 @if($replacement)
   <p>Replacement: {{ $replacement->player?->full_name ?? $replacement->player_id }} (ranking position {{ $replacement->ranking_position }})</p>
   <p>Replacement status: {{ $replacement->status }}</p>

@@ -127,6 +127,7 @@ class TeamPlayerWithdrawController extends Controller
         ->updateTeamPlayerSlot($teamPlayer, ['player_id' => 0, 'pay_status' => 0]);
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
         ->markWithdrawn((int) $eventId, (int) $team->id, (int) $player->id, $user);
+      app(\App\Services\TeamWithdrawalNotificationService::class)->completed($team, $player, \App\Models\Event::findOrFail($eventId), $user);
     });
 
     return back()->with('success', 'Player withdrawn (no payment). Slot is now available.');
@@ -534,25 +535,15 @@ class TeamPlayerWithdrawController extends Controller
     $teamId = (int) $teamPlayer->team_id;
     $playerId = (int) $player->id;
 
-    DB::transaction(function () use ($teamPlayer, $player, $eventId, $teamId, $playerId, $actor): void {
+    DB::transaction(function () use ($teamPlayer, $player, $eventId, $teamId, $playerId, $actor, $order): void {
       app(\App\Services\TeamDrawAdaptationService::class)->lockEvent((int) $eventId);
+      $teamPlayer = TeamPlayer::query()->lockForUpdate()->findOrFail($teamPlayer->id);
+      if ((int) $teamPlayer->player_id !== $playerId) return;
       $this->removePlayerFromUnplayedFixtures($player, $eventId);
       $teamPlayer->forceFill(['player_id' => 0, 'pay_status' => 0])->save();
       app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)
         ->markWithdrawn($eventId, $teamId, $playerId, $actor);
+      app(\App\Services\TeamWithdrawalNotificationService::class)->completed(Team::findOrFail($teamId), $player, \App\Models\Event::findOrFail($eventId), $actor, $order);
     });
-
-    if ($order) {
-      try {
-        app(\App\Services\TeamCommunicationService::class)->withdrawal($order->fresh(), [
-          'refund_available' => $refundAvailable,
-        ]);
-      } catch (\Throwable $exception) {
-        Log::error('TEAM WITHDRAWAL COMMUNICATION FAILED', [
-          'order_id' => $order->id,
-          'error' => $exception->getMessage(),
-        ]);
-      }
-    }
   }
 }

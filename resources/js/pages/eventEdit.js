@@ -23,21 +23,9 @@ $(document).ready(function () {
 
   let quill = null;
 
-  if (window.Quill && document.getElementById('information-editor')) {
+  if (window.EventRichTextEditor && document.getElementById('information-editor')) {
 
-    quill = new Quill('#information-editor', {
-      theme: 'snow',
-      placeholder: 'Enter event information...',
-      modules: {
-        toolbar: [
-          [{ header: [1, 2, 3, false] }],
-          ['bold', 'italic', 'underline'],
-          [{ list: 'ordered' }, { list: 'bullet' }],
-          ['link'],
-          ['clean']
-        ]
-      }
-    });
+    quill = new window.EventRichTextEditor('#information-editor');
 
     console.log('Quill initialized ✅');
   }

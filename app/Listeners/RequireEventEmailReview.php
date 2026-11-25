@@ -163,9 +163,11 @@ class RequireEventEmailReview
             abort_unless($allowed, 409, 'Team invitation decline notification is no longer authorized.');
             return null;
         }
-        if (isset($mail->data['team_confirmation_log_id'])) {
-            $log = \App\Models\BulkEmailLog::find($mail->data['team_confirmation_log_id']);
-            $message = $log ? app(\App\Services\TeamRegistrationConfirmationService::class)->authorizedMailable($log) : null;
+        if (isset($mail->data['team_confirmation_log_id']) || isset($mail->data['team_withdrawal_log_id'])) {
+            $withdrawal = isset($mail->data['team_withdrawal_log_id']);
+            $log = \App\Models\BulkEmailLog::find($mail->data[$withdrawal ? 'team_withdrawal_log_id' : 'team_confirmation_log_id']);
+            $service = $withdrawal ? \App\Services\TeamWithdrawalNotificationService::class : \App\Services\TeamRegistrationConfirmationService::class;
+            $message = $log ? app($service)->authorizedMailable($log) : null;
             $allowed = $message && $log->status === 'sending'
                 && count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $log->recipient_email
                 && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
@@ -207,6 +209,18 @@ class RequireEventEmailReview
                 'reply' => $actualReplyTo === $replyTo,
             ];
             foreach ($checks as $check => $allowed) abort_unless($allowed, 409, 'Result notification is no longer authorized: '.$check.'.');
+            return null;
+        }
+        if (in_array($mail->data['__laravel_mailable'] ?? null, [\App\Mail\WithdrawalAdminMail::class, \App\Mail\WithdrawalPlayerMail::class, \App\Mail\DailyWithdrawalSummaryMail::class], true)) {
+            $expected = app(\App\Services\IndividualWithdrawalMailAuthorization::class)->expected($mail);
+            $allowed = $expected && ! $mail->message->getCc() && ! $mail->message->getBcc() && ! $mail->message->getAttachments()
+                && $mail->message->getSubject() === $expected->envelope()->subject
+                && $mail->message->getHtmlBody() === $this->previewHtml($expected->render())
+                && $mail->message->getTextBody() === (string) app(\Illuminate\Mail\Markdown::class)->renderText($expected->content()->markdown, $expected->buildViewData())
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === config('mail.from.address')
+                && $mail->message->getFrom()[0]->getName() === config('mail.from.name')
+                && ! $mail->message->getReplyTo();
+            abort_unless($allowed, 409, 'Individual withdrawal notice is no longer authorized.');
             return null;
         }
         if (($mail->data['event_mail_reviewed'] ?? false) === true) return null;

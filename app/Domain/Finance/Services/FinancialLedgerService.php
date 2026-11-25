@@ -272,21 +272,27 @@ class FinancialLedgerService
         });
     }
 
-    private function buildParticipationRefundRows(Event $event): Collection
+    private function buildTeamRefundRows(Event $event): Collection
     {
-        return TeamPaymentOrder::with(['player', 'user'])->where('event_id', $event->id)
-            ->whereIn('id', \App\Models\TrialParticipation::where('event_id', $event->id)->select('order_id'))
-            ->whereNotNull('withdrawn_at')->whereIn('refund_status', ['pending', 'completed', 'not_refunded'])->get()->map(function ($order) use ($event) {
+        $participationOrders = \App\Models\TrialParticipation::where('event_id', $event->id)->pluck('order_id');
+        return TeamPaymentOrder::with(['player', 'beneficiary', 'user'])->where('event_id', $event->id)
+            ->where('pay_status', true)
+            ->where(fn ($q) => $q->whereIn('refund_status', ['pending', 'completed'])
+                ->orWhere(fn ($q) => $q->whereNotNull('withdrawn_at')
+                    ->where(fn ($q) => $q->whereIn('refund_status', ['not_refunded', 'waived'])->orWhereNull('refund_status'))))
+            ->get()->map(function ($order) use ($event, $participationOrders) {
                 $accounting = in_array($order->refund_status, ['pending', 'completed'], true);
+                $status = $order->refund_status ?? 'not_refunded';
                 $gross = $accounting ? (float) $order->refund_gross : (float) $order->total_amount;
                 $net = $accounting ? -(float) $order->refund_net : 0.0;
-                return (object) ['type' => $accounting ? 'refund' : 'withdrawal', 'subtype' => 'participation_refund', 'amount_gross' => $gross,
+                return (object) ['type' => $accounting ? 'refund' : 'withdrawal', 'subtype' => $participationOrders->contains($order->id) ? 'participation_refund' : 'team_refund', 'amount_gross' => $gross,
                     'amount_fee' => $accounting ? (float) $order->refund_fee : 0.0, 'amount_net' => $net, 'payment_method' => $order->refund_method,
-                    'refund_status' => $order->refund_status, 'withdrawal_status' => 'withdrawn', 'status_label' => ucfirst($order->refund_status), 'status_colour' => 'warning',
-                    'source_tx_id' => null, 'source_order_id' => $order->id, 'source_pf_id' => $order->payfast_pf_payment_id, 'user_name' => $order->user?->name ?? '—', 'event_id' => $event->id,
-                    'created_at' => $order->refunded_at ?? $order->withdrawn_at, 'player' => $order->player?->full_name ?? '—', 'method' => $order->refund_method,
-                    'gross' => -$gross, 'fee' => $accounting ? (float) $order->refund_fee : 0.0, 'capeFee' => 0.0, 'net' => $net,
-                    'refund_gross' => $accounting ? (float) $order->refund_gross : 0.0, 'refund_net' => (float) $order->refund_net, 'order' => $order, 'model' => $order];
+                    'refund_status' => $status, 'withdrawal_status' => $order->withdrawn_at ? 'withdrawn' : null, 'status_label' => ucfirst($status), 'status_colour' => 'warning',
+                    'source_tx_id' => null, 'source_order_id' => $order->id, 'team_order_id' => $order->id, 'source_pf_id' => $order->payfast_pf_payment_id, 'user_name' => $order->user?->name ?? '—', 'event_id' => $event->id,
+                    'created_at' => $order->refunded_at ?? $order->withdrawn_at ?? $order->updated_at, 'player' => ($order->beneficiary ?? $order->player)?->full_name ?? '—', 'method' => $order->refund_method,
+                    'gross' => $accounting ? -$gross : 0.0, 'fee' => $accounting ? (float) $order->refund_fee : 0.0, 'capeFee' => 0.0, 'net' => $net,
+                    'refund_gross' => $accounting ? (float) $order->refund_gross : 0.0, 'refund_fee' => $accounting ? (float) $order->refund_fee : 0.0,
+                    'refund_net' => $accounting ? (float) $order->refund_net : 0.0, 'order' => $order, 'model' => $order];
             });
     }
 
@@ -401,7 +407,7 @@ class FinancialLedgerService
                     ])->values(),
                 ];
             })
-            ->toBase()->merge($this->buildParticipationRefundRows($event))->merge($this->buildClothingRefundRows($event))
+            ->toBase()->merge($this->buildTeamRefundRows($event))->merge($this->buildClothingRefundRows($event))
             ->merge($this->buildCategoryAdjustmentRefundRows($event))->values();
     }
 

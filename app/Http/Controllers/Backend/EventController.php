@@ -361,7 +361,7 @@ class EventController extends Controller
     $event->load(['series', 'categoryEvents.category']);
     $mastersBatch = null;
     $mastersReadiness = null;
-    if (str_contains(strtolower((string) $event->name), 'masters')) {
+    if ($event->isMasters()) {
       $mastersBatch = \App\Models\MastersInvitationBatch::where('event_id', $event->id)->latest('id')->first();
       if ($mastersBatch) {
         $mastersReadiness = app(\App\Services\Masters\MastersInvitationService::class)->readiness($mastersBatch);
@@ -394,7 +394,7 @@ class EventController extends Controller
       'entryFee' => 'nullable|integer',
       'deadline' => 'nullable|integer',
       'withdrawal_deadline' => 'nullable|date',
-      'eventType' => 'required|integer',
+      'eventType' => 'required|integer|exists:eventtypes,id',
       'email' => 'nullable|email',
       'organizer' => 'nullable|string|max:191',
       'pathway_level' => ['nullable', \Illuminate\Validation\Rule::in(array_keys(\App\Services\Performance\EventPathwayClassification::HOSTED_LEVELS))],
@@ -405,6 +405,8 @@ class EventController extends Controller
       'admins' => 'nullable|array',
       'admins.*' => 'integer|exists:users,id',
     ]);
+
+    app(\App\Services\EventFormatTransition::class)->assertAllowed($event, (int) $data['eventType']);
 
     /*
     |--------------------------------------------------------------------------

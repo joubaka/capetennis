@@ -4,11 +4,11 @@
 
 @section('content')
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet">
+
 
 <style>
 .announcement-workspace button, .announcement-workspace summary { min-height:44px; }
-@media(max-width:575px) { .announcement-workspace table, .announcement-workspace tbody, .announcement-workspace tr, .announcement-workspace td {display:block;} .announcement-workspace thead {display:none;} .announcement-workspace td {white-space:normal;word-break:break-word;} }
+@media(max-width:575px) { .announcement-workspace > .card > .card-body > table, .announcement-workspace > .card > .card-body > table > tbody, .announcement-workspace > .card > .card-body > table > tbody > tr, .announcement-workspace > .card > .card-body > table > tbody > tr > td {display:block;} .announcement-list > thead {display:none;} .announcement-list > tbody > tr > td {white-space:normal;word-break:break-word;} }
 </style>
 <div class="container-xl announcement-workspace">
   @include('backend.event.partials.header', [
@@ -26,7 +26,7 @@
   {{-- LIST --}}
   <div class="card">
     <div class="card-body p-0">
-      <table class="table table-striped mb-0">
+      <table class="table table-striped mb-0 announcement-list">
         <thead class="table-light">
           <tr>
             <th>Title</th>
@@ -46,7 +46,7 @@
     <strong>{{ $announcement->title }}</strong>
 
     <span data-announcement-visibility class="badge bg-label-{{ $announcement->trashed() ? 'secondary' : 'success' }}">{{ $announcement->trashed() ? 'Hidden' : 'Visible' }}</span>
-    <details class="mt-2"><summary>Read message</summary><div class="mt-2 small text-muted">{!! $announcement->message !!}</div></details>
+    <details class="mt-2"><summary>Read message</summary><div class="mt-2 small text-muted event-document-content">{!! $announcement->message !!}</div></details>
   </td>
 
   <td class="align-top">
@@ -175,7 +175,9 @@
 
 
 @section('page-script')
-<script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+<link rel="stylesheet" href="{{ asset('css/event-rich-text.css') }}">
+<script src="{{ asset('js/event-rich-text.js') }}"></script>
+
 <script>
 const csrf  = document.querySelector('meta[name="csrf-token"]').content;
 const modal = new bootstrap.Modal(document.getElementById('announcementModal'));
@@ -224,18 +226,7 @@ announcementSendEmail.addEventListener('change', () => {
 });
 
 // Initialize Quill editor
-const quill = new Quill('#announcement_message', {
-  theme: 'snow',
-  modules: {
-    toolbar: [
-      ['bold', 'italic', 'underline'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      ['link'],
-      ['clean']
-    ]
-  },
-  placeholder: 'Write your announcement...'
-});
+const quill = new EventRichTextEditor('#announcement_message');
 
 /* NEW */
 document.getElementById('newAnnouncementBtn').addEventListener('click', () => {
@@ -297,7 +288,7 @@ announcementForm.addEventListener('submit', async e => {
     announcementTitle.focus();
     return;
   }
-  if (!quill.getText().trim()) {
+  if (quill.pending || !quill.hasContent()) {
     setFormFeedback('Enter an announcement message before saving.');
     quill.focus();
     return;

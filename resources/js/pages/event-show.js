@@ -195,12 +195,17 @@
   $(document).on('click', '.withDrawPlayer', function () {
     const $btn = $(this);
     const withdrawUrl = $btn.data('url');
+    const playerName = $btn.attr('data-player-name') || 'this player';
+    const divisionName = $btn.attr('data-division-name') || 'this division';
+    const entryLabel = `${playerName} — ${divisionName}`;
+    const safeEntryLabel = $('<span>').text(entryLabel).html();
 
     // First dialog - Show terms of refund
     Swal.fire({
       title: 'Terms of Refund',
       html: `
         <div class="text-start">
+          <p class="mb-2"><strong>Withdraw ${safeEntryLabel}</strong></p>
           <p class="mb-3">Please review the refund terms before proceeding:</p>
 
           <ul class="mb-4">
@@ -243,7 +248,7 @@
         // Second dialog - Final confirmation
         Swal.fire({
           title: 'Are you sure?',
-          text: "You are about to withdraw from this event. This action cannot be undone.",
+          text: `You are about to withdraw ${entryLabel} from this event. This action cannot be undone.`,
           icon: 'warning',
           showCancelButton: true,
           confirmButtonColor: '#3085d6',
@@ -292,22 +297,12 @@
 
   const fullEl = document.querySelector('#full-editor');
   if (fullEl) {
-    fullEditor = new Quill(fullEl, {
-      bounds: fullEl,
-      placeholder: 'Type Something...',
-      modules: { formula: true, toolbar: fullToolbar },
-      theme: 'snow'
-    });
+    fullEditor = new window.EventRichTextEditor(fullEl);
   }
 
   const editEl = document.querySelector('#full-editor-edit');
   if (editEl) {
-    fullEditorEdit = new Quill(editEl, {
-      bounds: editEl,
-      placeholder: 'Type Something...',
-      modules: { formula: true, toolbar: fullToolbar },
-      theme: 'snow'
-    });
+    fullEditorEdit = new window.EventRichTextEditor(editEl);
   }
 
 
@@ -332,7 +327,7 @@
     const sendEmail = $('input[name="sendMail"]').is(':checked') ? 1 : 0;
     const event_id = $('#announcement_event_id').val();
 
-    if (!text || html === '<p><br></p>') {
+    if (fullEditor.pending || !fullEditor.hasContent()) {
       Swal.fire({
         icon: 'warning',
         title: 'Empty Announcement',

@@ -62,6 +62,7 @@ class EventCommunicationController extends Controller
                 $composeOptions['team_ids'] = [$team->id];
             } else {
                 if (! empty($target['followup_nomination_id'])) {
+                    abort_unless(\App\Support\EventCapabilities::nominations($event), 422);
                     $nomination = app(\App\Services\NomineeFollowUpService::class)->current($event, $request->user(), $target['followup_nomination_id']);
                     $key = $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id;
                     abort_unless($key === $target['individual_key'], 404);
@@ -98,6 +99,7 @@ class EventCommunicationController extends Controller
             ? EventCommunicationBatch::where('event_id', $event->id)->where('status', 'draft')->latest()->paginate(10, ['*'], 'drafts_page') : collect();
 
         $scope = $request->validate(['report_scope' => 'nullable|in:all,invitations,batch'])['report_scope'] ?? ($request->filled('batch') ? 'batch' : 'all');
+        abort_if($scope === 'invitations' && ! \App\Support\EventCapabilities::invitations($event), 422);
         $historyQuery = app(\App\Services\EventMailLogService::class)->query($event, $request->user());
         if ($scope === 'invitations') $historyQuery->whereIn('id', $service->invitationLogs($event, $request->user())->select('id'));
         if ($scope === 'batch') {

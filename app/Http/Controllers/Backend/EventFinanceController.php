@@ -50,6 +50,10 @@ class EventFinanceController extends Controller
             'expenses' => ['label' => 'Expenses', 'icon' => 'ti-list'],
             'reconciliation' => ['label' => 'Reconciliation', 'icon' => 'ti-arrows-exchange'],
         ];
+        // Preserve real historical clothing receipts even if an old event was reclassified.
+        if (! \App\Support\EventCapabilities::clothing($event) && ! \App\Models\ClothingOrder::where('event_id', $event->id)->exists()) {
+            unset($financeTabs['clothing']);
+        }
         $activeFinanceTab = $request->query('tab', 'breakdown');
         abort_unless(is_string($activeFinanceTab) && array_key_exists($activeFinanceTab, $financeTabs), 404);
 

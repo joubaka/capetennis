@@ -133,7 +133,7 @@
             <div class="mb-3">
               <label id="event-information-label" class="form-label">Information</label>
               <div id="information-editor" aria-labelledby="event-information-label" class="border rounded">
-                {!! old('information', $sourceEvent?->information ?? '') !!}
+                {!! app(\App\Services\RichTextSanitizer::class)->sanitizeEventContent(old('information', $sourceEvent?->information ?? '')) !!}
               </div>
               <input type="hidden"
                      name="information"
@@ -325,6 +325,8 @@
 @endsection
 
 @section('page-script')
+<link rel="stylesheet" href="{{ asset('css/event-rich-text.css') }}">
+<script src="{{ asset('js/event-rich-text.js') }}"></script>
 <script>
   $(document).ready(function () {
     $('.select2').select2();
@@ -355,15 +357,10 @@
       uploadedLogoPreviewUrl = logoUpload.files[0] ? URL.createObjectURL(logoUpload.files[0]) : null;
       showLogoPreview(uploadedLogoPreviewUrl || (existingLogo.value ? `${existingLogo.dataset.logoBase}/${encodeURIComponent(existingLogo.value)}` : ''));
     });
-    const informationEditor = new Quill('#information-editor', {
-      theme: 'snow',
-      modules: {
-        toolbar: [[{ header: [3, 4, false] }], ['bold', 'italic'], [{ list: 'ordered' }, { list: 'bullet' }], ['clean']]
-      }
-    });
+    const informationEditor = new EventRichTextEditor('#information-editor');
     const brief = document.getElementById('event-brief');
     const syncInformation = () => {
-      informationInput.value = informationEditor.getText().trim() ? informationEditor.root.innerHTML : '';
+      informationInput.value = informationEditor.hasContent() ? informationEditor.root.innerHTML : '';
     };
     informationEditor.on('text-change', syncInformation);
     form.addEventListener('submit', syncInformation);

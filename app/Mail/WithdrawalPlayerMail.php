@@ -40,8 +40,8 @@ class WithdrawalPlayerMail extends Mailable implements ShouldQueue
         $event        = $this->registration->categoryEvent?->event;
         $eventName    = $event?->name ?? 'Event';
         $categoryName = $this->registration->categoryEvent?->category?->name ?? '';
-        $withdrawnAt  = $this->registration->withdrawn_at?->format('d M Y H:i') ?? now()->format('d M Y H:i');
-        $initiatedBy  = $this->initiatedBy === 'admin' ? 'Event administrator' : 'You';
+        $withdrawnAt  = \App\Services\WithdrawalNoticeFacts::time($this->registration->withdrawn_at);
+        $initiatedBy  = \App\Services\WithdrawalNoticeFacts::actor($this->registration->withdrawn_by);
         $appName      = 'Cape Tennis';
 
         $placeholders = [
@@ -75,7 +75,7 @@ class WithdrawalPlayerMail extends Mailable implements ShouldQueue
         if ($this->resolvedBody !== null) {
             return new Content(
                 markdown: 'emails.player-notification',
-                with: ['body' => $this->resolvedBody],
+                with: ['body' => $this->resolvedBody.\App\Services\WithdrawalNoticeFacts::html($this->registration->players->first()?->full_name ?? 'Player', $this->registration->withdrawn_at, $this->registration->withdrawn_by)],
             );
         }
 

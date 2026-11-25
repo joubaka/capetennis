@@ -46,7 +46,7 @@ class AnnouncementController extends Controller
     $communicationEvent = Event::findOrFail($request->event_id);
     $this->authorize('event.manage', $communicationEvent);
     if ($request->boolean('send_email') && ($communicationEvent->isTeam() || $communicationEvent->isInterprovincialTrials())) {
-      $request->validate(['data' => 'required|string|max:30000']);
+      $request->validate(['data' => 'required|string|max:4194304']);
       $announcement = new Announcement();
       $announcement->message = $request->data;
       $announcement->event_id = $communicationEvent->id;
@@ -57,7 +57,7 @@ class AnnouncementController extends Controller
         ->withInput(['scope' => 'nominations', 'audience' => 'nominations', 'filter' => 'all', 'recipients' => 'both', 'subject' => $communicationEvent->name.' — Announcement', 'body' => trim(strip_tags((string) $request->data))])
         ->with('success', 'Choose all nominees or another audience, then review and approve the participant email.'.$copyService->copyFeedback($copyStats));
     }
-    $request->validate(['data' => 'required|string|max:30000']);
+    $request->validate(['data' => 'required|string|max:4194304']);
     $announcement = Announcement::create(['event_id' => $communicationEvent->id, 'message' => $request->data]);
     if (! $request->boolean('send_email')) {
       $service = app(\App\Services\EventAnnouncementService::class);

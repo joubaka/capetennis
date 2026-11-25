@@ -197,6 +197,8 @@ class SendBulkEmailJob implements ShouldQueue
         $payload = $log->payload ?? [];
 
         switch ($log->mail_type) {
+            case 'team_withdrawal_notification':
+                return app(\App\Services\TeamWithdrawalNotificationService::class)->authorizedMailable($log);
             case 'player_plus_activation':
             case 'player_plus_renewal':
             case 'player_plus_reconciliation':

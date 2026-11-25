@@ -89,7 +89,7 @@ class EventSettingsController extends Controller
       'entryFee' => 'sometimes|nullable|integer',
       'deadline' => 'sometimes|nullable|integer|min:0',
       'withdrawal_deadline' => 'sometimes|nullable|date',
-      'eventType' => 'sometimes|required|integer',
+      'eventType' => 'sometimes|required|integer|exists:eventtypes,id',
       'email' => 'sometimes|nullable|email',
       'published' => 'sometimes|boolean',
       'result_notifications_enabled' => 'sometimes|boolean',
@@ -137,6 +137,10 @@ class EventSettingsController extends Controller
       'scoring_starts_at' => 'sometimes|nullable|date',
       'scoring_expires_at' => 'sometimes|nullable|date|after:scoring_starts_at',
     ]);
+
+    if (array_key_exists('eventType', $data)) {
+      app(\App\Services\EventFormatTransition::class)->assertAllowed($event, (int) $data['eventType']);
+    }
 
     // Leaving the deadline blank preserves the previously stored number of days.
     if (array_key_exists('deadline', $data) && $data['deadline'] === null) {

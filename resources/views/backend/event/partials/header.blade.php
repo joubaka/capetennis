@@ -19,6 +19,9 @@
       @if($event->status_label)<span class="badge bg-label-primary">{{ $event->status_label }}</span>@endif
     </x-slot:meta>
     <x-slot:actions>
+      @if(auth()->check() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))))
+      <a class="event-workspace-action" href="{{ route('admin.events.payout-requests', $event) }}"><i class="ti ti-cash" aria-hidden="true"></i><span>Request payment / complete event</span></a>
+      @endif
       @if($event->isCamp() && auth()->check() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))))
       <form method="POST" action="{{ route('backend.camps.attach', $event) }}">@csrf<button class="event-workspace-action" type="submit"><span>Camp settings & invitations</span></button></form>
       @endif

@@ -9,14 +9,14 @@
     $event        = $registration->categoryEvent?->event;
     $eventName    = $event?->name ?? '–';
     $categoryName = $registration->categoryEvent?->category?->name ?? '–';
-    $withdrawnAt  = $registration->withdrawn_at?->format('d M Y H:i') ?? now()->format('d M Y H:i');
+    $withdrawnAt  = \App\Services\WithdrawalNoticeFacts::time($registration->withdrawn_at);
 
     // Player contact
     $playerEmail  = $player?->email ?? $registration->user?->email ?? '–';
     $playerCell   = $player?->cell ?? '–';
 
     // Who performed the withdrawal
-    $actor = $initiatedBy === 'admin' ? 'Event administrator' : ($playerName . ' (player)');
+    $actor = \App\Services\WithdrawalNoticeFacts::actor($registration->withdrawn_by);
 @endphp
 
 A player has **withdrawn** from your event.
@@ -29,7 +29,7 @@ A player has **withdrawn** from your event.
 **Event:** {{ $eventName }}  
 **Category:** {{ $categoryName }}  
 **Withdrawn on:** {{ $withdrawnAt }}  
-**Initiated by:** {{ $actor }}
+**Performed by:** {{ $actor }}
 
 ---
 

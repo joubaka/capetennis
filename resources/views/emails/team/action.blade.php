@@ -12,6 +12,12 @@
 **Player:** {{ $order->effectivePlayer?->full_name ?? trim(($order->effectivePlayer?->name ?? '').' '.($order->effectivePlayer?->surname ?? '')) }}
 **Team:** {{ $order->team?->name ?? ('Team #'.$order->team_id) }}
 
+@if($action === 'withdrawal')
+**Withdrawn on:** {{ \App\Services\WithdrawalNoticeFacts::time($order->withdrawn_at) }}
+
+**Performed by:** {{ \App\Services\WithdrawalNoticeFacts::actor($order->withdrawn_by) }}
+@endif
+
 @if(isset($details['gross']))
 **Original payment:** R{{ number_format($details['gross'], 2) }}
 @endif

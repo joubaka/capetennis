@@ -12,12 +12,14 @@ class NomineeFollowUpService
 {
     public function canManage(Event $event, User $actor): bool
     {
-        return $actor->hasRole('super-user') || ($actor->hasRole('admin') && $actor->is_event_admin($event->id));
+        return \App\Support\EventCapabilities::nominations($event)
+            && ($actor->hasRole('super-user') || ($actor->hasRole('admin') && $actor->is_event_admin($event->id)));
     }
 
     public function query(Event $event): Builder
     {
         return EventNomination::query()
+        ->when(! \App\Support\EventCapabilities::nominations($event), fn ($query) => $query->whereRaw('1 = 0'))
         ->where('event_id', $event->id)
         ->unarchived()
         ->whereHas('categoryEvent', fn ($query) => $query

@@ -111,6 +111,7 @@ class AdminTeamWithdrawalService
             $payments->updateTeamPlayerSlot($slot, ['player_id' => 0, 'pay_status' => 0]);
             foreach ($review['imported'] as $imported) $imported->delete();
             app(\App\Services\TeamSelection\TeamSelectionInvitationService::class)->markWithdrawn($event->id, $team->id, $playerId, $actor, allowAutomaticReplacement: false);
+            app(TeamWithdrawalNotificationService::class)->completed($team, \App\Models\Player::findOrFail($playerId), $event, $actor, $withdrawn);
             activity('team-withdrawal')->performedOn($order)->causedBy($actor)->withProperties([
                 'event_id' => $event->id, 'team_id' => $team->id, 'player_id' => $playerId, 'slot_id' => $slot->id, 'original_slot' => $before,
                 'fingerprint' => $review['fingerprint'], 'refund_available' => $review['refundAvailable'], 'amounts' => $review['amounts'],

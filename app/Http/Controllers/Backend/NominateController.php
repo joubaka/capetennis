@@ -57,5 +57,5 @@ class NominateController extends Controller
     private function nominations(CategoryEvent $category): array { return EventNomination::where('category_event_id',$category->id)->with('player:id,name,surname,email,cellNr')->get()->map(fn($n)=>['nomination_id'=>$n->id,'name'=>$n->player->name,'surname'=>$n->player->surname,'email'=>$n->player->email,'cellNr'=>$n->player->cellNr])->all(); }
     private function authorizedCategory(int $id): CategoryEvent { $c=CategoryEvent::with('event')->findOrFail($id); $this->authorizeEvent($c->event); return $c; }
     private function authorizeNomination(EventNomination $nomination): void { $event=$nomination->categoryEvent?->event; abort_unless($event && (int)$nomination->event_id===(int)$event->id,404); $this->authorizeEvent($event); }
-    private function authorizeEvent(Event $event): void { $u=request()->user(); abort_unless($u&&($u->hasRole('super-user')||($u->hasRole('admin')&&$u->is_event_admin($event->id))),403); }
+    private function authorizeEvent(Event $event): void { $u=request()->user(); abort_unless($u&&($u->hasRole('super-user')||($u->hasRole('admin')&&$u->is_event_admin($event->id))),403); abort_unless(\App\Support\EventCapabilities::nominations($event), 404); }
 }

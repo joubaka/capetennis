@@ -88,6 +88,7 @@
         </div>
       </div>
     </div>
+    @if($event->isMasters())
     <div class="col-xl-4">
       <div class="card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
@@ -137,6 +138,7 @@
         </div>
       </div>
     </div>
+  @endif
   </div>
 
   <form id="event-edit-form"
@@ -204,7 +206,7 @@
             <div class="mb-3">
               <label id="event-information-label" class="form-label">Information</label>
               <div id="information-editor" aria-labelledby="event-information-label" class="border rounded">
-                {!! old('information', $event->information) !!}
+                {!! app(\App\Services\RichTextSanitizer::class)->sanitizeEventContent(old('information', $event->information)) !!}
               </div>
 
               <input type="hidden"
@@ -378,6 +380,8 @@
 @endsection
 
 @section('page-script')
+<link rel="stylesheet" href="{{ asset('css/event-rich-text.css') }}">
+<script src="{{ asset('js/event-rich-text.js') }}"></script>
 <script>
 window.eventConfig = {
     logoBaseUrl: "{{ asset('assets/img/logos') }}/"

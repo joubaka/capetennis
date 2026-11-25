@@ -34,13 +34,16 @@ class Announcement extends Model
 
   public function setMessageAttribute(?string $value): void
   {
-    $this->attributes['message'] = app(RichTextSanitizer::class)->sanitize($value);
+    app(RichTextSanitizer::class)->validateEventContent($value, 'message');
+    $clean = app(RichTextSanitizer::class)->sanitizeEventContent($value);
+    app(RichTextSanitizer::class)->validateEventContent($clean, 'message');
+    $this->attributes['message'] = $clean;
   }
 
   public function getMessageAttribute(?string $value): ?string
   {
     // Also protects legacy rows that pre-date input sanitization.
-    return app(RichTextSanitizer::class)->sanitize($value);
+    return app(RichTextSanitizer::class)->sanitizeEventContent($value);
   }
 
 }

@@ -65,10 +65,11 @@ final class PlayerRegistrationUpdateService
         if (! $event || ($action === 'withdrawal' && ! $withdrawn)) return [];
 
         $payerEmail = mb_strtolower(trim((string) $source->user?->email));
-        return $players->flatMap(function (Player $player) use ($event, $category, $payerEmail, $action) {
+        return $players->flatMap(function (Player $player) use ($event, $category, $payerEmail, $action, $source) {
             $subject = ($action === 'registration' ? 'Registration confirmed' : 'Withdrawal confirmed').' – '.$event->name;
             $body = '<p>'.e($player->full_name).($action === 'registration' ? ' is registered for ' : ' has withdrawn from ').e($event->name)
                 .($category ? ' ('.e($category).')' : '').'.</p><p><a href="'.e(route('events.show', $event)).'">View event</a></p>';
+            if ($action === 'withdrawal') $body .= WithdrawalNoticeFacts::html($player->full_name, $source->withdrawn_at, $source->withdrawn_by);
             $additional = collect([$player->email_2, $player->email_3])->map(fn ($email) => mb_strtolower(trim((string) $email)));
             return app(TeamSelectionContactService::class)->emails($player)->intersect($additional)->reject(fn ($email) => $email === $payerEmail)
                 ->map(fn ($email) => ['email' => $email, 'name' => $player->full_name, 'player_id' => $player->id,

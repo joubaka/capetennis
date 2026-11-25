@@ -36,23 +36,7 @@ final class TeamCommunicationService
 
     public function withdrawal(TeamPaymentOrder $order, array $details = []): void
     {
-        $this->player($order, 'withdrawal', $details);
-        if (! SiteSetting::emailEnabled('email_on_team_withdrawal')) {
-            return;
-        }
-
-        $order->loadMissing('event.admins');
-
-        $recipients = User::role('super-user')->pluck('email')
-            ->merge($order->event?->admins?->pluck('email') ?? collect())
-            ->filter()
-            ->map(fn ($email) => strtolower($email))
-            ->unique()
-            ->reject(fn ($email) => $email === strtolower((string) $order->user?->email));
-
-        foreach ($recipients as $email) {
-            $this->prepare($order, 'withdrawal', $details + ['admin_copy' => true], $email, 'Event administrator');
-        }
+        app(TeamWithdrawalNotificationService::class)->forOrder($order);
     }
 
     private function prepare(TeamPaymentOrder $order, string $action, array $details, string $email, string $name): void

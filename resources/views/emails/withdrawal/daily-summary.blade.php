@@ -5,14 +5,14 @@
 There {{ $withdrawals->count() === 1 ? 'was' : 'were' }} **{{ $withdrawals->count() }} {{ Str::plural('withdrawal', $withdrawals->count()) }}** for **{{ $event->name }}** between {{ $periodStart->format('d M Y H:i') }} and {{ $periodEnd->format('d M Y H:i') }}.
 
 <x-mail::table>
-| Player | Category | Withdrawn at | Refund status |
-| :-- | :-- | :-- | :-- |
+| Player | Category | Withdrawn at | Performed by | Refund status |
+| :-- | :-- | :-- | :-- | :-- |
 @foreach ($withdrawals as $registration)
 @php
     $player = $registration->players->first();
-    $playerName = $player ? trim($player->name.' '.$player->surname) : ($registration->user?->name ?? 'Unknown player');
+    $playerName = $player ? trim($player->name.' '.$player->surname) : 'Unknown player';
 @endphp
-| {{ $playerName }} | {{ $registration->categoryEvent?->category?->name ?? 'Unknown' }} | {{ $registration->withdrawn_at?->format('d M Y H:i') }} | {{ Str::headline($registration->refund_status ?: 'not refunded') }} |
+| {{ $playerName }} | {{ $registration->categoryEvent?->category?->name ?? 'Unknown' }} | {{ \App\Services\WithdrawalNoticeFacts::time($registration->withdrawn_at) }} | {{ \App\Services\WithdrawalNoticeFacts::actor($registration->withdrawn_by) }} | {{ Str::headline($registration->refund_status ?: 'not refunded') }} |
 @endforeach
 </x-mail::table>
 

@@ -162,6 +162,152 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame(2, $filtered->viewData('nominations')->total());
     }
 
+    public function test_removed_player_can_be_readded_once_with_decline_and_deletion_history_preserved(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $category->update(['nominations_published' => true]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $original = InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->first()->getAttributes();
+        $id = $nomination->id;
+        $playerId = $nomination->player_id;
+        $nomination->delete();
+        $this->deleted($event, $category, $id, 'Returning', ['player_id' => $playerId]);
+        $page = $this->actingAs($actor)->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk()->assertSee('Re-add nomination')->assertSee('Confirm the player is available again');
+        preg_match('/name="revision" value="([a-f0-9]{64})"/', $page->getContent(), $matches);
+        $revision = $matches[1];
+        if (getenv('CT_NOMINATION_HISTORY_QA_HTML')) file_put_contents(storage_path('framework/testing/interpro-nomination-reactivation-qa.html'), $page->getContent());
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $id]);
+        $data = ['revision' => $revision, 'reason' => 'Player is available again', 'confirm' => 1];
+        $this->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($original, InterprovincialTrialInvitation::find($original['id'])->getAttributes());
+        $this->assertSame($id, EventNomination::where('player_id', $playerId)->sole()->id);
+        $this->assertSame('open_registration', EventNomination::find($id)->actionableInvitation->status);
+        $this->assertSame(1, app(NominationHistory::class)->build($event)['rows']->total());
+        $this->assertSame('nominated', app(NominationHistory::class)->build($event)['rows']->first()->history_state);
+        $this->assertTrue((bool) $category->fresh()->nominations_published);
+        $this->assertDatabaseCount('category_event_registrations', 0);
+        $this->assertDatabaseCount('registration_order_items', 0);
+        $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 0);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame(2, InterprovincialTrialInvitation::where('nomination_id', $id)->count());
+        $this->assertDatabaseHas('audit_events', ['subject_id' => (string) $id, 'action' => 'event-nomination.deleted']);
+    }
+
+    public function test_reactivation_preserves_private_publication_and_requires_current_confirmation(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $category->update(['nominations_published' => false]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'admin_declined');
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $revision = $service->revision($event, $category->fresh(), $nomination->id);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]);
+        $this->actingAs($actor)->post($url, ['revision' => $revision, 'reason' => 'Available again'])->assertSessionHasErrors('confirm');
+        $this->post($url, ['revision' => str_repeat('0',64), 'reason' => 'Available again', 'confirm' => 1])->assertSessionHasErrors('nomination');
+        $this->post($url, ['revision' => $revision, 'reason' => 'Available again', 'confirm' => 1])->assertSessionHasNoErrors();
+        $this->assertFalse((bool) $category->fresh()->nominations_published);
+        $this->assertSame('admin_declined', InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->oldest('id')->first()->status);
+    }
+
+    public function test_reactivation_rejects_foreign_scope_unauthorized_actors_and_withdrawn_or_paid_history(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $revision = $service->revision($event, $category, $nomination->id);
+        $data = ['revision' => $revision, 'reason' => 'Available again', 'confirm' => 1];
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]);
+        $this->actingAs(User::factory()->create())->post($url, $data)->assertForbidden();
+        $foreign = CategoryEvent::factory()->create();
+        $this->actingAs($actor)->post(route('backend.interprovincial-trials.nominations.reactivate', [$event, $foreign, $nomination]), $data)->assertNotFound();
+        foreach (['withdrawn', 'paid_confirmed', 'queued', 'sending', 'accepted_pending_payment'] as $status) {
+            $invitation = InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->first();
+            $invitation->update(['status' => $status]);
+            $data['revision'] = $service->revision($event, $category, $nomination->id);
+            $this->post($url, $data)->assertSessionHasErrors('nomination');
+            $this->assertSame($status, $invitation->fresh()->status);
+        }
+        $this->assertSame(1, InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->count());
+    }
+
+    public function test_reactivation_rejects_missing_audit_duplicate_player_and_locked_category(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $id = $nomination->id;
+        $playerId = $nomination->player_id;
+        EventNomination::whereKey($id)->delete(); // Bypass the observer to test absent evidence.
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $id]);
+        $this->actingAs($actor)->post($url, ['revision' => str_repeat('0',64), 'reason' => 'Available again', 'confirm' => 1])->assertNotFound();
+        $this->deleted($event, $category, $id, 'Returning', ['player_id' => $playerId]);
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $replacement = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $category->id, 'player_id' => $playerId]);
+        $data = ['revision' => $service->revision($event, $category, $id), 'reason' => 'Available again', 'confirm' => 1];
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $replacement->delete();
+        $category->forceFill(['locked_at' => now()])->save();
+        $data['revision'] = $service->revision($event, $category, $id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertNull(EventNomination::find($id));
+    }
+
+    public function test_reactivation_rejects_tampered_deletion_evidence_and_mismatched_invitation_identity(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]);
+        $invitation = InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->sole();
+        $invitation->update(['player_id' => Player::factory()->create()->id]);
+        $this->actingAs($actor)->post($url, ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Available again', 'confirm' => 1])->assertSessionHasErrors('nomination');
+        $invitation->update(['player_id' => $nomination->player_id]);
+        $nomination->delete();
+        $this->deleted($event, $category, $nomination->id, 'Returning', ['player_id' => $nomination->player_id]);
+        DB::table('audit_events')->where('subject_id', (string) $nomination->id)->where('action', 'event-nomination.deleted')->update(['integrity_hash' => str_repeat('0',64)]);
+        $this->post($url, ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Available again', 'confirm' => 1])->assertSessionHasErrors('nomination');
+        $this->assertNull(EventNomination::find($nomination->id));
+    }
+
+    public function test_reactivation_blocks_unlinked_checkout_items_and_soft_deleted_entries(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $this->actingAs($actor);
+        foreach (['checkout', 'deleted-entry'] as $kind) {
+            $nomination = $this->nominee($event, $category, $batch, $kind, 'declined');
+            $registration = \App\Models\Registration::create();
+            $registration->players()->attach($nomination->player_id);
+            if ($kind === 'checkout') {
+                $order = \App\Models\RegistrationOrder::create(['user_id' => $actor->id, 'status' => 'pending', 'total_fee' => 450, 'pay_status' => false]);
+                \App\Models\RegistrationOrderItems::forceCreate(['order_id' => $order->id, 'category_event_id' => $category->id,
+                    'player_id' => $nomination->player_id, 'registration_id' => $registration->id, 'user_id' => $actor->id, 'item_price' => 450]);
+                $before = $order->fresh()->getAttributes();
+            } else {
+                $entry = \App\Models\CategoryEventRegistration::factory()->create(['category_event_id' => $category->id, 'registration_id' => $registration->id, 'user_id' => $actor->id]);
+                $entry->delete();
+                $before = $entry->fresh()->getAttributes();
+            }
+            $this->post(route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]),
+                ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Available again', 'confirm' => 1])->assertSessionHasErrors('nomination');
+            $this->assertSame($before, ($kind === 'checkout' ? $order : $entry)->fresh()->getAttributes());
+            $this->assertSame(1, InterprovincialTrialInvitation::where('nomination_id', $nomination->id)->count());
+        }
+    }
+
+    public function test_only_assigned_event_admin_can_reactivate_a_nominee(): void
+    {
+        [$event, $category, , $batch] = $this->scenario();
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
+        $admin = User::factory()->create()->assignRole('admin');
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]);
+        $data = ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Available again', 'confirm' => 1];
+        $this->actingAs($admin)->post($url, $data)->assertForbidden();
+        DB::table('event_admins')->insert(['event_id' => $event->id, 'user_id' => $admin->id]);
+        $this->post($url, $data)->assertSessionHasNoErrors();
+        $this->assertSame('open_registration', $nomination->actionableInvitation->status);
+    }
+
     private function scenario(): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
@@ -184,10 +330,12 @@ class InterproNominationHistoryTest extends TestCase
 
     private function deleted($event, $category, $id, $name, array $overrides = []): void
     {
-        DB::table('audit_events')->insert(['event_uuid' => (string) \Illuminate\Support\Str::ulid(), 'occurred_at' => now(), 'created_at' => now(),
+        $auditId = DB::table('audit_events')->insertGetId(['event_uuid' => (string) \Illuminate\Support\Str::ulid(), 'occurred_at' => now(), 'created_at' => now(),
             'category' => 'data', 'action' => 'event-nomination.deleted', 'outcome' => 'succeeded', 'source' => 'web',
             'subject_type' => EventNomination::class, 'subject_id' => (string) $id, 'event_id' => $event->id,
             'before' => json_encode(array_replace(['id' => $id, 'event_id' => $event->id, 'category_event_id' => $category->id,
                 'player_id' => null, 'nominee_name' => $name, 'nominee_surname' => 'Candidate'], $overrides)), 'integrity_hash' => str_repeat('0',64)]);
+        $payload = (array) DB::table('audit_events')->find($auditId);
+        DB::table('audit_events')->where('id', $auditId)->update(['integrity_hash' => \App\Support\Audit\AuditIntegrity::hash($payload)]);
     }
 }

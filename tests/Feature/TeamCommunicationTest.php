@@ -207,6 +207,7 @@ class TeamCommunicationTest extends TestCase
 
     public function test_withdrawal_notifies_payer_super_users_and_event_admins_once(): void
     {
+        Bus::fake();
         Mail::fake();
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $order = $this->order();
@@ -214,13 +215,13 @@ class TeamCommunicationTest extends TestCase
         $admin = User::factory()->create(['email' => 'admin@example.test']);
         DB::table('event_admins')->insert(['event_id' => $order->event_id, 'user_id' => $admin->id]);
 
-        app(TeamCommunicationService::class)->withdrawal($order->fresh(), ['refund_available' => true]);
+        $this->completeWithdrawal($order);
+        app(TeamCommunicationService::class)->withdrawal($order->fresh());
 
         Mail::assertNothingQueued();
-        $this->assertDatabaseCount('bulk_email_logs', 0);
-        $this->assertDatabaseCount('event_communication_batches', 3);
+        $this->assertDatabaseCount('event_communication_batches', 0);
         foreach ([$order->user->email, $super->email, $admin->email] as $email) {
-            $this->assertContains($email, EventCommunicationBatch::all()->flatMap(fn ($batch) => array_column($batch->recipients, 'email'))->all());
+            $this->assertSame(1, BulkEmailLog::where('mail_type', 'team_withdrawal_notification')->where('recipient_email', $email)->count());
         }
     }
 
@@ -237,6 +238,7 @@ class TeamCommunicationTest extends TestCase
 
     public function test_player_and_admin_team_withdrawal_switches_apply_independently(): void
     {
+        Bus::fake();
         Mail::fake();
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);
         $order = $this->order();
@@ -244,10 +246,20 @@ class TeamCommunicationTest extends TestCase
         SiteSetting::set('player_email_on_team_withdrawal', '0', SiteSetting::GROUP_EMAIL);
         SiteSetting::set('email_on_team_withdrawal', '1', SiteSetting::GROUP_EMAIL);
 
-        app(TeamCommunicationService::class)->withdrawal($order->fresh());
+        $this->completeWithdrawal($order);
 
         Mail::assertNothingQueued();
-        $this->assertSame($super->email, EventCommunicationBatch::sole()->recipients[0]['email']);
+        $this->assertSame($super->email, BulkEmailLog::sole()->recipient_email);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+    }
+
+    private function completeWithdrawal(TeamPaymentOrder $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $withdrawn = app(\App\Domain\Payments\Services\TeamPaymentService::class)->recordWithdrawal($order, $order->user);
+            TeamPlayer::where('team_id', $order->team_id)->where('player_id', $order->effective_player_id)->update(['player_id' => 0, 'pay_status' => 0]);
+            app(\App\Services\TeamWithdrawalNotificationService::class)->completed($order->team, $order->effectivePlayer, $order->event, $order->user, $withdrawn);
+        });
     }
 
     public function test_settled_team_order_keeps_receipt_with_payer_and_sends_safe_contact_updates_once(): void
