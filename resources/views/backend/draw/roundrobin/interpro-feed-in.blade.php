@@ -2,13 +2,13 @@
   $trialFixtures = $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get()->keyBy('match_nr');
   $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template();
   $trialPanels = [
-    ['title' => 'Championship · 1st / 2nd', 'width' => 630, 'height' => 370,
+    ['title' => 'Championship · 1st / 2nd', 'width' => 610, 'height' => 370,
       'matches' => [2001 => [10, 10], 2002 => [10, 200], 2003 => [340, 105]]],
-    ['title' => 'Crossovers and feed-in · 3rd–8th', 'width' => 1290, 'height' => 790,
+    ['title' => 'Crossovers and feed-in · 3rd–8th', 'width' => 1270, 'height' => 790,
       'matches' => [3001 => [10, 10], 3002 => [10, 210], 3003 => [10, 410], 3004 => [10, 610],
         3005 => [340, 110], 3006 => [340, 510], 3007 => [670, 110], 3008 => [670, 510],
         3010 => [670, 310], 3009 => [1000, 210], 3011 => [1000, 410]]],
-    ['title' => 'Crossover losers · 9th–12th', 'width' => 630, 'height' => 370,
+    ['title' => 'Crossover losers · 9th–12th', 'width' => 610, 'height' => 370,
       'matches' => [4001 => [10, 10], 4002 => [10, 200], 4003 => [340, 10], 4004 => [340, 200]]],
   ];
   $trialSourceLabel = static fn ($source) => preg_match('/^([WL])(\d+)$/', $source, $parts)
@@ -22,7 +22,7 @@
   .interpro-feed-in h4 { font-size: 22px; }
   .interpro-feed-in h5 { font-size: 18px; margin: 24px 0 10px; }
   .interpro-feed-in .interpro-bracket-scroll { overflow-x: auto; max-width: 100%; padding-bottom: 8px; }
-  .interpro-feed-in .interpro-bracket-svg { display: block; max-width: none; flex-shrink: 0; font-family: Arial, sans-serif; }
+  .interpro-feed-in .interpro-bracket-svg { display: block; min-width: 0 !important; max-width: none; flex-shrink: 0; font-family: Arial, sans-serif; }
   .interpro-feed-in .interpro-edge { fill: none; stroke: #6b8095; stroke-width: 1.5; }
   .interpro-feed-in .interpro-edge-loser { stroke: #bc742b; stroke-dasharray: 5 4; }
   .interpro-feed-in .interpro-match { height: 160px; box-sizing: border-box; border: 1px solid #bccbd9; border-radius: 6px; background: #fff; color: #20364e; overflow: hidden; font: 14px/1.35 Arial, sans-serif; }
@@ -52,7 +52,7 @@
               @if(preg_match('/^([WL])(\d+)$/', $source, $parts) && isset($panel['matches'][(int) $parts[2]]))
                 @php
                   [$fromX, $fromY] = $panel['matches'][(int) $parts[2]];
-                  $startX = $fromX + 280;
+                  $startX = $fromX + 260;
                   $startY = $fromY + ($parts[1] === 'W' ? 55 : 105);
                   $endY = $y + ($slot === 0 ? 55 : 105);
                   $bendX = $x - ($slot === 0 ? 32 : 18);
@@ -66,7 +66,7 @@
               $definition = $trialTemplate[$number];
               $fixture = ($emptyBracket ?? false) ? null : $trialFixtures->get($number);
             @endphp
-            <foreignObject x="{{ $x }}" y="{{ $y }}" width="280" height="160" data-match="{{ $number }}">
+            <foreignObject x="{{ $x }}" y="{{ $y }}" width="260" height="160" data-match="{{ $number }}">
               <div xmlns="http://www.w3.org/1999/xhtml" class="interpro-match">
                 <div class="interpro-match-heading"><span>Match {{ $number }}</span><span>{{ isset($definition[3]) ? 'Places '.$definition[3].'/'.($definition[3] + 1) : '' }}</span></div>
                 @foreach($definition[2] as $slot => $source)
