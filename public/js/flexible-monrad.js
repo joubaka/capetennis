@@ -361,26 +361,10 @@
     connectors(board, boxes.values(), lines, width, boardHeight);
   }
   function bracketMatch(position, label) {
-    const match = el('div', 'fm-match');
-    match.style.left = position.x + 'px';
-    match.style.top = position.top - bracketDimensions.slotHeight + 'px';
-    match.style.width = bracketDimensions.width + 'px';
-    match.style.height = position.bottom - position.top + bracketDimensions.slotHeight + 'px';
-    match.append(el('div', 'fm-match-head', label));
-    return match;
+    return bracketLayout.createMatch(position, label, document);
   }
   function connectors(board, positions, lines, width, height) {
-    const ns = 'http://www.w3.org/2000/svg',
-      svg = document.createElementNS(ns, 'svg');
-    svg.classList.add('fm-links', 'ct-bracket-svg');
-    svg.setAttribute('width', width);
-    svg.setAttribute('height', height);
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    svg.setAttribute('aria-hidden', 'true');
-    const path = document.createElementNS(ns, 'path');
-    path.setAttribute('data-ct-edge', '');
-    path.setAttribute('d', bracketLayout.linePath(positions, lines, { raw: true }));
-    svg.append(path);
+    const svg = bracketLayout.createLinks(positions, lines, width, height, document);
     board.prepend(svg);
     window.TennisBracket.refresh();
   }
@@ -471,8 +455,8 @@
           const card = bracketMatch(position, match.displayOnly ? 'Bye' : `Match ${match.number}${match.challenge_positions ? ' · '+match.challenge_positions.join(' v ') : ''}`);
           match.players.forEach((id, slot) => {
             const knownWinner = match.winner && match.players.some(player => player && Number(player) === Number(match.winner));
-            const line = el('div', `fm-slot${id && knownWinner ? (Number(id) === Number(match.winner) ? ' winner' : ' loser') : ''}`);
-            line.style.top = (slot ? position.bottom - position.top : 0) + 'px';
+            const line = bracketLayout.createSlot(slot ? position.bottom - position.top : 0,
+              id && knownWinner ? (Number(id) === Number(match.winner) ? 'winner' : 'loser') : '', document);
             const withdrawnId = match.withdrawn_players?.[slot];
             const pendingWithdrawalId = match.pending_withdrawal_players?.[slot];
             const label = pendingWithdrawalId
@@ -527,17 +511,14 @@
           basePosition = match.winner ? state.base_positions?.find(row => Number(row.player) === Number(match.winner))?.position : null,
           position = coords.get(key),
           lineEnd = position.x + bracketDimensions.width + 120,
-          endpoint = el('div', 'fm-winner-endpoint'),
           label = match.challenge_positions ? `Winner takes position ${match.challenge_positions[0]}` : section === 'Main draw' ? 'Champion'
             : placement ? `${state.challenge_playoffs ? 'Base position' : 'Position'} ${basePosition || placement[1]}` : 'Winner';
-        endpoint.style.left = lineEnd + 10 + 'px';
-        endpoint.style.top = position.middle - bracketDimensions.slotHeight + 'px';
-        const winnerName = el('strong', 'fm-winner-name');
+        const endpoint = bracketLayout.createEndpoint(position, label, document);
+        const winnerName = endpoint.querySelector('.fm-winner-name');
         if (match.challenge_status === 'disabled') winnerName.textContent = 'Not selected · positions unchanged';
         else if (match.challenge_status === 'skipped') winnerName.textContent = 'Skipped · positions unchanged';
         else if (match.winner) winnerName.append(playerNameNode(match.winner, 'fm-player-identity-winner'));
         else { winnerName.textContent = 'Awaiting result'; winnerName.classList.add('fm-pending-result'); }
-        endpoint.append(el('span', 'fm-winner-label', label), winnerName);
         board.append(endpoint);
         winnerLines.push([position.x + bracketDimensions.width, position.middle, lineEnd, position.middle]);
         width = Math.max(width, lineEnd + 10 + bracketDimensions.width);

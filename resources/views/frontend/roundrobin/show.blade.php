@@ -390,6 +390,9 @@
 </script>
 <script src="{{ asset('assets/js/roundrobin-standings.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-standings.js')) }}"></script>
 <script src="{{ asset('assets/js/roundrobin-public.js') }}?v={{ md5_file(public_path('assets/js/roundrobin-public.js')) }}"></script>
+@if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+  @include('draw.partials.interpro-bracket-assets')
+@endif
 
 <script>
 (function(){
@@ -399,8 +402,16 @@
   var step = 0.15;
 
   function applyZoom(outer) {
+    if (!outer) return;
     var inner = outer.querySelector('.bracket-zoom-inner');
     var label = outer.querySelector('.bracket-zoom-label');
+    if (!label) label = outer.closest('.card')?.querySelector('.bracket-zoom-label');
+    if (inner && inner.querySelector('ct-interpro-bracket')) {
+      var scroll = outer.querySelector('.bracket-zoom-scroll');
+      var scrollStyle = getComputedStyle(scroll);
+      var available = scroll.clientWidth - parseFloat(scrollStyle.paddingLeft) - parseFloat(scrollStyle.paddingRight);
+      inner.style.width = zoom === 1 ? '100%' : available + 'px';
+    }
     if (inner) inner.style.zoom = zoom;
     if (label) label.textContent = Math.round(zoom * 100) + '%';
   }
@@ -410,6 +421,16 @@
     var inner  = outer.querySelector('.bracket-zoom-inner');
     var svg    = inner ? inner.querySelector('svg') : null;
     if (!svg || !scroll) return;
+    if (inner.querySelector('ct-interpro-bracket')) {
+      zoom = 1;
+      applyZoom(outer);
+      var scrollStyle = getComputedStyle(scroll);
+      var available = scroll.clientWidth - parseFloat(scrollStyle.paddingLeft) - parseFloat(scrollStyle.paddingRight);
+      var board = inner.querySelector('.fm-board');
+      zoom = Math.max(minZ, Math.min(1, available / (board ? board.getBoundingClientRect().width : svg.getBoundingClientRect().width)));
+      applyZoom(outer);
+      return;
+    }
     var vb = svg.getAttribute('viewBox');
     if (!vb) return;
     var parts = vb.split(/[\s,]+/).map(Number);
@@ -422,6 +443,8 @@
   $(document).on('click', '.btn-bracket-zoom', function(){
     var dir = $(this).data('dir');
     var outer = $(this).closest('.bracket-zoom-outer')[0];
+    if (!outer) outer = $(this).closest('.card').find('.bracket-zoom-outer')[0];
+    if (!outer) return;
     if (dir === 'in')  zoom = Math.min(maxZ, zoom + step);
     if (dir === 'out') zoom = Math.max(minZ, zoom - step);
     if (dir === 'fit') { fitZoom(outer); return; }

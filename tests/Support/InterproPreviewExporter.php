@@ -70,6 +70,8 @@ final class InterproPreviewExporter
         preg_match('/const landscapeStyles = `([\s\S]*?)`;/u', $script, $landscape);
         if (!$print || !$landscape) throw new \LogicException('The current application print styles could not be reviewed.');
         $styles = $print[1].$landscape[1].'<style>'.file_get_contents(public_path('css/tennis-bracket.css')).'</style>';
+        $styles .= view('draw.partials.interpro-print-assets')->render();
+        $actualBracketHtml = preg_replace('/<!-- ct-interpro-assets:start -->[\s\S]*?<!-- ct-interpro-assets:end -->/', '', $actualBracketHtml);
         $body = '<div class="bracket-header"><h1>'.e($draw->drawName).'</h1><h2>Playoff Brackets</h2></div><div class="bracket-print-wrap">'.$actualBracketHtml.'</div>';
         $this->write('print.html', '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fictional Interpro print preview</title>'.$styles.'</head><body>'.$body.'</body></html>');
     }
@@ -100,6 +102,17 @@ final class InterproPreviewExporter
             .'<li><a href="blank.html">Blank planning draw</a> — source labels only, with no player names, scores or final-position list.</li></ol>'
             .'<p><a href="manifest.json">Evidence manifest</a> · Full first-stage and completed playoff corrections remain protected pending a reviewed correction workflow.</p>';
         $this->write('index.html', $this->wrap('Interpro trials · fictional walkthrough', $body));
+        $this->monradDemo();
+    }
+
+    private function monradDemo(): void
+    {
+        $this->write('monrad.html', app(\App\Http\Controllers\Backend\FlexibleMonradController::class)->demo()->render());
+        $draft = ['size' => 4, 'slots' => ['aa' => ['type' => 'player', 'id' => 1], 'ab' => ['type' => 'player', 'id' => 2],
+            'ba' => ['type' => 'player', 'id' => 3], 'bb' => ['type' => 'player', 'id' => 4]]];
+        $graph = app(\App\Services\Draw\FlexibleMonradCompiler::class)->compile($draft);
+        $graph['fixture_order'] = \App\Services\Draw\FlexibleMonradCompiler::fixtureOrder($graph);
+        $this->write('monrad-graph.json', json_encode($graph));
     }
 
     private function wrap(string $title, string $body): string

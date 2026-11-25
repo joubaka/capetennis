@@ -89,6 +89,10 @@
     var $inner = $('#bracket-zoom-inner');
     if (!$inner.length) return;
     // CSS zoom participates in layout, avoiding a second vertical scrollbar.
+    // Keep a responsive Interpro board's base width stable during magnification.
+    if ($inner.find('ct-interpro-bracket').length) {
+      $inner.css('width', _zoom === 1 ? '' : $('#main-bracket-wrapper').width());
+    }
     $inner.css({ zoom: _zoom, transform: 'none' });
     $('#bracket-zoom-label').text(Math.round(_zoom * 100) + '%');
   }

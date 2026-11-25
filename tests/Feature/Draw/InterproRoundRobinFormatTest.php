@@ -73,6 +73,20 @@ class InterproRoundRobinFormatTest extends TestCase
         foreach ([2001 => 1, 2002 => 2, 3001 => 1, 3002 => 1, 3003 => 1, 3004 => 1, 3005 => 2, 3006 => 2] as $nr => $slot) $this->score($draw, $nr, $slot);
     }
 
+    private function renderedPlayerScores(string $html, int $number): array
+    {
+        $sets = $this->bracketProjection($html)['matches'][$number]['sets'];
+        return $sets ? [implode(' ', array_column($sets, 0)), implode(' ', array_column($sets, 1))] : [];
+    }
+
+    private function bracketProjection(string $html): array
+    {
+        $document = new \DOMDocument();
+        @$document->loadHTML('<?xml encoding="UTF-8">'.$html);
+        $xpath = new \DOMXPath($document);
+        return json_decode($xpath->query('//*[@data-interpro-payload]')->item(0)->textContent, true, flags: JSON_THROW_ON_ERROR);
+    }
+
     public function test_fixed_topology_prepares_stable_sources_and_accepts_last_years_smaller_groups(): void
     {
         $draw = $this->context([4, 4, 3, 3]);
@@ -124,7 +138,7 @@ class InterproRoundRobinFormatTest extends TestCase
             ->assertSee('href="'.$link.'"', false)->assertSee('View playoff bracket');
         $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('id="main-bracket-tab"', false);
         $bracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
-        $this->assertSame(18, substr_count($bracket->getContent(), '<foreignObject '));
+        $this->assertCount(18, $this->bracketProjection($bracket->getContent())['matches']);
         $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
 
         $draw->settings()->update(['preset_key' => null]);
@@ -140,8 +154,75 @@ class InterproRoundRobinFormatTest extends TestCase
             'playoff_config' => InterproRoundRobinFormat::configuration()]);
         $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('No matches are available')
             ->assertSee('href="'.route('public.roundrobin.show', $draw).'#playoffs"', false);
-        $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('Group A position 1');
+        $planning = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('Group A position 1');
+        $this->assertSame(12, substr_count($planning->getContent(), 'class="ct-final-position is-awaiting"'));
         $this->assertSame(0, $draw->drawFixtures()->count());
+    }
+
+    public function test_unified_bracket_bounds_and_escapes_long_names_and_preserves_carried_outcomes(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachCarries($draw);
+        $fixture = $this->fixture($draw, 3007);
+        $fixture->registration1->players->first()->update(['name' => 'Fictional <script>alert(1)</script>',
+            'surname' => 'Exceptionally Long Participant Surname']);
+        $fullName = $fixture->registration1->players->first()->fresh()->full_name;
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()
+            ->assertDontSee('<script>alert(1)</script>', false)
+            ->assertSee('First result stands');
+        $projection = $this->bracketProjection($page->getContent());
+        $this->assertSame($fullName, $projection['matches'][3007]['players'][0]['name']);
+        $this->assertStringContainsString('\\u003Cscript\\u003E', $page->getContent());
+        $this->assertSame($projection['matches'][3007]['players'][0]['id'], $projection['matches'][3007]['winner']);
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $this->assertSame(0, $fixture->fixtureResults()->count());
+    }
+
+    public function test_bracket_schedule_metadata_uses_only_its_visible_published_snapshot(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachCarries($draw);
+        $draw->event->update(['published' => true]);
+        $draw->update(['published' => true]);
+        $venue = Venue::forceCreate(['name' => 'Published bracket venue']);
+        $fixture = $this->fixture($draw, 2003);
+        $slot = OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+            'time' => '2026-11-27 09:00', 'court' => 'C1']);
+        auth()->logout();
+        $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()
+            ->assertDontSee('class="interpro-match-schedule"', false)->assertDontSee('Published bracket venue');
+        app(\App\Services\Scheduling\SchedulePublicationService::class)->publish($draw->event, ['draw_id' => $draw->id]);
+        $slot->update(['time' => '2026-11-28 15:00', 'court' => 'PRIVATE WORKING COURT']);
+        $foreign = Fixture::factory()->create();
+        DB::table('published_schedule_assignments')->insert(['event_id' => $draw->event_id, 'draw_id' => $draw->id,
+            'fixture_kind' => 'individual', 'fixture_id' => $foreign->id, 'scheduled_at' => '2026-11-27 10:00',
+            'venue_id' => $venue->id, 'court' => 'FOREIGN COURT', 'duration' => 30, 'published_at' => now()]);
+        $published = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()
+            ->assertSee('Published bracket venue')->assertDontSee('PRIVATE WORKING COURT')->assertDontSee('FOREIGN COURT');
+        $this->assertSame(['time' => '2026-11-27 09:00:00', 'venue' => 'Published bracket venue', 'court' => 'C1'],
+            $this->bracketProjection($published->getContent())['matches'][2003]['schedule']);
+        $this->get(route('public.roundrobin.main-bracket', [$draw, 'empty' => 1]))->assertOk()
+            ->assertDontSee('class="interpro-match-schedule"', false)->assertDontSee('Published bracket venue');
+        $draw->update(['oop_published' => false]);
+        $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()
+            ->assertDontSee('class="interpro-match-schedule"', false)->assertDontSee('Published bracket venue');
+    }
+
+    public function test_carried_walkover_still_displays_its_result_type_without_invented_set_scores(): void
+    {
+        $draw = $this->context();
+        $group = $draw->groups()->where('name', 'B')->firstOrFail();
+        $source = $draw->drawFixtures()->where('draw_group_id', $group->id)->orderBy('match_nr')->firstOrFail();
+        $source->fixtureResults()->delete();
+        $source->update(['match_status' => 3]);
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachCarries($draw);
+        $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('W/O')->assertSee('First result stands');
+        $this->assertSame([], $this->renderedPlayerScores($page->getContent(), 3007));
+        $this->assertSame(0, $this->fixture($draw, 3007)->fixtureResults()->count());
     }
 
     public function test_first_results_cascade_without_duplicate_evidence_and_determine_all_twelve_positions(): void
@@ -191,14 +272,31 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertSame($before, $draw->drawFixtures()->get()->toJson());
         $this->assertSame(42, $draw->drawFixtures()->count());
         $finalPage = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('First result stands')->assertSee('11/12')->assertSee('Final positions');
-        $this->assertSame(18, substr_count($finalPage->getContent(), '<foreignObject '));
-        $this->assertSame(3, substr_count($finalPage->getContent(), 'class="interpro-bracket-svg"'));
+        $projection = $this->bracketProjection($finalPage->getContent());
+        $this->assertCount(18, $projection['matches']);
+        $this->assertCount(2, $projection['boards']);
+        $dependencies = 0;
         foreach (InterproRoundRobinFormat::template() as $number => $definition) {
-            $finalPage->assertSee('data-match="'.$number.'"', false);
+            foreach ($definition[2] as $slot => $source) {
+                if (preg_match('/^([WL])(\d+)$/', $source, $parts)) {
+                    $dependencies++;
+                    $this->assertSame($parts[1] === 'W' ? 'winner' : 'loser', $projection['matches'][$number]['sources'][$slot]['type']);
+                    $this->assertSame($parts[2], $projection['matches'][$number]['sources'][$slot]['match']);
+                }
+            }
         }
-        $finalPage->assertSee('data-from="3007" data-to="3011"', false)
-            ->assertSee('data-from="3008" data-to="3011"', false);
-        $blankPage = $this->get(route('backend.draw.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertDontSee('6-2')->assertSee('Loser match 2002')->assertDontSee('Final positions');
+        $this->assertSame(24, $dependencies);
+        foreach ([2003 => 1, 3009 => 3, 3011 => 5, 3010 => 7, 4003 => 9, 4004 => 11] as $number => $position) {
+            $this->assertSame($position, $projection['matches'][$number]['position']);
+        }
+        $this->assertSame([2001, 2002, 2003], $projection['boards'][0]['sections'][0]['matches']);
+        $this->assertSame(2003, $projection['boards'][0]['sections'][0]['champion']);
+        $this->assertSame([3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009], $projection['boards'][0]['sections'][1]['matches']);
+        $this->assertSame('2002', $projection['matches'][3007]['sources'][0]['match']);
+        $this->assertSame('2001', $projection['matches'][3008]['sources'][0]['match']);
+        $this->assertSame('Round 3 · crossed feed-in', $projection['boards'][0]['sections'][1]['roundLabels'][2]);
+        $blankPage = $this->get(route('backend.draw.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertSee('Loser match 2002')->assertDontSee('Final positions');
+        $this->assertStringNotContainsString('6-2', strip_tags($blankPage->getContent()));
         if ($preview) {
             $preview->stage('final.html', '4 · Completed trial draw and final positions', $finalPage->getContent());
             $preview->stage('blank.html', '6 · Blank planning draw', $blankPage->getContent());
@@ -210,7 +308,8 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->get(route('public.roundrobin.main-bracket', $draw))->assertForbidden();
         $draw->update(['published' => true]);
         $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('First result stands');
-        $this->get(route('public.roundrobin.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertDontSee('6-2');
+        $publicBlank = $this->get(route('public.roundrobin.main-bracket', [$draw, 'empty' => 1]))->assertOk();
+        $this->assertStringNotContainsString('6-2', strip_tags($publicBlank->getContent()));
     }
 
     public function test_carry_releases_its_booking_and_schedule_preview_excludes_it(): void
@@ -351,9 +450,14 @@ class InterproRoundRobinFormatTest extends TestCase
         $reverse->registration1_id = $target->registration2_id;
         $reverse->registration2_id = $target->registration1_id;
         $this->assertStringStartsWith('2-6', InterproRoundRobinFormat::score($reverse));
+        $target->update(['registration1_id' => $reverse->registration1_id, 'registration2_id' => $reverse->registration2_id]);
+        $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk();
+        $this->assertSame(['2', '6'], $this->renderedPlayerScores($page->getContent(), 3007));
         $source = InterproRoundRobinFormat::source($target);
         $source->fixtureResults()->first()->update(['registration2_score' => 3]);
         $this->assertNull(app(IndividualMatchOutcomeService::class)->winner($target->fresh()));
+        $stale = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('Original result changed');
+        $this->assertSame([], $this->renderedPlayerScores($stale->getContent(), 3007));
         $config = $draw->fresh()->settings->playoff_config;
         $other = Fixture::factory()->create(['draw_id' => Draw::factory()->create()->id,
             'registration1_id' => $target->registration1_id, 'registration2_id' => $target->registration2_id]);

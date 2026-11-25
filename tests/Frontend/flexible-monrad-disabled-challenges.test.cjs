@@ -18,10 +18,10 @@ function scenario(allOff=false){
 function render(matches,readOnly){
  const el=(tag,className='',text='')=>({tag,className,textContent:String(text),style:{},dataset:{},children:[],clientWidth:1000,offsetHeight:35,
   classList:{add(){},toggle(){}},append(...nodes){this.children.push(...nodes);},replaceChildren(){this.children=[];},setAttribute(){},addEventListener(){},
-  querySelector(){return {textContent:''};}});
+  querySelector(selector){return this.children.find(node=>selector.startsWith('.')&&node.className.split(' ').includes(selector.slice(1)))||{textContent:''};}});
  const nodes=new Map();const get=id=>{if(!nodes.has(id))nodes.set(id,el('div'));return nodes.get(id);};
  const state={generated:true,matches,positions:[],draft:{},rolling_challenges:true};
- const context={state,config:{readOnly,canScore:false,workflow:'feed_in_monrad'},el,$:get,bracketLayout,bracketDimensions:bracketLayout.dimensions,
+ const context={state,config:{readOnly,canScore:false,workflow:'feed_in_monrad'},el,$:get,bracketLayout,bracketDimensions:bracketLayout.dimensions,document:{createElement:tag=>el(tag)},
   playerNameNode:id=>el('span','',`Player ${id}`),generatedPlayerDrag(){},connectors(){},
   bracketMatch:(_,title)=>el('div','fm-match',title),sourceLabel:source=>`Base position ${source.base_position||''}`,
   matchParticipantLabel:(match,slot)=>match.players[slot]?`Player ${match.players[slot]}`:`Base position ${match.sources[slot].base_position||''}`,

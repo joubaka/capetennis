@@ -1,6 +1,7 @@
 
 .fm-surface {
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: normal;
   color: #17342c;
   background: #f3f6f3;
   --green: #176448;
@@ -244,12 +245,12 @@
   font-size: 12px;
   color: #738579;
 }
-:where(.fm-surface) #fm-scroll {
+:where(.fm-surface) :is(#fm-scroll, .fm-scroll) {
   overflow-x: auto;
   padding: 16px;
   overscroll-behavior-x: contain;
 }
-:where(.fm-surface) #fm-board {
+:where(.fm-surface) :is(#fm-board, .fm-board) {
   position: relative;
   min-height: 240px;
   font-family: 'Noto Sans JP', Arial, sans-serif;
@@ -724,12 +725,12 @@
 :where(.fm-surface) .fm-board-wrap {
     border: 0;
   }
-:where(.fm-surface) #fm-scroll {
+:where(.fm-surface) :is(#fm-scroll, .fm-scroll) {
     overflow: visible;
     max-height: none;
     padding: 0;
   }
-:where(.fm-surface) #fm-board {
+:where(.fm-surface) :is(#fm-board, .fm-board) {
     zoom: var(--ct-print-scale, 0.65);
   }
 :where(.fm-surface) .fm-match {

@@ -1,93 +1,82 @@
 @php
   $trialFixtures = $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get()->keyBy('match_nr');
   $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template();
-  $trialPanels = [
-    ['title' => 'Championship · 1st / 2nd', 'width' => 610, 'height' => 370,
-      'matches' => [2001 => [10, 10], 2002 => [10, 200], 2003 => [340, 105]]],
-    ['title' => 'Crossovers and feed-in · 3rd–8th', 'width' => 1270, 'height' => 790,
-      'matches' => [3001 => [10, 10], 3002 => [10, 210], 3003 => [10, 410], 3004 => [10, 610],
-        3005 => [340, 110], 3006 => [340, 510], 3007 => [670, 110], 3008 => [670, 510],
-        3010 => [670, 310], 3009 => [1000, 210], 3011 => [1000, 410]]],
-    ['title' => 'Crossover losers · 9th–12th', 'width' => 610, 'height' => 370,
-      'matches' => [4001 => [10, 10], 4002 => [10, 200], 4003 => [340, 10], 4004 => [340, 200]]],
-  ];
+  $trialOutcomes = app(\App\Services\IndividualMatchOutcomeService::class);
+  $trialSchedule = ($emptyBracket ?? false) ? collect() : app(\App\Services\Scheduling\SchedulePublicationService::class)
+    ->publishedRows($draw->event, includeParticipants: false, drawId: $draw->id)
+    ->where('fixture_kind', 'individual')->keyBy('fixture_id');
   $trialSourceLabel = static fn ($source) => preg_match('/^([WL])(\d+)$/', $source, $parts)
     ? ($parts[1] === 'W' ? 'Winner' : 'Loser').' match '.$parts[2]
     : 'Group '.$source[0].' position '.$source[1];
   $trialScore = static fn ($fixture) => $fixture ? (\App\Services\Draw\InterproRoundRobinFormat::score($fixture)
     ?? ($fixture->isWalkover() ? 'W/O' : $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => $set->registration1_score.'-'.$set->registration2_score)->implode(', ').($fixture->isRetired() ? ' RET' : ''))) : '';
+  $trialMatches = [];
+  foreach ($trialTemplate as $number => $definition) {
+    $fixture = ($emptyBracket ?? false) ? null : $trialFixtures->get($number);
+    $score = $trialScore($fixture);
+    $original = $fixture ? \App\Services\Draw\InterproRoundRobinFormat::source($fixture) : null;
+    $hasCarry = $fixture && \App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture);
+    $scoreFixture = $hasCarry ? $original : $fixture;
+    $reverse = $original && (int) $original->registration1_id !== (int) $fixture->registration1_id;
+    $sets = $scoreFixture?->fixtureResults->sortBy('set_nr')->values() ?? collect();
+    $note = $original ? ($original->isWalkover() ? 'W/O · ' : ($original->isRetired() ? 'RET · ' : '')).substr($score, (int) strpos($score, ' · ') + strlen(' · '))
+      : ($hasCarry || $sets->isEmpty() ? $score : ($fixture?->isRetired() ? 'RET' : ''));
+    $schedule = $fixture ? $trialSchedule->get($fixture->id) : null;
+    $sources = [];
+    foreach ($definition[2] as $source) {
+      $sources[] = preg_match('/^([WL])(\d+)$/', $source, $parts)
+        ? ['type' => $parts[1] === 'W' ? 'winner' : 'loser', 'match' => $parts[2], 'label' => ($parts[1] === 'W' ? 'Winner' : 'Loser').' of Match '.$parts[2]]
+        : ['type' => 'group', 'label' => $trialSourceLabel($source)];
+    }
+    $trialMatches[$number] = ['number' => $number, 'stage' => $definition[0], 'round' => $definition[1], 'position' => $definition[3] ?? null, 'sources' => $sources,
+      'players' => collect([$fixture?->registration1, $fixture?->registration2])->map(fn ($registration) => $registration
+        ? ['id' => (int) $registration->id, 'name' => $registration->display_name] : null)->all(),
+      'winner' => $fixture ? $trialOutcomes->winner($fixture) : null,
+      'sets' => $sets->map(fn ($set) => $reverse ? [$set->registration2_score, $set->registration1_score] : [$set->registration1_score, $set->registration2_score])->all(),
+      'note' => $note, 'schedule' => $schedule ? ['time' => $schedule['scheduled_at'], 'venue' => $schedule['venue_name'], 'court' => $schedule['court']] : null];
+  }
+  $trialProjection = ['matches' => $trialMatches, 'boards' => [
+    ['key' => 'main', 'title' => 'Championship and lower eight-player bracket', 'sections' => [
+      ['title' => 'Championship · 4 players', 'matches' => [2001, 2002, 2003], 'roundLabels' => ['Semifinals', 'Positions 1–2'], 'champion' => 2003],
+      ['title' => 'Lower bracket · 8 players', 'matches' => [3001, 3002, 3003, 3004, 3005, 3006, 3007, 3008, 3009], 'roundLabels' => ['Round 1', 'Round 2', 'Round 3 · crossed feed-in', 'Positions 3–4']],
+    ]],
+    ['key' => 'placements', 'title' => 'Placement matches · 5th–12th', 'sections' => [
+      ['title' => 'Positions 5–6', 'matches' => [3011], 'roundLabels' => ['Final']],
+      ['title' => 'Positions 7–8', 'matches' => [3010], 'roundLabels' => ['Final']],
+      ['title' => 'Consolation · 9th–12th', 'matches' => [4001, 4002, 4003], 'roundLabels' => ['Semifinals', 'Positions 9–10']],
+      ['title' => 'Positions 11–12', 'matches' => [4004], 'roundLabels' => ['Final']],
+    ]],
+  ]];
 @endphp
+@include('draw.partials.interpro-bracket-assets')
 <style>
   .bracket-zoom-inner:has(> .interpro-feed-in) { display: block; width: 100%; }
   .interpro-feed-in { font-size: 16px; line-height: 1.5; }
   .interpro-feed-in h4 { font-size: 22px; }
-  .interpro-feed-in h5 { font-size: 18px; margin: 24px 0 10px; }
-  .interpro-feed-in .interpro-bracket-scroll { overflow-x: auto; max-width: 100%; padding-bottom: 8px; }
-  .interpro-feed-in .interpro-bracket-svg { display: block; min-width: 0 !important; max-width: none; flex-shrink: 0; font-family: Arial, sans-serif; }
-  .interpro-feed-in .interpro-edge { fill: none; stroke: #6b8095; stroke-width: 1.5; }
-  .interpro-feed-in .interpro-edge-loser { stroke: #bc742b; stroke-dasharray: 5 4; }
-  .interpro-feed-in .interpro-match { height: 160px; box-sizing: border-box; border: 1px solid #bccbd9; border-radius: 6px; background: #fff; color: #20364e; overflow: hidden; font: 14px/1.35 Arial, sans-serif; }
-  .interpro-feed-in .interpro-match-heading { display: flex; justify-content: space-between; padding: 6px 10px; background: #edf3f8; font-size: 13px; font-weight: 700; }
-  .interpro-feed-in .interpro-match-player { padding: 5px 10px; border-bottom: 1px solid #e5ebf1; }
-  .interpro-feed-in .interpro-match-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
-  .interpro-feed-in .interpro-match-source { display: block; font-size: 12px; color: #52677b; }
-  .interpro-feed-in .interpro-match-score { padding: 5px 10px; font-size: 12px; color: #176448; }
-  .interpro-feed-in .interpro-route-table { display: none; }
+  .interpro-board-host { display: block; background: #fff; }
+  .interpro-board-host[data-rendered="true"] [data-bracket-loading],
+  .interpro-board-host[data-rendered="error"] [data-bracket-loading] { display: none; }
+  .interpro-board-host .interpro-bracket-scroll { max-width: 100%; margin-bottom: 20px; }
+  .interpro-feed-in .interpro-route-details { margin-top: 16px; }
+  .interpro-feed-in .interpro-route-details summary { cursor: pointer; font-weight: 600; }
   @media print {
-    .interpro-feed-in .interpro-diagrams { display: none !important; }
-    .interpro-feed-in .interpro-route-table { display: block !important; }
+    @page { size: A4 landscape; margin: 8mm; }
+    .interpro-feed-in { font-size: 11px; line-height: 1.3; }
+    .interpro-feed-in h4 { font-size: 15px; margin: 4px 0; }
+    .interpro-feed-in > p { font-size: 11px; margin: 0 0 6px; }
+    .interpro-feed-in .interpro-route-details, .interpro-feed-in .interpro-screen-hint { display: none !important; }
+    .interpro-board-host .fm-links { width: 100% !important; height: 100% !important; }
+    .interpro-board-host .interpro-bracket-scroll { break-inside: avoid; margin: 0; }
+    .interpro-board-host .interpro-bracket-scroll + .interpro-bracket-scroll { break-before: page; }
+    .interpro-feed-in + .ct-final-positions { break-before: page; }
   }
 </style>
 <section class="interpro-feed-in">
   <h4>Interpro trials — fixed feed-in</h4>
   <p>Four groups A–D. Fourth place finishes after the round robin. Group winners play for the title; second and third places cross over and feed into positions 3–12. <strong>First result stands:</strong> players who meet again use their original result without replaying.</p>
-  <div class="interpro-diagrams">
-    <p class="text-muted">Follow the lines from left to right. Dashed lines carry the loser. Scroll sideways for later rounds.</p>
-    @foreach($trialPanels as $panel)
-      <h5>{{ $panel['title'] }}</h5>
-      <div class="interpro-bracket-scroll" tabindex="0" role="region" aria-label="{{ $panel['title'] }} bracket">
-        <svg class="interpro-bracket-svg" width="{{ $panel['width'] }}" height="{{ $panel['height'] }}" viewBox="0 0 {{ $panel['width'] }} {{ $panel['height'] }}" role="group" aria-label="{{ $panel['title'] }} match routes">
-          <title>{{ $panel['title'] }} — solid lines advance winners; dashed lines advance losers</title>
-          @foreach($panel['matches'] as $number => [$x, $y])
-            @foreach($trialTemplate[$number][2] as $slot => $source)
-              @if(preg_match('/^([WL])(\d+)$/', $source, $parts) && isset($panel['matches'][(int) $parts[2]]))
-                @php
-                  [$fromX, $fromY] = $panel['matches'][(int) $parts[2]];
-                  $startX = $fromX + 260;
-                  $startY = $fromY + ($parts[1] === 'W' ? 55 : 105);
-                  $endY = $y + ($slot === 0 ? 55 : 105);
-                  $bendX = $x - ($slot === 0 ? 32 : 18);
-                @endphp
-                <path class="interpro-edge {{ $parts[1] === 'L' ? 'interpro-edge-loser' : '' }}" data-from="{{ $parts[2] }}" data-to="{{ $number }}" d="M {{ $startX }} {{ $startY }} H {{ $bendX }} V {{ $endY }} H {{ $x }}" />
-              @endif
-            @endforeach
-          @endforeach
-          @foreach($panel['matches'] as $number => [$x, $y])
-            @php
-              $definition = $trialTemplate[$number];
-              $fixture = ($emptyBracket ?? false) ? null : $trialFixtures->get($number);
-            @endphp
-            <foreignObject x="{{ $x }}" y="{{ $y }}" width="260" height="160" data-match="{{ $number }}">
-              <div xmlns="http://www.w3.org/1999/xhtml" class="interpro-match">
-                <div class="interpro-match-heading"><span>Match {{ $number }}</span><span>{{ isset($definition[3]) ? 'Places '.$definition[3].'/'.($definition[3] + 1) : '' }}</span></div>
-                @foreach($definition[2] as $slot => $source)
-                  @php
-                    $registration = $slot === 0 ? $fixture?->registration1 : $fixture?->registration2;
-                    $label = $trialSourceLabel($source);
-                  @endphp
-                  <div class="interpro-match-player">
-                    <span class="interpro-match-name" title="{{ $registration?->display_name ?: $label }}">{{ $registration?->display_name ?: $label }}</span>
-                    <span class="interpro-match-source">{{ $registration ? $label : "\u{00A0}" }}</span>
-                  </div>
-                @endforeach
-                <div class="interpro-match-score">{{ $trialScore($fixture) }}</div>
-              </div>
-            </foreignObject>
-          @endforeach
-        </svg>
-      </div>
-    @endforeach
-  </div>
+  <p class="text-muted interpro-screen-hint">The four group winners play at the top. In the lower bracket, the championship semifinal losers flip into Round 3. Scroll across to later rounds.</p>
+  <ct-interpro-bracket class="interpro-board-host"><script type="application/json" data-interpro-payload>{!! json_encode($trialProjection, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script><p data-bracket-loading>Loading playoff bracket…</p></ct-interpro-bracket>
+  <details class="interpro-route-details"><summary>Match sources and results</summary>
   <div class="table-responsive interpro-route-table">
     <table class="table table-bordered align-middle">
       <thead><tr><th>Match</th><th>Player / source</th><th>Player / source</th><th>Result</th><th>Positions</th></tr></thead>
@@ -112,7 +101,13 @@
       </tbody>
     </table>
   </div>
+  </details>
 </section>
 @unless($emptyBracket ?? false)
-  @include('draw.partials.final-positions', ['draw' => $draw])
+  @php
+    $knownPlacements = app(\App\Services\Draw\DrawFinalPlacementService::class)->forDraw($draw)->keyBy('position');
+    $trialPlacements = collect(range(1, 12))->map(fn ($position) => $knownPlacements->get($position)
+      ?? ['position' => $position, 'name' => 'Awaiting result', 'status' => 'awaiting']);
+  @endphp
+  @include('draw.partials.final-positions', ['draw' => $draw, 'placements' => $trialPlacements])
 @endunless

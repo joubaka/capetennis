@@ -3,6 +3,52 @@
   'use strict';
   const dimensions = { width: 220, column: 260, slotHeight: 32, lineGap: 64 };
 
+  // Shared DOM primitives used by the editable Monrad and read-only adapters.
+  // They deliberately contain no tournament state, network calls or handlers.
+  function createMatch(position, label, doc = root.document) {
+    const match = doc.createElement('div');
+    match.className = 'fm-match';
+    Object.assign(match.style, { left: position.x + 'px', top: position.top - dimensions.slotHeight + 'px',
+      width: dimensions.width + 'px', height: position.bottom - position.top + dimensions.slotHeight + 'px' });
+    const heading = doc.createElement('div');
+    heading.className = 'fm-match-head';
+    heading.textContent = label;
+    match.append(heading);
+    return match;
+  }
+  function createSlot(top, outcome = '', doc = root.document) {
+    const slot = doc.createElement('div');
+    slot.className = 'fm-slot' + (outcome ? ' ' + outcome : '');
+    slot.style.top = top + 'px';
+    return slot;
+  }
+  function createLinks(positions, lines, width, height, doc = root.document) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = doc.createElementNS(ns, 'svg');
+    svg.classList.add('fm-links', 'ct-bracket-svg');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('aria-hidden', 'true');
+    const path = doc.createElementNS(ns, 'path');
+    path.setAttribute('data-ct-edge', '');
+    path.setAttribute('d', linePath(positions, lines, { raw: true }));
+    svg.append(path);
+    return svg;
+  }
+  function createEndpoint(position, label, doc = root.document) {
+    const endpoint = doc.createElement('div');
+    endpoint.className = 'fm-winner-endpoint';
+    Object.assign(endpoint.style, { left: position.x + dimensions.width + 130 + 'px',
+      top: position.middle - dimensions.slotHeight + 'px' });
+    const heading = doc.createElement('span'), name = doc.createElement('strong');
+    heading.className = 'fm-winner-label';
+    heading.textContent = label;
+    name.className = 'fm-winner-name';
+    endpoint.append(heading, name);
+    return endpoint;
+  }
+
   function layout(entries, startY = 64) {
     const matches = new Map(entries.map(entry => [entry.key, entry]));
     const positions = new Map();
@@ -189,7 +235,7 @@
   // Keep crispEdges at exactly one device pixel, including fractional browser zoom.
   // A 1 CSS-pixel stroke at e.g. 125% can otherwise rasterise into two columns.
   const strokeWidth = ratio => 1 / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
-  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes, withFeedInByes };
+  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes, withFeedInByes, createMatch, createSlot, createLinks, createEndpoint };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TennisBracketLayout = api;
 })(typeof window === 'undefined' ? globalThis : window);

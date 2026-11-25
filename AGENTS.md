@@ -43,6 +43,8 @@
 
 - For draw and scheduling work, consult `docs/draw-knowledge/README.md` for reviewed problem/solution history and focused regressions. Verify its rules against current owning code; historical repairs and release approvals do not authorize new live actions.
 
+- Use the canonical Flexible Monrad bracket design wherever the format allows: compact player identity labels on thin black bracket lines, per-player scores beside the names, small match and published schedule details, and clear stage headings. Reuse the shared layout, rendering components and stylesheet rather than approximating them with a separate custom SVG. Preserve each format's exact winner/loser routes, publication gates and readable screen/print layout. See `docs/draw-knowledge/interpro-round-robin-feed-in.md` for the Interpro arrangement.
+
 - Individual round-robin scheduling rotates through group rounds by default, visiting larger groups before smaller groups within each round and breaking equal-size ties by group name, rather than finishing one group's programme first. Use the full group membership even when planning selected fixtures only. Preserve played and fixed assignments, court availability, player rest and playoff dependencies; this rule does not change team-tie ordering.
 
 - Add regression coverage for authorization, cross-event isolation, idempotency, exact amounts, and record counts when changing financial flows.

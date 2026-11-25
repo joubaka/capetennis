@@ -1249,6 +1249,9 @@ function refreshVenuesUI()          { if (window.RRSchedule) RRSchedule.refreshV
 <script src="{{ asset('assets/js/admin/roundrobin/groups.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/groups.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/schedule.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/schedule.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/brackets.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/brackets.js')) }}"></script>
+@if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+  @include('draw.partials.interpro-bracket-assets')
+@endif
 <script src="{{ asset('assets/js/admin/roundrobin/state-badges.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/state-badges.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/workspace.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/workspace.js')) }}"></script>
 <script src="{{ asset('assets/js/admin/roundrobin/init.js') }}?v={{ md5_file(public_path('assets/js/admin/roundrobin/init.js')) }}"></script>

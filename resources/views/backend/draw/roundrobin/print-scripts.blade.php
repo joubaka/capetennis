@@ -5,6 +5,7 @@
 (function($) {
   const drawName = @json($draw->drawName ?? 'Draw');
   const fixedInterpro = @json(\App\Services\Draw\InterproRoundRobinFormat::selected($draw));
+  const interproPrintAssets = @json(\App\Services\Draw\InterproRoundRobinFormat::selected($draw) ? view('draw.partials.interpro-print-assets')->render() : '');
   function fixedBracketUnavailable() {
     if (!fixedInterpro) return false;
     toastr.error('The Interpro feed-in could not be loaded. Please retry before printing.');
@@ -100,6 +101,10 @@
 
   function openPrintWindow(title, bodyHtml, landscape) {
     var styles = printStyles + (landscape ? landscapeStyles : '') + '<style>' + @json(file_get_contents(public_path('css/tennis-bracket.css'))) + '</style>';
+    if (fixedInterpro) {
+      bodyHtml = bodyHtml.replace(/<!-- ct-interpro-assets:start -->[\s\S]*?<!-- ct-interpro-assets:end -->/g, '');
+      styles += interproPrintAssets;
+    }
     const w = window.open('', '_blank');
     if (!w) {
       toastr.warning('Allow pop-ups for this page, then choose the print option again.');
@@ -121,7 +126,11 @@
         svg.style.height = '100%';
       });
     }
-    w.onload = function() { w.print(); };
+    w.onload = function() {
+      const pending = Array.from(w.document.querySelectorAll('ct-interpro-bracket')).some(function(board) { return board.dataset.rendered !== 'true'; });
+      if (pending) { toastr.error('The Interpro feed-in could not be displayed. Please retry before printing.'); return; }
+      w.print();
+    };
   }
 
   // ---- FEEDER LABEL HELPER ----

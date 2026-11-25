@@ -88,14 +88,45 @@ back with the test; snapshots have disabled controls and local asset links.
 When the testing URL differs from Wamp's configured URL, set
 `INTERPRO_PREVIEW_ASSET_BASE` to the reviewed local asset root before exporting.
 
-The screen view uses three connected diagrams for the championship, positions
-3–8 and positions 9–12. Each of the eighteen canonical matches appears once;
-solid lines advance winners and dashed lines advance losers within a panel.
-Cross-panel feeds retain explicit source-match labels. Diagrams keep their native
-size and scroll horizontally rather than shrinking player names to fit a phone.
+The screen and graphical print view use the user's conventional stacked layout:
+a four-player championship bracket at the top, followed by the eight-player
+lower bracket. The lower rounds have four opening matches, two survivor matches,
+two Round 3 feed-in matches and the 3rd/4th final. The championship semifinal
+losers flip: upper semifinal 2001 feeds lower Round 3 match 3008, and lower
+semifinal 2002 feeds upper Round 3 match 3007. A subordinate board contains the
+remaining six placement/consolation matches. The recovered historical sheets
+explain the topology, but their mirrored arrangement is superseded by this
+explicit layout decision. This never changes stored competition sources.
+Each of the eighteen canonical matches and all twenty-four winner/loser
+dependencies remain in the read-only projection. Draw only normal bracket stems,
+within-section winner connections and terminal winner ending lines. Do not add
+arrows, dashed loser routes, cross-section connectors or source stubs. The flipped
+championship losers are source labels when unresolved and source tooltips when
+the players are known. The six terminal endpoints are not extra fixtures.
+
+Use the actual Flexible Monrad HTML/CSS and shared `TennisBracketLayout` layout
+and DOM factories, not a separately styled SVG imitation. Both renderers use
+220-pixel matches, 260-pixel columns, 32-pixel slots and 64-pixel line spacing.
+Player slots are 13px, match labels 10px and schedule labels 9px. Known players
+use content-sized identity chips with source details only in the slot tooltip;
+unknown winner/loser entries use the actual 9px feeder chip. The shared surface
+explicitly retains normal line height when embedded in another layout.
+Carried set columns come only from the validated
+original result, reversed into the target slot orientation; invalid references
+show review wording without stale numeric scores. Preserve W/O/RET and automatic
+advance notices. Full labels remain available in HTML titles and the
+expandable source/results table; long labels cannot cross into score columns.
+
+The board keeps actual Monrad native sizing and horizontal scrolling on desktop
+and phones. Zoom must enlarge the board,
+and the public header controls must resolve the bracket in their enclosing card.
 The shared admin workspace exposes zoom controls on desktop as well as phones.
 The public inline-block zoom host becomes a block for this preset so introductory
 text and final positions wrap within the viewport while the diagrams scroll.
+Schedule labels always come from `SchedulePublicationService::publishedRows()`
+for this exact draw and individual fixture, including on staff previews. Retain
+event/draw/schedule publication and first-match visibility filtering; never read
+working times/courts directly into this shared public AJAX response.
 The separate `frontend.fixtures.index` match-list page exposes a **View playoff
 bracket** action to `public.roundrobin.show#playoffs` for this exact preset,
 including its empty planning view and legacy individual staff view. The match
@@ -103,11 +134,28 @@ list remains available; both URLs retain the canonical event/draw visibility
 checks. Navigation never prepares fixtures or publishes a draft.
 The fictional browser harness uses the actual workspace wrappers and stylesheet
 order to check readable names, reachable final rounds and zoom/reset behavior.
+It also generates a four-player draw through the actual Monrad demo UI using a
+locally intercepted pure-compiler response and compares computed typography and
+chip styling. The read-only custom element mounts after initial parsing, public
+`innerHTML` and print-popup `document.write`. JSON uses HEX escaping and names
+are inserted with textContent. A missing or failed component blocks printing.
 
-Print Bracket and Print Empty Bracket use the fixed table instead of the screen
-diagrams, with final
-positions included only in the populated view. The print content check must
-recognize this table as well as SVG. For the selected preset, a missing or failed
+Show all six finishing bands: 1–2 (2003), 3–4 (3009), 5–6 (3011), 7–8 (3010),
+9–10 (4003) and 11–12 (4004), using separate placement headings. Normal views
+always list positions 1–12, including an empty planning draw. Fill only missing
+rows with honest Awaiting result placeholders; retain canonical names, byes and
+outcomes. Blank planning/printing omits the final-position list.
+
+Print Bracket and Print Empty Bracket use the same DOM/vector boards on landscape
+pages, with per-board fit constrained by printable width and height. Populated
+printing puts final positions on a separate page;
+the popup embeds only the trusted shared application CSS/modules and removes
+their explicitly marked external asset block, so standalone printing needs no
+asset fetch. Rendering readiness still gates the print action.
+blank printing omits names, scores, schedules and final positions. The source
+table is optional screen detail, not a substitute for the printed bracket.
+The print content check recognizes this preset as well as other SVGs. For the
+selected preset, a missing or failed
 bracket response must ask for a retry rather than fabricate a generic four-player
 fallback. Draw-pack playoff fixtures come from canonical non-RR rows, preserving
 all eighteen source routes and carried-result labels.
