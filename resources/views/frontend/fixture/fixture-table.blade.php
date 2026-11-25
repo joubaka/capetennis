@@ -87,9 +87,12 @@ $fxWinnerClasses = fn ($fx) => \App\Support\ResultPresentation::classes($fx);
         {{ $fixtureScheduleAvailable ? 'Match times published' : 'Match times to follow' }}
       </span>
     </div>
+    <div class="d-flex flex-wrap gap-2">
+    @include('frontend.fixture.partials.interpro-bracket-link')
     <a href="{{ route('events.show', $event) }}#event-draws-match-times" class="btn btn-sm btn-outline-secondary public-fixture-back">
       <i class="ti ti-arrow-left me-1" aria-hidden="true"></i>Back to tournament draws
     </a>
+    </div>
   </div>
 
   @endunless

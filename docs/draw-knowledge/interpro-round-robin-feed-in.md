@@ -96,6 +96,11 @@ size and scroll horizontally rather than shrinking player names to fit a phone.
 The shared admin workspace exposes zoom controls on desktop as well as phones.
 The public inline-block zoom host becomes a block for this preset so introductory
 text and final positions wrap within the viewport while the diagrams scroll.
+The separate `frontend.fixtures.index` match-list page exposes a **View playoff
+bracket** action to `public.roundrobin.show#playoffs` for this exact preset,
+including its empty planning view and legacy individual staff view. The match
+list remains available; both URLs retain the canonical event/draw visibility
+checks. Navigation never prepares fixtures or publishes a draft.
 The fictional browser harness uses the actual workspace wrappers and stylesheet
 order to check readable names, reachable final rounds and zoom/reset behavior.
 

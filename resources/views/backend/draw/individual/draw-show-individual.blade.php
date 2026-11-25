@@ -66,6 +66,7 @@ $configData = Helper::appClasses();
 <div class="card-header event-header">
     <h3 class="text-center"> {{$event->name}}: <div class="badge bg-info">{{$draw->drawName}}</div>
     </h3>
+    @include('frontend.fixture.partials.interpro-bracket-link')
 </div>
 <div class="row">
 

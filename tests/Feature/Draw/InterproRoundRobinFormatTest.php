@@ -99,6 +99,51 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertSame(36, $draw->drawFixtures()->count());
     }
 
+    public function test_fixture_list_links_to_the_exact_trial_playoff_without_bypassing_publication(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $link = route('public.roundrobin.show', $draw).'#playoffs';
+
+        // Event administrators can navigate the same draft preview through either URL.
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()
+            ->assertSee('href="'.$link.'"', false)->assertSee('View playoff bracket');
+        $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('Draft preview');
+
+        $foreignAdmin = User::factory()->create()->assignRole('admin');
+        $this->actingAs($foreignAdmin)->get(route('frontend.fixtures.index', $draw))->assertForbidden();
+        $this->get(route('public.roundrobin.show', $draw))->assertForbidden();
+        auth()->logout();
+        $this->get(route('frontend.fixtures.index', $draw))->assertForbidden()->assertDontSee('View playoff bracket');
+        $this->get(route('public.roundrobin.show', $draw))->assertForbidden();
+
+        $draw->event->update(['published' => true]);
+        $draw->update(['published' => true]);
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()
+            ->assertSee('href="'.$link.'"', false)->assertSee('View playoff bracket');
+        $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('id="main-bracket-tab"', false);
+        $bracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
+        $this->assertSame(18, substr_count($bracket->getContent(), '<foreignObject '));
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+
+        $draw->settings()->update(['preset_key' => null]);
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertDontSee('data-playoff-bracket-link', false);
+    }
+
+    public function test_empty_trial_fixture_list_still_links_to_its_planning_bracket(): void
+    {
+        $source = $this->context();
+        $draw = Draw::factory()->create(['event_id' => $source->event_id, 'category_event_id' => $source->category_event_id,
+            'published' => false, 'oop_published' => false]);
+        $draw->settings()->create(['workflow' => 'round_robin_playoffs', 'preset_key' => InterproRoundRobinFormat::PRESET,
+            'playoff_config' => InterproRoundRobinFormat::configuration()]);
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('No matches are available')
+            ->assertSee('href="'.route('public.roundrobin.show', $draw).'#playoffs"', false);
+        $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('Group A position 1');
+        $this->assertSame(0, $draw->drawFixtures()->count());
+    }
+
     public function test_first_results_cascade_without_duplicate_evidence_and_determine_all_twelve_positions(): void
     {
         $draw = $this->context();

@@ -14,6 +14,7 @@
       <div class="alert alert-info" role="status">
         No matches are available to view yet. Please check back for updates.
       </div>
+      @include('frontend.fixture.partials.interpro-bracket-link')
       <a href="{{ route('events.show', $event) }}#event-draws-match-times" class="btn btn-outline-secondary">Back to tournament</a>
     </div>
   </div>
