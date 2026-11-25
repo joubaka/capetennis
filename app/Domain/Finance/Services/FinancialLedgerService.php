@@ -301,10 +301,10 @@ class FinancialLedgerService
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Build all withdrawn registration rows for the ledger.
+     * Build individual and team refunds, plus informational withdrawals.
      *
      * Row types returned:
-     *   type='refund'     → refund_status completed|pending  — deducted from net revenue
+     *   type='refund'     → refund_status completed|pending — only completed reduces realized net
      *   type='withdrawal' → refund_status not_refunded|null  — operational visibility, NOT deducted
      *
      * The $grossRefund <= 0 guard is intentionally removed for withdrawal rows so that

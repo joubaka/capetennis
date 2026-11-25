@@ -637,7 +637,7 @@ return view('frontend.event.show', compact(
       'entry_fee' => 'nullable|numeric',
       'logo' => 'nullable|string|max:255',
       'venues' => 'nullable|string',
-      'event_type' => 'required|integer',
+      'event_type' => 'required|integer|exists:eventtypes,id',
       'published' => 'nullable',
       'signUP' => 'nullable',
       'admins' => 'array',
@@ -687,7 +687,7 @@ return view('frontend.event.show', compact(
       // Optional: keep first as "primary" admin in scalar column
       $event->admin = $adminIds[0] ?? null;
 
-      $event->save();
+      app(\App\Services\EventFormatTransition::class)->update($event, $event->getDirty());
      
       // Save ALL admins & categories
      

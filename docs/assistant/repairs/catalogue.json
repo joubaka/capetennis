@@ -2,6 +2,39 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-074",
+      "title": "Re-add Interpro nominee blocked by a cancelled unpaid checkout",
+      "scope": "Nomination-only reactivation after a fully cancelled unpaid single-player checkout in the same category, with its matching soft-deleted pending entry and no PayFast handoff or financial evidence.",
+      "symptoms": "Re-add nomination rejects a returning declined or removed nominee solely because a canonically cancelled unpaid checkout left an order item and deleted entry.",
+      "cause": "The reactivation guard treated any retained registration or checkout history as current participation. Canonical cancellation and invitation reset intentionally retain those historical records.",
+      "fix": "Use the reviewed Re-add nomination control with a reason, availability confirmation and unchanged state revision. NominationReactivationService classifies and locks retained history, accepts only consistent terminal unpaid history, restores nomination availability and appends an unsent open_registration marker. Preserve original orders, entries, payer identities, amounts and declines unchanged; fresh registration uses normal canonical admission and a distinct checkout. Active, paid, withdrawn, refunded, unresolved, mixed-identity and handed-off attempts remain blocked. See docs/interpro-nomination-archive.md.",
+      "verification": "Isolated SQLite InterproNominationHistoryTest passed 14 tests and 162 assertions locally. Coverage includes canonical cancellation/reset, rendered-page revision, preserved historical records, fresh payer checkout, replay and stale financial state, retained PayFast handoff rejection and existing authorization/event/audit guards. This is not live verification.",
+      "limits": "Guide only. Does not cancel or reopen orders, restore paid withdrawals, reconcile receipts, grant ownership, send mail, reopen registration or authorize deployment or live data changes. Historical cancellation alone does not prove unpaid safety; ambiguous records require Entries or reconciliation.",
+      "assistant_action": "guide_only",
+      "sources": [
+        "app/Services/InterprovincialTrials/NominationReactivationService.php",
+        "app/Services/InterprovincialTrials/InvitationService.php",
+        "docs/interpro-nomination-archive.md"
+      ],
+      "tests": [
+        "tests/Feature/InterproNominationHistoryTest.php",
+        "tests/Unit/Assistant/AssistantRepairLibraryTest.php"
+      ]
+    },
+    {
+      "id": "RK-073",
+      "title": "Individual events expose nomination tools and team refunds are absent from finance reports",
+      "scope": "Event workflow capability checks, generic format selectors, communication audiences and canonical team refund reporting; dedicated admission and payment execution remain service-owned.",
+      "symptoms": "An ordinary individual event accepts nomination requests, offers nominee or invitation communication controls, displays Masters readiness or team finance tools, or omits recorded ordinary team refunds from reported net income.",
+      "cause": "Competition family, legacy event type IDs and admission workflow were treated as interchangeable. Generic nominations checked the event administrator but not workflow capability. The ledger projected Trials team-order refunds without projecting ordinary team-order refunds.",
+      "fix": "Use EventCapabilities at server and presentation boundaries; omit unsupported nominee audiences from recipient projection and search, and guard follow-up operations. Resolve Masters semantically. Generic backend/settings/legacy frontend format changes use EventFormatTransition with a locked fresh assessment and retain existing history; do not intercept all model saves because canonical camp setup has its own conversion rules. Project paid team-order accounting refunds once using stored snapshots, payer and beneficiary, including cash refunds that retain participation. Only completed refunds reduce realized net income. Keep historical financial evidence available independently of current format. See docs/event-format-capabilities.md.",
+      "verification": "Final isolated MySQL format, resolver, camp, ledger, communications, Cavaliers, repair-library and deployment checks passed 101 tests and 1053 assertions. Static fictional communications, edit and finance pages passed headless Edge checks at exact 390px and 1440px widths, with unsupported controls absent and no page overflow. Independent quality and financial/security review found no remaining scoped blocker. A wider 142-test run had one failure in a concurrently edited nomination-reactivation service querying the nonexistent transactions table; no full-suite pass is claimed. These are local checks, not production or live payment evidence.",
+      "limits": "Guide only. Do not delete stray nominations or historical orders, manufacture a refund, change payer ownership, bypass specialized camp/Masters/Trials admission, or reinterpret pending refunds as completed. No payment execution, publication, sending, migration or deployment is authorized by this record.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Support/EventCapabilities.php", "app/Services/EventFormatTransition.php", "app/Http/Controllers/Backend/NominateController.php", "app/Services/EventCommunicationService.php", "app/Services/NomineeFollowUpService.php", "app/Domain/Finance/Services/FinancialLedgerService.php", "docs/event-format-capabilities.md"],
+      "tests": ["tests/Feature/EventFormatCapabilitiesTest.php", "tests/Feature/CampWorkflowTest.php", "tests/Feature/CampCheckoutTest.php", "tests/Feature/FinancialLedgerServiceTest.php", "tests/Feature/UniversalEventCommunicationsTest.php", "tests/Feature/CavaliersNominationWorkflowTest.php"]
+    },
+    {
       "id": "RK-072",
       "title": "Team withdrawal emails stay as drafts or misidentify the withdrawal actor",
       "scope": "Completed individual, team and Trials withdrawals and existing Masters/daily withdrawal notices; notification-only mail, not invitation declines or refund execution.",

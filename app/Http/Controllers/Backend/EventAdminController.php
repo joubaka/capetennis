@@ -193,12 +193,18 @@ class EventAdminController extends Controller
   public function show($id)
   {
     $workspaceEvent = Event::findOrFail($id);
-    if ($workspaceEvent->isTeam() && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(request()->user(), $workspaceEvent)) {
+    if ($workspaceEvent->isTeam() && ! $workspaceEvent->isMasters() && !app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(request()->user(), $workspaceEvent)) {
       return $this->teamWorkspace($workspaceEvent);
     }
     $this->authorize('event-draw.view', $workspaceEvent);
-    if ((int) $workspaceEvent->eventType === 3 || ($workspaceEvent->isTeam() && !$workspaceEvent->isInterprovincialTrials())) {
+    if (! $workspaceEvent->isInterprovincialTrials() && ! $workspaceEvent->isMasters()
+      && ($workspaceEvent->isTeam() || ((int) $workspaceEvent->eventType === 3 && ! $workspaceEvent->eventTypeModel?->type))) {
       return $this->teamWorkspace($workspaceEvent);
+    }
+    if (! $workspaceEvent->isInterprovincialTrials()
+      && (in_array((int) $workspaceEvent->eventType, [3, 5], true)
+        && \App\Support\EventTypePresentation::template($workspaceEvent) !== 'cavaliers_trials')) {
+      return redirect()->route('admin.events.entries.new', $workspaceEvent);
     }
     $event = Event::with([
       'event_admins',

@@ -308,6 +308,86 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame('open_registration', $nomination->actionableInvitation->status);
     }
 
+    public function test_cancelled_unpaid_checkout_history_is_preserved_and_new_payer_can_register(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $event->update(['entryFee' => 450, 'status' => 'scheduled', 'start_date' => now()->addMonth(), 'deadline' => 1]);
+        $category->update(['nominations_published' => true]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'sent');
+        $payer = User::factory()->create();
+        $invitations = app(\App\Services\InterprovincialTrials\InvitationService::class);
+        $order = $invitations->acceptPublishedNomination($event, $category, $nomination, $payer);
+        app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->cancelPayment($order);
+        $invitations->resetCancelledPayment($order->fresh(), $payer);
+        $invitation = $nomination->actionableInvitation()->first();
+        $invitation->update(['status' => 'declined']);
+        $nomination->delete();
+        // This same player's paid participation elsewhere is independent and unchanged.
+        $otherCategory = CategoryEvent::factory()->create();
+        $otherRegistration = \App\Models\Registration::create();
+        $otherRegistration->players()->attach($nomination->player_id);
+        \App\Models\CategoryEventRegistration::factory()->paid()->create(['category_event_id' => $otherCategory->id, 'registration_id' => $otherRegistration->id, 'user_id' => $payer->id]);
+        $otherOrder = \App\Models\RegistrationOrder::create(['user_id' => $payer->id, 'status' => 'completed', 'pay_status' => true, 'payfast_paid' => true, 'total_fee' => 320]);
+        \App\Models\RegistrationOrderItems::forceCreate(['order_id' => $otherOrder->id, 'category_event_id' => $otherCategory->id, 'registration_id' => $otherRegistration->id, 'player_id' => $nomination->player_id, 'user_id' => $payer->id, 'item_price' => 320]);
+        \App\Models\Transaction::forceCreate(['pf_payment_id' => 'PF-OTHER-EVENT-TEST', 'custom_int5' => $otherOrder->id, 'custom_int4' => $payer->id, 'amount_gross' => 320, 'amount_fee' => 12, 'amount_net' => 308]);
+        $before = $this->retainedCheckoutRows();
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination->id]);
+        $page = $this->actingAs($actor)->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk();
+        preg_match('/name="revision" value="([a-f0-9]{64})"/', $page->getContent(), $matches);
+        $data = ['revision' => $matches[1], 'reason' => 'Available again', 'confirm' => 1];
+        $this->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id, 'player_id' => $nomination->player_id]);
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $nextPayer = User::factory()->create();
+        $freshOrder = $invitations->acceptPublishedNomination($event, $category, EventNomination::findOrFail($nomination->id), $nextPayer);
+        $this->assertNotSame($order->id, $freshOrder->id);
+        $this->assertSame($nextPayer->id, $freshOrder->user_id);
+        $this->assertEquals(450, $freshOrder->total_fee);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame('declined', $invitation->fresh()->status);
+        $this->assertSame(1, \App\Models\CategoryEventRegistration::where('category_event_id', $category->id)->count());
+        $this->assertDatabaseCount('user_players', 0);
+    }
+
+    public function test_cancelled_history_rejects_stale_financial_review_and_retained_payfast_handoff(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $event->update(['entryFee' => 450, 'status' => 'scheduled', 'start_date' => now()->addMonth(), 'deadline' => 1]);
+        $category->update(['nominations_published' => true]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'open_registration');
+        $invitations = app(\App\Services\InterprovincialTrials\InvitationService::class);
+        $payer = User::factory()->create();
+        $order = $invitations->acceptPublishedNomination($event, $category, $nomination, $payer);
+        app(\App\Domain\Payments\Services\RegistrationPaymentService::class)->cancelPayment($order);
+        $invitations->resetCancelledPayment($order->fresh(), $payer);
+        $nomination->actionableInvitation()->first()->update(['status' => 'declined']);
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination]);
+        $data = ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Available again', 'confirm' => 1];
+        DB::table('registration_orders')->where('id', $order->id)->update(['total_fee' => 451]);
+        $before = $this->retainedCheckoutRows();
+        $this->actingAs($actor)->post($url, $data)->assertRedirect()->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        DB::table('registration_orders')->where('id', $order->id)->update(['total_fee' => 450]);
+        activity('payment')->performedOn($order)->withProperties(['handed_off_at' => now()->subHour()->toIso8601String()])
+            ->log('Expired unresolved PayFast handoff retained for reconciliation');
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $before = $this->retainedCheckoutRows();
+        $this->post($url, $data)->assertRedirect()->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $this->assertSame('declined', $nomination->actionableInvitation->status);
+    }
+    private function retainedCheckoutRows(): array
+    {
+        $rows = [];
+        foreach (['registration_orders', 'registration_order_items', 'category_event_registrations', 'registrations', 'player_registrations', 'wallet_transactions', 'transactions_pf'] as $table) {
+            $rows[$table] = DB::table($table)->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        }
+        return $rows;
+    }
     private function scenario(): array
     {
         Role::firstOrCreate(['name' => 'super-user', 'guard_name' => 'web']);

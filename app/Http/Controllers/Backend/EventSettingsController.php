@@ -335,7 +335,7 @@ class EventSettingsController extends Controller
         }
       }
 
-      $event->update($updateData);
+      app(\App\Services\EventFormatTransition::class)->update($event, $updateData);
       foreach ($request->input('age_group_conveners', []) as $age => $userId) {
         $assignment = DB::table('event_age_group_conveners')->where('event_id', $event->id)->where('age_group', $age);
         if ($userId === null) {

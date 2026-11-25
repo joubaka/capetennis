@@ -88,11 +88,19 @@
   @else
   @switch($event->eventType)
     @case(3)  {{-- Team event --}}
+      @if($event->isTeam())
       @include('backend.adminPage.admin_show.team-workspace')
+      @else
+      @include('backend.adminPage.admin_show.individual_show')
+      @endif
       @break
 
     @case(5)  {{-- Cavaliers trials --}}
+      @if(\App\Support\EventTypePresentation::template($event) === 'cavaliers_trials')
       @include('backend.adminPage.admin_show.cavaliers_trials_show')
+      @else
+      @include('backend.adminPage.admin_show.individual_show')
+      @endif
       @break
 
     @case(6)  {{-- Overberg trials (individual) --}}
@@ -125,13 +133,17 @@
 
 
   @unless($rosterOnly ?? false)
+  @if($event->requiresEventScopedRegionTeams())
   @include('_partials._modals.modal-add-team')
   @include('_partials._modals.modal-add-region')
+  @endif
   @include('_partials._modals.modal-add-send-email')
   @if((int) $event->eventType !== 3 && !($centralTeamWorkspace ?? false))
     @include('_partials._modals.modal-add-registration')
+    @if($event->requiresEventScopedRegionTeams())
     @include('_partials._modals.modal-player-in-team')
     @include('_partials._modals.modal-edit-team-category')
+    @endif
 
 @endif
 

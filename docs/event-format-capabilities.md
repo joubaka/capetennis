@@ -29,7 +29,10 @@ format. Preserve receipts, original payer, withdrawals, refund snapshots and
 reversals when hiding irrelevant operational tools. Completed refunds reduce
 realized net income; pending refunds remain a separate liability display.
 Ordinary team refunds and Trials participation refunds must each appear once.
-Showing historical evidence never grants permission for a new payment action.
+An authorized recorded cash refund can retain the player's entry, so accounting
+refunds must not require a withdrawal timestamp. Showing historical evidence
+never grants a new entry or clothing purchase permission; existing canonical
+refund and settlement reconciliation retains its own authorization.
 
 Changing an established event's format requires protection against stranding
 entries, orders, nominations, invitations, rosters, camp configuration or draws.
@@ -39,3 +42,10 @@ canonical workflow setup remains separate from a generic format selector.
 This document grants no publication, sending, financial execution, migration or
 deployment authority. See [event type preservation](architecture/event-type-template-parity.md)
 and [camp workflow](practice-camp-planner.md) for existing specialized contracts.
+
+Owning boundaries are `EventCapabilities`, `EventFormatTransition`,
+`NominateController`, `EventCommunicationService`, `NomineeFollowUpService`,
+`EventFinanceController` and `FinancialLedgerService`. Keep their server checks
+and corresponding Blade controls aligned. `EventFormatCapabilitiesTest` covers
+ordinary-event rejection and reporting; existing camp, Masters, Trials and team
+workflow tests protect the specialized admission and payment behavior.

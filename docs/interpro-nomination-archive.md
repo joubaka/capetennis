@@ -74,8 +74,14 @@ prevents silently renominating the same player through duplicate insertion.
 The nomination register's Re-add nomination control requires a reason, availability
 confirmation and the unchanged displayed revision. `NominationReactivationService`
 locks the event, category, nomination and invitations, validates the exact tuple,
-and rejects locked categories, conflicting nominees, active delivery and any event
-checkout or entry history (including deleted/withdrawn entries). Use Entries for
+and rejects locked categories, conflicting nominees and active delivery. It permits
+only exact single-item fully cancelled unpaid checkout history: never handed to
+PayFast, zero wallet reservation/debit, no settlement/manual receipt/recovery or
+pending/verified EFT evidence, and a deleted unpaid pending-checkout entry. Original
+and retained handoff evidence both block re-add, including timestamps cleared by
+canonical expiry. Historical orders, payers, amounts, entries and ledger records
+remain unchanged. Paid, withdrawn, refunded, active or unresolved history still
+blocks re-add. Use Entries for
 participation or financial history; this action cannot reverse it.
 
 A deleted row requires the latest validated exact-event deletion snapshot and a
@@ -90,7 +96,9 @@ submissions fail without duplicate rows. The activity records the actor and reas
 Existing category publication settings apply: a public category shows the returned
 nominee immediately, while a private category stays private. The confirmation
 states this explicitly. This workflow changes neither publication flags nor the
-registration window. Regression coverage is in `InterproNominationHistoryTest`.
+registration window. Checkout and entry history is included in the displayed
+revision and rechecked under locks; a changed attempt requires a fresh review.
+Regression coverage is in `InterproNominationHistoryTest`.
 
 Migration:
 `database/migrations/2026_11_19_130000_add_archive_to_event_nominations.php`.

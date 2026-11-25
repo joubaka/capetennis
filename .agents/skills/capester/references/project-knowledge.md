@@ -351,6 +351,17 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   See `docs/practice-camp-planner.md`, `CampWorkflowTest`, `CampCheckoutTest` and
   the disposable MySQL current-read regression in `tests/Support`.
 
+- Competition family does not grant nomination or invitation capability. Ordinary
+  individual events exclude generic nominations from management, follow-up and
+  communication audiences; Masters, Cavaliers, Trials, team and camp admission
+  retain their dedicated rules. Use `EventCapabilities` and protect generic
+  format selectors with `EventFormatTransition`; do not add a blanket model
+  conversion guard that breaks canonical camp setup. Financial history follows
+  source records independently of current format. Team refund reporting includes
+  recorded cash refunds that retain participation, uses stored snapshots and
+  deducts completed refunds only; Trials orders appear once. See
+  `docs/event-format-capabilities.md` and `EventFormatCapabilitiesTest`.
+
 - Cavaliers nomination reports share saved private rosters rather than publish
   them. Explain the next five available candidates outside selected/reserves
   (excluding declines), plus all eligible Inter-Districts candidates outside the
@@ -463,7 +474,7 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   removed nomination does not establish a decline. The nomination register's
   reviewed re-add action is a narrow exception to read-only history: it requires
   an integrity-verified deletion audit for deleted rows, retains the original
-  nomination ID and responses, and rejects registration or checkout history.
+  nomination ID and responses. It permits only fully cancelled, unpaid, never-handed-off single-player checkout history with its matching soft-deleted pending entry, preserving historical rows; active, paid, withdrawn, unresolved or ambiguous history remains blocked.
   Verify `NominationReactivationService` and `InterproNominationHistoryTest`;
   archive-only restoration still never reverses a withdrawal.
   Verify `NominationHistory` and `InterproNominationHistoryTest` before changing

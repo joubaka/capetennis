@@ -345,6 +345,9 @@ class UniversalEventCommunicationsTest extends TestCase
     {
         [$event, $actor] = $this->event();
         [$other] = $this->event();
+        DB::table('eventtypes')->updateOrInsert(['id' => 5], ['name' => 'Cavaliers Trials', 'type' => 1, 'code' => 'individual']);
+        $event->update(['eventType' => 5]);
+        $event->unsetRelation('eventTypeModel');
         $player = Player::factory()->create(['email' => 'family@example.test', 'userId' => null]);
         $paid = $this->entry($event, $player, ['payment_status_id' => 1]);
         $pendingEntry = $this->entry($event, $player, ['payment_status_id' => null]);

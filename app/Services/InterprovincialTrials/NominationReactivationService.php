@@ -42,11 +42,9 @@ class NominationReactivationService
             $current = $invitations->last(fn ($row) => $row->status !== 'prepared') ?? $invitations->last();
             $nomination = EventNomination::find($id);
             $this->ensure(! $nomination || $nomination->archived_at || in_array($current?->status, ['declined', 'admin_declined'], true), 'This nomination is already active.');
-            $categoryIds = CategoryEvent::where('event_id', $event->id)->pluck('id');
-            $this->ensure(! CategoryEventRegistration::withTrashed()->whereIn('category_event_id', $categoryIds)
-                ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))->exists()
-                && ! RegistrationOrderItems::whereIn('category_event_id', $categoryIds)->where('player_id', $playerId)->exists(),
-                'This player has registration or checkout history. Manage it in Entries.');
+            $history = $this->history($event, $playerId, true);
+            $this->ensure($history === $state['history'], 'Checkout history changed. Reload the nomination list and review it again.');
+            $this->assertClosedUnpaidHistory($history, $category, $playerId);
             $this->ensure(! EventNomination::where('category_event_id', $category->id)->where('player_id', $playerId)->where('id', '!=', $id)->exists(), 'This player already has another nomination in this category.');
             if (! $nomination) {
                 $nomination = new EventNomination();
@@ -61,6 +59,8 @@ class NominationReactivationService
             activity('interprovincial-trials')->performedOn($nomination)->causedBy($actor)->withProperties([
                 'event_id' => $event->id, 'category_event_id' => $category->id, 'reason' => trim($reason),
                 'source_audit_id' => $state['audit_id'], 'before' => $snapshot, 'retained_invitation_ids' => $invitations->pluck('id')->all(),
+                'retained_cancelled_order_ids' => array_column($history['orders'], 'id'),
+                'retained_deleted_entry_ids' => array_column($history['entries'], 'id'),
             ])->log('Nomination reactivated by event administrator');
         }, 3);
     }
@@ -80,7 +80,79 @@ class NominationReactivationService
             $snapshot = json_decode($audit->before, true, flags: JSON_THROW_ON_ERROR);
         }
         return ['nomination' => $snapshot, 'audit_id' => $audit?->id, 'category' => CategoryEvent::findOrFail($category->id)->only(['id', 'event_id', 'nominations_published', 'locked_at']),
+            'history' => $this->history($event, (int) ($snapshot['player_id'] ?? 0)),
             'invitations' => InterprovincialTrialInvitation::where('nomination_id', $id)->orderBy('id')->get()->map->getAttributes()->all()];
+    }
+
+    /** The retained cart is evidence, not participation to restore or an order to reopen. */
+    private function history(Event $event, int $playerId, bool $lock = false): array
+    {
+        $categories = CategoryEvent::where('event_id', $event->id)->pluck('id');
+        $entries = CategoryEventRegistration::withTrashed()->whereIn('category_event_id', $categories)
+            ->whereHas('registration.players', fn ($query) => $query->where('players.id', $playerId))->orderBy('id');
+        $items = RegistrationOrderItems::whereIn('category_event_id', $categories)->where('player_id', $playerId)->orderBy('id');
+        if ($lock) { $entries->lockForUpdate(); $items->lockForUpdate(); }
+        $entries = $entries->get();
+        $items = $items->get();
+        if ($entries->isEmpty() && $items->isEmpty()) return array_fill_keys(['entries', 'orders', 'items', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs', 'proofs', 'registration_players'], []);
+        $orderIds = $items->pluck('order_id')->unique();
+        $queries = [
+            'orders' => DB::table('registration_orders')->whereIn('id', $orderIds),
+            'proofs' => DB::table('trial_payment_proofs')->whereIn('order_id', $orderIds),
+            'items' => DB::table('registration_order_items')->whereIn('order_id', $orderIds),
+
+            'manual_receipts' => DB::table('registration_manual_receipts')->whereIn('order_id', $orderIds),
+            'recoveries' => DB::table('registration_payment_recoveries')->whereIn('registration_order_id', $orderIds),
+            'transactions' => DB::table((new \App\Models\Transaction())->getTable())->whereIn('custom_int5', $orderIds)
+                ->where(fn ($query) => $query->whereNull('custom_str5')->orWhere('custom_str5', '')),
+            'wallet' => DB::table('wallet_transactions')->whereIn('source_id', $orderIds)->where('source_type', 'event_registration_wallet_payment'),
+            'handoffs' => DB::table('activity_log')->where('subject_type', \App\Models\RegistrationOrder::class)->whereIn('subject_id', $orderIds)
+                ->whereIn('description', ['Expired unresolved PayFast handoff retained for reconciliation', 'registration checkout handed off to PayFast', 'supervised unresolved PayFast handoff released', 'supervised unresolved PayFast checkout cancelled']),
+            'registration_players' => DB::table('player_registrations')->whereIn('registration_id', $items->pluck('registration_id')),
+        ];
+        $history = ['entries' => $entries->map->getAttributes()->all()];
+        foreach ($queries as $key => $query) {
+            if ($lock) $query->lockForUpdate();
+            // Stable row ordering keeps the review hash independent of query plans.
+            $history[$key] = $query->orderBy('id')->get()->map(fn ($row) => (array) $row)->all();
+        }
+        return $history;
+    }
+
+    private function assertClosedUnpaidHistory(array $history, CategoryEvent $category, int $playerId): void
+    {
+        $message = 'This player has active, paid, withdrawn or unresolved checkout history. Manage the registration in Entries. Only fully cancelled, unpaid checkouts that never reached PayFast can be retained when re-adding.';
+        foreach (['manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs'] as $key) $this->ensure($history[$key] === [], $message);
+        $this->ensure(collect($history['proofs'])->every(fn ($proof) => $proof['status'] === 'rejected'), $message);
+        $orders = collect($history['orders'])->keyBy('id');
+        $items = collect($history['items']);
+        $entries = collect($history['entries']);
+        foreach ($items as $item) {
+            $order = $orders->get($item['order_id']);
+            $this->ensure($order && $order['status'] === 'cancelled' && ! $order['pay_status'] && ! $order['payfast_paid']
+                && ! $order['wallet_debited'] && ! $order['payfast_handed_off_at'] && ! $order['payfast_pf_payment_id'] && ! $order['wallet_transaction_id']
+                && (float) $order['wallet_reserved'] === 0.0
+                && (int) $item['category_event_id'] === (int) $category->id && (int) $item['player_id'] === $playerId
+                && (int) $item['user_id'] === (int) $order['user_id'] && $items->where('order_id', $order['id'])->count() === 1
+                && (int) round((float) $item['item_price'] * 100) === (int) round((float) $order['total_fee'] * 100), $message);
+            $players = collect($history['registration_players'])->where('registration_id', $item['registration_id']);
+            $this->ensure($players->count() === 1 && (int) $players->first()['player_id'] === $playerId, $message);
+            $matching = $entries->where('registration_id', $item['registration_id'])->where('category_event_id', $item['category_event_id']);
+            $this->ensure($matching->count() === 1 && (int) $matching->first()['user_id'] === (int) $order['user_id'], $message);
+        }
+        foreach ($entries as $entry) {
+            $this->ensure($entry['deleted_at'] && $entry['status'] === 'pending_checkout' && ! $entry['payment_status_id']
+                && ! $entry['pf_transaction_id'] && ! $entry['wallet_transaction_id'] && $entry['admin_payment_status'] !== 'paid'
+                && ! $entry['withdrawn_at'] && ! $entry['refunded_at'] && ! $entry['refund_waived_at']
+                && (float) $entry['refund_gross'] === 0.0 && (float) $entry['refund_fee'] === 0.0 && (float) $entry['refund_net'] === 0.0
+                && ($entry['refund_status'] === null || in_array($entry['refund_status'], CategoryEventRegistration::NO_REFUND_STATUSES, true))
+                && $items->where('registration_id', $entry['registration_id'])->where('category_event_id', $entry['category_event_id'])->count() === 1, $message);
+            $registrationId = $entry['registration_id'];
+            foreach (['draw_registrations', 'draw_group_registrations'] as $table) {
+                $this->ensure(! DB::table($table)->where('registration_id', $registrationId)->exists(), $message);
+            }
+            $this->ensure(! DB::table('fixtures')->where(fn ($query) => $query->where('registration1_id', $registrationId)->orWhere('registration2_id', $registrationId))->exists(), $message);
+        }
     }
 
     private function ensure(bool $condition, string $message): void

@@ -439,7 +439,7 @@ class EventController extends Controller
     |--------------------------------------------------------------------------
     */
 
-    $event->update([
+    app(\App\Services\EventFormatTransition::class)->update($event, [
       'name' => $data['name'],
       'start_date' => $data['start_date'] ?? null,
       'end_date' => $data['end_date'] ?? null,
