@@ -59,7 +59,7 @@
           @csrf<input type="hidden" name="revision" value="{{ $presentation['reactivation_revision'] }}">
           <label class="form-label small" for="reactivation-reason-{{ $nomination->id }}">Reason for re-adding</label>
           <input id="reactivation-reason-{{ $nomination->id }}" name="reason" class="form-control form-control-sm" minlength="5" maxlength="1000" required>
-          <p class="small text-muted">Re-adds this player to the same category. If nominations are public, the player will appear publicly again. Previous history is retained. Registration and payment must still be completed separately; no email is sent. Fully cancelled unpaid checkout history is kept; active, paid or withdrawn registrations need review in Entries.</p>
+          <p class="small text-muted">Re-adds this player to the same category. If nominations are public, the player will appear publicly again. Previous history is retained. An exact existing active private registration is reconnected without creating another entry or changing its private collection note. Otherwise registration and payment must be completed separately. No email is sent. Cancelled unpaid history is retained; other registration history needs review in Entries.</p>
           <a class="small d-block mb-2" href="{{ route('admin.events.entries.new', $event) }}">Manage registration in Entries</a>
           <label class="small d-block"><input type="checkbox" name="confirm" value="1" required> Confirm the player is available again</label>
           <button class="btn btn-sm btn-primary mt-2 interpro-row-action">Confirm re-add</button>

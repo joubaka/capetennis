@@ -380,6 +380,71 @@ class InterproNominationHistoryTest extends TestCase
         $this->assertSame($before, $this->retainedCheckoutRows());
         $this->assertSame('declined', $nomination->actionableInvitation->status);
     }
+    public function test_removed_nomination_reconnects_exact_existing_private_entry_without_new_financial_records(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $event->update(['entryFee' => 450]);
+        $category->update(['nominations_published' => true]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $originalInvitation = $nomination->actionableInvitation()->first()->getAttributes();
+        $this->actingAs($actor);
+        $nomination->delete();
+        $entry = app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin($category, $nomination->player_id, $actor, 'paid_privately');
+        $before = $this->retainedCheckoutRows();
+        $entryBefore = $entry->fresh()->getAttributes();
+        $page = $this->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk()
+            ->assertSee('An exact existing active private registration is reconnected');
+        preg_match('/name="revision" value="([a-f0-9]{64})"/', $page->getContent(), $matches);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination->id]);
+        $data = ['revision' => $matches[1], 'reason' => 'Reconnect existing private registration', 'confirm' => 1];
+        $this->post($url, $data)->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $this->assertSame($entryBefore, $entry->fresh()->getAttributes());
+        $this->assertSame($originalInvitation, InterprovincialTrialInvitation::find($originalInvitation['id'])->getAttributes());
+        $marker = EventNomination::findOrFail($nomination->id)->actionableInvitation;
+        $this->assertSame('paid_confirmed', $marker->status);
+        $this->assertSame($entry->registration_id, $marker->registration_id);
+        $this->assertNull($marker->order_id);
+        $this->assertNull($marker->paid_at);
+        $this->get(route('backend.interprovincial-trials.invitations.index', $event))->assertOk()->assertSee('Paid privately')->assertSee('Private collection; not reconciled');
+        $this->assertDatabaseCount('interprovincial_trial_mail_dispatches', 0);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+    }
+
+    public function test_private_entry_reconnect_rejects_stale_note_changed_tuple_or_missing_provenance(): void
+    {
+        [$event, $category, $actor, $batch] = $this->scenario();
+        $event->update(['entryFee' => 450]);
+        $nomination = $this->nominee($event, $category, $batch, 'Returning', 'declined');
+        $this->actingAs($actor);
+        $nomination->delete();
+        $entry = app(\App\Domain\Entries\Services\EntryService::class)->addPlayerAsAdmin($category, $nomination->player_id, $actor, 'paid_privately');
+        $service = app(\App\Services\InterprovincialTrials\NominationReactivationService::class);
+        $url = route('backend.interprovincial-trials.nominations.reactivate', [$event, $category, $nomination->id]);
+        $data = ['revision' => $service->revision($event, $category, $nomination->id), 'reason' => 'Reconnect existing private registration', 'confirm' => 1];
+        app(\App\Domain\Entries\Services\EntryService::class)->setAdminPaymentStatus($entry, false, $actor);
+        $this->post($url, $data)->assertRedirect()->assertSessionHasErrors('nomination');
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        app(\App\Domain\Entries\Services\EntryService::class)->setAdminPaymentStatus($entry->fresh(), true, $actor);
+        DB::table('transactions_pf')->where('registration_id', $entry->registration_id)->update(['player_id' => Player::factory()->create()->id]);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $before = $this->retainedCheckoutRows();
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        DB::table('transactions_pf')->where('registration_id', $entry->registration_id)->update(['player_id' => $nomination->player_id, 'is_test' => 1]);
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        DB::table('transactions_pf')->where('registration_id', $entry->registration_id)->update(['is_test' => 0]);
+        DB::table('activity_log')->where('subject_type', \App\Models\CategoryEventRegistration::class)->where('subject_id', $entry->id)
+            ->where('description', 'Player registered offline by admin (private collection not reconciled)')->delete();
+        $data['revision'] = $service->revision($event, $category, $nomination->id);
+        $before = $this->retainedCheckoutRows();
+        $this->post($url, $data)->assertSessionHasErrors('nomination');
+        $this->assertSame($before, $this->retainedCheckoutRows());
+        $this->assertNull(EventNomination::find($nomination->id));
+    }
     private function retainedCheckoutRows(): array
     {
         $rows = [];

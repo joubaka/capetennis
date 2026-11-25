@@ -80,7 +80,7 @@ PayFast, zero wallet reservation/debit, no settlement/manual receipt/recovery or
 pending/verified EFT evidence, and a deleted unpaid pending-checkout entry. Original
 and retained handoff evidence both block re-add, including timestamps cleared by
 canonical expiry. Historical orders, payers, amounts, entries and ledger records
-remain unchanged. Paid, withdrawn, refunded, active or unresolved history still
+remain unchanged. Other paid, withdrawn, refunded, active or unresolved history still
 blocks re-add. Use Entries for
 participation or financial history; this action cannot reverse it.
 
@@ -89,7 +89,8 @@ valid `AuditIntegrity` hash. Only the original ID, event, category and verified
 existing player identity are restored. Missing/profileless identity cannot be
 recovered through this control. Existing archived rows are unarchived. Prior
 invitations, declines and deletion evidence remain unchanged; a new unsent
-`open_registration` invitation records the current active nomination. No entry,
+`open_registration` invitation records an unpaid active nomination; the private-entry
+exception below uses `paid_confirmed` without a payment date. No entry,
 checkout, payment, account link or mail dispatch is created. Repeated/stale
 submissions fail without duplicate rows. The activity records the actor and reason.
 
@@ -115,6 +116,22 @@ Repair catalogue reference: RK-064.
 Register regression coverage: `tests/Feature/InterproNominationHistoryTest.php`
 (global counts, archived withdrawals, separate terminal statuses, removed-row
 deduplication, event/snapshot validation, historical rows, pagination and drafts).
+
+
+An exact existing active private-admin entry can instead be reconnected to the
+restored nomination. It must be the only event entry and the only category entry
+for its registration, with one exact player, current private collection note
+`paid`, canonical offline administrative creation audit, and one matching zero-money
+`Admin Entry` receipt tied to the original event/category/player/registration and
+creator. Shared/mismatched identity, checkout references, reconciled provider or
+wallet evidence, withdrawal/refund state and conflicting invitations are rejected.
+The existing entry, actor, private note, Cape Tennis fee snapshot and zero-money
+receipt remain unchanged. A new `paid_confirmed` marker points to the existing
+registration; `paid_at` remains null because no payment date has been established.
+The register shows Paid privately and Private collection; not reconciled. This
+restores nomination visibility, creates no participation or financial record, and
+never converts an operational private note into a reconciled receipt. Both
+confirmation and stale-state review cover this existing-entry path.
 
 ## Unanswered nominees on the Entries page
 

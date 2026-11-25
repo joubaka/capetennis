@@ -44,7 +44,8 @@ class NominationReactivationService
             $this->ensure(! $nomination || $nomination->archived_at || in_array($current?->status, ['declined', 'admin_declined'], true), 'This nomination is already active.');
             $history = $this->history($event, $playerId, true);
             $this->ensure($history === $state['history'], 'Checkout history changed. Reload the nomination list and review it again.');
-            $this->assertClosedUnpaidHistory($history, $category, $playerId);
+            $privateEntry = $this->existingPrivateEntry($history, $category, $playerId);
+            if (! $privateEntry) $this->assertClosedUnpaidHistory($history, $category, $playerId);
             $this->ensure(! EventNomination::where('category_event_id', $category->id)->where('player_id', $playerId)->where('id', '!=', $id)->exists(), 'This player already has another nomination in this category.');
             if (! $nomination) {
                 $nomination = new EventNomination();
@@ -55,12 +56,15 @@ class NominationReactivationService
             $batch = InterprovincialTrialInvitationBatch::create(['event_id' => $event->id, 'status' => 'draft',
                 'snapshot_hash' => hash('sha256', 'reactivate:'.$id.':'.$revision), 'created_by_user_id' => $actor->id]);
             InterprovincialTrialInvitation::create(['batch_id' => $batch->id, 'event_id' => $event->id, 'category_event_id' => $category->id,
-                'nomination_id' => $id, 'player_id' => $playerId, 'status' => 'open_registration']);
+                'nomination_id' => $id, 'player_id' => $playerId, 'status' => $privateEntry ? 'paid_confirmed' : 'open_registration',
+                'registration_id' => $privateEntry['registration_id'] ?? null]);
             activity('interprovincial-trials')->performedOn($nomination)->causedBy($actor)->withProperties([
                 'event_id' => $event->id, 'category_event_id' => $category->id, 'reason' => trim($reason),
                 'source_audit_id' => $state['audit_id'], 'before' => $snapshot, 'retained_invitation_ids' => $invitations->pluck('id')->all(),
+                'reconnected_existing_private_entry_id' => $privateEntry['id'] ?? null,
+                'reconciled_payment' => false,
                 'retained_cancelled_order_ids' => array_column($history['orders'], 'id'),
-                'retained_deleted_entry_ids' => array_column($history['entries'], 'id'),
+                'retained_deleted_entry_ids' => collect($history['entries'])->filter(fn ($entry) => $entry['deleted_at'] !== null)->pluck('id')->all(),
             ])->log('Nomination reactivated by event administrator');
         }, 3);
     }
@@ -94,7 +98,8 @@ class NominationReactivationService
         if ($lock) { $entries->lockForUpdate(); $items->lockForUpdate(); }
         $entries = $entries->get();
         $items = $items->get();
-        if ($entries->isEmpty() && $items->isEmpty()) return array_fill_keys(['entries', 'orders', 'items', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs', 'proofs', 'registration_players'], []);
+        if ($entries->isEmpty() && $items->isEmpty()) return array_fill_keys(['entries', 'orders', 'items', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs', 'proofs', 'registration_players', 'entry_registrations', 'entry_receipts', 'entry_audits', 'entry_items', 'entry_invitations'], []);
+        $registrationIds = $items->pluck('registration_id')->merge($entries->pluck('registration_id'))->unique();
         $orderIds = $items->pluck('order_id')->unique();
         $queries = [
             'orders' => DB::table('registration_orders')->whereIn('id', $orderIds),
@@ -108,7 +113,15 @@ class NominationReactivationService
             'wallet' => DB::table('wallet_transactions')->whereIn('source_id', $orderIds)->where('source_type', 'event_registration_wallet_payment'),
             'handoffs' => DB::table('activity_log')->where('subject_type', \App\Models\RegistrationOrder::class)->whereIn('subject_id', $orderIds)
                 ->whereIn('description', ['Expired unresolved PayFast handoff retained for reconciliation', 'registration checkout handed off to PayFast', 'supervised unresolved PayFast handoff released', 'supervised unresolved PayFast checkout cancelled']),
-            'registration_players' => DB::table('player_registrations')->whereIn('registration_id', $items->pluck('registration_id')),
+            'registration_players' => DB::table('player_registrations')->whereIn('registration_id', $registrationIds),
+            'entry_registrations' => DB::table('category_event_registrations')->whereIn('registration_id', $registrationIds),
+            'entry_receipts' => \Illuminate\Support\Facades\Schema::hasColumns('transactions_pf', ['registration_id', 'event_id', 'category_event_id', 'player_id'])
+                ? DB::table('transactions_pf')->whereIn('registration_id', $registrationIds)
+                : DB::table('transactions_pf')->whereRaw('1 = 0'),
+            'entry_invitations' => DB::table('interprovincial_trial_invitations')->whereIn('registration_id', $registrationIds),
+            'entry_audits' => DB::table('activity_log')->where('subject_type', CategoryEventRegistration::class)->whereIn('subject_id', $entries->pluck('id'))
+                ->where('description', 'Player registered offline by admin (private collection not reconciled)'),
+            'entry_items' => DB::table('registration_order_items')->whereIn('registration_id', $registrationIds),
         ];
         $history = ['entries' => $entries->map->getAttributes()->all()];
         foreach ($queries as $key => $query) {
@@ -119,6 +132,41 @@ class NominationReactivationService
         return $history;
     }
 
+    /** Reconnect an existing operational private entry; never manufacture a reconciled payment. */
+    private function existingPrivateEntry(array $history, CategoryEvent $category, int $playerId): ?array
+    {
+        $candidates = collect($history['entries'])->filter(fn ($entry) => !$entry['deleted_at'] && $entry['status'] === 'active' && $entry['admin_payment_status'] === 'paid');
+        if ($candidates->isEmpty()) return null;
+        $message = 'The existing private registration needs review in Entries before its nomination can be reconnected.';
+        $this->ensure($candidates->count() === 1 && count($history['entries']) === 1 && count($history['entry_registrations']) === 1, $message);
+        $entry = $candidates->first();
+        $this->ensure((int) $entry['category_event_id'] === (int) $category->id && (int) $entry['payment_status_id'] === 1
+            && !$entry['pf_transaction_id'] && !$entry['wallet_transaction_id'] && !$entry['withdrawn_at'] && !$entry['refunded_at'] && !$entry['refund_waived_at']
+            && (float) $entry['refund_gross'] === 0.0 && (float) $entry['refund_fee'] === 0.0 && (float) $entry['refund_net'] === 0.0
+            && ($entry['refund_status'] === null || in_array($entry['refund_status'], CategoryEventRegistration::NO_REFUND_STATUSES, true)), $message);
+        foreach (['items', 'orders', 'entry_items', 'entry_invitations', 'proofs', 'manual_receipts', 'recoveries', 'transactions', 'wallet', 'handoffs'] as $key) $this->ensure($history[$key] === [], $message);
+        $players = $history['registration_players'];
+        $this->ensure(count($players) === 1 && (int) $players[0]['registration_id'] === (int) $entry['registration_id'] && (int) $players[0]['player_id'] === $playerId, $message);
+        $this->ensure(count($history['entry_receipts']) === 1, $message);
+        $receipt = $history['entry_receipts'][0];
+        $this->ensure((int) $receipt['registration_id'] === (int) $entry['registration_id']
+            && (int) $receipt['event_id'] === (int) $category->event_id && (int) $receipt['custom_int3'] === (int) $category->event_id
+            && (int) $receipt['category_event_id'] === (int) $category->id && (int) $receipt['player_id'] === $playerId
+            && (int) $receipt['custom_int4'] === (int) $entry['user_id'] && !$receipt['pf_payment_id'] && !$receipt['custom_int5']
+            && ! $receipt['is_test'] && ! $receipt['custom_str5']
+            && $receipt['transaction_type'] === 'Registration' && $receipt['item_name'] === 'Admin Entry'
+            && (float) $receipt['amount_gross'] === 0.0 && (float) $receipt['amount_fee'] === 0.0 && (float) $receipt['amount_net'] === 0.0, $message);
+        $this->ensure(collect($history['entry_audits'])->contains(function ($audit) use ($entry) {
+            $properties = json_decode($audit['properties'], true);
+            return (int) $audit['subject_id'] === (int) $entry['id'] && $audit['causer_type'] === User::class
+                && (int) $audit['causer_id'] === (int) $entry['user_id']
+                && ($properties['canonical_payment_status_id'] ?? null) === 1 && ($properties['transaction_amount'] ?? null) === 0
+                && ($properties['entry_source'] ?? null) === 'admin_offline' && ($properties['collection_status'] ?? null) === 'paid_privately'
+                && ($properties['operational_note_only'] ?? null) === true && ($properties['reconciled_payment'] ?? null) === false
+                && ($properties['financial_amount_recorded'] ?? null) === false;
+        }), $message);
+        return $entry;
+    }
     private function assertClosedUnpaidHistory(array $history, CategoryEvent $category, int $playerId): void
     {
         $message = 'This player has active, paid, withdrawn or unresolved checkout history. Manage the registration in Entries. Only fully cancelled, unpaid checkouts that never reached PayFast can be retained when re-adding.';
