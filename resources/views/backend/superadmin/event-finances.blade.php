@@ -22,8 +22,14 @@
   tr.withdrawal-row  { background:#f9f9f9 !important; opacity:.75; }
 
   #txTable td.text-end { font-variant-numeric: tabular-nums; }
-  #txTable { table-layout: fixed; width: 100%; }
+  #pane-transactions, #pane-transactions .card, #pane-transactions .card-body { min-width: 0; max-width: 100%; }
+  #pane-transactions .dataTables_scrollBody { overscroll-behavior-x: contain; }
+  #txTable { table-layout: auto; width: 100%; }
   #txTable th, #txTable td { white-space: nowrap; }
+  #txTable > tbody > tr > td:nth-child(3), #txTable > tbody > tr > td:nth-child(4), #txTable > tfoot > tr > td { white-space: normal; }
+  #txTable > tbody > tr > td:nth-child(3) { min-width: 9rem; }
+  #txTable > tbody > tr > td:nth-child(3) .badge { display: block; width: fit-content; margin: .25rem 0 !important; }
+  #txTable > tbody > tr > td:nth-child(4) { min-width: 12rem; max-width: 20rem; overflow-wrap: anywhere; }
   #registration-payout-table { min-width: 72rem; }
   #registration-payout-table td { vertical-align: top; }
   #registration-payout-table td:first-child, #registration-payout-table td.text-end { white-space: nowrap; }
@@ -343,7 +349,7 @@
                 };
                 $badgeLabel = match($tx->type) {
                   'clothing_payment' => 'Clothing received',
-                  'refund'     => 'Refunded',
+                  'refund'     => ($tx->refund_status ?? '') === 'completed' ? 'Refunded' : 'Refund pending',
                   'withdrawal' => 'Withdrawn',
                   default      => ucfirst($tx->type),
                 };
@@ -351,7 +357,7 @@
               @if($awaitingReconciliation)
                 <span class="badge bg-warning text-dark">{{ $tx->status_label }}</span>
               @else
-                <span class="badge {{ $badgeClass }}">{{ $badgeLabel }}</span>
+                <span class="badge {{ $tx->type === 'refund' && ($tx->refund_status ?? '') !== 'completed' ? 'bg-warning text-dark' : $badgeClass }}">{{ $badgeLabel }}</span>
               @endif
               @if($tx->type === 'refund' && ($tx->refund_status ?? '') === 'pending')
                 <span class="badge bg-warning text-dark ms-1"><i class="ti ti-clock me-1"></i>Bank Pending</span>
@@ -854,7 +860,8 @@ $(function () {
   const table = $('#txTable').DataTable({
     order: [[1, 'desc']],
     columnDefs: [{ orderable: false, targets: [0, 9] }],
-    autoWidth: false
+    autoWidth: false,
+    scrollX: true
   });
 
   function renderItems(items) {
@@ -880,7 +887,7 @@ $(function () {
           ${handlingRow}
           <tr><th>PayFast Fee (recovered)</th><td>R ${r.payfast_fee}</td></tr>
           <tr><th>Cape Tennis Fee (recovered)</th><td>R ${r.cape_fee}</td></tr>
-          <tr class="fw-bold text-danger"><th>Total Refunded to Player</th><td>R ${r.refund_total}</td></tr>
+          <tr class="fw-bold text-danger"><th>${r.refund_status === 'completed' ? 'Total Refunded to Player' : 'Refund Amount Pending'}</th><td>R ${r.refund_total}</td></tr>
         </tbody></table>`;
     }
 

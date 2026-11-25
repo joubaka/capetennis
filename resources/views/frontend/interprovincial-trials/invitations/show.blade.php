@@ -5,15 +5,18 @@
 <div class="card"><div class="card-body">
 <h4>{{ $invitation->event->name }}</h4><p>{{ $invitation->player->name }} {{ $invitation->player->surname }} has been invited for {{ $invitation->categoryEvent->category->name }}.</p>
 @include('frontend.event.partials.division-availability', ['division' => $invitation->categoryEvent])
+@if((float) $invitation->event->entryFee <= 0)
+<div id="free-trial-registration-terms">@include('frontend.partials.registration-terms', ['refundTermsEvent' => $invitation->event])</div>
+@endif
 @if($invitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)<div class="alert alert-success">Registration confirmed.</div>
 @elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
-  @if($registrationOpen)<div class="alert alert-secondary">Not registered.</div><form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.nominations.register', [$invitation->event, $invitation->categoryEvent, $invitation->nomination]) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
+  @if($registrationOpen)<div class="alert alert-secondary">Not registered.</div><form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.nominations.register', [$invitation->event, $invitation->categoryEvent, $invitation->nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $invitation->event, 'freeTrialTermsId' => 'invitation-registration-terms'])<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
   @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif($invitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
-  @if($registrationOpen)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Resume registration</button></form>
+  @if($registrationOpen)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $invitation->event, 'freeTrialTermsId' => 'invitation-registration-terms'])<button class="btn btn-primary" type="submit">Resume registration</button></form>
   @else<div class="alert alert-info">Registration closed.</div>@endif
 @elseif(in_array($invitation->status, ['queued', 'sent'], true) && $registrationOpen)
-  <form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
+  <form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.register', $invitation) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $invitation->event, 'freeTrialTermsId' => 'invitation-registration-terms'])<button class="btn btn-primary" type="submit">Register {{ $invitation->player->name }}</button></form>
   @if($canDecline)<form class="d-inline-block" method="POST" action="{{ route('interprovincial-trials.invitations.decline', $invitation) }}">@csrf<button class="btn btn-outline-danger" type="submit">Decline</button></form>@endif
 @elseif(!$registrationOpen)<div class="alert alert-info">Registration closed.</div>
 @else<div class="alert alert-info">This invitation is no longer available.</div>@endif

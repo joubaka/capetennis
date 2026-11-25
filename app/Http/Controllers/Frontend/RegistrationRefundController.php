@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\RefundMethodRequest;
 use App\Domain\Finance\Services\RefundRequestService;
 use App\Domain\Refunds\Services\RefundExecutionService;
+use App\Domain\Refunds\Services\IndividualRefundRetryAmounts;
 use App\Domain\Refunds\Services\TeamRefundCalculator;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
@@ -705,10 +706,10 @@ class RegistrationRefundController extends Controller
       // the wallet portion is refunded in full (no fee) to the wallet.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = round($payfastGross * 0.90, 2);
-      $walletNet    = $walletPaid;
-
       try {
+        $amounts = app(IndividualRefundRetryAmounts::class)->resolve($registration, $payment);
+        $payfastNet = $amounts['payfast'];
+        $walletNet = $amounts['wallet'];
         $payfast = new \App\Services\Payfast();
 
         $result = $payfast->refundUsingAvailableMethod(

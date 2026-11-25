@@ -30,7 +30,7 @@ class TeamCheckoutExplicitRestartTest extends TestCase
                 ->assertViewHas('payfastDue', 450.0)
                 ->assertDontSee('R999.00')
                 ->assertSessionMissing('team_payment_recovery');
-            $this->post(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), ['custom_int5' => $order->id])
+            $this->post(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), ['custom_int5' => $order->id, 'terms_accepted' => '1'])
                 ->assertOk()->assertViewHas('payfastDue', 450.0)->assertViewHas('autoSubmitPayfast', true);
             $this->assertSame($before, $order->fresh()->getAttributes());
             $this->assertDatabaseCount('team_payment_orders', 1);

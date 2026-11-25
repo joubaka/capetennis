@@ -52,7 +52,13 @@ final class InterproPreviewExporter
 
     public function stage(string $filename, string $title, string $actualBracketHtml): void
     {
-        $this->write($filename, $this->wrap($title, '<h1>'.e($title).'</h1>'.$actualBracketHtml));
+        $workspace = '<div id="round-robin-app"><div id="main-bracket-pane"><h1>'.e($title).'</h1>'
+            .'<div class="bracket-zoom-controls" id="bracket-zoom-bar"><button class="btn" id="bracket-zoom-out">−</button><span id="bracket-zoom-label">100%</span><button class="btn" id="bracket-zoom-in">+</button><button class="btn" id="bracket-zoom-reset">↺</button></div>'
+            .'<div id="main-bracket-wrapper" class="overflow-auto"><div id="bracket-zoom-inner">'.$actualBracketHtml.'</div></div></div></div>'
+            .'<script src="'.$this->assetBase.'/assets/vendor/libs/jquery/jquery.js"></script>'
+            .'<script src="'.$this->assetBase.'/assets/js/admin/roundrobin/brackets.js"></script>'
+            .'<script>window.AdminState={on:function(){}};RRBrackets.init(0);document.getElementById("main-bracket-pane").classList.add("active");</script>';
+        $this->write($filename, $this->wrap($title, $workspace));
     }
 
     public function printPage(string $actualBracketHtml, Draw $draw): void
@@ -99,7 +105,7 @@ final class InterproPreviewExporter
     private function wrap(string $title, string $body): string
     {
         $styles = '';
-        foreach (['assets/vendor/css/core.css', 'assets/vendor/css/theme-default.css', 'assets/css/demo.css', 'assets/css/draw-roundrobin.css'] as $path) {
+        foreach (['assets/vendor/css/core.css', 'assets/vendor/css/theme-default.css', 'assets/css/demo.css', 'assets/css/draw-roundrobin.css', 'assets/css/draw-workspace.css'] as $path) {
             $styles .= '<link rel="stylesheet" href="'.$this->assetBase.'/'.$path.'">';
         }
         return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>'.e($title).'</title>'.$styles

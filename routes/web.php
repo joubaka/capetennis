@@ -332,7 +332,7 @@ Route::get(
 Route::get('/registration/payment-recovery/{recovery}', [RegistrationPaymentRecoveryController::class, 'show'])
   ->middleware(['auth', 'signed'])
   ->name('registration.recovery.show');
-Route::get('/registration/payment-recovery/{recovery}/payfast', [RegistrationPaymentRecoveryController::class, 'payfast'])
+Route::post('/registration/payment-recovery/{recovery}/payfast', [RegistrationPaymentRecoveryController::class, 'payfast'])
   ->middleware(['auth', 'signed'])
   ->name('registration.recovery.payfast');
 

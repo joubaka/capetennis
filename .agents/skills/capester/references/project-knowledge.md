@@ -390,6 +390,13 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Self-service registration requires explicit acceptance of registration and
+  refund terms, including free-entry confirmation and existing-order payment.
+  Preserve saved general terms; the legacy optional terms setting must not
+  silently accept the shared refund guidance. Keep provider callbacks separate
+  from interactive consent. See `docs/registration-refund-terms.md` and its
+  focused regression references; local changes do not prove deployment.
+
 - Participant withdrawal closes for ordinary users at the beginning of the
   event's start date in the application timezone. Only an otherwise authorized
   admin or super-user bypasses this cutoff; convenor/regional-manager status
@@ -467,6 +474,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   fallback after a refund POST or uncertain result; do not clear them by waiving or
   resetting the refund. See `docs/pending-bank-wallet-conversion.md` and verify
   `PendingBankWalletConversionTest`; deployment and live apply remain separate.
+
+- Individual pending bank refund retries use the approved gross/fee/net snapshot,
+  never a freshly calculated handling fee or the receipt's net settlement.
+  Validate cents and original funding before provider contact; supported hybrid
+  components must sum to the approved net. See
+  `docs/individual-bank-refund-retries.md`, `IndividualRefundRetryAmounts` and
+  `IndividualBankRefundRetryTest`. This amount correction does not broaden the
+  durable provider guard's supported funding shapes or fix hybrid settlement
+  failure handling; ambiguous dispatch still requires reconciliation.
 
 - Public Interpro lists automatically omit withdrawn and declined nominees based
   on the latest exact-tuple actionable invitation. Explicit removal from current

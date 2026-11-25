@@ -88,7 +88,17 @@ back with the test; snapshots have disabled controls and local asset links.
 When the testing URL differs from Wamp's configured URL, set
 `INTERPRO_PREVIEW_ASSET_BASE` to the reviewed local asset root before exporting.
 
-Print Bracket and Print Empty Bracket use the actual fixed table, with final
+The screen view uses three connected diagrams for the championship, positions
+3–8 and positions 9–12. Each of the eighteen canonical matches appears once;
+solid lines advance winners and dashed lines advance losers within a panel.
+Cross-panel feeds retain explicit source-match labels. Diagrams keep their native
+size and scroll horizontally rather than shrinking player names to fit a phone.
+The shared admin workspace exposes zoom controls on desktop as well as phones.
+The fictional browser harness uses the actual workspace wrappers and stylesheet
+order to check readable names, reachable final rounds and zoom/reset behavior.
+
+Print Bracket and Print Empty Bracket use the fixed table instead of the screen
+diagrams, with final
 positions included only in the populated view. The print content check must
 recognize this table as well as SVG. For the selected preset, a missing or failed
 bracket response must ask for a retry rather than fabricate a generic four-player

@@ -53,6 +53,10 @@ class InterprovincialTrialInvitationController extends Controller
     public function register(Request $request, InterprovincialTrialInvitation $invitation, InvitationService $service)
     {
         abort_unless($invitation->categoryEvent?->nominations_published, 404);
+        // Free invitations complete immediately and never reach the payment terms screen.
+        if ((float) $invitation->event?->entryFee <= 0) {
+            $request->validate(['terms_accepted' => ['required', 'accepted']]);
+        }
         $order = $service->accept($invitation, $request->user());
 
         if ((int) $order->pay_status === 1) {
@@ -81,6 +85,12 @@ class InterprovincialTrialInvitationController extends Controller
         EventNomination $nomination,
         InvitationService $service
     ) {
+        abort_unless((int) $categoryEvent->event_id === (int) $event->id
+            && (int) $nomination->event_id === (int) $event->id
+            && (int) $nomination->category_event_id === (int) $categoryEvent->id, 404);
+        if ((float) $event->entryFee <= 0) {
+            $request->validate(['terms_accepted' => ['required', 'accepted']]);
+        }
         $order = $service->acceptPublishedNomination($event, $categoryEvent, $nomination, $request->user());
 
         if ((int) $order->pay_status === 1) {

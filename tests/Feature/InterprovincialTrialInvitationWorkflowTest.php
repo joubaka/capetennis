@@ -862,6 +862,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
 
             $response = $this->actingAs($payer)->post(route('registration.hybrid.pay'), [
                 'type' => 'registration', 'custom_int5' => $order->id,
+                'terms_accepted' => '1',
             ]);
             if ($failure === 'signing_failure') {
                 $response->assertStatus(500);
@@ -997,6 +998,7 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             'custom_int5' => $order->id,
             'wallet_applied' => 149,
             'remaining_amount' => 1,
+            'terms_accepted' => '1',
         ])->assertOk()->assertViewIs('frontend.payfast.pay_now')->assertViewHas('amount', 150.0);
         $this->assertNotNull($order->fresh()->payfast_handed_off_at);
         $this->assertSame(0.0, (float) $order->fresh()->wallet_reserved);
@@ -1082,6 +1084,39 @@ class InterprovincialTrialInvitationWorkflowTest extends TestCase
             ->assertRedirect()->assertSessionHasErrors('registration');
         $this->assertFalse((bool) $order->fresh()->pay_status);
         $this->assertSame('pending', $order->fresh()->status);
+    }
+
+    public function test_free_public_and_invited_registration_require_terms_before_creating_entries(): void
+    {
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $this->event->update(['entryFee' => 0, 'deadline' => 0]);
+        $this->category->update(['nominations_published' => true]);
+        $payer = User::factory()->create();
+        $owner = User::factory()->create();
+        $players = Player::factory()->count(2)->create(['userId' => $owner->id]);
+        foreach ($players as $player) {
+            EventNomination::create(['event_id' => $this->event->id, 'category_event_id' => $this->category->id, 'player_id' => $player->id]);
+        }
+        $this->prepareInvitationFixtures();
+        $invitations = InterprovincialTrialInvitation::orderBy('id')->get();
+        foreach ($invitations as $index => $invitation) {
+            $invitation->update(['status' => 'sent']);
+            $url = $index === 0
+                ? route('interprovincial-trials.invitations.register', $invitation)
+                : route('interprovincial-trials.nominations.register', [$this->event, $this->category, $invitation->nomination]);
+            foreach ([[], ['terms_accepted' => '0']] as $consent) {
+                $this->actingAs($payer)->postJson($url, $consent)->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
+                $this->assertDatabaseCount('registration_orders', $index);
+                $this->assertDatabaseCount('category_event_registrations', $index);
+            }
+            $this->actingAs($payer)->post($url, ['terms_accepted' => '1'])->assertRedirect()->assertSessionHasNoErrors();
+            $this->assertSame(InterprovincialTrialInvitation::PAID_CONFIRMED, $invitation->fresh()->status);
+            $this->assertDatabaseCount('registration_orders', $index + 1);
+            $this->assertDatabaseCount('category_event_registrations', $index + 1);
+        }
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseMissing('user_players', ['user_id' => $payer->id]);
     }
 
     public function test_free_invitation_registration_uses_canonical_paid_entry_and_closed_gate_writes_nothing(): void

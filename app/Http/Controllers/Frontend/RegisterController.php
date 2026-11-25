@@ -337,7 +337,8 @@ class RegisterController extends Controller
 
     // Site-wide toggles
     $requireCodeOfConduct = SiteSetting::get('require_code_of_conduct', '0') === '1';
-    $requireTerms         = SiteSetting::get('require_terms', '0') === '1';
+    // Every self-service entry requires explicit acceptance of registration/refund terms.
+    $requireTerms         = true;
 
     // Active Code of Conduct agreement (only load when toggle is on)
     $agreement = $requireCodeOfConduct
@@ -1342,11 +1343,7 @@ class RegisterController extends Controller
     // ----------------------------
     // Validate terms accepted
     // ----------------------------
-    if (!$request->has('terms_accepted') || $request->terms_accepted != '1') {
-      return back()->withErrors([
-        'msg' => 'You must accept the terms and conditions and Code of Conduct before proceeding.'
-      ]);
-    }
+    $request->validate(['terms_accepted' => ['required', 'accepted']]);
 
     // ----------------------------
     // Validate players/categories

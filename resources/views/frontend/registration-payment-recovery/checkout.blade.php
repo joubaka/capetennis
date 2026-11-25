@@ -12,7 +12,12 @@
       @if($order->payfast_handed_off_at)
         <div class="alert alert-info">Your payment has been sent to PayFast and is awaiting confirmation.</div>
       @else
-        <a class="btn btn-danger btn-lg w-100" href="{{ $paymentUrl }}">Continue to PayFast</a>
+        @include('frontend.partials.registration-terms', ['refundTermsEvent' => $order->items->first()?->category_event?->event])
+        <form method="POST" action="{{ $paymentUrl }}">
+          @csrf
+          @include('frontend.partials.registration-terms-acceptance', ['termsCheckboxId' => 'recovery-registration-terms'])
+          <button type="submit" class="btn btn-danger btn-lg w-100">Continue to PayFast</button>
+        </form>
       @endif
     </div>
   </div>

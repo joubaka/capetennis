@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-077",
+      "title": "Pending full bank refund retry deducts a new handling fee",
+      "scope": "Individual PayFast-backed pending bank refund retries through backend, legacy admin and bulk completion; excludes initial approvals and team refunds.",
+      "symptoms": "A saved full refund retries a smaller amount, or a bulk retry substitutes the original receipt settlement net for the approved refund net.",
+      "cause": "Completion paths recalculated ten percent from PayFast funding or read payment net instead of executing the stored refund approval.",
+      "fix": "Resolve the saved gross, fee and net through IndividualRefundRetryAmounts before provider contact. Validate pending paid withdrawn state, exact cents, snapshot arithmetic and original funding. Supported hybrid wallet and PayFast allocations must sum to the approved net without exceeding source funding, with the original payer wallet present. Preserve manual completion and canonical refund execution; never repair inconsistent snapshots or clear dispatch claims to enable another attempt. See docs/individual-bank-refund-retries.md.",
+      "verification": "On 2026-11-25 the isolated SQLite IndividualBankRefundRetryTest passed 13 tests and 157 assertions. It verifies full and deducted approvals across all three retry paths, original payment and other-event preservation, one provider POST and claim, request tampering, failed queries, invalid amounts, authorization, hybrid allocation and manual bulk compatibility. PHP lint and diff checks passed. Production behavior is not implied.",
+      "limits": "Guide only. No refund execution, deployment, approval changes or manual transfer is authorized. Invalid snapshots and unsupported allocations require reconciliation. Durable provider claims retain their existing supported original single-item PayFast-only boundary; this amount fix does not redesign hybrid settlement or wallet-credit failure handling.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Refunds/Services/IndividualRefundRetryAmounts.php", "app/Http/Controllers/Backend/BankRefundController.php", "app/Http/Controllers/Frontend/RegistrationRefundController.php", "docs/individual-bank-refund-retries.md"],
+      "tests": ["tests/Feature/IndividualBankRefundRetryTest.php"]
+    },
+    {
       "id": "RK-076",
       "title": "Event announcements appear below information or controls",
       "scope": "Shared public event presentation across supported format templates.",

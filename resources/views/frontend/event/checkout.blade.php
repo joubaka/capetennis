@@ -470,8 +470,9 @@
               {{-- General Terms Acceptance --}}
               <div class="card mb-4">
                 <div class="card-body">
+                  @include('frontend.partials.registration-terms', ['refundTermsEvent' => $event])
                   <div class="form-check">
-                    <input class="form-check-input" type="checkbox" id="acceptTerms">
+                    <input class="form-check-input" type="checkbox" id="acceptTerms" required>
                     <label class="form-check-label" for="acceptTerms">
                       I confirm that I have read and accept the
                       @if($requireCodeOfConduct)
@@ -479,7 +480,7 @@
                       @else
                         <strong>Terms & Conditions</strong>
                       @endif
-                      for this event.
+                      including the withdrawal and refund terms for this event.
                     </label>
                   </div>
                 </div>

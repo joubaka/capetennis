@@ -83,6 +83,13 @@
             </div>
           @endif
 
+          @unless($autoSubmitPayfast)
+            <section class="border rounded p-3 mb-3" aria-label="Registration terms and refund policy">
+              @include('frontend.partials.registration-terms', ['refundTermsEvent' => $event, 'refundTermsFunding' => 'team'])
+            </section>
+            @error('terms_accepted')<div class="alert alert-danger" role="alert">{{ $message }}</div>@enderror
+          @endunless
+
           @if($payfastDue > 0 && round($walletBalance - $walletReserved, 2) > 0)
             <form id="teamHybridForm" action="{{ route('team.hybrid.pay') }}" method="post" class="mb-3">
               @csrf
@@ -90,6 +97,10 @@
               <input type="hidden" name="wallet_applied" value="{{ number_format(min($walletBalance, $total), 2, '.', '') }}">
               <input type="hidden" name="remaining_amount" value="{{ number_format(max(0, $total - min($walletBalance, $total)), 2, '.', '') }}">
               <input type="hidden" name="type" value="team">
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="terms_accepted" value="1" id="teamWalletTerms" required>
+                <label class="form-check-label" for="teamWalletTerms">I have read and accept the registration terms and refund policy above.</label>
+              </div>
               <button type="submit" class="btn btn-primary w-100" id="applyWalletBtn">
                 <i class="ti ti-wallet me-1"></i>
                 {{ $walletBalance >= $total ? 'Use Wallet for Full Payment' : 'Apply Updated Wallet Balance' }}
@@ -173,6 +184,10 @@
                 <input type="hidden" name="signature" value="{{ $payfast->generateFormSignature($formFields) }}">
 
                 @unless($autoSubmitPayfast)
+                  <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" name="terms_accepted" value="1" id="teamPayfastTerms" required>
+                    <label class="form-check-label" for="teamPayfastTerms">I have read and accept the registration terms and refund policy above.</label>
+                  </div>
                   <button class="btn btn-danger btn-lg w-100">Pay now with Payfast</button>
                 @endunless
               </form>
@@ -188,6 +203,10 @@
             </div>
             <form action="{{ route('team.hybrid.complete', ['order' => $order->id]) }}" method="post">
               @csrf
+              <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="terms_accepted" value="1" id="teamCompleteTerms" required>
+                <label class="form-check-label" for="teamCompleteTerms">I have read and accept the registration terms and refund policy above.</label>
+              </div>
               <button type="submit" class="btn btn-success btn-lg w-100">Confirm Wallet Payment</button>
             </form>
           @endif

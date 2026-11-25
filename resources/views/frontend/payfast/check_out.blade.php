@@ -156,6 +156,8 @@
     </div>
   </div>
 
+  @include('frontend.partials.registration-terms', ['refundTermsEvent' => $order->items->first()?->category_event?->event])
+
   <div class="row align-items-stretch">
 
     {{-- ================= WALLET SECTION ================= --}}
@@ -243,12 +245,12 @@
           @if($payfastDue <= 0)
 
             <form action="{{ route('registration.hybrid.complete', $orderId) }}"
-                  method="POST">
+                  method="POST" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
               @csrf
+              @include('frontend.partials.registration-terms-acceptance', ['termsCheckboxId' => 'wallet-registration-terms'])
 
               <button type="submit"
-                      class="btn btn-success btn-lg w-100"
-                      onclick="this.disabled=true; this.form.submit();">
+                      class="btn btn-success btn-lg w-100">
                 <i class="ti ti-circle-check me-1"></i>
                 Confirm Wallet Payment
               </button>
@@ -310,11 +312,12 @@
 
           @if($payfastDue > 0 && !($walletReserved > 0 && $payfastDue < 20))
 
-            <form action="{{ route('registration.hybrid.pay') }}" method="post" data-audit-order-id="{{ $orderId }}">
+            <form action="{{ route('registration.hybrid.pay') }}" method="post" data-audit-order-id="{{ $orderId }}" onsubmit="this.querySelector('button[type=submit]').disabled = true;">
               @csrf
               <input type="hidden" name="type" value="registration">
               <input type="hidden" name="custom_int5" value="{{ $orderId }}">
-              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit" onclick="this.disabled=true; this.setAttribute('aria-busy', 'true'); this.form.submit(); return false;">
+              @include('frontend.partials.registration-terms-acceptance', ['termsCheckboxId' => 'payfast-registration-terms'])
+              <button type="submit" data-audit-action="payment.payfast-submit" data-audit-order-id="{{ $orderId }}" class="btn btn-danger btn-lg w-100 payfast-submit">
                 Pay R {{ number_format($payfastDue, 2) }} with PayFast
               </button>
 
@@ -371,23 +374,6 @@ $(function () {
       },
       success: function (res) {
         if (res.success) {
-          if (res.wallet_covers_all) {
-            var $form = $('<form>', {
-              method: 'POST',
-              action: @json(route('registration.hybrid.complete', ['orderId' => $orderId]))
-            });
-
-            $form.append($('<input>', {
-              type: 'hidden',
-              name: '_token',
-              value: $('meta[name="csrf-token"]').attr('content')
-            }));
-
-            $('body').append($form);
-            $form.trigger('submit');
-            return;
-          }
-
           // Regenerate the amount and PayFast signature without replaying the
           // original registration POST (which would create another order).
           window.location.assign(@json(route('registration.checkout', ['order' => $orderId])));

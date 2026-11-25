@@ -9,6 +9,11 @@
       @include('frontend.event.partials.event-information')
 
       @include('frontend.event.partials.trial-programme')
+      @if((float) $event->entryFee <= 0 && $publishedCategories->isNotEmpty())
+        <div class="card mt-4" id="free-trial-registration-terms"><div class="card-body">
+          @include('frontend.partials.registration-terms', ['refundTermsEvent' => $event])
+        </div></div>
+      @endif
       @php
         $nominationsCloseAt = $event->registrationClosesAt();
         $nominationsClosed = $nominationsCloseAt && now()->gt($nominationsCloseAt);
@@ -60,7 +65,7 @@
                             <div class="d-flex flex-wrap align-items-center gap-2">
                               <span class="badge bg-label-secondary">Not registered</span>
                               @auth
-                                <form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                <form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $event, 'freeTrialTermsId' => 'nominee-registration-terms-'.$nomination->id])<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                               @else
                                 <a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>
                               @endauth
@@ -70,7 +75,7 @@
                             @if(in_array($trialInvitation->status, ['queued', 'sent', 'open_registration'], true))
                               <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $event, 'freeTrialTermsId' => 'nominee-registration-terms-'.$nomination->id])<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
                               @else
                                 <span class="badge bg-label-secondary">Registration closed</span>
@@ -79,7 +84,7 @@
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::ACCEPTED_PENDING_PAYMENT)
                               <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Resume registration</button></form>
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $event, 'freeTrialTermsId' => 'nominee-registration-terms-'.$nomination->id])<button type="submit" class="btn btn-sm btn-primary">Resume registration</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to resume</a>@endauth
                               @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::PAID_CONFIRMED)
@@ -87,13 +92,13 @@
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::DECLINED)
                               <span class="badge bg-label-secondary">Declined</span>
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $event, 'freeTrialTermsId' => 'nominee-registration-terms-'.$nomination->id])<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
                               @endif
                             @elseif($trialInvitation->status === \App\Models\InterprovincialTrialInvitation::WITHDRAWN)
                               <span class="badge bg-label-secondary">Not registered</span>
                               @if($registrationOpen)
-                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
+                                @auth<form method="POST" action="{{ route('interprovincial-trials.nominations.register', [$event, $categoryEvent, $nomination]) }}">@csrf @include('frontend.partials.free-trial-terms-acceptance', ['freeTrialTermsEvent' => $event, 'freeTrialTermsId' => 'nominee-registration-terms-'.$nomination->id])<button type="submit" class="btn btn-sm btn-primary">Register</button></form>
                                 @else<a class="btn btn-sm btn-primary" href="{{ route('login', ['redirect' => route('events.show', ['event' => $event, 'player' => $nomination->player_id, 'nomination' => $nomination->id], false).'#trial-nomination-'.$nomination->id]) }}">Sign in to register</a>@endauth
                               @endif
                             @endif

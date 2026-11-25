@@ -74,6 +74,8 @@ class RegistrationWalletCheckoutTest extends TestCase
         );
 
         $checkout->assertOk()
+            ->assertSee('Registration, withdrawals and refunds')
+            ->assertSee('name="terms_accepted" value="1"', false)
             ->assertSee('Pay R 310.62 with PayFast', false)
             ->assertSee('action="'.route('registration.hybrid.pay').'"', false)
             ->assertSee('name="custom_int5" value="'.$order->id.'"', false)
@@ -127,7 +129,7 @@ class RegistrationWalletCheckoutTest extends TestCase
         ])->save();
 
         $this->actingAs($user)
-            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]), ['terms_accepted' => '1'])
             ->assertRedirect(route('registration.checkout', $order));
 
         $this->assertFalse((bool) $order->fresh()->pay_status);
@@ -160,8 +162,14 @@ class RegistrationWalletCheckoutTest extends TestCase
             'item_price' => 100,
         ])->save();
 
+        $this->actingAs($user)->postJson(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertFalse((bool) $order->fresh()->wallet_debited);
+        $this->assertDatabaseCount('wallet_transactions', 1);
+
         $this->actingAs($user)
-            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
+            ->post(route('registration.hybrid.complete', ['orderId' => $order->id]), ['terms_accepted' => '1'])
             ->assertRedirect();
         $this->post(route('registration.hybrid.complete', ['orderId' => $order->id]))
             ->assertRedirect();
@@ -172,6 +180,27 @@ class RegistrationWalletCheckoutTest extends TestCase
         $this->assertSame('wallet', $order->fresh()->payment_method);
         $this->assertDatabaseCount('wallet_transactions', 2);
         $this->assertEquals(0.0, $wallet->fresh()->balance);
+    }
+
+    public function test_payfast_handoff_requires_explicit_acceptance_before_changing_order_state(): void
+    {
+        $this->withoutMiddleware([EnsureAgreementAccepted::class, EnsurePlayerProfileUpdated::class]);
+        $user = User::factory()->create();
+        $order = RegistrationOrder::create([
+            'user_id' => $user->id, 'pay_status' => false, 'payfast_paid' => false,
+            'wallet_reserved' => 0, 'payfast_amount_due' => 100,
+        ]);
+        (new RegistrationOrderItems())->forceFill(['order_id' => $order->id, 'item_price' => 100])->save();
+
+        foreach ([null, '0', 'false'] as $acceptance) {
+            $this->actingAs($user)->postJson(route('registration.hybrid.pay'), [
+                'custom_int5' => $order->id, 'terms_accepted' => $acceptance,
+            ])->assertUnprocessable()->assertJsonValidationErrors('terms_accepted');
+        }
+        $this->assertNull($order->fresh()->payfast_handed_off_at);
+        $this->assertFalse((bool) $order->fresh()->pay_status);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
     }
 
     public function test_paid_wallet_order_metadata_is_copied_to_the_category_entry(): void

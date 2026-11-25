@@ -57,6 +57,7 @@ class RegistrationPaymentRecoveryController extends Controller
         $recoveryService = app(RegistrationPaymentRecoveryService::class);
         $recoveryService->assertRecoveryLinkActive($recovery);
         abort_unless(in_array($recovery->status, ['prepared', 'notified'], true), 409);
+        $request->validate(['terms_accepted' => ['required', 'accepted']]);
         $order = $recoveryService->startCheckout($recovery, $request->user());
         abort_if((int) $order->pay_status === 1 || $order->payfast_paid, 409);
         $order = app(RegistrationPaymentService::class)->preparePayfastHandoff(

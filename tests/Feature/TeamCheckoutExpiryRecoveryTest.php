@@ -37,9 +37,9 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
         $this->assertSame('450', $audit->properties['expected_provider_amount']);
         $this->assertSame($order->user_id, $audit->properties['payer_id']);
         $this->assertFalse(app(TeamPaymentService::class)->expireUnpaidCheckout($order));
-        $this->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $order->id])->assertForbidden();
+        $this->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertForbidden();
         $this->assertNull($replacement->fresh()->payfast_handed_off_at);
-        $this->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $replacement->id, 'amount' => '0.01'])
+        $this->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $replacement->id, 'amount' => '0.01', 'terms_accepted' => '1'])
             ->assertOk()->assertViewHas('payfastDue', 490.0)->assertViewHas('autoSubmitPayfast', true);
         $this->assertNotNull($replacement->fresh()->payfast_handed_off_at);
         $this->assertDatabaseCount('team_payment_orders', 2);
@@ -129,7 +129,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
         $checkoutUrl = route('team.payment.payfast', [$order->team_id, $order->player_id, $order->event_id]);
         $handoffUrl = route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]);
 
-        $this->actingAs($order->user)->from($checkoutUrl)->post($handoffUrl, ['custom_int5' => $order->id])
+        $this->actingAs($order->user)->from($checkoutUrl)->post($handoffUrl, ['custom_int5' => $order->id, 'terms_accepted' => '1'])
             ->assertRedirect(route('events.show', $order->event_id))
             ->assertSessionHasErrors('payment')
             ->assertSessionHas('info', 'Select the player on this event and start registration again to open a fresh checkout.');
@@ -140,9 +140,9 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
         $this->get($checkoutUrl)->assertOk()->assertViewHas('payfastDue', 490.0);
         $replacement = TeamPaymentOrder::latest('id')->firstOrFail();
         $this->assertNotSame($order->id, $replacement->id);
-        $this->post($handoffUrl, ['custom_int5' => $order->id])->assertRedirect(route('events.show', $order->event_id));
+        $this->post($handoffUrl, ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertRedirect(route('events.show', $order->event_id));
         $this->assertNull($replacement->fresh()->payfast_handed_off_at);
-        $this->post($handoffUrl, ['custom_int5' => $replacement->id, 'amount' => '0.01'])
+        $this->post($handoffUrl, ['custom_int5' => $replacement->id, 'amount' => '0.01', 'terms_accepted' => '1'])
             ->assertOk()->assertViewHas('payfastDue', 490.0)->assertViewHas('autoSubmitPayfast', true);
         $this->assertNotNull($replacement->fresh()->payfast_handed_off_at);
         $this->assertSame(490.0, $replacement->fresh()->payfast_amount_due);
@@ -158,11 +158,11 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
         $order->forceFill(['created_at' => now()->subMinutes(31)])->save();
         $before = $order->fresh()->getAttributes();
         $route = [$order->team_id, $order->player_id, $order->event_id];
-        $this->actingAs(User::factory()->create())->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $order->id])->assertForbidden();
+        $this->actingAs(User::factory()->create())->post(route('team.payment.payfast.handoff', $route), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertForbidden();
         foreach ([0 => Team::factory()->create()->id, 1 => Player::factory()->create()->id, 2 => Event::factory()->create()->id] as $index => $id) {
             $mismatched = $route;
             $mismatched[$index] = $id;
-            $this->actingAs($order->user)->post(route('team.payment.payfast.handoff', $mismatched), ['custom_int5' => $order->id])->assertForbidden();
+            $this->actingAs($order->user)->post(route('team.payment.payfast.handoff', $mismatched), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertForbidden();
         }
         $this->assertSame($before, $order->fresh()->getAttributes());
         $this->assertDatabaseCount('team_payment_orders', 1);
@@ -178,7 +178,7 @@ class TeamCheckoutExpiryRecoveryTest extends TestCase
             'custom_int5' => $order->id, 'amount_gross' => 490,
         ]);
         $before = $order->fresh()->getAttributes();
-        $this->actingAs($order->user)->post(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), ['custom_int5' => $order->id])
+        $this->actingAs($order->user)->post(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), ['custom_int5' => $order->id, 'terms_accepted' => '1'])
             ->assertRedirect(route('events.show', $order->event_id))
             ->assertSessionHasErrors('payment')
             ->assertSessionHas('info', 'This checkout could not be restarted safely. Contact the tournament administrator. If you have already paid, do not pay again.');

@@ -82,7 +82,12 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $before = $recovery->before_state;
         $createdAt = $order->created_at->toDateTimeString();
         $url = URL::temporarySignedRoute('registration.recovery.payfast', now()->addHour(), ['recovery' => $recovery->id]);
-        $this->actingAs($owner)->get($url)->assertOk();
+        $this->actingAs($owner)->post($url)->assertSessionHasErrors('terms_accepted');
+        $this->assertNull($recovery->fresh()->checkout_started_at);
+        $this->assertNull($order->fresh()->payfast_handed_off_at);
+        $this->assertDatabaseCount('transactions_pf', 0);
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->actingAs($owner)->post($url, ['terms_accepted' => '1'])->assertOk();
         $handoff = $order->fresh()->payfast_handed_off_at->toIso8601String();
         $this->assertNotNull($recovery->fresh()->checkout_started_at);
         $this->travel(30)->minutes();
@@ -150,7 +155,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $url = URL::temporarySignedRoute('registration.recovery.show', now()->addHour(), ['recovery' => $recovery->id]);
         $response = $this->actingAs($owner)->get($url)->assertOk();
         $this->travel(29)->minutes();
-        $this->get($response->viewData('paymentUrl'))->assertOk()->assertViewHas('amount', 300.0);
+        $this->post($response->viewData('paymentUrl'), ['terms_accepted' => '1'])->assertOk()->assertViewHas('amount', 300.0);
         $handoff = $order->fresh()->payfast_handed_off_at;
         $this->travel(29)->minutes();
         $this->get($url)->assertOk()->assertSee('awaiting confirmation')->assertDontSee('Continue to PayFast');
@@ -425,7 +430,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         $payfast = URL::temporarySignedRoute('registration.recovery.payfast', now()->addMinutes(5), ['recovery' => $recovery->id]);
 
         $this->actingAs($owner)->get($show)->assertStatus(410);
-        $this->actingAs($owner)->get($payfast)->assertStatus(410);
+        $this->actingAs($owner)->post($payfast, ['terms_accepted' => '1'])->assertStatus(410);
         $this->assertDatabaseHas('registration_orders', ['id' => $order->id, 'pay_status' => 0]);
         $this->assertDatabaseCount('transactions_pf', 0);
         $this->assertDatabaseCount('wallet_transactions', 0);
@@ -445,7 +450,7 @@ class RegistrationPaymentRecoveryTest extends TestCase
         parse_str((string) parse_url($paymentUrl, PHP_URL_QUERY), $paymentQuery);
         $this->assertLessThanOrEqual($canonicalExpiry, (int) $paymentQuery['expires']);
 
-        $payfastResponse = $this->actingAs($owner)->get($paymentUrl)->assertOk();
+        $payfastResponse = $this->actingAs($owner)->post($paymentUrl, ['terms_accepted' => '1'])->assertOk();
         parse_str((string) parse_url($payfastResponse->viewData('cancel_url'), PHP_URL_QUERY), $cancelQuery);
         $this->assertLessThanOrEqual($canonicalExpiry, (int) $cancelQuery['expires']);
     }

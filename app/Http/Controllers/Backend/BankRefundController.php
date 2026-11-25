@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Backend;
 
 use App\Http\Controllers\Controller;
 use App\Domain\Refunds\Services\RefundExecutionService;
+use App\Domain\Refunds\Services\IndividualRefundRetryAmounts;
 use App\Domain\Refunds\Services\TeamRefundCalculator;
 use App\Models\CategoryEventRegistration;
 use App\Models\TeamPaymentOrder;
@@ -242,11 +243,10 @@ class BankRefundController extends Controller
       // the wallet contribution is credited back to the user's wallet separately.
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      // HOTFIX 2: Use 10% withdrawal fee formula — not PayFast platform fee net.
-      $payfastNet   = round($payfastGross * 0.90, 2);
-      $walletNet    = $walletPaid;
-
       try {
+        $amounts = app(IndividualRefundRetryAmounts::class)->resolve($registration, $payment);
+        $payfastNet = $amounts['payfast'];
+        $walletNet = $amounts['wallet'];
         $result = $payfast->refundUsingAvailableMethod(
           $pfPaymentId,
           $payfastNet,
@@ -586,13 +586,13 @@ class BankRefundController extends Controller
       $pfPaymentId  = $payment['pf_payment_id'] ?? null;
       $payfastGross = $payment['gross'] ?? 0;
       $walletPaid   = $payment['wallet_paid'] ?? 0;
-      $payfastNet   = $payment['net'] ?? round($payfastGross * 0.90, 2);
-      $walletNet    = $walletPaid;
-
       $refundedViaPayfast = false;
 
       if (!empty($pfPaymentId) && $payfastGross > 0) {
         try {
+          $amounts = app(IndividualRefundRetryAmounts::class)->resolve($registration, $payment);
+          $payfastNet = $amounts['payfast'];
+          $walletNet = $amounts['wallet'];
           $payfast = new \App\Services\Payfast();
           $result = $payfast->refundUsingAvailableMethod(
             $pfPaymentId,

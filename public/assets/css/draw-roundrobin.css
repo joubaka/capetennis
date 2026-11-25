@@ -296,7 +296,7 @@
    BRACKET ZOOM CONTROLS
    ============================================== */
   .bracket-zoom-controls {
-    display: none;
+    display: flex;
     gap: 6px;
     align-items: center;
   }

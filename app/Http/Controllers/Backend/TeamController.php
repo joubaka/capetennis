@@ -471,6 +471,10 @@ class TeamController extends Controller
           if ($order->withdrawn_at) {
             return redirect()->route('events.show', $event)->withErrors(['payment' => 'This checkout was cancelled or restarted. Start registration again from the event.']);
           }
+          $request->validate(['terms_accepted' => ['required', 'accepted']], [
+            'terms_accepted.accepted' => 'Please accept the registration terms and refund policy before continuing.',
+            'terms_accepted.required' => 'Please accept the registration terms and refund policy before continuing.',
+          ]);
         }
 
         try {

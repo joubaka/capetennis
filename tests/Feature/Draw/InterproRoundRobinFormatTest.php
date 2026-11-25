@@ -146,6 +146,13 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertSame($before, $draw->drawFixtures()->get()->toJson());
         $this->assertSame(42, $draw->drawFixtures()->count());
         $finalPage = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('First result stands')->assertSee('11/12')->assertSee('Final positions');
+        $this->assertSame(18, substr_count($finalPage->getContent(), '<foreignObject '));
+        $this->assertSame(3, substr_count($finalPage->getContent(), 'class="interpro-bracket-svg"'));
+        foreach (InterproRoundRobinFormat::template() as $number => $definition) {
+            $finalPage->assertSee('data-match="'.$number.'"', false);
+        }
+        $finalPage->assertSee('data-from="3007" data-to="3011"', false)
+            ->assertSee('data-from="3008" data-to="3011"', false);
         $blankPage = $this->get(route('backend.draw.main-bracket', [$draw, 'empty' => 1]))->assertOk()->assertDontSee('6-2')->assertSee('Loser match 2002')->assertDontSee('Final positions');
         if ($preview) {
             $preview->stage('final.html', '4 · Completed trial draw and final positions', $finalPage->getContent());

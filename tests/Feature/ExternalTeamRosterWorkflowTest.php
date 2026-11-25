@@ -424,7 +424,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $this->post(route('team.payment.payfast.handoff', [
             $this->team, $player, $this->event,
-        ]), ['custom_int5' => $order->id])->assertOk()
+        ]), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertOk()
             ->assertViewIs('frontend.payfast.team_payment')
             ->assertSee('Redirecting securely to PayFast')
             ->assertSee('name="amount" value="'.number_format((float) $order->payfast_amount_due, 2, '.', '').'"', false)
@@ -433,7 +433,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $handedOffAt = $order->fresh()->payfast_handed_off_at->toISOString();
         $this->post(route('team.payment.payfast.handoff', [
             $this->team, $player, $this->event,
-        ]), ['custom_int5' => $order->id])->assertOk();
+        ]), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertOk();
         $this->assertSame($handedOffAt, $order->fresh()->payfast_handed_off_at->toISOString());
         $this->assertSame($originalOwner, $player->fresh()->userId);
         $this->assertDatabaseMissing('user_players', ['player_id' => $player->id, 'user_id' => $user->id]);
@@ -449,7 +449,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
         $this->travel(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES - 1)->minutes();
         $this->post(route('team.payment.payfast.handoff', [
             $this->team, $player, $this->event,
-        ]), ['custom_int5' => $order->id])->assertOk();
+        ]), ['custom_int5' => $order->id, 'terms_accepted' => '1'])->assertOk();
 
         $stillPending = $order->fresh();
         $this->assertSame($handedOffAt, $stillPending->payfast_handed_off_at->toISOString());
@@ -727,6 +727,7 @@ class ExternalTeamRosterWorkflowTest extends TestCase
 
         $this->post(route('team.hybrid.pay'), [
             'custom_int5' => $order->id,
+            'terms_accepted' => '1',
         ])->assertRedirect($paymentRoute);
 
         $this->assertDatabaseHas('team_payment_orders', [

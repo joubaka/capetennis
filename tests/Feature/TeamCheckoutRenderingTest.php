@@ -27,6 +27,8 @@ class TeamCheckoutRenderingTest extends TestCase
                 ->assertViewHas('autoSubmitPayfast', false)
                 ->assertSee('R490.00')
                 ->assertSee('R450.00')
+                ->assertSee('I have read and accept the registration terms and refund policy above.')
+                ->assertSee('name="terms_accepted" value="1"', false)
                 ->assertSee('name="notify_url" value="https://canonical.example/notify_team"', false)
                 ->assertDontSee('https://individual.example/notify', false)
                 ->assertSee(route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]), false)
@@ -46,6 +48,18 @@ class TeamCheckoutRenderingTest extends TestCase
         $this->assertDatabaseCount('team_payment_orders', 1);
     }
 
+    public function test_checkout_displays_saved_terms_without_replacing_them(): void
+    {
+        $order = $this->order();
+        $terms = '<p>Existing Cape Tennis registration conditions.</p>';
+        \App\Models\SiteSetting::set('terms_conditions_content', $terms);
+        $this->actingAs($order->user)->get(route('team.checkout', $order))
+            ->assertOk()
+            ->assertSee($terms, false)
+            ->assertSee('Registration, withdrawals and refunds');
+        $this->assertSame($terms, \App\Models\SiteSetting::get('terms_conditions_content'));
+    }
+
     public function test_checkout_rejects_a_team_from_another_event(): void
     {
         $order = $this->order();
@@ -61,9 +75,42 @@ class TeamCheckoutRenderingTest extends TestCase
             ->assertOk()
             ->assertSee(route('team.hybrid.complete', $order), false)
             ->assertSee('Confirm Wallet Payment')
+            ->assertSee('id="teamCompleteTerms" required', false)
             ->assertDontSee('id="teamPayfastForm"', false);
         $this->assertFalse($order->fresh()->wallet_debited);
         $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_payfast_handoff_requires_explicit_terms_acceptance_without_changing_order(): void
+    {
+        $order = $this->order();
+        $before = $order->fresh()->getAttributes();
+        $url = route('team.payment.payfast.handoff', [$order->team_id, $order->player_id, $order->event_id]);
+        foreach ([[], ['terms_accepted' => '0']] as $consent) {
+            $this->actingAs($order->user)->post($url, ['custom_int5' => $order->id] + $consent)
+                ->assertRedirect()->assertSessionHasErrors('terms_accepted');
+            $this->assertSame($before, $order->fresh()->getAttributes());
+            $this->assertDatabaseCount('team_payment_orders', 1);
+            $this->assertDatabaseCount('wallet_transactions', 0);
+            $this->assertDatabaseCount('user_players', 0);
+        }
+    }
+
+    public function test_wallet_application_and_completion_require_acceptance_before_financial_mutations(): void
+    {
+        $order = $this->order();
+        \App\Models\Wallet::factory()->forUser($order->user)->create();
+        $before = $order->fresh()->getAttributes();
+        foreach ([route('team.hybrid.pay'), route('team.hybrid.complete', $order)] as $url) {
+            foreach ([[], ['terms_accepted' => '0']] as $consent) {
+                $this->actingAs($order->user)->post($url, ['custom_int5' => $order->id] + $consent)
+                    ->assertRedirect()->assertSessionHasErrors('terms_accepted');
+                $this->assertSame($before, $order->fresh()->getAttributes());
+                $this->assertDatabaseCount('wallet_transactions', 0);
+                $this->assertDatabaseCount('transactions_pf', 0);
+                $this->assertDatabaseCount('team_payment_orders', 1);
+            }
+        }
     }
 
     private function order(): TeamPaymentOrder

@@ -83,19 +83,29 @@ if (process.argv.includes('--serve')) {
             const section = page.locator('.interpro-feed-in');
             assert.equal(await section.count(), 1);
             assert.equal(await section.locator('tbody tr').count(), 18);
+            assert.equal(await section.locator('foreignObject[data-match]').count(), 18);
+            assert.equal(await section.locator('.interpro-bracket-svg').count(), 3);
+            assert.equal(await section.locator('.interpro-route-table').isVisible(), false, 'Screen shows connected brackets instead of the print table');
+            assert.equal(await page.locator('#bracket-zoom-bar').isVisible(), true, 'Zoom controls are available at every width');
+            assert.ok(await section.locator('.interpro-match-name').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize)) >= 14, 'Readable player text');
+            assert.equal(await section.locator('.interpro-match').evaluateAll(cards => cards.every(card => card.scrollHeight <= card.clientHeight)), true, `${stage} ${width}: match content fits`);
             if (stage === 'carry') assert.match(await section.innerText(), /First result stands \(match/);
             if (stage === 'blank') assert.doesNotMatch(await section.innerText(), /6-2|Group [A-D] Player/);
           }
           if (stage === 'final') assert.equal(await page.locator('.ct-final-position').count(), 12);
           await page.screenshot({ path: path.join(output, `${stage}-${width}.png`), fullPage: true });
-          if (stage === 'carry' && width < 500) {
-            const scroller = page.locator('.interpro-feed-in .table-responsive');
+          if (stage === 'carry') {
+            await page.locator('#bracket-zoom-in').click();
+            assert.equal(await page.locator('#bracket-zoom-label').innerText(), '120%');
+            await page.locator('#bracket-zoom-reset').click();
+            assert.equal(await page.locator('#bracket-zoom-label').innerText(), '100%');
+            const scroller = page.locator('.interpro-bracket-scroll').nth(1);
             assert.equal(await scroller.evaluate(el => {
               el.scrollLeft = el.scrollWidth;
-              const cell = el.querySelector('thead th:last-child').getBoundingClientRect();
+              const cell = el.querySelector('[data-match="3011"]').getBoundingClientRect();
               const bounds = el.getBoundingClientRect();
               return cell.right <= bounds.right + 1 && cell.left >= bounds.left - 1;
-            }), true, 'Phone can reach the positions column');
+            }), true, 'Later placement rounds remain reachable without shrinking text');
             await page.screenshot({ path: path.join(output, `carry-${width}-scrolled.png`), fullPage: true });
           }
           report.push({ stage, width, contained: true });
@@ -105,6 +115,8 @@ if (process.argv.includes('--serve')) {
       await page.emulateMedia({ media: 'print' });
       await page.goto('http://localhost/print.html', { waitUntil: 'networkidle' });
       assert.equal(await page.locator('.interpro-feed-in tbody tr').count(), 18);
+      assert.equal(await page.locator('.interpro-diagrams').isVisible(), false);
+      assert.equal(await page.locator('.interpro-route-table').isVisible(), true);
       assert.equal(await page.locator('.ct-final-position').count(), 12);
       await page.screenshot({ path: path.join(output, 'print.png'), fullPage: true });
       await page.pdf({ path: path.join(output, 'interpro-trials-preview.pdf'), format: 'A4', landscape: true, printBackground: true, margin: { top: '8mm', bottom: '8mm', left: '8mm', right: '8mm' } });

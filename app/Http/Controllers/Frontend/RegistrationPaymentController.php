@@ -112,6 +112,8 @@ class RegistrationPaymentController extends Controller
       return back()->withErrors('This order has no items and cannot be paid.');
     }
 
+    $request->validate(['terms_accepted' => ['required', 'accepted']]);
+
     // --- Server-side financial calculations (never trust client input) ---
     $orderTotal    = round((float) $order->items->sum('item_price'), 2);
     $walletReserved  = round((float) $order->wallet_reserved, 2);
@@ -354,6 +356,8 @@ class RegistrationPaymentController extends Controller
       return redirect()
         ->route('frontend.registration.success', $orderId);
     }
+
+    request()->validate(['terms_accepted' => ['required', 'accepted']]);
 
     try {
       $eventName = optional($order->items->first()?->category_event?->event)->name ?? 'Event Registration';
@@ -756,6 +760,8 @@ class RegistrationPaymentController extends Controller
       return back()->withErrors($exception->getMessage());
     }
 
+    $request->validate(['terms_accepted' => ['required', 'accepted']]);
+
     $orderTotal = round((float) ($order->total_amount ?? 0), 2);
     $walletBalance = round((float) ($wallet->balance ?? 0), 2);
     $walletReserved = round(min($walletBalance, $orderTotal), 2);
@@ -816,6 +822,8 @@ class RegistrationPaymentController extends Controller
     } catch (\RuntimeException $exception) {
       return redirect()->route('events.index')->withErrors($exception->getMessage());
     }
+
+    request()->validate(['terms_accepted' => ['required', 'accepted']]);
 
     try {
       app(\App\Domain\Payments\Services\TeamPaymentService::class)
