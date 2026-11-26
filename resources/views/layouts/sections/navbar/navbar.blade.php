@@ -1,4 +1,11 @@
 <style>
+.dropdown-user .dropdown-menu {
+  width: min(20rem, calc(100vw - 1rem));
+  max-height: calc(100dvh - 5rem);
+  overflow-y: auto;
+}
+.dropdown-user .dropdown-item { min-height: 44px; white-space: normal; }
+.dropdown-user > .dropdown-toggle { border: 0; background: transparent; min-width: 44px; min-height: 44px; }
 .desktop-announcement-badge {
   position: absolute;
   top: 0;
@@ -162,6 +169,8 @@
 @php
 $containerNav = $containerNav ?? 'container-fluid';
 $navbarDetached = ($navbarDetached ?? '');
+$accountUrl = route('backend.dashboard', ['manage_players' => 1]).'#dashboard-account';
+$walletUrl = route('backend.dashboard', ['wallet_page' => 1]).'#wallet-history';
 @endphp
 
 <!-- Navbar -->
@@ -177,7 +186,7 @@ $navbarDetached = ($navbarDetached ?? '');
         <path d="M4 6h16M4 12h16M4 18h16"></path>
       </svg>
       @if(auth()->check()
-          && auth()->user()->hasAnyRole(['super-user','admin'])
+          && auth()->user()->hasRole('super-user')
           && ($pendingBankRefundCount ?? 0) > 0)
         <span class="mobile-menu-refund-badge" aria-label="{{ $pendingBankRefundCount }} pending bank refunds">
           {{ $pendingBankRefundCount }}
@@ -252,10 +261,10 @@ $navbarDetached = ($navbarDetached ?? '');
 
       {{-- 🔔 ADMIN: Pending bank refunds --}}
       @if(auth()->check()
-          && auth()->user()->hasAnyRole(['super-user','admin'])
+          && auth()->user()->hasRole('super-user')
           && ($pendingBankRefundCount ?? 0) > 0)
         <li class="nav-item me-2 mobile-navbar-action">
-          <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-primary btn-sm position-relative">
+          <a href="{{ route('admin.refunds.bank.index') }}" class="btn btn-outline-primary btn-sm position-relative" data-super-admin-only>
             <i class="ti ti-clock"></i>
             Bank refunds
             <span class="ml-2 badge rounded-pill bg-success text-dark">
@@ -277,13 +286,13 @@ $navbarDetached = ($navbarDetached ?? '');
       {{-- Profile shortcut --}}
       @if (Auth::check())
         <li class="nav-item me-2 mobile-navbar-action">
-          <a href="{{ route('my.tennis') }}" class="btn btn-outline-success btn-sm">
+          <a href="{{ route('my.tennis') }}" class="btn btn-outline-primary btn-sm">
             <i class="ti ti-ball-tennis me-1"></i> My Tennis
           </a>
         </li>
         <li class="nav-item me-2 mobile-navbar-action">
-          <a href="{{ route('backend.dashboard') }}" class="btn btn-warning btn-sm">
-            My Profile
+          <a href="{{ $accountUrl }}" class="btn btn-outline-secondary btn-sm">
+            My Account
           </a>
         </li>
       @else
@@ -308,7 +317,7 @@ $navbarDetached = ($navbarDetached ?? '');
 
       <!-- User dropdown -->
       <li class="nav-item navbar-dropdown dropdown-user dropdown">
-        <a class="nav-link dropdown-toggle hide-arrow" href="javascript:void(0);" data-bs-toggle="dropdown">
+        <button type="button" class="nav-link dropdown-toggle hide-arrow" id="account-menu-toggle" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Open account menu">
           <div class="avatar avatar-online">
             @auth
               <img src="{{ Auth::user()->profile_photo_url }}"
@@ -317,21 +326,21 @@ $navbarDetached = ($navbarDetached ?? '');
               <span class="badge bg-label-primary">Guest</span>
             @endauth
           </div>
-        </a>
+        </button>
         @auth
           <button type="button" class="badge rounded-pill border-0 d-none desktop-announcement-badge"
                   data-announcement-menu-badge data-bs-toggle="modal" data-bs-target="#announcement-inbox"></button>
         @endauth
 
-        <ul class="dropdown-menu dropdown-menu-end">
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="account-menu-toggle">
 
           <li>
-            <a class="dropdown-item" href="{{ route('backend.dashboard') }}">
+            <a class="dropdown-item" href="{{ auth()->check() ? $accountUrl : route('login') }}">
               <div class="d-flex">
                 <div class="flex-shrink-0 me-3">
                   <div class="avatar avatar-online">
                     <img src="{{ Auth::user() ? Auth::user()->profile_photo_url : asset('assets/img/avatars/default.svg') }}"
-                         class="w-px-40 h-auto rounded-circle">
+                         class="w-px-40 h-auto rounded-circle" alt="">
                   </div>
                 </div>
                 <div class="flex-grow-1">
@@ -364,16 +373,19 @@ $navbarDetached = ($navbarDetached ?? '');
             <a class="dropdown-item" href="{{ route('my.tennis') }}">
               <i class="ti ti-ball-tennis me-2"></i>
               My Tennis
+              <small class="d-block text-muted">Player profiles, activity and Plus</small>
             </a>
           </li>
           @endauth
 
+          @auth
           <li>
-            <a class="dropdown-item" href="{{ route('backend.dashboard') }}">
+            <a class="dropdown-item" href="{{ $accountUrl }}">
               <i class="ti ti-user-check me-2"></i>
-              My Profile
+              My Account
             </a>
           </li>
+          @endauth
 
           @auth
           <li>
@@ -387,7 +399,7 @@ $navbarDetached = ($navbarDetached ?? '');
           {{-- Wallet --}}
           @auth
           <li>
-            <a class="dropdown-item" href="{{ route('wallet.show', Auth::id()) }}">
+            <a class="dropdown-item" href="{{ $walletUrl }}">
               <i class="fa-solid fa-wallet me-2"></i>
               My Wallet
             </a>
@@ -399,8 +411,8 @@ $navbarDetached = ($navbarDetached ?? '');
             </a>
           </li>
           @role('super-user')
-          <li><a class="dropdown-item" href="{{ route('superadmin.marketing.index') }}"><i class="ti ti-speakerphone me-2"></i>CTR marketing</a></li>
-          <li><a class="dropdown-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}" href="{{ route('superadmin.account-statements.index') }}" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="ti ti-users me-2"></i>User account statements</a></li>
+          <li><a class="dropdown-item" href="{{ route('superadmin.marketing.index') }}" data-super-admin-only><i class="ti ti-speakerphone me-2"></i>CTR marketing</a></li>
+          <li><a class="dropdown-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}" href="{{ route('superadmin.account-statements.index') }}" data-super-admin-only @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="ti ti-users me-2"></i>User account statements</a></li>
           @endrole
           @endauth
 

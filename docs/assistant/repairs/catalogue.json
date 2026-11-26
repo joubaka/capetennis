@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-079",
+      "title": "Account menu wallet shortcut fails or Plus profile links are unclear",
+      "scope": "Shared account menu, nearby header controls and account-dashboard player shortcuts; read-only navigation only.",
+      "symptoms": "An ordinary user's My Wallet shortcut returns 403, My Profile opens an administrator dashboard with account details collapsed, or an administrator sees a bank-refund badge whose destination rejects access.",
+      "cause": "Personal navigation reused the administrative wallet route and an unqualified dashboard URL. The global refund-count composer and controls allowed admins while their destination required super-user.",
+      "fix": "Use the authenticated dashboard with manage_players=1#dashboard-account for My Account and wallet_page=1#wallet-history for My Wallet. Keep paginated self-scoped ledger reads and administrative wallet authorization. Bridge each linked player to My Tennis with its exact player ID and profile tab; retain relationship, entitlement and payer checks. Gate both the refund-count composer and desktop/mobile controls to super-user, using the shared orange control border. Keep the dropdown keyboard operable and bounded to the viewport. See docs/account-navigation.md.",
+      "verification": "On 2026-11-26 AccountNavigationTest passed 3 tests and 36 assertions locally after correcting test doubles and URL escaping. The existing MyTennisOverviewTest, PlayerPlusFeaturePreviewTest and PlayerPlusMembershipTest cases passed in the combined access run; that run's only failure was the subsequently corrected navigation assertion. Route registration, Blade compilation, PHP lint and diff checks passed. Browser evidence is reported separately; no production verification.",
+      "limits": "Guide only. Navigation repairs do not authorize financial mutations, player linking, entitlement changes, publication, deployment or production access. My Tennis continues to decide normal versus Plus access through its canonical gates.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Providers/AppServiceProvider.php", "app/Http/Controllers/Backend/DashboardController.php", "docs/account-navigation.md"],
+      "tests": ["tests/Feature/AccountNavigationTest.php", "tests/Feature/MyTennisOverviewTest.php", "tests/Feature/PlayerPlusFeaturePreviewTest.php", "tests/Feature/PlayerPlusMembershipTest.php"]
+    },
+    {
       "id": "RK-078",
       "title": "Interpro playoff preview shows a tiny table instead of a bracket",
       "scope": "Read-only screen and print presentation of the four-group Interpro round-robin feed-in preset.",

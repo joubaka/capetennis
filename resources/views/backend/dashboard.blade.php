@@ -147,7 +147,7 @@
           <a href="{{ route('account.statement') }}" class="btn btn-outline-primary btn-sm">
             <i class="ti ti-file-invoice me-1"></i> Account statement
           </a>
-          <a href="{{ route('wallet.show', $user->id) }}" class="btn btn-outline-info btn-sm">
+          <a href="{{ route('backend.dashboard', ['wallet_page' => 1]) }}#wallet-history" class="btn btn-outline-info btn-sm">
             <i class="ti ti-wallet me-1"></i> Wallet
           </a>
           <button class="btn btn-primary btn-sm"
@@ -189,6 +189,7 @@
                    title="Update player profile">
                   {{ $player->name }} {{ $player->surname }}
                 </a>
+                <a href="{{ route('my.tennis', ['player' => $player->id, 'tab' => 'profile']) }}" class="btn btn-sm btn-outline-secondary">My Tennis &amp; Plus</a>
                 @if($player->isMinor())
                   <span class="badge bg-info ms-1">Minor</span>
                 @endif
@@ -250,7 +251,7 @@
     {{-- ================= WALLET TRANSACTIONS ================= --}}
     <div class="card mt-4">
       <div class="card-header d-flex justify-content-between align-items-center">
-        <h3 class="m-0"><i class="ti ti-wallet me-1"></i> Wallet Transactions</h3>
+        <h3 class="m-0" id="wallet-history"><i class="ti ti-wallet me-1"></i> Wallet Transactions</h3>
         @can('super-user')
         <button class="btn btn-sm btn-primary" data-super-admin-only
                 data-bs-toggle="modal"

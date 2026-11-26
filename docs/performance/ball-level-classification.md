@@ -94,6 +94,16 @@ Reload and comparison-evidence links retain the same context. This is a
 display/navigation rule, not a classification change or a reason to recalculate
 saved ratings. Existing Super Admin authorization remains required.
 
+The event Player ratings page filters recorded event membership by Red CTR,
+Orange CTR or CTR (Green/Yellow). Its default all-pools view keeps separate
+division, ball-pool and comparison-group lists; it never combines scores.
+Filtering happens after within-group positions are assigned and before
+pagination, so pool and name filters preserve positions and saved scores.
+Pagination retains the pool, division and search selection. Missing ratings
+remain unrated without borrowing another pool; unresolved ball contexts remain
+visible in the default view. See `PlayerRatingLeaderboardController`,
+`PlayerRatingLeaderboardService` and `PlayerRatingLeaderboardTest`.
+
 Regression references: `tests/Unit/BallRatingModelTest.php` and
 `tests/Feature/BallRatingPipelineTest.php`, with current-group selection in
 `tests/Feature/PlayerRatingCurrentGroupTest.php` and pathway rules in

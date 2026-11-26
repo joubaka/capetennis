@@ -173,7 +173,8 @@
     background: rgba(255, 255, 255, .08);
   }
   .ct-backend .event-workspace-chrome .ct-context-nav > a[aria-current="page"],
-  .ct-backend .event-workspace-more__toggle[aria-current="page"] {
+  .ct-backend .event-workspace-more__toggle[aria-current="page"],
+  .ct-backend .event-workspace-more__toggle.is-current {
     color: var(--event-navy-deep);
     background: #fff;
     box-shadow: 0 6px 16px rgba(0, 0, 0, .16);

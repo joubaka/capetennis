@@ -44,6 +44,46 @@ class PlayerRatingLeaderboardTest extends TestCase
 
     use RefreshDatabase;
 
+    public function test_event_pool_filter_preserves_scores_positions_and_missing_ratings_without_cross_event_members(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6]);
+        $other = Event::factory()->create(['eventType' => 6]);
+        $player = Player::factory()->create(['name' => 'Filtered', 'surname' => 'Member']);
+        $higher = Player::factory()->create(['name' => 'Higher', 'surname' => 'Member']);
+        $foreign = Player::factory()->create(['name' => 'Foreign', 'surname' => 'Member']);
+        $orange = $this->field($event, 'U10 Boys B');
+        $this->entry($orange, $player);
+        $this->entry($orange, $higher);
+        $this->entry($this->field($event, 'U10 Boys A'), $player);
+        $this->entry($this->field($other, 'U10 Boys B'), $foreign);
+        $this->mock(PlayerAbilitySnapshotStore::class)->shouldReceive('current')->andReturn([
+            'cohorts' => [], 'all_age' => [], 'reason' => null, 'built_at' => '2026-11-16', 'snapshot_stale' => false,
+        ]);
+        $ability = $this->mock(PlayerSharedAbilityService::class)->makePartial();
+        $ability->shouldReceive('ballBadgeSnapshot')->with('red')->andReturn([]);
+        $ability->shouldReceive('ballBadgeSnapshot')->with('orange')->andReturn([
+            $player->id => $this->estimate(65, 'connected'), $higher->id => $this->estimate(80, 'connected'),
+            $foreign->id => $this->estimate(95, 'connected'),
+        ]);
+        $ability->shouldReceive('ballBadgeSnapshot')->with('standard')->andReturn([]);
+        $ability->shouldNotReceive('calculateSnapshot');
+        $url = route('backend.player-performance.event-ratings', $event);
+        $all = $this->get($url)->assertOk()->assertSee('Rating pool')->assertSee('Review tools')
+            ->assertSee('never a combined score')->assertDontSee('Foreign Member');
+        $this->assertSame(3, $all->viewData('players')->total());
+        $filtered = $this->get($url.'?ball_type=orange&search=Filtered')->assertOk();
+        $rows = $filtered->viewData('players')->getCollection();
+        $this->assertSame(['orange'], $rows->pluck('ball_stage')->all());
+        $this->assertSame([2], $rows->pluck('position')->all());
+        $this->assertSame(65.0, $rows->first()['rating']['score']);
+        $this->assertSame('orange', $filtered->viewData('pool'));
+        $standard = $this->get($url.'?ball_type=standard')->assertOk()->assertSee('Filtered Member')->assertSee('Unrated');
+        $this->assertNull($standard->viewData('players')->getCollection()->first()['rating']);
+        $this->get($url.'?ball_type=red')->assertOk()->assertSee('No matching players in this selection.');
+        $this->getJson($url.'?ball_type=overall')->assertUnprocessable()->assertJsonValidationErrors('ball_type');
+    }
+
     public function test_current_profile_age_and_gender_filters_do_not_relabel_saved_ratings(): void
     {
         $this->travelTo(\Carbon\CarbonImmutable::parse('2026-10-29', 'Africa/Johannesburg'));
@@ -386,6 +426,12 @@ class PlayerRatingLeaderboardTest extends TestCase
             $estimates[$player->id] = [$this->estimate($i <= 24 ? 50 - $i : 125 - $i, $i <= 24 ? 'first' : 'second')];
         }
         $this->saved($estimates);
+        $poolPage = $this->get(route('backend.player-performance.event-ratings', $event).'?ball_type=standard&cohort=u12%20boys&search=Boundary&page=2')->assertOk();
+        $this->assertSame([2, 3, 4], $poolPage->viewData('players')->getCollection()->pluck('position')->all());
+        parse_str(parse_url($poolPage->viewData('players')->url(1), PHP_URL_QUERY), $paginationQuery);
+        $this->assertSame('standard', $paginationQuery['ball_type']);
+        $this->assertSame('u12 boys', $paginationQuery['cohort']);
+        $this->assertSame('Boundary', $paginationQuery['search']);
         foreach ([route('backend.player-performance.event-ratings', $event), route('backend.player-performance.ratings')] as $url) {
             $response = $this->get($url.'?cohort=u12%20boys&page=2')->assertOk();
             $response->assertSee('Comparison group: second')->assertSeeInOrder(['Boundary 26', 'Boundary 27', 'Boundary 28'])->assertDontSee('Boundary 24');

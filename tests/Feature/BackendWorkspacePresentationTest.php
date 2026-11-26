@@ -62,10 +62,10 @@ class BackendWorkspacePresentationTest extends TestCase
         }
         $this->assertStringNotContainsString(route('admin.events.draws', $event), $html);
         $this->assertSame(1, substr_count($html, 'aria-current="page"'));
-        $this->assertLessThan(
-            strpos($html, '>Finances</a>'),
-            strpos($html, '>Results</a>'),
-            'Results should be a primary event tab before Finances.'
+        $this->assertGreaterThan(
+            strpos($html, '>More</button>'),
+            strpos($html, '>Standings</a>'),
+            'Standings should live in the More menu.'
         );
         $this->assertGreaterThan(
             strpos($html, '>More</button>'),
@@ -78,7 +78,7 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->assertStringNotContainsString('<a ', $otherHtml);
     }
 
-    public function test_common_event_tools_are_unique_tabs_with_the_existing_role_and_regional_gates(): void
+    public function test_common_event_tools_preserve_role_gates_and_activate_their_navigation_group(): void
     {
         [, $event] = $this->eventAdmin();
         $render = fn (array $data = []) => view('backend.event.partials.workspace-nav', array_merge([
@@ -88,12 +88,19 @@ class BackendWorkspacePresentationTest extends TestCase
         $document = new \DOMDocument;
         @$document->loadHTML($html);
         $xpath = new \DOMXPath($document);
-        foreach (['admin.events.categories', 'admin.events.finances'] as $route) {
+        foreach (['admin.events.categories', 'admin.events.finances', 'admin.events.results.individual'] as $route) {
             $url = route($route, $event);
-            $this->assertSame(1, $xpath->query('//nav/a[@href="'.$url.'"]')->length);
             $this->assertSame(1, substr_count($html, 'href="'.$url.'"'));
         }
-        $this->assertSame(1, $xpath->query('//nav/a[@href="'.route('admin.events.categories', $event).'" and @aria-current="page"]')->length);
+        $this->assertSame(1, $xpath->query('//nav/a[@href="'.route('admin.events.finances', $event).'"]')->length);
+        foreach (['categories' => 'admin.events.categories', 'results' => 'admin.events.results.individual', 'standings' => 'admin.events.results.individual'] as $active => $route) {
+            @$document->loadHTML($render(['eventWorkspaceActive' => $active]));
+            $xpath = new \DOMXPath($document);
+            $this->assertSame(1, $xpath->query('//nav/div[contains(@class,"event-workspace-more")]/button[contains(@class,"is-current")]')->length);
+            $this->assertSame(1, $xpath->query('//nav/div[contains(@class,"event-workspace-more")]/div/a[@href="'.route($route, $event).'" and @aria-current="page"]')->length);
+            $this->assertSame(0, $xpath->query('//nav/a[@href="'.route($route, $event).'"]')->length);
+            $this->assertSame(1, $xpath->query('//nav//*[@aria-current="page"]')->length);
+        }
         $this->assertStringNotContainsString('Player ratings', $html);
         foreach ([['eventWorkspaceRegionalOnly' => true], ['rosterOnly' => true]] as $context) {
             $restricted = $render($context);
@@ -108,6 +115,24 @@ class BackendWorkspacePresentationTest extends TestCase
         $this->assertStringNotContainsString('event-workspace-more__toggle', $regional);
         $this->actingAs(User::factory()->create());
         $this->assertStringNotContainsString('<a ', $render());
+
+        // The moved links must still open More when no other tool grants it.
+        \Illuminate\Support\Facades\Gate::define('event-category.manage', fn () => true);
+        $categoryOnly = $render();
+        $this->assertStringContainsString('event-workspace-more__toggle is-current', $categoryOnly);
+        $this->assertStringContainsString('href="'.route('admin.events.categories', $event).'"', $categoryOnly);
+        $this->assertStringNotContainsString(route('admin.events.transactions', $event), $categoryOnly);
+
+        \Illuminate\Support\Facades\Gate::define('event-category.manage', fn () => false);
+        \Illuminate\Support\Facades\Gate::define('event-standings.view', fn () => true);
+        $event->setRelation('eventTypeModel', (new \App\Models\EventType)->forceFill(['type' => \App\Models\EventType::TEAM]));
+        $regionalStandingsOnly = $render(['eventWorkspaceRegionalOnly' => true, 'eventWorkspaceActive' => 'standings']);
+        $this->assertStringContainsString('event-workspace-more__toggle is-current', $regionalStandingsOnly);
+        @$document->loadHTML($regionalStandingsOnly);
+        $xpath = new \DOMXPath($document);
+        $this->assertSame(1, $xpath->query('//nav/div[contains(@class,"event-workspace-more")]/div/a[@href="'.route('admin.events.standings', $event).'" and @aria-current="page"]')->length);
+        $this->assertStringNotContainsString(route('admin.events.categories', $event), $regionalStandingsOnly);
+        $this->assertStringNotContainsString('event-workspace-more__toggle', $render(['eventWorkspaceRegionalOnly' => true, 'rosterOnly' => true]));
     }
 
     public function test_event_overview_renders_the_operational_workspace_hierarchy(): void

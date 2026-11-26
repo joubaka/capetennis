@@ -17,6 +17,10 @@
     .ratings-page .rating-evidence p { margin-bottom: .35rem; }
     .ratings-page .ratings-status { font-size: .875rem; }
     .ratings-page .ratings-filters button { min-height: 44px; width: 100%; }
+    .ratings-page .ratings-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 1rem; }
+    .ratings-page .ratings-tools { display: flex; flex-wrap: wrap; gap: .5rem; }
+    .ratings-page .ratings-tools a { min-height: 44px; display: inline-flex; align-items: center; }
+    .ratings-page .ratings-filters { padding: 1rem; border-radius: .5rem; background: #f5f7fb; }
     @media (max-width: 575.98px) { .ratings-page .card-body { padding: 1rem; } .ratings-page .rating-row { column-gap: .5rem; } .ratings-page .list-group-item { padding: .65rem .75rem; } }
 </style>
 @include('backend.partials.operational-controls')
@@ -24,10 +28,20 @@
     @include('backend.event.partials.header', ['event' => $event, 'eventWorkspaceActive' => 'ratings', 'eventWorkspaceShowHome' => false])
 @endif
 <div class="card ratings-page"><div class="card-body">
-    @if($event)<h2 class="h3">Player ratings</h2>@else<h1 class="h3">Site-wide player ratings</h1>@endif
-    @if($event)<p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.identity-review', $event) }}">Review historical identity evidence</a></p>@endif
-    <p><a class="btn btn-outline-primary" href="{{ route('backend.player-performance.masters-review') }}">Review Masters qualification</a></p>
-    <p class="mb-1">Private provisional singles ratings. {{ ($unified ?? false) ? 'The same shared rating follows a player across age categories; compare players in the same singles reference group.' : 'Compare players only within the same exact cohort and comparison group.' }}</p>
+    <div class="ratings-heading mb-3">
+        <div>
+            @if($event)<h2 class="h3">Player ratings</h2>@else<h1 class="h3">Site-wide player ratings</h1>@endif
+            <p class="text-muted mb-0">Private provisional singles ratings.</p>
+        </div>
+        <details class="ratings-explanation small">
+            <summary>Review tools</summary>
+            <div class="ratings-tools">
+                @if($event)<a class="btn btn-outline-primary" href="{{ route('backend.player-performance.identity-review', $event) }}">Review historical identity evidence</a>@endif
+                <a class="btn btn-outline-primary" href="{{ route('backend.player-performance.masters-review') }}">Review Masters qualification</a>
+            </div>
+        </details>
+    </div>
+    <p class="mb-2">Red CTR, Orange CTR and CTR (Green/Yellow) are separate rating pools. Compare players only within the same ball pool and comparison group. @if($event)The all-pools view shows separate lists, never a combined score.@endif</p>
     <details class="ratings-explanation small text-muted mb-2">
         <summary>How to read these ratings</summary>
         <p>Cohorts follow age order. Players are grouped by comparison group within each exact cohort, highest rating to lowest within each group, with unrated players last. Positions refer to each comparison group. Separate groups cannot be compared directly. Ratings are calculated from published evidence; they cannot be edited here.</p>
@@ -45,14 +59,24 @@
     @if(!$refreshStatus['pending'] && !$refreshStatus['failed'] && $snapshot['reason'])<div class="alert alert-warning" role="status">{{ $snapshot['reason'] }}</div>@endif
     @if($limitReason)<div class="alert alert-warning" role="status">{{ $limitReason }}</div>@endif
     <form method="get" class="row g-2 mb-3 ratings-filters">
-        <div class="col-md-6"><label for="cohort" class="form-label">Exact age / gender / playing context</label>
+        <div class="{{ $event ? 'col-md-4' : 'col-md-6' }}"><label for="cohort" class="form-label">{{ $event ? 'Division' : 'Exact age / gender / playing context' }}</label>
             <select name="cohort" id="cohort" class="form-select" style="min-height:44px">
-                <option value="">{{ $event ? 'All event cohorts (separate groups)' : 'Choose a cohort' }}</option>
+                <option value="">{{ $event ? 'All event divisions' : 'Choose a cohort' }}</option>
                 @foreach($cohorts as $cohort)<option value="{{ $cohort }}" @selected($selected === $cohort)>{{ $cohort }}</option>@endforeach
             </select>
         </div>
-        <div class="col-8 col-md-4"><label for="search" class="form-label">Player name</label><input type="search" name="search" id="search" maxlength="100" class="form-control" style="min-height:44px" value="{{ $search }}"></div>
-        <div class="col-4 col-md-2 d-flex align-items-end"><button class="btn btn-primary" type="submit">Show ratings</button></div>
+        @if($event)
+        <div class="col-md-3"><label for="ball_type" class="form-label">Rating pool</label>
+            <select name="ball_type" id="ball_type" class="form-select" style="min-height:44px">
+                <option value="">All event pools (separate lists)</option>
+                @foreach(['red' => 'Red CTR', 'orange' => 'Orange CTR', 'standard' => 'CTR (Green/Yellow)'] as $stage => $label)
+                    <option value="{{ $stage }}" @selected($pool === $stage)>{{ $label }}</option>
+                @endforeach
+            </select>
+        </div>
+        @endif
+        <div class="col-12 {{ $event ? 'col-md-3' : 'col-md-4' }}"><label for="search" class="form-label">Player name</label><input type="search" name="search" id="search" maxlength="100" class="form-control" style="min-height:44px" value="{{ $search }}"></div>
+        <div class="col-12 col-md-2 d-flex align-items-end"><button class="btn btn-primary" type="submit">Show ratings</button></div>
     </form>
     @foreach($errors->all() as $error)<p class="text-danger">{{ $error }}</p>@endforeach
     @if(!$event && !$selected)

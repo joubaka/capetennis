@@ -24,11 +24,6 @@
   @if($eventWorkspaceRegionalOnly)
     <a href="{{ route('admin.events.teams', $event) }}" @if(!in_array($eventWorkspaceActive, ['communications', 'standings', 'ratings', 'finances', 'more'])) aria-current="page" @endif><i class="ti ti-users" aria-hidden="true"></i>Teams</a>
     @unless($rosterOnly ?? false)
-    @if($event->isTeam())
-      @can('event-standings.view', $event)
-        <a href="{{ route('admin.events.standings', $event) }}" @if($eventWorkspaceActive === 'standings') aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
-      @endcan
-    @endif
     <a href="{{ route('backend.event-communications.index', $event) }}" @if($eventWorkspaceActive === 'communications') aria-current="page" @endif><i class="ti ti-mail" aria-hidden="true"></i>Communications</a>
     @endunless
   @else
@@ -39,7 +34,6 @@
     @can('event.manage', $event)
       <a href="{{ route('backend.event-venue-schedule.index', $event) }}" @if($eventWorkspaceActive === 'schedule') aria-current="page" @endif><i class="ti ti-calendar-event" aria-hidden="true"></i>Schedule</a>
     @endcan
-    <a href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
     @if($event->isTeam() && !$event->isInterprovincialTrials())
       @can('event.manage', $event)
         <a href="{{ route('backend.selection-preview.show', $event) }}"><i class="ti ti-award" aria-hidden="true"></i>Tournament results</a>
@@ -78,9 +72,6 @@
   @endif
   @unless($rosterOnly ?? false)
     @if(!$eventWorkspaceRegionalOnly)
-      @can('event-category.manage', $event)
-        <a href="{{ route('admin.events.categories', $event) }}" @if($eventWorkspaceActive === 'categories') aria-current="page" @endif><i class="ti ti-list-details" aria-hidden="true"></i>Categories</a>
-      @endcan
       @can('event-finance.view', $event)
         <a href="{{ route('admin.events.finances', $event) }}" @if($eventWorkspaceActive === 'finances') aria-current="page" @endif><i class="ti ti-report-money" aria-hidden="true"></i>Finances</a>
       @endcan
@@ -90,19 +81,30 @@
     @endrole
   @endunless
   @php
-    $canSeeEventTools = !$eventWorkspaceRegionalOnly
+    $canSeeWorkspaceStandings = $eventWorkspaceRegionalOnly
+      ? !($rosterOnly ?? false) && $event->isTeam() && auth()->user()?->can('event-standings.view', $event)
+      : auth()->user()?->can('event-draw.view', $event);
+    $canSeeWorkspaceCategories = !$eventWorkspaceRegionalOnly && !($rosterOnly ?? false)
+      && auth()->user()?->can('event-category.manage', $event);
+    $canSeeEventTools = !$eventWorkspaceRegionalOnly && !($rosterOnly ?? false)
       && (auth()->user()?->can('event-draw.view', $event)
         || auth()->user()?->can('event.manage', $event)
         || ($event->series && auth()->user()?->can('event-category.manage', $event)));
   @endphp
-  @if($canSeeEventTools && !($rosterOnly ?? false))
+  @if($canSeeEventTools || $canSeeWorkspaceStandings || $canSeeWorkspaceCategories)
     <div class="event-workspace-more dropdown">
-      <button class="event-workspace-more__toggle" type="button" data-bs-toggle="dropdown"
+      <button class="event-workspace-more__toggle{{ in_array($eventWorkspaceActive, ['more', 'categories', 'results', 'standings']) ? ' is-current' : '' }}" type="button" data-bs-toggle="dropdown"
               aria-expanded="false" @if($eventWorkspaceActive === 'more') aria-current="page" @endif>
         <i class="ti ti-dots" aria-hidden="true"></i>More
       </button>
       <div class="dropdown-menu dropdown-menu-end">
-        @if(!$eventWorkspaceRegionalOnly)
+        @if($canSeeWorkspaceStandings)
+          <a class="dropdown-item" href="{{ route($event->isTeam() ? 'admin.events.standings' : 'admin.events.results.individual', $event) }}" @if(in_array($eventWorkspaceActive, ['results', 'standings'])) aria-current="page" @endif><i class="ti ti-trophy" aria-hidden="true"></i>Standings</a>
+        @endif
+        @if($canSeeWorkspaceCategories)
+          <a class="dropdown-item" href="{{ route('admin.events.categories', $event) }}" @if($eventWorkspaceActive === 'categories') aria-current="page" @endif><i class="ti ti-list-details" aria-hidden="true"></i>Categories</a>
+        @endif
+        @if($canSeeEventTools)
         @if($event->isTeam() && auth()->user() && app(\App\Services\TeamSelection\RegionManagerAccessService::class)->isEventManager(auth()->user(), $event))
           <a class="dropdown-item" href="{{ route('backend.event.clothing.index', $event) }}"><i class="ti ti-shirt" aria-hidden="true"></i>Clothing setup</a>
         @endif

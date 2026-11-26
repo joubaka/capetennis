@@ -199,7 +199,7 @@ class AppServiceProvider extends ServiceProvider
     // ✅ Global admin badge: pending bank refunds (registrations + team refunds)
     View::composer('*', function ($view) {
 
-      if (auth()->check() && auth()->user()->hasAnyRole(['super-user', 'admin'])) {
+      if (auth()->check() && auth()->user()->hasRole('super-user')) {
 
         $view->with('pendingBankRefundCount', app(\App\Services\Performance\PendingBankRefundCount::class)->count());
       }

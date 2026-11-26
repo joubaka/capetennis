@@ -85,16 +85,20 @@ class PlayerRatingLeaderboardController extends Controller
     {
         abort_unless($request->user()?->hasRole('super-user'), 403);
         $settings = $request->validate(['cohort' => ['nullable', 'string', 'max:150'], 'search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1']]);
+        $pool = $event ? ($request->validate(['ball_type' => ['nullable', \Illuminate\Validation\Rule::in(['red', 'orange', 'standard'])]])['ball_type'] ?? '') : '';
         $selected = $settings['cohort'] ?? '';
         $search = trim($settings['search'] ?? '');
         $data = $service->build($event, $selected, $search);
+        if ($pool !== '') {
+            $data['rows'] = $data['rows']->where('ball_stage', $pool)->values();
+        }
         $refreshStatus = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
         if ($selected !== '' && !in_array($selected, $data['cohorts'], true)) {
             throw \Illuminate\Validation\ValidationException::withMessages(['cohort' => 'Choose an available exact cohort.']);
         }
         $players = new LengthAwarePaginator($data['rows']->forPage($request->integer('page', 1), 25)->values(), $data['rows']->count(), 25,
             $request->integer('page', 1), ['path' => $request->url(), 'query' => $request->query()]);
-        return response()->view('backend.player-performance.leaderboard', compact('event', 'selected', 'search', 'players', 'refreshStatus') + $data)
+        return response()->view('backend.player-performance.leaderboard', compact('event', 'selected', 'search', 'players', 'refreshStatus', 'pool') + $data)
             ->header('Cache-Control', 'no-store, private');
     }
 }
