@@ -313,7 +313,7 @@
   </div>
 
   @if(auth()->user()->hasRole('super-user') && $pendingCheckouts->isNotEmpty())
-    <section class="card border-warning mb-4" id="pending-checkouts" aria-labelledby="pending-checkouts-title">
+    <section class="card border-warning mb-4" id="pending-checkouts" aria-labelledby="pending-checkouts-title" data-super-admin-only>
       <div class="card-header bg-label-warning">
         <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts and payment review</h3>
         <p class="small mb-0">Canonical unpaid checkout drafts are shown separately from confirmed entries. Rows with recorded payment evidence or inconsistent checkout records are labelled for review. Private collection notes do not change their payment state.</p>
@@ -522,7 +522,7 @@
 
         <li>
           <button type="button"
-                  class="dropdown-item view-entry-details-btn"
+                  class="dropdown-item view-entry-details-btn" data-super-admin-only
                   data-url="{{ route('admin.entry.details', $reg) }}">
             <i class="ti ti-info-circle me-1"></i>View details
           </button>

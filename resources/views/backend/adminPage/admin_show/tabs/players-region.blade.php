@@ -156,7 +156,7 @@
               @endif
               @if($rosterLocked && !$rosterOnly && $slot->exists && $player && $paid)
                 @role('super-user')
-                  @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $slot->noProfile ?? $slot, 'name' => $name, 'event' => $event])
+                  @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $slot->noProfile ?? $slot, 'name' => $name, 'event' => $event, 'superAdminOnly' => true])
                     @include('backend.adminPage.admin_show._roster-withdrawal-action', ['slot' => $slot])
                   @endcomponent
                 @endrole

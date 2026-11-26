@@ -43,7 +43,7 @@
         @endif
       @endif
     @endif
-    @if(auth()->user()->hasRole('super-user'))<details class="mb-4"><summary>Certification settings</summary><form method="POST" action="{{ route('backend.ctr-planner.certify', $event) }}" class="mt-2">@csrf<input type="hidden" name="certified" value="0"><button class="btn btn-outline-secondary" type="submit">Remove CTR certification</button></form></details>@endif
+    @if(auth()->user()->hasRole('super-user'))<details class="mb-4" data-super-admin-only><summary>Certification settings</summary><form method="POST" action="{{ route('backend.ctr-planner.certify', $event) }}" class="mt-2">@csrf<input type="hidden" name="certified" value="0"><button class="btn btn-outline-secondary" type="submit">Remove CTR certification</button></form></details>@endif
   @endif
 </div>
 <script src="{{ asset('js/ctr-planner.js') }}?v={{ filemtime(public_path('js/ctr-planner.js')) }}" defer></script>

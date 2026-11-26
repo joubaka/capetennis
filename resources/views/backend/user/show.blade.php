@@ -180,7 +180,7 @@
             Balance: R {{ number_format($wallet?->balance ?? 0, 2) }}
           </span>
           @can('super-user')
-          <button class="btn btn-sm btn-primary"
+          <button class="btn btn-sm btn-primary" data-super-admin-only
                   data-bs-toggle="modal"
                   data-bs-target="#walletTxnModal">
             <i class="ti ti-plus me-1"></i> Credit / Debit
@@ -258,7 +258,7 @@
 
 {{-- ================= WALLET CREDIT/DEBIT MODAL ================= --}}
 @can('super-user')
-<div class="modal fade" id="walletTxnModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="walletTxnModal" tabindex="-1" aria-hidden="true" data-super-admin-only>
   <div class="modal-dialog">
     <div class="modal-content">
 

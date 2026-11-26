@@ -996,7 +996,7 @@
               <td class="small text-nowrap">{{ optional($case->applied_at)->format('Y-m-d H:i') }}</td>
               <td class="text-end">
                 @if($case->status === 'applied' && auth()->user()->hasRole('super-user'))
-                  <button type="button" class="btn btn-sm btn-outline-danger rr-restore-recovery"
+                  <button type="button" class="btn btn-sm btn-outline-danger rr-restore-recovery" data-super-admin-only
                     data-url="{{ route('backend.draw.recovery.restore', [$draw, $case]) }}"
                     data-confirmation="RESTORE #{{ $case->id }}">
                     Restore before snapshot

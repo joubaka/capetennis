@@ -51,7 +51,7 @@ $configData = Helper::appClasses();
 
       @can('super-user')
       @if($menu->menuLevel == 'super' || $menu->menuLevel == 'all')
-      <li class="menu-item {{$activeClass}}">
+      <li class="menu-item {{$activeClass}}" @if($menu->menuLevel == 'super') data-super-admin-only @endif>
         <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if($activeClass && !isset($menu->submenu)) aria-current="page" @endif @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
           @if(($menu->slug ?? null) === 'ctr.index')
           <x-ctr-mark class="me-2" />

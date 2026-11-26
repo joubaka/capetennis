@@ -52,9 +52,9 @@ $container = ($container ?? 'container-xxl');
 
         <!-- Content -->
         @if ($isFlex)
-        <div class="{{$container}} d-flex align-items-stretch flex-grow-1 p-0">
+        <div class="{{$container}} d-flex align-items-stretch flex-grow-1 p-0" @if(auth()->user()?->hasRole('super-user') && app(\App\Support\SuperAdminControls::class)->exclusive(request()->route())) data-super-admin-page @endif>
           @else
-          <div class="{{$container}} flex-grow-1 container-p-y">
+          <div class="{{$container}} flex-grow-1 container-p-y" @if(auth()->user()?->hasRole('super-user') && app(\App\Support\SuperAdminControls::class)->exclusive(request()->route())) data-super-admin-page @endif>
             @endif
 
             @yield('content')

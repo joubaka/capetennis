@@ -254,7 +254,7 @@
 <p class="mail-secondary mb-3">Sent means a completed send. Neither a completed send nor server acceptance proves inbox delivery or reading. Records without a proven event association are excluded.</p>
 @role('super-user')
 @if($clearCutoff)
-<details class="border rounded p-3 mb-3">
+<details class="border rounded p-3 mb-3" data-super-admin-only>
 <summary style="min-height:44px">Clear this event’s email log</summary>
 <p class="mt-2">Clear completed, failed and skipped records, including held-for-review records, across every page of this event’s log. Current filters do not limit this action. Waiting, sending and uncertain attempts remain visible.</p>
 <p>This hides records from the list and retains delivery evidence. It does not cancel queued emails or review drafts. Use “Show cleared records” to see the saved history.</p>

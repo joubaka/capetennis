@@ -1,0 +1,13 @@
+/* A visual cue only: access continues to be enforced by Laravel. Use an inset
+   ring so compact links, table actions and mobile layouts keep their dimensions. */
+.ct-super-admin-control {
+  outline: 2px solid #f28c18 !important;
+  outline-offset: -2px;
+}
+.ct-super-admin-control:focus-visible {
+  outline: 3px solid #f28c18 !important;
+  outline-offset: 2px;
+}
+@media print {
+  .ct-super-admin-control { outline: none !important; }
+}

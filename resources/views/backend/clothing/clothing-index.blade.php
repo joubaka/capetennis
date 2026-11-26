@@ -8,15 +8,15 @@
     'net' => round($clothings->sum(fn ($order) => (float) ($order->amount_paid ?? $order->total) - (float) $order->payfast_fee), 2),
   ];
 @endphp
-<div class="card mb-4 clothing-orders-admin">
+<div class="card mb-4 clothing-orders-admin" @if(!($clothingEvent ?? null)) data-super-admin-page @endif>
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap">
     <div>@if($clothingEvent ?? null)<p class="text-muted mb-1">{{ $clothingEvent->name }}</p>@else<p class="text-muted mb-1">All events in this region</p>@endif<h5 class="mb-0 text-uppercase">Clothing Orders — {{ $region->region_name ?? '' }}</h5></div>
     <div class="btn-group mt-2 mt-md-0">
       <a href="{{ auth()->user()->can('region-clothing.manage', $region) ? route('backend.region.clothing.edit', array_filter(['region' => $region, 'event_id' => request()->integer('event_id') ?: null])) : route('backend.event.clothing.index', $clothingEvent) }}" class="btn btn-sm btn-outline-secondary">Back to clothing</a>
-      <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.pdf" data-clothing-download="PDF" class="btn btn-sm btn-outline-danger">
+      <a href="{{ route('export.pdf.clothing.order', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.pdf" data-clothing-download="PDF" class="btn btn-sm btn-outline-danger" @if(!($clothingEvent ?? null)) data-super-admin-only @endif>
         <i class="ti ti-file-text"></i> Print / PDF
       </a>
-      <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.xlsx" data-clothing-download="Excel" class="btn btn-sm btn-outline-success">
+      <a href="{{ route('export.excel.clothing', array_filter(['id' => $region->id, 'event_id' => request()->integer('event_id') ?: null])) }}" download="clothing_orders.xlsx" data-clothing-download="Excel" class="btn btn-sm btn-outline-success" @if(!($clothingEvent ?? null)) data-super-admin-only @endif>
         <i class="ti ti-file-spreadsheet"></i> Excel
       </a>
     </div>
@@ -35,7 +35,7 @@
     @if($clothingEvent)
       <p class="small">Clothing deadline: {{ $clothingDeadline?->timezone('Africa/Johannesburg')->format('d M Y H:i') ?? 'Not set — only a super-user can refund' }} (South Africa). Scoped administrators can refund before this deadline; afterward only a super-user can refund.</p>
       @if(auth()->user()->hasRole('super-user'))
-      <details class="mb-3"><summary>Set clothing deadline</summary><form method="POST" action="{{ route('backend.clothing.deadline', [$clothingEvent, $region]) }}">@csrf
+      <details class="mb-3" data-super-admin-only><summary>Set clothing deadline</summary><form method="POST" action="{{ route('backend.clothing.deadline', [$clothingEvent, $region]) }}">@csrf
         <label for="clothing-deadline" class="form-label">Clothing deadline (South Africa)</label><input type="datetime-local" class="form-control mb-2" id="clothing-deadline" name="clothing_deadline_at" value="{{ $clothingDeadline?->timezone('Africa/Johannesburg')->format('Y-m-d\TH:i') }}"><button class="btn btn-outline-primary">Save deadline</button>
       </form></details>
       @endif

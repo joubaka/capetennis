@@ -26,7 +26,7 @@
 
                             @can('super-user')
                             <li class="nav-item">
-                                <button class="nav-link " data-bs-toggle="tab" data-bs-target="#transactions">
+                                <button class="nav-link " data-super-admin-only data-bs-toggle="tab" data-bs-target="#transactions">
                                     <i class="ti ti-credit-card me-1 ti-sm"></i>
                                     <span class="align-middle fw-semibold">Transactions</span>
                                 </button>
@@ -36,7 +36,7 @@
 
                             @can('super-user')
                             <li class="nav-item">
-                                <button class="nav-link " data-bs-toggle="tab" data-bs-target="#draws">
+                                <button class="nav-link " data-super-admin-only data-bs-toggle="tab" data-bs-target="#draws">
                                     <i class="ti ti-credit-card me-1 ti-sm"></i>
                                     <span class="align-middle fw-semibold">Draws</span>
                                 </button>

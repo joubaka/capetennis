@@ -412,7 +412,7 @@
   </div>
   </div>
   @if(auth()->user()?->hasRole('super-user'))
-    <details class="mt-3" data-rating-admin-tools>
+    <details class="mt-3" data-rating-admin-tools data-super-admin-only>
       <summary>Admin tools</summary>
     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" data-history-refresh-controls data-refresh-url="{{ route('my.tennis.rating.refresh') }}" data-status-url="{{ route('my.tennis.rating.refresh-status') }}">
       <button class="btn btn-outline-primary" type="button" data-history-refresh>Update saved ratings</button>

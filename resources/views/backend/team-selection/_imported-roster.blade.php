@@ -41,7 +41,7 @@
               </td>
               <td>
                 @if($linkedProfile && !($isRegionalPreview ?? false) && auth()->user()->hasRole('super-user') && ($coverageOrder = $transferOrders->get($slot->player_profile)))
-                  <details class="mt-2">
+                  <details class="mt-2" data-super-admin-only>
                     <summary class="small text-primary">Move payment to another player</summary>
                     <form method="POST" action="{{ route('backend.team-selection.imported-players.payment.transfer', [$event, $eventRegion, $regionTeam, $slot]) }}" class="mt-2" style="min-width:220px">
                       @csrf

@@ -98,7 +98,7 @@
   </div>
 
   @if(auth()->user()->hasRole('super-user') && $recordableClothingRegions->isNotEmpty())
-    <details class="p-3 border-top no-print" data-finance-details @if($errors->any()) open @endif>
+    <details class="p-3 border-top no-print" data-super-admin-only data-finance-details @if($errors->any()) open @endif>
       <summary class="fw-semibold">Record clothing payment</summary>
       <p class="small text-muted mt-2">Record a payment already made. Choose recovery or offset when recording a clothing adjustment.</p>
       @if($errors->any())<div class="alert alert-danger" role="alert"><ul class="mb-0">@foreach($errors->all() as $message)<li>{{ $message }}</li>@endforeach</ul></div>@endif

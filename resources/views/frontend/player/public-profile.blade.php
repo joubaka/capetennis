@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ $displayName }} · Cape Tennis</title>
+  @include('layouts.sections.super-admin-controls')
   <style>
     :root { color-scheme: light; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#172f35; background:#f2f6f4; }
     * { box-sizing:border-box; }

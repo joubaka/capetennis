@@ -80,7 +80,7 @@
           <li><hr class="dropdown-divider"></li>
           <li>
             <button type="button"
-                    class="dropdown-item text-info view-entry-details-btn"
+                    class="dropdown-item text-info view-entry-details-btn" data-super-admin-only
                     data-url="{{ route('admin.entry.details', $reg) }}">
               <i class="ti ti-info-circle me-1"></i>View Details
             </button>

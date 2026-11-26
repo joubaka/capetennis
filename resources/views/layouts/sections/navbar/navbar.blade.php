@@ -268,7 +268,7 @@ $navbarDetached = ($navbarDetached ?? '');
       {{-- Super-user: Add New Event --}}
       @if(auth()->check() && auth()->user()->hasRole('super-user'))
         <li class="nav-item me-2 mobile-navbar-action">
-          <a href="{{ route('backend.events.create') }}" class="btn btn-success btn-sm">
+          <a href="{{ route('backend.events.create') }}" class="btn btn-success btn-sm" data-super-admin-only>
             <i class="ti ti-plus me-1"></i> New Event
           </a>
         </li>

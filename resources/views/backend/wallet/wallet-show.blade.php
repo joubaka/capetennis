@@ -46,7 +46,7 @@
           Balance: R{{ number_format($wallet->balance, 2) }}
         </span>
         @can('super-user')
-        <button type="button" class="btn btn-primary btn-sm btn-wallet-add-tx"
+        <button type="button" class="btn btn-primary btn-sm btn-wallet-add-tx" data-super-admin-only
                 data-user-id="{{ $user->id }}"
                 data-user-name="{{ $user->name }}"
                 data-wallet-balance="R{{ number_format($wallet->balance, 2) }}">
@@ -109,7 +109,7 @@
 
 @can('super-user')
 {{-- Add Transaction Modal --}}
-<div class="modal fade" id="modal-wallet-add-tx" aria-labelledby="wallet-add-title" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="modal-wallet-add-tx" aria-labelledby="wallet-add-title" tabindex="-1" aria-hidden="true" data-super-admin-only>
   <div class="modal-dialog modal-dialog-centered">
     <form id="form-wallet-add-tx" method="POST" action="{{ route('superadmin.wallets.transaction.store', $user) }}" class="modal-content">
       @csrf

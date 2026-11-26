@@ -32,6 +32,7 @@
 - Use the configured AMS/managed mail service; do not add batch-send transport logic.
 - SMTP dispatch is limited by `outbound-mail` to 14 messages per second (`MAIL_RATE_PER_SECOND=14` by default).
 - Restrict super-admin settings and financial tools to `super-user`.
+- Mark interactive controls exclusive to Super Admin (`super-user`) with the shared orange control border throughout the application. Keep controls shared with other roles unmarked; this visual cue never grants access or replaces server-side authorization.
 - Never expose PayFast merchant keys, passphrases, SMTP credentials, or other secrets. Production diagnostic endpoints must be unavailable.
 - Bound or paginate dashboard datasets. Do not load all historical events, completed refunds, wallets, or wallet transactions in one request.
 

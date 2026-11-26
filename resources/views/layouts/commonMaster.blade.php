@@ -53,6 +53,7 @@
   @endif
 
   <link rel="stylesheet" href="{{ asset('css/mobile-workspace.css') }}?v={{ filemtime(public_path('css/mobile-workspace.css')) }}">
+  @include('layouts.sections.super-admin-controls')
 
   <style>
     /* Keep the circular brand mark fully visible in navbar, menu and auth headers. */

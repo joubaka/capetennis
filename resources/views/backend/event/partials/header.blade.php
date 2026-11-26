@@ -4,7 +4,7 @@
   $eventWorkspaceHomeUrl = $eventWorkspaceHomeUrl ?? route('admin.events.overview', $event);
   $eventWorkspaceShowHome = $eventWorkspaceShowHome ?? true;
 @endphp
-<div class="event-workspace-chrome no-print">
+<div class="event-workspace-chrome no-print" data-super-admin-shared>
   <x-backend.page-header
     :title="$event->name"
     eyebrow="Tournament workspace"
@@ -27,7 +27,7 @@
       @endif
       @can('event.manage', $event)
         @if(auth()->user()?->hasRole('super-user') && config('event-assistant.enabled', true))
-          <button type="button" class="event-workspace-action" data-event-assistant-open aria-controls="event-assistant-panel" aria-expanded="false">
+          <button type="button" class="event-workspace-action" data-super-admin-only data-event-assistant-open aria-controls="event-assistant-panel" aria-expanded="false">
             <i class="ti ti-message-circle" aria-hidden="true"></i><span>Ask assistant</span>
           </button>
         @endif

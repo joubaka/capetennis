@@ -78,7 +78,7 @@ $configData = Helper::appClasses();
     {{-- render menu item with role-based visibility --}}
     @can('super-user')
     @if(!isset($menu->menuLevel) || $menu->menuLevel === 'super' || $menu->menuLevel === 'all')
-    <li class="menu-item {{$activeClass}}">
+    <li class="menu-item {{$activeClass}}" @if(($menu->menuLevel ?? 'all') === 'super') data-super-admin-only @endif>
       <a href="{{ isset($menu->url) ? url($menu->url) : 'javascript:void(0);' }}" class="{{ isset($menu->submenu) ? 'menu-link menu-toggle' : 'menu-link' }}" @if (isset($menu->target) and !empty($menu->target)) target="_blank" @endif>
         @if(($menu->slug ?? null) === 'ctr.index')
           <x-ctr-mark class="me-2" />

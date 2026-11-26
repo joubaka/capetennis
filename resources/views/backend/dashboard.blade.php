@@ -252,7 +252,7 @@
       <div class="card-header d-flex justify-content-between align-items-center">
         <h3 class="m-0"><i class="ti ti-wallet me-1"></i> Wallet Transactions</h3>
         @can('super-user')
-        <button class="btn btn-sm btn-primary"
+        <button class="btn btn-sm btn-primary" data-super-admin-only
                 data-bs-toggle="modal"
                 data-bs-target="#walletTransactionModal">
           <i class="ti ti-plus me-1"></i> Credit / Debit
@@ -346,7 +346,7 @@
 
 {{-- ================= WALLET CREDIT/DEBIT MODAL ================= --}}
 @can('super-user')
-<div class="modal fade" id="walletTransactionModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="walletTransactionModal" tabindex="-1" aria-hidden="true" data-super-admin-only>
   <div class="modal-dialog">
     <div class="modal-content">
 

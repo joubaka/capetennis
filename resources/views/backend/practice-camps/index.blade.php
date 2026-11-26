@@ -7,7 +7,7 @@
   @if(session('status'))<div class="alert alert-success" role="status">{{ session('status') }}</div>@endif
   @if($errors->any())<div class="alert alert-danger" role="alert">{{ $errors->first() }}</div>@endif
   @role('super-user')
-  <div class="card mb-4"><div class="card-body">
+  <div class="card mb-4" data-super-admin-only><div class="card-body">
     <h2 class="h5">Cavaliers Practice Camp 2027</h2>
     <p>Provisional dates: <strong>7–9 January 2027</strong>. Venue, fees, capacity and contacts still to be confirmed.</p>
     <form method="POST" action="{{ route('backend.practice-camps.store') }}">@csrf

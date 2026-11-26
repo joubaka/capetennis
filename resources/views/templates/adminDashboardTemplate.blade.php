@@ -179,7 +179,7 @@
                         @endif
                         @role('super-user')
                           <div class="dropdown-divider"></div>
-                          <a class="dropdown-item" href="{{ route('admin.events.copy', $event) }}"><i class="ti ti-copy me-2"></i>Copy event</a>
+                          <a class="dropdown-item" href="{{ route('admin.events.copy', $event) }}" data-super-admin-only><i class="ti ti-copy me-2"></i>Copy event</a>
                         @endrole
                       </div>
                     </div>

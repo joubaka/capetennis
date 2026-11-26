@@ -456,7 +456,7 @@
                                     @if($canManagePaidPayment)
                                       <div class="px-2 pt-1 small text-muted">Payment management · {{ $invitation->order_id ? 'Order #'.$invitation->order_id : 'No attached order' }}</div>
                                       <div class="px-2 pb-2 small">{{ $invitation->order?->collection_status === 'paid_privately' ? 'Manual / private collection' : ($invitation->order?->payfast_paid ? ($invitation->order->wallet_debited ? 'PayFast + wallet payment' : 'PayFast payment') : ($invitation->order?->wallet_debited ? 'Wallet payment' : 'Payment evidence unavailable')) }}<br>Original payer: {{ $invitation->order?->user?->name ?: 'Payer unavailable' }}</div>
-                                      <button class="dropdown-item text-primary" type="button" data-show-payment-transfer="invitation-payment-transfer-{{ $invitation->id }}">Move payment to another player</button>
+                                      <button class="dropdown-item text-primary" type="button" data-super-admin-only data-show-payment-transfer="invitation-payment-transfer-{{ $invitation->id }}">Move payment to another player</button>
                                       @include('backend.team-selection._cash-refund-action')
                                     @endif
                                     @if($awaitingRestoredInvitation)
@@ -466,7 +466,7 @@
                                       <form method="POST" action="{{ route('backend.team-selection.invitations.mark-paid-privately', [$event, $activeImport, $invitation]) }}" onsubmit="return confirm('Confirm that payment was collected privately for this player? This will mark the team place paid, cancel any pending checkout, and will NOT be recorded as a PayFast reconciliation. No email will be sent.');">@csrf<button class="dropdown-item text-primary">Mark paid privately (not reconciled)</button></form>
                                     @endif
                                     @if($canUndoPrivatePayment)
-                                      <details class="p-2" @if((int) old('undo_private_invitation_id') === (int) $invitation->id) open @endif><summary class="text-warning">Mark as unpaid (private payment)</summary>
+                                      <details class="p-2" data-super-admin-only @if((int) old('undo_private_invitation_id') === (int) $invitation->id) open @endif><summary class="text-warning">Mark as unpaid (private payment)</summary>
                                         <form method="POST" action="{{ route('backend.team-selection.invitations.undo-private-payment', [$event, $activeImport, $invitation]) }}" class="mt-2">
                                           @csrf
                                           <input type="hidden" name="undo_private_invitation_id" value="{{ $invitation->id }}">

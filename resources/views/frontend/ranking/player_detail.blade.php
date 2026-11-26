@@ -54,7 +54,7 @@
           }
           $hasWhatsAppNumber = preg_match('/^[1-9][0-9]{7,14}$/', $whatsAppNumber);
         @endphp
-        <div class="row g-3 mb-4" aria-label="Player contact details">
+        <div class="row g-3 mb-4" aria-label="Player contact details" data-super-admin-only>
           <div class="col-sm-6">
             <div class="border rounded p-3 h-100">
               <div class="text-muted small mb-1">Email</div>

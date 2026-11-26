@@ -8,7 +8,7 @@
     @component('backend.adminPage.admin_show._roster-player-modal', ['team' => $team, 'rosterSlot' => $slot, 'identity' => $identity, 'name' => $name, 'event' => $event])
   @endif
   @if(!$replacementPaid || auth()->user()->hasRole('super-user'))
-    <details class="roster-replacement">
+    <details class="roster-replacement" @if($replacementPaid) data-super-admin-only @endif>
       @if($compactRoster)
         <summary class="roster-action-choice">
           <span>

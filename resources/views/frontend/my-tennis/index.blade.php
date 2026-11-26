@@ -354,7 +354,7 @@
           <p id="my-tennis-player-search-help" class="form-text mt-2">Type at least two characters of the player's name, then choose their profile. Selecting a profile does not link it.</p>
           <p id="my-tennis-player-search-status" class="small text-muted" role="status" aria-live="polite"></p>
           @if($accountUser->hasRole('super-user'))
-            <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" data-admin-profile-link disabled>Link and open profile</button>
+            <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" data-super-admin-only data-admin-profile-link disabled>Link and open profile</button>
           @else
             <button id="my-tennis-player-link-button" class="btn btn-primary" type="button" disabled>Restore existing access</button>
             <p class="form-text mb-0 mt-2">This can restore an existing relationship. New relationships require staff review.</p>

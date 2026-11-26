@@ -2,7 +2,7 @@
 @once
 <link rel="stylesheet" href="{{ asset('css/event-assistant.css') }}?v={{ filemtime(public_path('css/event-assistant.css')) }}">
 <div id="event-assistant-backdrop" class="ea-backdrop" hidden></div>
-<section id="event-assistant-panel" class="ea-panel" role="dialog" aria-modal="true" aria-labelledby="ea-title" hidden
+<section id="event-assistant-panel" class="ea-panel" role="dialog" aria-modal="true" aria-labelledby="ea-title" hidden data-super-admin-only
   data-auto-open="{{ request()->routeIs('backend.event-assistant.workspace') ? 'true' : 'false' }}"
   data-context-url="{{ route('backend.event-assistant.context', $event) }}"
   data-message-url="{{ route('backend.event-assistant.message', $event) }}"

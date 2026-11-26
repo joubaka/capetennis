@@ -8,7 +8,7 @@
   $cashDeadlineExpired = now()->gt($event->withdrawalCloseAt());
   $cashOpen = (int) old('cash_refund_invitation_id') === (int) $invitation->id;
 @endphp
-<details class="p-2" data-cash-refund-action @if($cashOpen) open @endif>
+<details class="p-2" data-super-admin-only data-cash-refund-action @if($cashOpen) open @endif>
   <summary class="text-warning">Record cash refund</summary>
   @if($cashBlocked)<p class="small text-muted mt-2 mb-0">{{ $cashBlocked }}</p>
   @else
