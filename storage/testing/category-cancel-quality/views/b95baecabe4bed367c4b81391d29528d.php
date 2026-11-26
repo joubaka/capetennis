@@ -1,0 +1,5 @@
+<?php ($spotsLeft = app(\App\Services\DivisionCapacityService::class)->remaining($division)); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($spotsLeft !== null): ?>
+  <p class="small text-muted" role="status"><?php echo e($spotsLeft === 0 ? 'Full — no new places available' : $spotsLeft.' '.\Illuminate\Support\Str::plural('spot', $spotsLeft).' left'); ?> · Maximum <?php echo e($division->entry_limit); ?> players. Checkouts in progress hold places.</p>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\event\partials\division-availability.blade.php ENDPATH**/ ?>

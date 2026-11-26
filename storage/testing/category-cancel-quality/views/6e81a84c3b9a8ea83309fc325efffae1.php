@@ -1,0 +1,11 @@
+<nav class="rr-workspace-nav mb-3" aria-label="Draw workspace" <?php if (! ($draw->isTeamDraw())): ?> hidden <?php endif; ?>>
+  <?php ($choosingFormat = request()->routeIs('draw.setup.show')); ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($draw->isTeamDraw())): ?>
+    <a class="btn <?php echo e($choosingFormat ? 'btn-primary' : 'btn-label-secondary'); ?>" href="<?php echo e(route('draw.setup.show', $draw)); ?>" <?php if($choosingFormat): ?> aria-current="page" <?php endif; ?>>Format</a>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = array_merge(['settings' => $draw->usesFlexibleMonrad() ? 'Setup & Rules' : 'Draw settings', 'groups' => 'Players & Positions', 'matrix' => 'Draw & Results'], $draw->isTeamDraw() ? ['schedule' => 'Schedule'] : [], $draw->usesFlexibleMonrad() ? [] : ['notes' => 'Rules & notes']); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $hash => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+    <?php ($activeWorkspaceLink = !$choosingFormat && ($workspaceTab ?? '') === $hash); ?>
+    <a class="btn <?php echo e($activeWorkspaceLink ? 'btn-primary' : 'btn-label-secondary'); ?>" href="<?php echo e(route('backend.draw.roundrobin.show', $draw)); ?>#<?php echo e($hash); ?>" <?php if($activeWorkspaceLink): ?> aria-current="page" <?php endif; ?>><?php echo e($label); ?></a>
+  <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</nav>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\draw\partials\workspace-links.blade.php ENDPATH**/ ?>

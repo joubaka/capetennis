@@ -1,0 +1,2 @@
+<button type="button" class="btn btn-sm preview-note-button" data-preview-note data-player-key="<?php echo e($playerKey); ?>" data-player-name="<?php echo e($playerName); ?>" data-group-key="<?php echo e($groupKey); ?>" aria-label="Read note and discussion for <?php echo e($playerName); ?>">Note</button>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\adminPage\_partials\selection-note-button.blade.php ENDPATH**/ ?>

@@ -188,6 +188,12 @@ class FrontFixtureController extends Controller
     $isTeamEvent = ! $draw->event?->isInterprovincialTrials() && ($draw->event?->isTeam()
       || (! $draw->event?->isIndividual() && (int) $draw->event?->eventType === 3));
 
+    // Reuse the format-aware public workspace, retaining the live fragment contract.
+    if (! $isTeamEvent && ! $liveResultsFragment && ! $revisionRequest
+      && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true)) {
+      return app(PublicRoundRobinController::class)->show($draw);
+    }
+
     $canPreview = $user?->can('view', $draw) ?? false;
     $autoRefresh = $draw->event->result_auto_refresh_enabled ?? true;
     if ($liveResultsFragment || $revisionRequest) {

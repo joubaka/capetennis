@@ -1,0 +1,8 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->guard()->check()): ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($event->isTeam()): ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = app(\App\Services\AgeGroupConvenerStandingsService::class)->assignedAges($event, auth()->user()); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $convenerAge): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+      <a class="btn btn-outline-primary mb-3" style="min-height:44px" href="<?php echo e(route('frontend.events.convener-standings', [$event, $convenerAge])); ?>"><?php echo e($convenerAge); ?> convener standings</a>
+    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\event\partials\_convener-standings.blade.php ENDPATH**/ ?>

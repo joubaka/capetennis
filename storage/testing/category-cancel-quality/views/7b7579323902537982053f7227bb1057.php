@@ -1,0 +1,75 @@
+<?php $__env->startSection('title', 'Registration open email'); ?>
+<?php $__env->startSection('content'); ?>
+<div class="container-xl py-3">
+<h3><?php echo e($event->name); ?> — Registration open email</h3>
+<p>Congratulate the regional team and help players and parents register. Review the exact addresses and email before approving the queue.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div class="alert alert-danger"><?php echo e($errors->first()); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! (app(\App\Domain\Teams\Services\ExternalTeamRosterService::class)->registrationIsOpen($event))): ?><div class="alert alert-warning">Event registration is closed. Publish the event and open registration in the event settings before reviewing this registration-open email.</div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<form method="post" action="<?php echo e(route('backend.regional-registration-mail.preview', $event)); ?>"><?php echo csrf_field(); ?>
+<input type="hidden" name="registration_fingerprint" value="<?php echo e($draft['registration_fingerprint']); ?>">
+<div class="card card-body mb-3"><h5>1. Region and deadlines</h5>
+<label class="d-block mb-3">Region<select name="event_region_id" class="form-select" id="registration-mail-region"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $regions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $region): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($region->id); ?>" <?php if((int)old('event_region_id', $options['event_region_id']) === (int)$region->id): echo 'selected'; endif; ?>><?php echo e($region->region->region_name); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></select></label>
+<div class="row"><label class="col-md-3 mb-3">Registration closing date<input type="date" class="form-control" name="registration_deadline" value="<?php echo e(old('registration_deadline', $options['registration_deadline'])); ?>"></label>
+<label class="col-md-3 mb-3">Registration closing time<input type="time" class="form-control" name="registration_deadline_time" value="<?php echo e(old('registration_deadline_time', $options['registration_deadline_time'] ?? null)); ?>"></label>
+<label class="col-md-3 mb-3">Clothing orders closing date<input type="date" class="form-control" name="clothing_deadline" value="<?php echo e(old('clothing_deadline', $options['clothing_deadline'])); ?>"></label>
+<label class="col-md-3 mb-3">Clothing closing time<input type="time" class="form-control" name="clothing_deadline_time" value="<?php echo e(old('clothing_deadline_time', $options['clothing_deadline_time'] ?? null)); ?>"></label></div>
+<p class="form-text">Times use South African time. Leave a time blank to show only the date.</p>
+<p class="form-text">These dates are for the email only. They do not change the event or clothing closing settings.</p>
+<label class="d-block mb-2"><input type="checkbox" name="include_clothing" value="1" <?php if(old('include_clothing', $options['include_clothing'])): echo 'checked'; endif; ?>> Clothing catalogue checked and ready — include clothing ordering instructions, prices and sizes</label>
+<p class="form-text">Clothing instructions and the catalogue are included only when online ordering is enabled and open for the selected region. A clothing closing date entered above appears in the email even when this box is unchecked.</p>
+<button class="btn btn-outline-primary" name="intent" value="generate">Update suggested email</button>
+<p class="form-text mb-0">Dates and times update the deadline lines below automatically while keeping your other edits. Changing the region or clothing catalogue choice requires updating the suggested email. That button replaces the whole message; keep any edits you want to reuse.</p></div>
+<div class="card card-body mb-3"><h5>2. Edit email</h5>
+<p>Current audience: <?php echo e($context['rows']->count()); ?> main-team players from published teams and their available parent contacts. Reserves are excluded. Shared addresses receive one email. Missing contacts appear at review.</p>
+<label class="d-block mb-3">Subject<input class="form-control" name="subject" maxlength="200" value="<?php echo e(old('subject', $draft['subject'])); ?>" required></label>
+<label class="d-block mb-3">Message<textarea class="form-control" name="body" rows="18" maxlength="30000" required><?php echo e(old('body', $draft['body'])); ?></textarea></label>
+<label class="d-block mb-3">Sender name<input class="form-control" name="from_name" maxlength="150" value="<?php echo e(old('from_name', $draft['from_name'] ?? auth()->user()->name)); ?>" required></label>
+<label class="d-block">Reply-to email<input class="form-control" type="email" name="reply_to" value="<?php echo e(old('reply_to', $draft['reply_to'] ?? auth()->user()->email)); ?>" required></label></div>
+<p class="form-text">Sender details default to the event administrator where assigned. You can edit them before reviewing the email.</p>
+<button class="btn btn-primary" name="intent" value="preview">Review addresses and email</button>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.event-communications.index', $event)); ?>">Back to messages</a>
+<p class="mt-2">Nothing is sent until you review and explicitly approve the next screen.</p>
+</form></div>
+<script>
+(() => {
+    const form = document.querySelector('form[action="<?php echo e(route('backend.regional-registration-mail.preview', $event)); ?>"]');
+    const message = form.elements.body;
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const managed = [
+        ['registration_deadline', 'Registration closing date and deadline', /^Registration (?:deadline|closing date and deadline):[^\r\n]*/gmi],
+        ['clothing_deadline', 'Clothing orders closing date and deadline', /^Clothing (?:order deadline|orders closing date and deadline):[^\r\n]*/gmi],
+    ];
+    const synchronize = () => {
+        let body = message.value;
+        for (const [field, label, pattern] of managed) {
+            const date = form.elements[field].value;
+            const time = form.elements[field + '_time'].value;
+            const parts = date.split('-');
+            const line = date ? label + ': ' + parts[2] + ' ' + months[Number(parts[1]) - 1] + ' ' + parts[0]
+                + (time ? ' at ' + time + ' (South African time)' : '') : '';
+            let found = false;
+            body = body.replace(pattern, () => {
+                const replacement = found ? '' : line;
+                found = true;
+                return replacement;
+            });
+            if (!found && line) {
+                const signature = /\r?\n\r?\n(?=Kind regards,)/i;
+                body = signature.test(body) ? body.replace(signature, '\n\n' + line + '\n\n') : body.trimEnd() + '\n\n' + line;
+            }
+        }
+        message.value = body;
+    };
+    for (const [field] of managed) {
+        for (const name of [field, field + '_time']) {
+            form.elements[name].addEventListener('input', synchronize);
+            form.elements[name].addEventListener('change', synchronize);
+        }
+    }
+    form.addEventListener('submit', synchronize);
+    synchronize();
+})();
+</script>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\event\communications\regional-registration.blade.php ENDPATH**/ ?>

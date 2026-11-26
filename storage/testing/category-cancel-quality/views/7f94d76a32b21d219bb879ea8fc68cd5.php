@@ -1,0 +1,10 @@
+<details class="mb-3"><summary>Original payer’s bank details (only if PayFast requires them)</summary>
+  <p>Use the original paying account. These details are sent only for this refund; they are not stored or restored after an error.</p>
+  <label class="form-label" for="<?php echo e($bankFieldPrefix); ?>-holder">Account holder</label><input id="<?php echo e($bankFieldPrefix); ?>-holder" name="bank_details[account_holder]" maxlength="100" autocomplete="off" class="form-control mb-2">
+  <label class="form-label" for="<?php echo e($bankFieldPrefix); ?>-bank">Bank name</label><input id="<?php echo e($bankFieldPrefix); ?>-bank" name="bank_details[bank_name]" maxlength="100" autocomplete="off" class="form-control mb-2">
+  <label class="form-label" for="<?php echo e($bankFieldPrefix); ?>-branch">Branch code</label><input id="<?php echo e($bankFieldPrefix); ?>-branch" name="bank_details[branch_code]" inputmode="numeric" pattern="[0-9]{4,6}" autocomplete="off" class="form-control mb-2">
+  <label class="form-label" for="<?php echo e($bankFieldPrefix); ?>-account">Account number</label><input id="<?php echo e($bankFieldPrefix); ?>-account" name="bank_details[account_number]" inputmode="numeric" pattern="[0-9]{5,12}" autocomplete="off" class="form-control mb-2">
+  <label class="form-label" for="<?php echo e($bankFieldPrefix); ?>-type">Account type</label><select id="<?php echo e($bankFieldPrefix); ?>-type" name="bank_details[account_type]" class="form-select mb-2"><option value="">Choose account type</option><option value="current">Current / cheque</option><option value="savings">Savings</option></select>
+  <label><input type="checkbox" name="bank_details[original_payer]" value="1"> These details belong to the original payer.</label>
+</details>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\clothing\partials\refund-bank-details.blade.php ENDPATH**/ ?>

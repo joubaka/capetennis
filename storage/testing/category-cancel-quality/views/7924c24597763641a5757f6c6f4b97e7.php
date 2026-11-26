@@ -1,0 +1,307 @@
+
+<?php $__env->startSection('title', 'Schedule a full day'); ?>
+<?php $__env->startSection('page-style'); ?>
+<style>
+  .tie-board-column {flex:0 0 280px;max-width:85vw;background:var(--bs-light,#f5f6f8);border:1px solid var(--bs-border-color,#ddd);border-radius:.5rem;padding:.75rem;}
+  .tie-drop-lane {min-height:120px;display:grid;align-content:start;gap:.75rem;}
+  .tie-board-column.tie-drop-active {outline:2px solid var(--bs-primary,#12358f);outline-offset:-2px;}
+  .day-tie-card {background:var(--bs-body-bg,#fff);border:1px solid var(--bs-border-color,#ddd);border-radius:.5rem;padding:.75rem;overflow-wrap:anywhere;}
+  .tie-drag-handle {cursor:grab;min-height:44px;}
+  .day-tie-destination {min-height:44px;}
+</style>
+<?php $__env->stopSection(); ?>
+<?php $__env->startSection('content'); ?>
+<div class="container-xxl py-3">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($contextDraw && !$contextDraw->isTeamDraw()): ?><?php echo $__env->make('backend.draw.partials.workflow', ['draw'=>$contextDraw, 'workflowContext'=>'schedule'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php
+    $viewContext = array_intersect_key($data, array_flip(['draw_id','origin_draw_id']));
+    $viewingDraw = !empty($data['draw_id']) ? $draws->firstWhere('id',(int)$data['draw_id']) : null;
+  ?>
+  <a class="btn btn-outline-primary mb-3" href="<?php echo e(route('backend.event-venue-schedule.calendar', ['event'=>$event->id, 'date'=>$data['date']] + $viewContext)); ?>">Back to saved schedule</a>
+  <h3>Replan selected rounds - whole ties</h3>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($contextDraw): ?><a class="btn btn-outline-primary mb-3" href="<?php echo e($contextDraw->isTeamDraw() ? route('draw.guide.show', [$event, $contextDraw, 'schedule_date'=>$data['date']]) : route('backend.draw.roundrobin.show', [$contextDraw, 'schedule_date'=>$data['date']]).'#schedule'); ?>">Back to original draw - <?php echo e($contextDraw->drawName); ?> · Schedule</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <div class="alert alert-info">Planning scope: selected draws and rounds across all selected venues. Calendar venue and draw filters do not restrict the matches included. Each selected round includes unscheduled matches as well as saved matches on this day. Review the preview before saving.</div>
+  <?php echo $__env->make('backend.schedule.partials.day-navigation', ['mode'=>'whole-tie', 'navigationDraw'=>$viewingDraw], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+  <nav class="d-flex flex-wrap gap-2 mb-3" aria-label="Scheduling method"><span class="align-self-center">Schedule by:</span><a class="btn btn-outline-primary" href="<?php echo e(route('backend.event-venue-schedule.index', ['event'=>$event->id,'date'=>$data['date']] + ($viewingDraw ? ['draw_ids'=>[$viewingDraw->id]] : []) + (!empty($data['origin_draw_id']) ? ['origin_draw_id'=>$data['origin_draw_id']] : []))); ?>">Position band / draw</a><span class="btn btn-primary" aria-current="page">Whole tie · full day across venues</span></nav>
+  <p><?php echo e($event->name); ?> · <?php echo e(\Carbon\Carbon::parse($data['date'])->format('D j M Y')); ?></p>
+  <p>Schedule selected draws and rounds together across your venues. Every tie stays at one venue; the next tie may use a different venue. This uses the day's selected courts instead of position bands. Unscheduled matches are included. Matches saved on other days, played matches and unselected rounds stay fixed.</p>
+  <p class="small text-muted">Preview first, then save the complete day. Published times change only when you publish updates.</p>
+  <p class="small text-muted">A venue can be split into two court groups, for example courts 1–3 and 4–6. Every tie stays within one group; both groups share the same physical venue.</p>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($savedNotice): ?><div class="alert alert-info"><?php echo e($savedNotice); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div class="alert alert-danger"><?php echo e($errors->first()); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <form method="post" id="full-day-form" class="card card-body mb-3">
+    <?php echo csrf_field(); ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $viewContext; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $contextKey=>$contextValue): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><input type="hidden" name="<?php echo e($contextKey); ?>" value="<?php echo e($contextValue); ?>"><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <label class="form-label" for="full-day-date">Playing day</label><input class="form-control mb-3" type="date" id="full-day-date" name="date" value="<?php echo e(old('date',$data['date'])); ?>" required>
+    <div class="row g-3 mb-3"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ['start_time'=>'Start time','end_time'=>'Finish by','duration'=>'Match minutes','player_rest'=>'Player rest minutes','court_gap'=>'Court gap minutes']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key=>$label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="col-6 col-lg-2"><label for="full-day-<?php echo e($key); ?>" class="form-label"><?php echo e($label); ?></label><input class="form-control" id="full-day-<?php echo e($key); ?>" name="<?php echo e($key); ?>" type="<?php echo e(str_ends_with($key,'time') ? 'time' : 'number'); ?>" <?php if(!str_ends_with($key,'time')): ?> min="<?php echo e($key==='duration'?1:0); ?>" max="<?php echo e($key==='court_gap'?120:480); ?>" <?php endif; ?> value="<?php echo e(old($key,$values[$key])); ?>" required></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+    <fieldset class="mb-3"><legend class="h5">Draws and rounds for this day</legend>
+      <p class="small text-muted">Select the rounds that should play today. Saved times in those rounds on this day will be replanned together, and unscheduled matches in those rounds will be added. Matches on other days stay fixed. No rounds are selected automatically from the calendar filter.</p>
+      <div class="row g-3"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $draws; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $draw): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="col-12 col-md-6"><div class="border rounded p-3" data-day-draw>
+        <label class="d-flex gap-2 align-items-center mb-2" style="min-height:44px"><input type="checkbox" class="form-check-input day-draw" name="draw_ids[]" value="<?php echo e($draw->id); ?>" <?php if(in_array($draw->id,old('draw_ids',$values['draw_ids']))): echo 'checked'; endif; ?> <?php if($draw->locked || empty($roundOptions[$draw->id])): echo 'disabled'; endif; ?>><strong><?php echo e($draw->drawName); ?></strong> <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->locked): ?><span class="text-muted">Locked</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></label>
+        <div class="d-flex flex-wrap gap-3"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $roundOptions[$draw->id] ?? []; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $round): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-round" type="checkbox" name="rounds[<?php echo e($draw->id); ?>][]" value="<?php echo e($round); ?>" <?php if(in_array($round,old('rounds',$values['rounds'])[$draw->id] ?? [])): echo 'checked'; endif; ?>>Round <?php echo e($round); ?></label><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><span class="text-muted">No matches available.</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+      </div></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+    </fieldset>
+    <fieldset class="mb-3"><legend class="h5">Venues and courts for the full day</legend><div class="row g-3">
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $venues; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $venue): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="col-12 col-md-6"><div class="border rounded p-3" data-day-venue>
+        <?php ($savedGroups = old('venue_groups', $values['venue_groups'])[$venue->id] ?? []); ?>
+        <label class="d-flex gap-2 align-items-center mb-2" style="min-height:44px"><input class="form-check-input day-venue" type="checkbox" name="venue_ids[]" value="<?php echo e($venue->id); ?>" <?php if(in_array($venue->id,old('venue_ids',$values['venue_ids']))): echo 'checked'; endif; ?>><strong><?php echo e($venue->name); ?></strong></label>
+        <details class="mb-2" data-advanced-venue><summary style="min-height:44px">Venue hours, court availability and groups - <?php echo e(count($savedGroups) ? 'court groups active' : 'review overrides'); ?></summary>
+        <div class="row g-2 mb-2"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ['start_time'=>'Venue starts','end_time'=>'Venue finishes by']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key=>$label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="col-6"><label class="form-label" for="venue-<?php echo e($venue->id); ?>-<?php echo e($key); ?>"><?php echo e($label); ?></label><input class="form-control day-venue-hour" id="venue-<?php echo e($venue->id); ?>-<?php echo e($key); ?>" type="time" name="venue_windows[<?php echo e($venue->id); ?>][<?php echo e($key); ?>]" value="<?php echo e(old('venue_windows',$values['venue_windows'])[$venue->id][$key] ?? ''); ?>"></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+        <p class="small text-muted">Leave blank to use the overall day times above. Venue hours must fit within that window; both court groups use these hours.</p>
+        <p class="small text-muted">Set the time window when each court is available. Leave either time blank to use the venue start or finish. Played matches keep their saved time and court.</p>
+        <div class="row g-2" data-day-court-list><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $courtOptions[$venue->id] ?? []; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $court): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+          <?php ($courtStart = collect(old('court_starts',$values['court_starts'])[$venue->id] ?? [])->first(fn ($row) => (string)$row['court'] === (string)$court)); ?>
+          <div class="col-12 col-sm-6" data-court-availability><label class="d-flex gap-2 align-items-center" style="min-height:44px"><input class="form-check-input day-court" type="checkbox" name="court_labels[<?php echo e($venue->id); ?>][]" value="<?php echo e($court); ?>" <?php if(in_array($court,old('court_labels',$values['court_labels'])[$venue->id] ?? [])): echo 'checked'; endif; ?>>Court <?php echo e($court); ?></label>
+            <input class="day-court-start" type="hidden" name="court_starts[<?php echo e($venue->id); ?>][<?php echo e($loop->index); ?>][court]" value="<?php echo e($court); ?>">
+            <label class="form-label" for="court-start-<?php echo e($venue->id); ?>-<?php echo e($loop->index); ?>">Court <?php echo e($court); ?> available from</label><input class="form-control day-court-start" id="court-start-<?php echo e($venue->id); ?>-<?php echo e($loop->index); ?>" type="time" name="court_starts[<?php echo e($venue->id); ?>][<?php echo e($loop->index); ?>][start_time]" value="<?php echo e($courtStart['start_time'] ?? ''); ?>"><label class="form-label mt-2" for="court-end-<?php echo e($venue->id); ?>-<?php echo e($loop->index); ?>">Court <?php echo e($court); ?> available until</label><input class="form-control day-court-start" id="court-end-<?php echo e($venue->id); ?>-<?php echo e($loop->index); ?>" type="time" name="court_starts[<?php echo e($venue->id); ?>][<?php echo e($loop->index); ?>][end_time]" value="<?php echo e($courtStart['end_time'] ?? ''); ?>">
+          </div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><span class="text-danger" data-no-courts>No active courts.</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+        <label class="d-flex gap-2 align-items-center mt-2 <?php echo e(count($courtOptions[$venue->id] ?? []) < 2 ? 'd-none' : ''); ?>" data-split-control style="min-height:44px"><input type="checkbox" class="form-check-input day-split-venue" <?php if($savedGroups): echo 'checked'; endif; ?>>Split into two court groups</label>
+        <div class="day-court-groups mt-2" <?php if(!$savedGroups): ?> hidden <?php endif; ?>>
+          <p class="small text-muted">Assign each selected court to Group A or Group B. Both groups need at least one court.</p>
+          <div class="row g-2" data-day-group-list><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $courtOptions[$venue->id]; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $court): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+            <?php ($courtGroup = in_array($court,$savedGroups['B'] ?? []) ? 'B' : (in_array($court,$savedGroups['A'] ?? []) ? 'A' : ($loop->index < (int)ceil(count($courtOptions[$venue->id])/2) ? 'A' : 'B'))); ?>
+            <div class="col-6" data-group-court="<?php echo e($court); ?>"><label class="form-label w-100">Court <?php echo e($court); ?><select class="form-select day-group-select" aria-label="Court <?php echo e($court); ?> group at <?php echo e($venue->name); ?>"><option value="A" <?php if($courtGroup==='A'): echo 'selected'; endif; ?>>Group A</option><option value="B" <?php if($courtGroup==='B'): echo 'selected'; endif; ?>>Group B</option></select></label><input class="day-group-court" type="hidden" data-venue-id="<?php echo e($venue->id); ?>" name="venue_groups[<?php echo e($venue->id); ?>][<?php echo e($courtGroup); ?>][]" value="<?php echo e($court); ?>"></div>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+        </div>
+        <div class="border-top mt-3 pt-3" data-add-court data-url="<?php echo e(route('backend.event-venue-schedule.courts', ['event'=>$event->id])); ?>">
+          <h6>Add a court at <?php echo e($venue->name); ?></h6><p class="small text-muted">Add a physical court to this event, then set its available times and preview the revised day. Existing matches stay saved until you save a new preview.</p>
+          <div class="row g-2 align-items-end"><div class="col-12 col-sm-6"><label class="form-label" for="add-court-<?php echo e($venue->id); ?>">Court label</label><input class="form-control day-add-label" id="add-court-<?php echo e($venue->id); ?>" type="text" maxlength="50" placeholder="e.g. 7"></div>
+          <div class="col-6 day-add-group-field"><label class="form-label" for="add-group-<?php echo e($venue->id); ?>">New court group</label><select class="form-select day-add-group" id="add-group-<?php echo e($venue->id); ?>"><option value="A">Group A</option><option value="B">Group B</option></select></div>
+          <div class="col-12"><button class="btn btn-outline-primary day-add-court" type="button">Add court</button></div></div>
+          <p class="small mt-2 mb-0 day-add-status" role="status" aria-live="polite"></p>
+        </div>
+        </details>
+      </div></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div></fieldset>
+    <fieldset class="mb-4"><legend class="h4">Assign venues to age groups</legend>
+      <p>Choose which venues each age group may use. For example, give U/15 the two school venues and U/19 the two Sports Club court groups. Age groups may share destinations if you select the same ones.</p>
+      <div class="row g-3"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $poolOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $pool): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+        <?php ($savedPools = old('destination_pools',$values['destination_pools'])); ?>
+        <?php ($customPool = array_key_exists($pool['key'],$savedPools)); ?>
+        <div class="col-12 col-md-6" data-destination-pool="<?php echo e($pool['key']); ?>" data-draw-ids="<?php echo e(json_encode($pool['draw_ids'])); ?>" data-initial-choices="<?php echo e(json_encode(array_values(array_filter($savedPools[$pool['key']] ?? [], fn($value)=>$value!==null && $value!=='')))); ?>">
+          <div class="border rounded p-3 h-100"><h5>Venues for <?php echo e($pool['label']); ?></h5><p class="small text-muted"><?php echo e(implode(' · ',$pool['draw_names'])); ?></p>
+            <label class="form-label w-100">Allowed venues<select class="form-select day-pool-mode"><option value="all" <?php if(!$customPool): echo 'selected'; endif; ?>>All selected venues</option><option value="choose" <?php if($customPool): echo 'selected'; endif; ?>>Choose venues for <?php echo e($pool['label']); ?></option></select></label>
+            <div class="day-pool-choices mt-2"><input class="day-pool-present" type="hidden" name="destination_pools[<?php echo e($pool['key']); ?>][]" value=""><div class="day-pool-destinations d-grid gap-2"></div></div>
+          </div>
+        </div>
+      <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+    </fieldset>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(collect($tieOptions)->contains(fn ($tie) => $tie['playoff_group'] !== null)): ?>
+    <fieldset class="mb-4" id="playoff-groups"><legend class="h4">Assign playoff ties to venues</legend>
+      <p>Choose where each age group's 1st vs 2nd and 3rd vs 4th playoff will play. Each choice assigns all matches in that playoff together, including singles, doubles and mixed doubles.</p>
+      <p class="small text-muted">Court groups A/B are sets of courts at a venue. Automatic lets the planner choose from the age group's allowed venues. Played matches remain fixed.</p>
+      <p class="small text-muted" id="playoff-groups-empty">Select playoff draws and rounds above to show their ties.</p>
+      <div id="playoff-group-choices" class="row g-3"></div>
+    </fieldset>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <details class="mb-3" <?php if(collect($tieOptions)->contains(fn ($tie) => !$tie['playoff_group'] && !empty(old('tie_destinations',$values['tie_destinations'])[$tie['key']]))): ?> open <?php endif; ?>><summary class="h5" style="min-height:44px">Optional: place other individual ties at venues</summary>
+    <fieldset class="mt-3"><legend class="h5">Place ties at venues</legend>
+      <p class="small text-muted">Select draws and rounds above, then drag each tie into a venue or court group. You can also use each tie's destination menu. Automatic lets the planner choose. Times are calculated when you preview.</p>
+      <p class="small text-muted" id="tie-board-empty">Select draws and rounds to show their available ties.</p>
+      <div id="tie-board" class="d-flex gap-3 overflow-auto pb-3" aria-label="Tie destination board">
+        <section class="tie-board-column"><h6>Automatic / unassigned</h6><div class="tie-drop-lane" data-tie-destination="">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $tieOptions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $tie): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <?php ($chosenDestination = old('tie_destinations',$values['tie_destinations'])[$tie['key']] ?? ''); ?>
+          <article class="day-tie-card" data-playoff-group="<?php echo e($tie['playoff_group']); ?>" data-tie-key="<?php echo e($tie['key']); ?>" data-draw-id="<?php echo e($tie['draw_id']); ?>" data-round="<?php echo e($tie['round']); ?>" data-dates="<?php echo e(json_encode($tie['dates'])); ?>">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($tie['playoff_group'])): ?><button type="button" class="btn btn-sm btn-outline-secondary tie-drag-handle mb-2" draggable="true" aria-label="Drag round <?php echo e($tie['round']); ?> tie <?php echo e($tie['tie_nr'] ?: 'matchup'); ?> to a venue">Move tie</button><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <div class="small text-muted"><?php echo e($tie['draw_name']); ?></div><strong><?php echo e($tie['playoff_group'] ?: 'Round '.$tie['round'].' · '.($tie['tie_nr'] ? 'Tie '.$tie['tie_nr'] : 'Matchup')); ?></strong>
+            <p class="small my-2"><?php echo e($tie['matchup']); ?></p>
+            <label class="form-label w-100"><?php echo e($tie['playoff_group'] ? 'Playoff venue' : 'Tie destination'); ?><select class="form-select day-tie-destination" name="tie_destinations[<?php echo e($tie['key']); ?>]"><option value="">Automatic</option><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($chosenDestination): ?><option value="<?php echo e($chosenDestination); ?>" selected>Saved destination (review below)</option><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></select></label>
+          </article>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div></section>
+      </div>
+      <div id="inactive-ties" hidden></div>
+      <p class="small text-danger mt-2" id="tie-board-status" role="status" aria-live="polite"></p>
+    </fieldset>
+    </details>
+
+    <div class="d-flex flex-wrap gap-2"><button class="btn btn-primary" name="action" value="preview">Preview full day</button>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($preview): ?><input type="hidden" name="revision" value="<?php echo e($preview['revision']); ?>"><button class="btn btn-success" id="save-full-day" name="action" value="save" <?php if(count($preview['unscheduled'])>0 || count($preview['matches'])===0): echo 'disabled'; endif; ?>>Save full day preview</button><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div>
+  </form>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($preview): ?>
+    <?php echo $__env->make('backend.schedule.partials.change-review', ['originalRows'=>$currentRows], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+    <div class="alert alert-info"><?php echo e(count($preview['matches'])); ?> proposed match times · <?php echo e(count($preview['unscheduled'])); ?> matches could not fit. Saved times remain unchanged until you save.</div>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['warnings']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $warning): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="alert alert-warning"><?php echo e($warning); ?></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['unscheduled']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $match): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="alert alert-warning"><?php echo e($match['draw_name'] ?? ''); ?> · Match <?php echo e($match['fixture_id'] ?? ''); ?>: <?php echo e($match['reason'] ?? 'Cannot fit. Extend the day or add courts.'); ?></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['input']['day_venue_groups']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $venueId=>$groups): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><p><strong><?php echo e($venues->firstWhere('id',(int)$venueId)?->name); ?></strong>: <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $groups; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $group=>$courts): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php echo e($loop->first ? '' : ' · '); ?>Group <?php echo e($group); ?> (courts <?php echo e(implode(', ',$courts)); ?>)<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></p><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['input']['full_day_venue_windows']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $venueId=>$window): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><p><strong><?php echo e($venues->firstWhere('id',(int)$venueId)?->name); ?></strong>: <?php echo e(substr($window['start'],11,5)); ?>–<?php echo e(substr($window['end'],11,5)); ?></p><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['input']['full_day_court_starts']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $venueId=>$starts): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><p><strong><?php echo e($venues->firstWhere('id',(int)$venueId)?->name); ?></strong>: <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $starts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $courtStart): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php echo e($loop->first ? '' : ' · '); ?>Court <?php echo e($courtStart['court']); ?> available from <?php echo e(substr($courtStart['start'],11,5)); ?> until <?php echo e(substr($courtStart['end'],11,5)); ?><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></p><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <h5>Proposed full day</h5><div class="table-responsive"><table class="table"><thead><tr><th>Time</th><th>Venue / group / court</th><th>Draw / round</th><th>Rubber / match</th><th>Tie / matchup</th></tr></thead><tbody><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['matches']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $match): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><tr><td class="text-nowrap"><?php echo e(substr($match['scheduled_at'],11,5)); ?></td><td><?php echo e($venues->firstWhere('id',(int)$match['venue_id'])?->name); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($match['venue_group']): ?> · Group <?php echo e($match['venue_group']); ?><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?> / <?php echo e($match['court']); ?></td><td><?php echo e($match['draw_name']); ?> · Round <?php echo e($match['round']); ?></td><td><?php echo e($match['match']); ?><div class="small text-muted"><?php echo e($match['stage']); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($match['rank']): ?> · Position <?php echo e($match['rank']); ?><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div></td><td><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($match['tie_nr']): ?><strong>Tie <?php echo e($match['tie_nr']); ?></strong><br><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?><?php echo e(implode(' vs ',$match['participants'] ?? [])); ?></td></tr><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></tbody></table></div>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div>
+<?php $__env->stopSection(); ?>
+<?php $__env->startSection('page-script'); ?>
+<?php echo $__env->make('backend.schedule.partials.day-navigation-script', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php echo $__env->make('backend.schedule.partials.unsaved-guard', ['editorId'=>'full-day-form', 'pendingPreview'=>(bool) $preview || session()->hasOldInput()], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<script>
+(() => {
+  const form=document.getElementById('full-day-form');
+  const board=document.getElementById('tie-board');
+  const tieCards=[...form.querySelectorAll('[data-tie-key]')];
+  const renderTieBoard=()=>{
+    const selectedDraws=[...form.querySelectorAll('.day-draw:checked:not(:disabled)')].map(input=>input.value);
+    const destinations=[{value:'',label:'Automatic / unassigned'}];
+    form.querySelectorAll('[data-day-venue]').forEach(card=>{
+      const venue=card.querySelector('.day-venue');
+      if(!venue.checked) return;
+      const name=venue.parentElement.querySelector('strong').textContent;
+      const courts=[...card.querySelectorAll('.day-court:checked')].map(input=>input.value);
+      if(!courts.length) return;
+      if(card.querySelector('.day-split-venue')?.checked) {
+        ['A','B'].forEach(group=>{
+          const labels=[...card.querySelectorAll('[data-group-court]')].filter(row=>courts.includes(row.dataset.groupCourt) && row.querySelector('.day-group-select').value===group).map(row=>row.dataset.groupCourt);
+          if(labels.length) destinations.push({value:`${venue.value}:${group}`,label:`${name} · Group ${group} (courts ${labels.join(', ')})`});
+        });
+      } else destinations.push({value:venue.value,label:`${name} (courts ${courts.join(', ')})`});
+    });
+    const drawPools=new Map();
+    form.querySelectorAll('[data-destination-pool]').forEach(pool=>{
+      const drawIds=JSON.parse(pool.dataset.drawIds).map(String);
+      const active=drawIds.some(id=>selectedDraws.includes(id));pool.hidden=!active;
+      const mode=pool.querySelector('.day-pool-mode');const custom=mode.value==='choose';mode.disabled=!active;
+      const container=pool.querySelector('.day-pool-destinations');
+      let chosen=pool.dataset.initialized ? [...container.querySelectorAll('input:checked')].map(input=>input.value) : JSON.parse(pool.dataset.initialChoices);
+      if(!custom) chosen=destinations.filter(destination=>destination.value).map(destination=>destination.value);
+      pool.dataset.initialized='1';container.replaceChildren();
+      const available=destinations.filter(destination=>destination.value);
+      const stale=chosen.filter(value=>!available.some(destination=>destination.value===value));
+      [...available,...stale.map(value=>({value,label:'Unavailable destination — remove this choice'}))].forEach(destination=>{
+        const label=document.createElement('label');label.className='d-flex gap-2 align-items-center';label.style.minHeight='44px';
+        const input=document.createElement('input');input.type='checkbox';input.className='form-check-input';input.name=`destination_pools[${pool.dataset.destinationPool}][]`;input.value=destination.value;input.checked=chosen.includes(destination.value);input.disabled=!active || !custom;
+        const text=document.createElement('span');text.textContent=destination.label;label.append(input,text);container.append(label);
+      });
+      pool.querySelector('.day-pool-choices').hidden=!custom;
+      pool.querySelector('.day-pool-present').disabled=!active || !custom;
+      mode.setCustomValidity(active && custom && (chosen.length===0 || stale.length>0) ? 'Choose at least one available venue or court group for this age group; remove unavailable destinations.' : '');
+      drawIds.forEach(id=>drawPools.set(id,custom ? new Set(chosen) : null));
+    });
+    board.replaceChildren();
+    const lanes=new Map();
+    destinations.forEach(destination=>{
+      const column=document.createElement('section');column.className='tie-board-column';
+      const title=document.createElement('h6');title.textContent=destination.label;
+      const hint=document.createElement('p');hint.className='small text-muted';hint.textContent='Drop ties here or choose a destination from their menu.';
+      const lane=document.createElement('div');lane.className='tie-drop-lane';lane.dataset.tieDestination=destination.value;
+      column.dataset.tieDestination=destination.value;column.append(title,hint,lane);board.append(column);lanes.set(destination.value,lane);
+    });
+    const selectedRounds=[...form.querySelectorAll('.day-round:checked:not(:disabled)')];
+    let activeCount=0, playoffCount=0;
+    tieCards.forEach(card=>{
+      const select=card.querySelector('.day-tie-destination');const value=select.value;
+      const dates=JSON.parse(card.dataset.dates);
+      const active=selectedDraws.includes(card.dataset.drawId) && selectedRounds.some(input=>input.name===`rounds[${card.dataset.drawId}][]` && input.value===card.dataset.round)
+        && (dates.includes('unscheduled') || dates.includes(document.getElementById('full-day-date').value));
+      select.disabled=!active;select.replaceChildren();
+      const pool=drawPools.get(card.dataset.drawId);
+      const allowed=destinations.filter(destination=>!destination.value || !pool || pool.has(destination.value));
+      card.allowedTieDestinations=new Set(allowed.map(destination=>destination.value));
+      allowed.forEach(destination=>{const option=document.createElement('option');option.value=destination.value;option.textContent=destination.value ? destination.label : 'Automatic';select.append(option);});
+      const valid=card.allowedTieDestinations.has(value);
+      if(!valid) {const option=document.createElement('option');option.value=value;option.textContent='Unavailable destination — choose again';select.append(option);}
+      select.value=value;select.classList.toggle('is-invalid',active && !valid);select.setCustomValidity(active && !valid ? 'Choose an available venue or court group for this tie.' : '');
+      if(active && card.dataset.playoffGroup) {
+        playoffCount++;card.classList.add('col-12','col-md-6');document.getElementById('playoff-group-choices').append(card);
+      } else if(active) {activeCount++;(valid ? lanes.get(value) : lanes.get('')).append(card);} else document.getElementById('inactive-ties').append(card);
+    });
+    document.getElementById('tie-board-empty').hidden=activeCount>0;
+    if(document.getElementById('playoff-groups-empty')) document.getElementById('playoff-groups-empty').hidden=playoffCount>0;
+  };
+  const sync=()=>{
+    form.querySelectorAll('[data-day-draw]').forEach(card=>card.querySelectorAll('.day-round').forEach(input=>input.disabled=!card.querySelector('.day-draw').checked || card.querySelector('.day-draw').disabled));
+    form.querySelectorAll('[data-day-venue]').forEach(card=>{
+      const enabled=card.querySelector('.day-venue').checked;
+      card.querySelectorAll('.day-court, .day-venue-hour').forEach(input=>input.disabled=!enabled);
+      card.querySelectorAll('[data-court-availability]').forEach(row=>row.querySelectorAll('.day-court-start').forEach(input=>input.disabled=!enabled || !row.querySelector('.day-court').checked));
+      const add=card.querySelector('[data-add-court]');
+      add.querySelectorAll('input,select,button').forEach(input=>input.disabled=!enabled || add.dataset.busy==='1');
+      const split=card.querySelector('.day-split-venue');
+      const courtCount=card.querySelectorAll('.day-court:checked').length;
+      const hours=[...card.querySelectorAll('.day-venue-hour')].map(input=>input.value).filter(Boolean);
+      const courtOverrides=[...card.querySelectorAll('input.day-court-start[type="time"]')].filter(input=>input.value).length;
+      card.querySelector('[data-advanced-venue] summary').textContent=`${courtCount} courts selected / ${hours.length ? 'venue hours: '+hours.join(' - ') : 'day hours'} / ${courtOverrides} court time overrides / ${split.checked ? 'groups A/B active' : 'one court group'} - edit courts and hours`;
+
+      split.disabled=!enabled;
+      card.querySelector('[data-split-control]').classList.toggle('d-none',card.querySelectorAll('.day-court').length<2);
+      add.querySelector('.day-add-group-field').hidden=!split.checked;
+      card.querySelector('.day-court-groups').hidden=!split.checked;
+      card.querySelectorAll('[data-group-court]').forEach(row=>{
+        const selected=[...card.querySelectorAll('.day-court:checked')].some(input=>input.value===row.dataset.groupCourt);
+        const select=row.querySelector('.day-group-select');
+        const input=row.querySelector('.day-group-court');
+        select.disabled=!enabled || !split.checked || !selected;
+        input.disabled=select.disabled;
+        input.name=`venue_groups[${input.dataset.venueId}][${select.value}][]`;
+      });
+    });
+    renderTieBoard();
+  };
+  const invalidate=()=>{const save=document.getElementById('save-full-day');if(save){save.disabled=true;save.textContent='Preview again to save changes';}};
+  const appendCourt=(card,label,group)=>{
+    const venueId=card.querySelector('.day-venue').value;
+    let existing=[...card.querySelectorAll('.day-court')].find(input=>input.value===label);
+    if(existing) {existing.checked=true;return existing.closest('[data-court-availability]');}
+    const index=card.querySelectorAll('[data-court-availability]').length;
+    const row=document.createElement('div');row.className='col-12 col-sm-6';row.dataset.courtAvailability='';
+    const checkLabel=document.createElement('label');checkLabel.className='d-flex gap-2 align-items-center';checkLabel.style.minHeight='44px';
+    const checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.className='form-check-input day-court';checkbox.name=`court_labels[${venueId}][]`;checkbox.value=label;checkbox.checked=true;
+    checkLabel.append(checkbox,document.createTextNode(`Court ${label}`));row.append(checkLabel);
+    const identity=document.createElement('input');identity.type='hidden';identity.className='day-court-start';identity.name=`court_starts[${venueId}][${index}][court]`;identity.value=label;row.append(identity);
+    ['start_time','end_time'].forEach(key=>{
+      const input=document.createElement('input');input.type='time';input.className='form-control day-court-start';input.id=`added-court-${venueId}-${index}-${key}`;input.name=`court_starts[${venueId}][${index}][${key}]`;
+      const text=document.createElement('label');text.className='form-label mt-2';text.htmlFor=input.id;text.textContent=`Court ${label} available ${key==='start_time'?'from':'until'}`;row.append(text,input);
+    });
+    card.querySelector('[data-no-courts]')?.remove();card.querySelector('[data-day-court-list]').append(row);
+    const groupRow=document.createElement('div');groupRow.className='col-6';groupRow.dataset.groupCourt=label;
+    const groupLabel=document.createElement('label');groupLabel.className='form-label w-100';groupLabel.textContent=`Court ${label}`;
+    const select=document.createElement('select');select.className='form-select day-group-select';select.setAttribute('aria-label',`Court ${label} group at ${card.querySelector('.day-venue').parentElement.querySelector('strong').textContent}`);
+    ['A','B'].forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=`Group ${value}`;select.append(option);});select.value=group;
+    const hidden=document.createElement('input');hidden.type='hidden';hidden.className='day-group-court';hidden.dataset.venueId=venueId;hidden.value=label;
+    groupLabel.append(select);groupRow.append(groupLabel,hidden);card.querySelector('[data-day-group-list]').append(groupRow);return row;
+  };
+  form.addEventListener('click',async event=>{
+    const button=event.target.closest('.day-add-court');if(!button)return;
+    const add=button.closest('[data-add-court]'),card=add.closest('[data-day-venue]');
+    if(add.dataset.busy==='1')return;
+    const input=add.querySelector('.day-add-label'),status=add.querySelector('.day-add-status');
+    const label=input.value.trim();if(!label){input.setCustomValidity('Enter a court label.');input.reportValidity();return;}
+    input.setCustomValidity('');const group=add.querySelector('.day-add-group').value;
+    add.dataset.busy='1';status.textContent='Adding court...';sync();
+    try {
+      const response=await fetch(add.dataset.url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','X-CSRF-TOKEN':form.querySelector('[name="_token"]').value},body:JSON.stringify({venue_id:Number(card.querySelector('.day-venue').value),label,append_only:true})});
+      const result=await response.json();if(!response.ok)throw new Error(result.message || 'Court could not be added. Try again.');
+      const row=appendCourt(card,String(result.court.label),group);invalidate();sync();input.value='';
+      status.textContent=`Court ${result.court.label} is selected. Set its available times, choose its court group if needed, then preview again.`;
+      row.querySelector('input[type="time"]').focus();
+    } catch(error){status.textContent=error.message || 'Court could not be added. Try again.';}
+    finally {delete add.dataset.busy;sync();}
+  });
+  form.querySelectorAll('.day-add-label').forEach(input=>{input.addEventListener('input',()=>input.setCustomValidity(''));input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();input.closest('[data-add-court]').querySelector('.day-add-court').click();}});});
+  board.addEventListener('dragstart',event=>{
+    if(!event.target.closest('.tie-drag-handle')) return;
+    const card=event.target.closest('[data-tie-key]');event.dataTransfer.setData('text/plain',card.dataset.tieKey);event.dataTransfer.effectAllowed='move';
+  });
+  board.addEventListener('dragover',event=>{const column=event.target.closest('.tie-board-column');if(column){event.preventDefault();event.dataTransfer.dropEffect='move';column.classList.add('tie-drop-active');}});
+  board.addEventListener('dragleave',event=>event.target.closest('.tie-board-column')?.classList.remove('tie-drop-active'));
+  board.addEventListener('dragend',()=>board.querySelectorAll('.tie-drop-active').forEach(column=>column.classList.remove('tie-drop-active')));
+  board.addEventListener('drop',event=>{
+    const column=event.target.closest('.tie-board-column');if(!column) return;event.preventDefault();
+    const key=event.dataTransfer.getData('text/plain');const card=tieCards.find(item=>item.dataset.tieKey===key);
+    if(!card || card.querySelector('.day-tie-destination').disabled) return;
+    if(!card.allowedTieDestinations.has(column.dataset.tieDestination)) {document.getElementById('tie-board-status').textContent='That destination is outside this age group\'s allowed venues. Change its venue choices first.';column.classList.remove('tie-drop-active');return;}
+    document.getElementById('tie-board-status').textContent='';
+    card.querySelector('.day-tie-destination').value=column.dataset.tieDestination;sync();invalidate();
+  });
+  form.addEventListener('change',event=>{
+    if(event.target.matches('.day-split-venue') && event.target.checked) {
+      const card=event.target.closest('[data-day-venue]');
+      const selected=[...card.querySelectorAll('.day-court:checked')].map(input=>input.value);
+      card.querySelectorAll('[data-group-court]').forEach(row=>{const index=selected.indexOf(row.dataset.groupCourt);if(index>=0) row.querySelector('.day-group-select').value=index<Math.ceil(selected.length/2)?'A':'B';});
+    }
+    sync();invalidate();
+  });form.addEventListener('input',invalidate);sync();
+})();
+</script>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\schedule\full-day.blade.php ENDPATH**/ ?>

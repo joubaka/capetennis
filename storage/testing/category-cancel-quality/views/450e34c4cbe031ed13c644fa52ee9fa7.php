@@ -1,0 +1,57 @@
+<?php ($configData = Helper::appClasses()); ?>
+
+<?php $__env->startSection('title', 'Historical identity review'); ?>
+<?php $__env->startSection('content'); ?>
+<div class="card"><div class="card-body identity-review">
+<style>.identity-review{overflow-wrap:anywhere}.identity-review input,.identity-review textarea,.identity-review button{min-height:44px}.identity-review details summary{cursor:pointer;min-height:44px}.identity-review .review-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:1rem}</style>
+<h1 class="h3">Historical identity review</h1>
+<p><?php echo e($event->name); ?> · <a href="<?php echo e(route('backend.player-performance.event-ratings', $event)); ?>">Back to event ratings</a></p>
+<div class="alert alert-info">Save evidence proposals, then preview the possible rating changes. Nothing here corrects identities, changes scores, refreshes saved ratings or publishes results. Weighting stays unchanged.</div>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('status')): ?><div role="status" class="alert alert-success"><?php echo e(session('status')); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div role="alert" class="alert alert-danger"><ul><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><li><?php echo e($error); ?></li><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></ul></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<h2 class="h5">1. Find the suggested player</h2>
+<form method="get" class="mb-3"><label for="player-search">Player name (at least two characters)</label><div class="d-flex gap-2"><input id="player-search" name="search" value="<?php echo e($search); ?>" maxlength="100" class="form-control"><button class="btn btn-outline-primary">Search</button></div></form>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($search): ?>
+<p class="small">Up to 20 candidates. A similar name or current link is not sufficient evidence of who played.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $candidates; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $player): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?><p class="mb-1"><strong>#<?php echo e($player->id); ?> <?php echo e($player->name); ?> <?php echo e($player->surname); ?></strong> · <?php echo e($player->dateOfBirth); ?> · <?php echo e($player->gender); ?></p><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><p>No candidates found.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<h2 class="h5 mt-4">2. Record evidence for an excluded imported identity</h2>
+<p>Use the original scorecard, team sheet or other independently checked record to identify the exact participant, team and fixture side. References are plain text and are never fetched automatically. Save a new proposal to revise evidence.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $items; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<?php ($isOld = old('fixture_player_id') == $item['row']->id && old('side') == $item['side']); ?>
+<details class="border rounded p-3 mb-3" <?php if(old('fixture_player_id') == $item['row']->id && old('side') == $item['side']): ?> open <?php endif; ?>>
+<summary><strong>Fixture #<?php echo e($item['row']->team_fixture_id); ?>, side <?php echo e($item['side']); ?>: <?php echo e($item['imported']->name); ?> <?php echo e($item['imported']->surname); ?></strong></summary>
+<p><?php echo e($item['row']->fixture->draw->drawName); ?> · <?php echo e($item['team']?->name ?? 'Missing source team'); ?> · rank <?php echo e($item['imported']->rank); ?></p>
+<p>Score: <?php echo e($item['row']->fixture->teamResults->sortBy('set_nr')->map(fn($set) => $set->team1_score.'–'.$set->team2_score)->implode(', ')); ?>. Current linked profile: <?php echo e($item['imported']->player_profile ?: 'none'); ?>.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($item['linked']): ?><p>Current link (verify against evidence): <?php echo e($item['linked']->name); ?> <?php echo e($item['linked']->surname); ?> · born <?php echo e($item['linked']->dateOfBirth); ?>.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<p class="text-warning"><?php echo e($item['blocker']); ?></p>
+<form method="post" action="<?php echo e(route('backend.player-performance.identity-proposals', $event)); ?>"><?php echo csrf_field(); ?>
+<input type="hidden" name="fixture_player_id" value="<?php echo e($item['row']->id); ?>"><input type="hidden" name="side" value="<?php echo e($item['side']); ?>">
+<input type="hidden" name="source_team_id" value="<?php echo e($item['team']?->id); ?>"><input type="hidden" name="source_fingerprint" value="<?php echo e($item['fingerprint']); ?>">
+<div class="review-grid"><div><label>Suggested player (search above to add candidates)<select class="form-select" name="suggested_player_id" required><option value="">Choose the evidence-backed player</option>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $candidates->merge($item['linked'] ? [$item['linked']] : [])->unique('id'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $candidate): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($candidate->id); ?>" <?php if($isOld && old('suggested_player_id') == $candidate->id): echo 'selected'; endif; ?>><?php echo e($candidate->name); ?> <?php echo e($candidate->surname); ?> · born <?php echo e($candidate->dateOfBirth); ?><?php echo e($item['linked']?->id === $candidate->id ? ' · current link (verify)' : ''); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</select></label></div>
+<div><label>Source reference (document and page / fixture)<input class="form-control" name="reference" minlength="5" maxlength="2000" value="<?php echo e($isOld ? old('reference') : ''); ?>" required></label></div></div>
+<label class="d-block mt-2">What evidence confirms this player, team and side?<textarea class="form-control" name="evidence" minlength="30" maxlength="10000" rows="3" required><?php echo e($isOld ? old('evidence') : ''); ?></textarea></label>
+<label class="d-block mt-2">Why is this later identity resolution justified?<textarea class="form-control" name="reason" minlength="15" maxlength="3000" rows="2" required><?php echo e($isOld ? old('reason') : ''); ?></textarea></label>
+<button class="btn btn-primary mt-2">Save evidence proposal</button>
+</form></details>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><p>No unsupported imported participants found on this page.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php echo e($rows->withQueryString()->links('pagination::bootstrap-5')); ?>
+
+<h2 class="h5 mt-4">3. Review proposals and preview ratings</h2>
+<p>Select one revision per match side. Preview uses complete affected cohorts, with positions kept within each connected comparison group. It can take a little time.</p>
+<form method="post" action="<?php echo e(route('backend.player-performance.identity-preview', $event)); ?>"><?php echo csrf_field(); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $proposals; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $proposal): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<div class="border rounded p-3 mb-2"><label><input type="checkbox" name="proposals[]" value="<?php echo e($proposal->id); ?>"> Proposal #<?php echo e($proposal->id); ?> · fixture-player row #<?php echo e($proposal->fixture_player_id); ?>, side <?php echo e($proposal->side); ?> → player #<?php echo e($proposal->suggested_player_id); ?> · <?php echo e($proposal->cohort); ?></label>
+<p class="small mb-1">Recorded by user #<?php echo e($proposal->created_by); ?> at <?php echo e($proposal->created_at); ?>. Review proposal only; not an original attestation or approval.</p>
+<details><summary>Evidence and reason</summary><p><?php echo e($proposal->evidence); ?></p><p>Reference: <?php echo e($proposal->reference); ?></p><p>Reason: <?php echo e($proposal->reason); ?></p><p class="small">Source fingerprint: <?php echo e($proposal->source_fingerprint); ?></p></details></div>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><p>No proposals saved.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($proposals->count()): ?><button class="btn btn-primary">Preview selected proposals</button><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</form>
+<?php echo e($proposals->withQueryString()->links('pagination::bootstrap-5')); ?>
+
+</div></div>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\player-performance\identity-review.blade.php ENDPATH**/ ?>

@@ -1,0 +1,315 @@
+<?php echo $__env->make('backend.adminPage.admin_show._roster-script', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php
+  // Quick counts for badges (TEAM EVENTS)
+  $regionCount   = $event->regions->count();
+  $teamCount     = $event->regions->sum(fn ($r) => $r->teams->count());
+  $playerCount   = $event->regions->sum(
+    fn ($r) => $r->teams->sum(fn ($t) => $t->workspaceSlots->filter(fn ($slot) => (int) $slot->player_id > 0 || $slot->noProfile)->count())
+  );
+  $reserveCount = ($teamSelectionInvitations ?? collect())->flatten(1)
+    ->where('status', \App\Models\TeamSelectionInvitation::RESERVE)->count();
+?>
+
+
+
+
+<div class="team-admin-workspace <?php echo e(($rosterOnly ?? false) ? 'regional-roster-workspace' : ''); ?>" data-backend-wide>
+  <div class="nav-tabs-shadow mb-4">
+
+      <?php echo $__env->make('backend.event.partials.teams-workspace-nav', ['teamsWorkspaceRoster' => true], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+      <?php echo $__env->make('backend.adminPage.admin_show._team-context', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+      <div class="tab-content team-workspace-panels">
+
+       
+
+
+
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!($rosterOnly ?? false)): ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event)): ?>
+  <?php echo $__env->make('backend.adminPage.admin_show.tabs.regions', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  
+  <?php echo $__env->make('backend.adminPage.admin_show.tabs.players', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?> 
+
+  
+  <?php echo $__env->make('backend.adminPage.admin_show.tabs.player-order', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?> 
+
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($rosterOnly ?? false)): ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(app(\App\Services\TeamSelection\RegionManagerAccessService::class)->canAccessWorkspace(auth()->user(), $event)): ?>
+    <div class="tab-pane fade" id="tab-communications" role="tabpanel" aria-labelledby="communications-tab">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2" data-communications-toolbar>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($regionalScoped ?? false): ?>
+          <a class="btn btn-primary" href="<?php echo e(route('backend.event-communications.index', $event)); ?>"><i class="ti ti-mail me-1" aria-hidden="true"></i>Email</a>
+        <?php else: ?>
+          <button class="btn btn-primary" type="button" data-team-email-open><i class="ti ti-mail me-1" aria-hidden="true"></i>Email</button>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        <a class="btn btn-outline-secondary" href="<?php echo e(route('backend.event-communications.index', $event)); ?>">Email history</a>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($regionalScoped ?? false)): ?>
+          <a class="btn btn-outline-secondary" href="<?php echo e(route('backend.event-mail-log.index', $event)); ?>">Delivery log</a>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </div>
+    </div>
+    <div class="tab-pane fade" id="tab-campaigns" role="tabpanel" aria-labelledby="campaigns-tab">
+      <div data-central-selection-host>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($embeddedTeamSelection)): ?>
+          <?php echo $__env->make('backend.team-selection._workspace-style', $embeddedTeamSelection, array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+          <?php echo $__env->make('backend.team-selection._workspace-content', $embeddedTeamSelection, array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+        <?php else: ?>
+          <p class="text-muted" role="status">Loading invitation actions and campaign tools…</p>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </div>
+    </div>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+
+
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!($rosterOnly ?? false)): ?>
+  <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('event.manage', $event)): ?>
+        
+        <?php echo $__env->make('backend.adminPage.admin_show._partials.result-ranks', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+        <?php endif; ?>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </div> 
+    </div>
+  </div>
+
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($rosterOnly ?? false)): ?>
+<?php echo $__env->make('backend.adminPage.admin_show._team-email', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<!-- Import all no-profile teams for one region -->
+<div class="modal fade" id="import-region-teams-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1">Import no-profile teams</h5>
+          <div class="small text-muted">Region: <span id="bulk-import-region-name"></span></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2 mb-3">
+          <strong>Preview first.</strong> Choose the workbook and check the detected teams. Nothing is created until you confirm the selected complete teams.
+        </div>
+        <form id="bulk-team-import-form" enctype="multipart/form-data">
+          <?php echo csrf_field(); ?>
+          <input type="hidden" id="bulk-import-confirmed" name="confirmed" value="0">
+
+          <div class="row g-3">
+            <div class="col-lg-6">
+              <label for="bulk-import-file" class="form-label">Team workbook</label>
+              <input type="file" class="form-control" id="bulk-import-file" name="file" accept=".xlsx,.xls,.csv" required>
+              <div class="form-text">
+                Excel or CSV. Supports side-by-side headings such as Boys U10, Girls U10, Seuns o10 and Dogters 010, or columns for Category, Rank, Name and Surname.
+              </div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <label for="bulk-import-prefix" class="form-label">Team names start with</label>
+              <input type="text" class="form-control" id="bulk-import-prefix" name="team_prefix" maxlength="100" required>
+              <div class="form-text">Example: ZFM creates “ZFM Boys U10”.</div>
+            </div>
+            <div class="col-sm-6 col-lg-3">
+              <label for="bulk-import-expected" class="form-label">Players per team</label>
+              <input type="number" class="form-control" id="bulk-import-expected" name="expected_players" min="1" max="50" value="8" required>
+              <div class="form-text">Incomplete teams are shown but cannot be selected.</div>
+            </div>
+            <div class="col-lg-6 d-none" id="bulk-import-sheet-wrap">
+              <label for="bulk-import-sheet" class="form-label">Worksheet</label>
+              <select class="form-select" id="bulk-import-sheet" name="sheet_name">
+                <option value="">Auto-detect the best worksheet</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <div class="form-check border rounded p-3 ps-5 bg-light">
+                <input class="form-check-input" type="checkbox" value="1" id="bulk-import-fill-missing" name="fill_missing_players">
+                <label class="form-check-label fw-medium" for="bulk-import-fill-missing">
+                  Import incomplete teams with placeholder players
+                </label>
+                <div class="form-text mt-1">
+                  Missing ranks become clearly labelled slots such as “Player 8 — To be confirmed”. Partial names, duplicate ranks and invalid ranks still block import.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="bulk-import-status" class="alert alert-primary d-none mt-3 mb-0">
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            Reading workbook…
+          </div>
+          <div id="bulk-import-errors" class="alert alert-danger d-none mt-3 mb-0"></div>
+
+          <div id="bulk-import-preview" class="d-none mt-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div>
+                <h6 class="mb-0">Review teams before importing</h6>
+                <div id="bulk-import-summary" class="small text-muted"></div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-import-select-complete">Select all teams ready to import</button>
+            </div>
+            <div class="table-responsive border rounded">
+              <table class="table table-sm align-middle mb-0">
+                <thead>
+                  <tr>
+                    <th class="text-center">Import</th>
+                    <th>Detected category</th>
+                    <th>Team</th>
+                    <th class="text-center">Players</th>
+                    <th>Action</th>
+                    <th>Validation</th>
+                  </tr>
+                </thead>
+                <tbody id="bulk-import-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="alert alert-warning py-2 small mt-3 mb-0">
+              Importing creates unpublished no-profile teams and roster slots. Existing linked profiles are preserved; conflicting changes are blocked.
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="bulk-import-cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="bulk-import-submit" disabled>Preview teams</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Import No-Profile Team Modal -->
+<div class="modal fade" id="import-noprofile-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Import No-Profile Team: <span id="import-team-name"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="import-noprofile-form" enctype="multipart/form-data">
+          <?php echo csrf_field(); ?>
+          <input type="hidden" id="import-team-id" name="team_id">
+          <input type="hidden" id="import-region-id" name="region_id">
+          <input type="hidden" id="import-confirmed" name="confirmed" value="0">
+
+          <!-- Spinner & status (hidden initially) -->
+          <div id="import-status" class="d-flex align-items-center mb-3" style="display:none;">
+            <div id="import-spinner" class="spinner-border text-primary me-3" role="status" aria-hidden="true" style="width:1.4rem;height:1.4rem;"></div>
+            <div>
+              <div class="small">Importing… <strong id="import-timer">00:00</strong></div>
+              <div id="import-message" class="small text-muted">Uploading file and processing rows.</div>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="import-file" class="form-label">Select Excel File</label>
+            <input type="file" class="form-control" id="import-file" name="file" accept=".xlsx,.xls,.csv" required>
+            <small class="text-muted d-block mt-2">
+              One team per file. Team ID and payment status are deliberately not imported.
+            </small>
+            <a id="import-template-link" class="btn btn-sm btn-outline-secondary mt-2" href="#">
+              <i class="ti ti-download me-1"></i>Download this team’s template
+            </a>
+          </div>
+
+          <div class="card bg-light">
+            <div class="card-body">
+              <h6 class="card-title">File Format Example:</h6>
+              <table class="table table-sm table-borderless">
+                <thead>
+                  <tr class="text-muted">
+                    <th>rank</th>
+                    <th>name</th>
+                    <th>surname</th>
+                    <th>dateOfBirth</th>
+                  </tr>
+                </thead>
+                <tbody class="text-muted small">
+                  <tr>
+                    <td>1</td>
+                    <td>John</td>
+                    <td>Doe</td>
+                    <td>2013-05-20</td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td>Jane</td>
+                    <td>Smith</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="import-preview" class="d-none mt-3">
+            <h6>Review before importing</h6>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead><tr><th>Rank</th><th>Player</th><th>DOB</th><th>Existing matches</th></tr></thead>
+                <tbody id="import-preview-body"></tbody>
+              </table>
+            </div>
+            <div class="alert alert-warning py-2 small mb-0">Confirm only after checking the names, ranks and possible existing-profile matches.</div>
+          </div>
+
+          <div id="import-errors" class="alert alert-danger d-none mt-3 mb-0"></div>
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="import-cancel-btn">Cancel</button>
+        <button type="button" class="btn btn-primary" id="import-submit-btn">Preview roster</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade" id="editNoProfileModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="editNoProfileForm"><?php echo csrf_field(); ?>
+        <div class="modal-header">
+          <h5 class="modal-title">Edit Dummy Player</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="id" id="noProfileId">
+          <div class="mb-3">
+            <label class="form-label">First Name</label>
+            <input type="text" class="form-control" name="name" id="noProfileName" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Surname</label>
+            <input type="text" class="form-control" name="surname" id="noProfileSurname" required>
+          </div>
+        </div>
+        <div class="modal-footer"><button type="submit" class="btn btn-primary">Save</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.importNoProfileUrl = null;
+
+  // Handle import noprofile button click
+
+</script>
+
+
+
+
+
+
+
+
+
+
+
+
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\adminPage\admin_show\team_show.blade.php ENDPATH**/ ?>

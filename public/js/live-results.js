@@ -32,7 +32,7 @@
     const timeout = setTimeout(() => controller.abort(), 15000);
     try {
       const request = async mode => {
-        const response = await fetch(window.location.href, {
+        const response = await fetch(regions.find(region => region.dataset.liveResultsUrl)?.dataset.liveResultsUrl || window.location.href, {
           cache: 'no-store', credentials: 'same-origin', signal: controller.signal,
           headers: mode ? { 'X-Draw-Live': mode } : {},
         });
@@ -63,6 +63,12 @@
           showChecked();
           return;
         }
+      }
+      if (usesRevision && regions.some(region => region.dataset.liveResultsReload !== undefined)) {
+        // Rebuild the linked fixtures, standings and bracket together; reload keeps
+        // the selected tab in the URL hash and never executes fetched scripts.
+        window.location.reload();
+        return;
       }
       const response = await request(usesRevision ? 'fragment' : null);
       if (!response) return;

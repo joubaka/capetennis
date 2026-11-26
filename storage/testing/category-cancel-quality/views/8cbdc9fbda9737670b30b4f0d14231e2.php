@@ -1,0 +1,15 @@
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div><h1 class="h4 mb-1">CTR marketing portal</h1><p class="text-muted mb-0">Plan academy outreach, maintain contacts and prepare campaign drafts.</p></div>
+  <span class="badge bg-label-warning">Draft workspace · sending unavailable</span>
+</div>
+<nav class="nav nav-pills flex-wrap gap-2 mb-4" aria-label="Marketing portal">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ['contacts' => 'Coach contacts', 'campaigns' => 'Campaign drafts', 'calculator' => 'Stage One calculator', 'applications' => 'Host proposals']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+    <?php ($routeName = 'superadmin.marketing.'.$key.($key === 'calculator' ? '' : '.index')); ?>
+    <a class="nav-link <?php echo e(request()->routeIs('superadmin.marketing.'.$key.'*') || ($key === 'calculator' && request()->routeIs('superadmin.marketing.calculate')) ? 'active' : ''); ?>" href="<?php echo e(route($routeName)); ?>"><?php echo e($label); ?></a>
+  <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</nav>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?><div class="alert alert-success" role="status"><?php echo e(session('success')); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?>
+  <div class="alert alert-danger" role="alert"><strong>Please check the details.</strong><ul class="mb-0"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><li><?php echo e($error); ?></li><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></ul></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\marketing\header.blade.php ENDPATH**/ ?>

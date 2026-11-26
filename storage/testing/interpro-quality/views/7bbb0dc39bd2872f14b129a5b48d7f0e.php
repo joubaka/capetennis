@@ -1,0 +1,6 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()?->hasRole('super-user') && !app(\App\Support\SuperAdminControls::class)->exclusive(request()->route())): ?>
+  <link rel="stylesheet" href="<?php echo e(asset('css/super-admin-controls.css')); ?>?v=<?php echo e(filemtime(public_path('css/super-admin-controls.css'))); ?>">
+  <script type="application/json" id="ct-super-admin-routes" data-base-path="<?php echo e(parse_url(url('/'), PHP_URL_PATH) ?? ''); ?>"><?php echo json_encode(app(\App\Support\SuperAdminControls::class)->manifest(), 15, 512) ?></script>
+  <script src="<?php echo e(asset('js/super-admin-controls.js')); ?>?v=<?php echo e(filemtime(public_path('js/super-admin-controls.js'))); ?>" defer></script>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views/layouts/sections/super-admin-controls.blade.php ENDPATH**/ ?>

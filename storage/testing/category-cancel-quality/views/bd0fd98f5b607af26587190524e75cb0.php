@@ -1,0 +1,1 @@
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\draw\draw-settings.blade.php ENDPATH**/ ?>

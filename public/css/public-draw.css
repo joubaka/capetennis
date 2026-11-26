@@ -126,3 +126,9 @@
   .ct-public-draw-back, .ct-public-draw-actions, .ct-public-draw-preview, .ct-public-draw-nav { display: none !important; }
   .ct-public-draw-header { border: 0; box-shadow: none; padding: 0 0 10px; }
 }
+
+/* Keep the primary draw destinations together on narrow phones. */
+#rrTabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#rrTabs:not(:has(#main-bracket-tab)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#rrTabs .nav-link { width: 100%; min-height: 48px; white-space: normal; height: 100%; }
+.rr-matrix-details > summary { cursor: pointer; color: #27435d; padding: .75rem 0; }

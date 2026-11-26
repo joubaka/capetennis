@@ -1,0 +1,5 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($ratingPlayer)): ?>
+  <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-pathway-info="<?php echo e(route('my.tennis.pathway.info', ['player' => $ratingPlayer->id, 'stage' => $infoStage])); ?>" aria-expanded="false" aria-controls="pathway-info-<?php echo e($ratingPlayer->id); ?>-<?php echo e($infoStage); ?>">More info<span class="visually-hidden"> · <?php echo e($infoLabel); ?></span></button>
+  <div id="pathway-info-<?php echo e($ratingPlayer->id); ?>-<?php echo e($infoStage); ?>" class="mt-3 small" data-pathway-info-content hidden role="region" aria-label="<?php echo e($infoLabel); ?> details" aria-live="polite"></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\my-tennis\pathway-info-button.blade.php ENDPATH**/ ?>

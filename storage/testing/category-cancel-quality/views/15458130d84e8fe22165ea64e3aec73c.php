@@ -1,0 +1,11 @@
+<section <?php echo e($attributes->class(['rounded border p-3'])); ?> aria-label="Planned Plus email updates" data-plus-morning-updates>
+  <h3 class="h5"><i class="ti ti-mail" aria-hidden="true"></i>Stay up to date, even on busy days</h3>
+  <p class="small mb-2"><strong>Coming to Player Plus: morning email updates from 06:00 South African time.</strong> For parents who cannot check the website every day, a convenient way to follow new events and important changes.</p>
+  <p class="small mb-2">The daily check will email Plus users only when there are new events, changed or added event information, or announcements they have not yet marked as read. New-event emails will show how many events were added, their details and direct links to view them on Cape Tennis.</p>
+  <p class="small mb-2">Keep track of registrations, nominations and other important dates, with links to the latest information so you can plan your next step.</p>
+  <p class="small mb-2"><strong>Also planned: updates for events your Plus player has entered.</strong> Published draws, schedules, new or edited announcements and public event information will trigger an email after the latest meaningful change has stayed unchanged for ten minutes. Further edits restart the wait, so a burst of changes can be combined into the latest update.</p>
+  <p class="small text-muted mb-2">Event updates will be queued at the next available check after that wait; queue load may delay delivery. Private drafts and unrelated events do not trigger these updates.</p>
+  <p class="small mb-2">Stay in control: snooze both types of Plus email updates for 7 or 30 days, turn them off, or resume when you are ready. No catch-up backlog when you return.</p>
+  <p class="small text-muted mb-0">These email features are not yet available or included in the current purchase. Once launched, morning summaries will be queued from the first available morning check, normally 06:02. Entered-event updates use the separate ten-minute wait described above. Either type may arrive later under queue load.</p>
+</section>
+<?php /**PATH D:\wamp64\www\ct\resources\views\components\player-plus-morning-updates.blade.php ENDPATH**/ ?>

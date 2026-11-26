@@ -1,6 +1,6 @@
 @php
   $trialFixtures = $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get()->keyBy('match_nr');
-  $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template();
+  $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template($draw);
   $trialOutcomes = app(\App\Services\IndividualMatchOutcomeService::class);
   $trialSchedule = ($emptyBracket ?? false) ? collect() : app(\App\Services\Scheduling\SchedulePublicationService::class)
     ->publishedRows($draw->event, includeParticipants: false, drawId: $draw->id)
@@ -47,6 +47,11 @@
       ['title' => 'Positions 11–12', 'matches' => [4004], 'roundLabels' => ['Final']],
     ]],
   ]];
+  $challengeSections = [];
+  foreach (\App\Services\Draw\InterproRoundRobinFormat::challengePairs($draw) as $upper) {
+    $challengeSections[] = ['title' => 'Base positions '.$upper.' v '.($upper + 1), 'matches' => [5000 + $upper], 'roundLabels' => ['Challenge']];
+  }
+  if ($challengeSections) $trialProjection['boards'][] = ['key' => 'challenges', 'title' => 'Optional challenge playoffs', 'sections' => $challengeSections];
 @endphp
 @include('draw.partials.interpro-bracket-assets')
 <style>

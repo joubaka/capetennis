@@ -1,0 +1,8 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($matchPage['pages'] > 1): ?>
+<nav class="record-page" aria-label="<?php echo e($pageKey === 'opponent_page' ? 'Opponent pages' : 'Match pages'); ?>">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($matchPage['page'] > 1): ?><a class="btn btn-outline-primary" href="<?php echo e(request()->fullUrlWithQuery([$pageKey => $matchPage['page'] - 1])); ?><?php echo e($pageKey === 'meeting_page' ? '#opponent-meetings' : ''); ?>">Previous</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <span>Page <?php echo e($matchPage['page']); ?> of <?php echo e($matchPage['pages']); ?></span>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($matchPage['page'] < $matchPage['pages']): ?><a class="btn btn-outline-primary" href="<?php echo e(request()->fullUrlWithQuery([$pageKey => $matchPage['page'] + 1])); ?><?php echo e($pageKey === 'meeting_page' ? '#opponent-meetings' : ''); ?>">Next</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</nav>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\my-tennis\record-pagination.blade.php ENDPATH**/ ?>

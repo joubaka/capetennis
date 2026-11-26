@@ -25,7 +25,7 @@ class TrialWithdrawalProgressionService
                 $fixtures = Fixture::where('draw_id', $draw->id)->whereIn('match_status', [0, 2])
                     ->where(fn ($q) => $q->whereIn('registration1_id', $withdrawn)->orWhereIn('registration2_id', $withdrawn))->orderBy('round')->orderBy('id')->lockForUpdate()->get();
                 foreach ($fixtures as $fixture) {
-                    if (\App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture)) continue;
+                    if (\App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture)) continue;
                     if (!$fixture->registration1_id || !$fixture->registration2_id) { continue; }
                     $firstOut = $withdrawn->contains((int) $fixture->registration1_id);
                     $secondOut = $withdrawn->contains((int) $fixture->registration2_id);

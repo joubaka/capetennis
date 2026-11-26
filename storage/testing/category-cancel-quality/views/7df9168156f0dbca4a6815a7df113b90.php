@@ -1,0 +1,1177 @@
+<?php $__env->startSection('vendor-style'); ?>
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/quill/editor.css')); ?>">
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/select2/select2.css')); ?>">
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('vendor-script'); ?>
+<script src="<?php echo e(asset('assets/vendor/libs/quill/quill.js')); ?>"></script>
+<script src="<?php echo e(asset('assets/vendor/libs/select2/select2.js')); ?>"></script>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('title', $event->name . ' – Settings'); ?>
+
+<?php $__env->startSection('content'); ?>
+<style>
+  .select2-container { z-index: 1055; }
+  .settings-shell { max-width: 1180px; margin-inline: auto; }
+  .settings-card { border: 1px solid var(--bs-border-color); box-shadow: 0 .125rem .5rem rgba(34, 48, 62, .045); scroll-margin-top: 10rem; }
+  .settings-card .card-header { padding-bottom: .25rem; border-bottom: 0; }
+  .section-icon { display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .5rem; color: var(--bs-primary); background: rgba(105, 108, 255, .12); flex: 0 0 auto; }
+  .logo-preview-wrap { min-height: 152px; background: var(--bs-body-bg); border: 1px dashed var(--bs-border-color); border-radius: .5rem; }
+  .logo-preview { max-width: 180px; max-height: 112px; object-fit: contain; }
+  .settings-toolbar { position: sticky; top: .75rem; z-index: 1015; border: 1px solid var(--bs-border-color); background: rgba(var(--bs-body-bg-rgb), .94); backdrop-filter: blur(12px); }
+  .settings-section-links { flex-wrap: wrap; gap: .35rem; }
+  .settings-section-links a { display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .75rem; border-radius: .45rem; color: var(--bs-body-color); font-weight: 500; }
+  .settings-section-links a:hover, .settings-section-links a:focus-visible { color: var(--bs-primary); text-decoration: underline; }
+  .settings-section-links a[aria-current] { color: var(--bs-primary); background: rgba(var(--bs-primary-rgb), .12); font-weight: 700; }
+  .settings-save-status:empty { display: none; }
+  [data-settings-panel][hidden] { display: none !important; }
+  #settings-section-select { min-height: 44px; }
+  #settings-access { scroll-margin-top: 10rem; }
+  .access-heading { display: flex; align-items: center; gap: .75rem; margin-top: .25rem; }
+  .access-heading::after { content: ''; height: 1px; flex: 1; background: var(--bs-border-color); }
+  .access-window { padding: 1rem; border: 1px solid var(--bs-border-color); border-radius: .6rem; background: var(--bs-body-bg); }
+  .assignment-list li:last-child { border-bottom: 0 !important; }
+  .form-label { font-weight: 500; }
+  .field-help { margin-top: .35rem; font-size: .8125rem; color: var(--bs-secondary-color); }
+  .select2-admins + .select2-container .select2-selection__choice,
+  .select2-scoring-accounts + .select2-container .select2-selection__choice { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  @media (max-width: 767.98px) {
+    .settings-card .card-body { padding: 1.25rem; }
+    .settings-toolbar { top: .35rem; }
+  }
+</style>
+
+<meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
+
+<div class="container-xl settings-shell">
+
+<form method="POST"
+      id="event-settings-form"
+      action="<?php echo e(route('admin.events.settings.update', $event)); ?>"
+      enctype="multipart/form-data">
+<?php echo csrf_field(); ?>
+<?php echo method_field('PATCH'); ?>
+
+<?php echo $__env->make('backend.event.partials.header', [
+  'eventWorkspaceActive' => 'settings',
+  'eventWorkspaceIcon' => 'ti-settings',
+  'eventWorkspaceSubtitle' => 'Event settings',
+], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php
+  $showSelectionCriteriaTab = $event->isTeam() && auth()->user()->can('event.settings.manage', $event);
+?>
+<?php
+  $settingsSections = [
+    'basics' => 'Event & registration',
+    'information' => 'Public page',
+    'results' => 'Results & standings',
+  ];
+  if ($showSelectionCriteriaTab) {
+    $settingsSections['selection'] = 'Selection criteria';
+  }
+  $settingsSections['access'] = 'Access';
+  $settingsAnchors = [
+    'basics' => 'settings-basics',
+    'information' => 'settings-information',
+    'results' => 'result-controls',
+    'selection' => 'settings-team-selection',
+    'access' => 'settings-access',
+  ];
+?>
+<div class="settings-toolbar rounded-3 px-3 py-2 mb-3 no-print">
+  <nav class="settings-section-links d-none d-md-flex" aria-label="Event settings">
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $settingsSections; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+      <a href="#<?php echo e($settingsAnchors[$key]); ?>" <?php if($loop->first): ?> aria-current="location" <?php endif; ?>><?php echo e($label); ?></a>
+    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </nav>
+  <div class="d-md-none">
+    <label for="settings-section-select" class="visually-hidden">Settings section</label>
+    <select id="settings-section-select" class="form-select">
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $settingsSections; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+        <option value="#<?php echo e($settingsAnchors[$key]); ?>"><?php echo e($label); ?></option>
+      <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </select>
+  </div>
+</div>
+
+<section data-settings-panel="basics" aria-label="<?php echo e($settingsSections['basics']); ?>">
+  <p data-settings-status="basics" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
+  <div class="row g-3">
+<div class="col-12">
+  <div class="card settings-card" id="settings-basics">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-adjustments-horizontal"></i></span>
+      <div><h5 class="mb-1">Basics & visibility</h5><p class="text-muted small mb-0">The event identity and what visitors can access.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-4">
+        <div class="col-12">
+          <label class="form-label" for="event-name">Event name</label>
+          <input id="event-name" class="form-control autosave" name="name" value="<?php echo e($event->name); ?>">
+
+          <div class="row g-3 mt-1">
+            <div class="col-12">
+              <label class="form-label" for="event-type">Event type</label>
+              <select id="event-type" class="form-select autosave" name="eventType">
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = \App\Models\EventType::all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $type): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                  <option value="<?php echo e($type->id); ?>" <?php if($event->eventType == $type->id): echo 'selected'; endif; ?>><?php echo e($type->name); ?></option>
+                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+              </select>
+            </div>
+          </div>
+
+          <div class="mt-4 p-3 rounded bg-body d-grid gap-3">
+            <div class="form-check form-switch">
+              <input class="form-check-input autosave" type="checkbox"
+                     id="event-published" name="published" <?php echo e($event->published ? 'checked' : ''); ?>>
+              <label class="form-check-label fw-semibold" for="event-published">Published publicly</label>
+              <div class="field-help mt-0">Controls whether visitors can see the event. This does not open registration.</div>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input autosave" type="checkbox"
+                     id="registration-open" name="registration_open" <?php echo e($event->signUp ? 'checked' : ''); ?>>
+              <label class="form-check-label fw-semibold" for="registration-open">Registration open</label>
+              <div class="field-help mt-0">Controls whether eligible players can register. This does not publish or unpublish the event.</div>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="col-12">
+  <div class="card settings-card" id="settings-schedule">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-calendar-event"></i></span>
+      <div><h5 class="mb-1">Schedule & registration</h5><p class="text-muted small mb-0">Set the event dates, deadlines, fee and organizer contact.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-3">
+        <div class="col-md-6">
+      <label class="form-label" for="start-date">Start date</label>
+      <input type="date" class="form-control autosave"
+             id="start-date" name="start_date"
+             value="<?php echo e(optional($event->start_date)->format('Y-m-d')); ?>">
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="end-date">End date</label>
+      <input type="date" class="form-control autosave"
+             id="end-date" name="end_date"
+             value="<?php echo e(optional($event->end_date)->format('Y-m-d')); ?>">
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="registration-deadline">Registration deadline</label>
+      <div class="input-group">
+        <input type="number" class="form-control autosave"
+               id="registration-deadline" name="deadline" min="0" value="<?php echo e($event->deadline); ?>">
+        <span class="input-group-text">days before start</span>
+      </div>
+      <div class="field-help" id="registration-closure-text"></div>
+        </div>
+        <div class="col-md-6">
+      <label class="form-label" for="withdrawal-deadline">Withdrawal deadline</label>
+      <div class="input-group">
+        <input type="number" class="form-control autosave"
+               id="withdrawal-deadline" name="withdrawal_days" min="0"
+               value="<?php echo e($event->withdrawalDeadlineDaysBeforeStart()); ?>">
+        <span class="input-group-text">days before start</span>
+      </div>
+      <div class="field-help" id="withdrawal-closure-text"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="entry-fee">Default entry fee</label>
+          <div class="input-group"><span class="input-group-text">R</span><input id="entry-fee" type="number" min="0" class="form-control autosave" name="entryFee" value="<?php echo e($event->entryFee); ?>"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="organizer-name">Organizer name</label>
+          <input id="organizer-name" type="text" class="form-control autosave" name="organizer" maxlength="191" value="<?php echo e($event->organizer); ?>">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="organizer-email">Organizer email</label>
+          <input id="organizer-email" type="email" class="form-control autosave" name="email" value="<?php echo e($event->email); ?>">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  </div>
+</section>
+
+<section data-settings-panel="information" aria-label="<?php echo e($settingsSections['information']); ?>" hidden>
+  <div class="row g-3">
+
+<div class="col-12">
+  <div class="card settings-card" id="settings-information">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-file-description"></i></span>
+      <div><h5 class="mb-1">Public information</h5><p class="text-muted small mb-0">The description players and parents will see on the event page.</p></div>
+    </div>
+    <div class="card-body pt-3">
+      <div class="row g-4">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <span data-settings-status="information" class="small text-body-secondary" role="status"></span>
+            <a href="<?php echo e(route('events.show', $event)); ?>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Preview public page <span class="visually-hidden">(opens in a new tab)</span></a>
+          </div>
+          <div id="info-editor"><?php echo $event->information; ?></div>
+        </div>
+        <div class="col-lg-4" id="settings-logo">
+          <h3 class="h6">Event logo</h3>
+          <span data-settings-status="logo" class="small text-body-secondary" role="status"></span>
+          <div class="logo-preview-wrap d-flex align-items-center justify-content-center p-3 mb-3">
+            <img id="logo-preview"
+                 src="<?php echo e($event->logo ? asset('assets/img/logos/'.$event->logo) : asset('assets/img/placeholder-logo.png')); ?>"
+                 class="logo-preview img-fluid"
+                 alt="<?php echo e($event->logo ? 'Current event logo' : 'No event logo selected'); ?>">
+          </div>
+          <label class="form-label" for="logo-existing-select">Choose an existing logo</label>
+          <select class="form-select mb-3" name="logo_existing" id="logo-existing-select">
+            <option value="">— No logo —</option>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = File::files(public_path('assets/img/logos')); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $file): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <?php
+                $name = $file->getFilename();
+              ?>
+              <option value="<?php echo e($name); ?>" <?php if($event->logo === $name): echo 'selected'; endif; ?>><?php echo e($name); ?></option>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          </select>
+          <label class="form-label" for="logo-upload">Or upload a new logo</label>
+          <input id="logo-upload" type="file" class="form-control" name="logo_upload" accept="image/*">
+          <div class="field-help">Your selection is applied automatically. Maximum file size: 2 MB.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+  </div>
+</section>
+
+<section data-settings-panel="results" aria-label="<?php echo e($settingsSections['results']); ?>" hidden>
+  <p data-settings-status="results" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
+  <div class="row g-3">
+<div class="col-12">
+<section class="card settings-card" id="result-controls" tabindex="-1">
+  <div class="card-body">
+    <h5>Results updates</h5>
+    <p class="small text-muted">On / Off shows your current selection. Changes take effect after saving; unsaved selections are marked below.</p>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-notifications-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-notifications-enabled" name="result_notifications_enabled" <?php echo e($event->result_notifications_enabled ? 'checked' : ''); ?>>
+      <span>Send result emails for this event</span>
+      <span class="badge bg-label-secondary" data-result-state="result-notifications-enabled"><?php echo e($event->result_notifications_enabled ? 'On' : 'Off'); ?></span>
+    </label>
+    <p class="small text-muted">Result emails to players and linked parents are scheduled for <?php echo e(\App\Services\MatchResultNotificationService::SEND_DELAY_MINUTES); ?> minutes after a completed, published result is saved or corrected. Enabling this does not email past results. Disabling cancels pending result emails.</p>
+    <label class="d-flex align-items-center gap-2" style="min-height:44px" for="result-auto-refresh-enabled">
+      <input class="form-check-input autosave" type="checkbox" id="result-auto-refresh-enabled" name="result_auto_refresh_enabled" <?php echo e(($event->result_auto_refresh_enabled ?? true) ? 'checked' : ''); ?>>
+      <span>Automatically refresh results and standings pages</span>
+      <span class="badge bg-label-secondary" data-result-state="result-auto-refresh-enabled"><?php echo e(($event->result_auto_refresh_enabled ?? true) ? 'On' : 'Off'); ?></span>
+    </label>
+    <p class="small text-muted mb-0">Check for new scores every 30 seconds while a page is open. When disabled, visitors can reload the page to see the latest results. Scores and standings are still saved normally.</p>
+  </div>
+</section>
+</div>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($event->isTeam()): ?>
+<?php echo $__env->make('backend.event.partials.point-sharing-settings', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </div>
+</section>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($showSelectionCriteriaTab): ?>
+
+<section data-settings-panel="selection" aria-label="<?php echo e($settingsSections['selection']); ?>" hidden>
+  <div class="row g-3">
+<?php
+  $selectionCriteria = app(\App\Services\TeamSelectionCriteria::class)->context($event);
+  $selectionCriteriaLocked = \App\Models\EventSelectionFinalization::active()->where('event_id', $event->id)->exists();
+?>
+<div class="col-12"><section class="card settings-card" id="settings-team-selection"><div class="card-body">
+  <h3 class="h5">Selection preset</h3>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($selectionCriteriaLocked): ?>
+    <p class="alert alert-info">Selection criteria are locked while selections are finalized. Reopen selections before changing them.</p>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <p>Choose this reusable preset for this team event. Other events keep their own selection criteria.</p>
+  <label class="form-label" for="selection-criteria-preset">Selection criteria</label>
+  <select id="selection-criteria-preset" class="form-select mb-3" <?php if($selectionCriteriaLocked): echo 'disabled'; endif; ?>>
+    <option value="legacy" <?php if($selectionCriteria['preset'] !== 'platteland_v1'): echo 'selected'; endif; ?>><?php echo e(app(\App\Services\TeamSelectionCriteria::class)->isInterDistricts($event) ? 'Inter-Districts selection criteria (version 1)' : 'Existing selection criteria'); ?></option>
+    <option value="platteland_v1" <?php if($selectionCriteria['preset'] === 'platteland_v1'): echo 'selected'; endif; ?>>Platteland criteria for selection of teams (version 1)</option>
+  </select>
+  <details class="mb-3">
+    <summary class="fw-semibold">How the Platteland preset works</summary>
+    <ul class="mt-2 mb-0">
+    <li>Roster bands come first: 1–2, 3–4, 5–6, and subsequent pairs. Count completed singles and reverse singles together.</li>
+    <li>The higher player in each confirmed same-team pair receives one extra win credit. It adds no match or set result.</li>
+    <li>Within a band, total actual wins plus the credit decide the order. Equal totals on the same actual team follow roster position first. Different teams use exact set win percentage, not set difference or head-to-head.</li>
+    <li>An unbeaten lower-band player can be flagged for manual comparison with the adjacent higher band's results. Assess other results and any weak record before changing a private draft. Players never move between bands automatically.</li>
+    </ul>
+  </details>
+  <div class="row g-3 mb-3">
+    <div class="col-md-6"><label class="form-label" for="selection-expected-matches">Expected played matches for unbeaten review (optional)</label><input id="selection-expected-matches" class="form-control" type="number" min="1" max="100" value="<?php echo e($selectionCriteria['expected_matches']); ?>" <?php if($selectionCriteriaLocked): echo 'disabled'; endif; ?>><p class="field-help">Leave blank to review any played unbeaten record. For an event with four counted matches, enter 4. Roster credit is not a played match.</p></div>
+    <div class="col-md-6"><label class="form-label" for="selection-weak-wins">Higher-band maximum actual wins for review (optional)</label><input id="selection-weak-wins" class="form-control" type="number" min="0" max="100" value="<?php echo e($selectionCriteria['weak_record_max_wins']); ?>" <?php if($selectionCriteriaLocked): echo 'disabled'; endif; ?>><p class="field-help">Leave blank to inspect all played higher-band records manually. Enter a limit only if this event has agreed what a weak record means.</p></div>
+  </div>
+  <fieldset class="mb-3"><legend class="fs-6">Exclude results involving these event regions</legend>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $event->regions()->get(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $region): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><label class="d-block mb-2"><input type="checkbox" data-selection-criteria-excluded value="<?php echo e($region->id); ?>" <?php if(in_array((int) $region->id, $selectionCriteria['excluded_result_region_ids'], true)): echo 'checked'; endif; ?> <?php if($selectionCriteriaLocked): echo 'disabled'; endif; ?>> <?php echo e($region->region_name); ?></label><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <p class="field-help">A checked region removes the whole match when either side represents it. Choose ZF Mcawu here for the 2026 comparison if required; this exclusion is never applied to other events automatically.</p></fieldset>
+  <p class="field-help">Saved drafts and finalized snapshots retain their original evidence. After changing criteria, review the current results and explicitly save a fresh draft.</p>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($selectionCriteriaLocked)): ?>
+    <button type="button" class="btn btn-primary" id="save-selection-criteria">Save selection criteria</button>
+    <span id="selection-criteria-status" class="ms-2" role="status" aria-live="polite"></span>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div></section></div>
+  </div>
+</section>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+<section data-settings-panel="access" aria-label="<?php echo e($settingsSections['access']); ?>" hidden>
+  <p data-settings-status="access" class="settings-save-status small text-body-secondary mb-2" role="status"></p>
+  <div class="row g-3">
+
+<div class="col-12" id="settings-access">
+  <div class="access-heading">
+    <span class="section-icon"><i class="ti ti-lock-access" aria-hidden="true"></i></span>
+    <div>
+      <h4 class="mb-1">Access &amp; responsibilities</h4>
+      <p class="text-muted mb-0">Keep management and score-entry permissions separate and time-bound.</p>
+    </div>
+  </div>
+</div>
+<div class="col-lg-5">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-shield-lock"></i></span>
+      <div><h5 class="mb-1">Event admins</h5><p class="text-muted small mb-0">Full event management access.</p></div>
+    </div>
+    <div class="card-body">
+      <label class="form-label" for="event-admins">Administrators</label>
+      <select class="form-select select2-admins" id="event-admins"
+              name="admins" multiple
+              data-placeholder="Select event admins">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $users; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $user): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <option value="<?php echo e($user->id); ?>"
+            <?php if($event->admins->contains($user->id)): echo 'selected'; endif; ?>>
+            <?php echo e($user->name); ?> (<?php echo e($user->email); ?>)
+          </option>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </select>
+      <div class="field-help">Can change settings, manage draws and control publication. Assign this role sparingly.</div>
+    </div>
+  </div>
+</div>
+
+
+<?php $convenorIds = $convenors->pluck('user_id')->toArray(); ?>
+<div class="col-lg-7">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-users"></i></span>
+      <div><h5 class="mb-1">Event directors</h5><p class="text-muted small mb-0">Time-limited operational access for tournament staff.</p></div>
+    </div>
+    <div class="card-body">
+      <label class="form-label" for="event-directors">Directors</label>
+      <select class="form-select select2-convenors" id="event-directors"
+              name="convenors" multiple
+              data-placeholder="Select event directors">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $users; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $user): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <option value="<?php echo e($user->id); ?>"
+            <?php if(in_array($user->id, $convenorIds)): echo 'selected'; endif; ?>>
+            <?php echo e($user->name); ?> (<?php echo e($user->email); ?>)
+          </option>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </select>
+
+      <?php if (isset($component)) { $__componentOriginaldfca11e5d4c5e9011d0074746d814be3 = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginaldfca11e5d4c5e9011d0074746d814be3 = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.backend.court-convenor-guide','data' => ['class' => 'mt-3']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('backend.court-convenor-guide'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['class' => 'mt-3']); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginaldfca11e5d4c5e9011d0074746d814be3)): ?>
+<?php $attributes = $__attributesOriginaldfca11e5d4c5e9011d0074746d814be3; ?>
+<?php unset($__attributesOriginaldfca11e5d4c5e9011d0074746d814be3); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginaldfca11e5d4c5e9011d0074746d814be3)): ?>
+<?php $component = $__componentOriginaldfca11e5d4c5e9011d0074746d814be3; ?>
+<?php unset($__componentOriginaldfca11e5d4c5e9011d0074746d814be3); ?>
+<?php endif; ?>
+
+      <div class="access-window mt-3">
+      <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Director access window</span></div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="director-starts-at">Access starts</label>
+          <input type="datetime-local" class="form-control autosave"
+                 id="director-starts-at" name="convenor_starts_at" aria-describedby="director-window-help"
+                 value="<?php echo e(optional($convenors->first())->starts_at?->format('Y-m-d\TH:i') ?? $event->start_date?->copy()->startOfDay()->format('Y-m-d\TH:i')); ?>">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="director-expires-at">Access expires</label>
+          <input type="datetime-local" class="form-control autosave"
+                 id="director-expires-at" name="convenor_expires_at" aria-describedby="director-window-help"
+                 value="<?php echo e(optional($convenors->first())->expires_at?->format('Y-m-d\TH:i') ?? $event->end_date?->copy()->endOfDay()->format('Y-m-d\TH:i')); ?>">
+        </div>
+      </div>
+      <div class="field-help" id="director-window-help">Expiry must be later than the start. Access is unavailable outside this window.</div>
+      </div>
+
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($convenors->isNotEmpty()): ?>
+        <div class="mt-3">
+          <small class="text-muted fw-semibold">Active Event Directors</small>
+          <ul class="list-unstyled assignment-list mb-0 mt-1">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $convenors; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $c): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <li class="d-flex justify-content-between align-items-center py-1 border-bottom">
+                <span><?php echo e($c->user->name ?? 'Unknown'); ?></span>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($c->isActive()): ?>
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($c->timeRemaining()): ?>
+                    <span class="badge bg-warning text-dark">
+                      <i class="ti ti-clock me-1"></i><?php echo e($c->timeRemaining()); ?> left
+                    </span>
+                  <?php else: ?>
+                    <span class="badge bg-success">No expiry</span>
+                  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <?php else: ?>
+                  <span class="badge bg-danger">Expired</span>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+              </li>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          </ul>
+        </div>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+    </div>
+  </div>
+</div>
+
+
+<?php
+  $scoringAccountIds = $scoringAccounts->pluck('user_id')->toArray();
+  $firstScoringAccount = $scoringAccounts->first();
+?>
+<div class="col-12">
+  <div class="card settings-card">
+    <div class="card-header d-flex align-items-start gap-3">
+      <span class="section-icon"><i class="ti ti-clipboard-check"></i></span>
+      <div>
+        <h5 class="mb-1">Scoring accounts</h5>
+        <p class="text-muted small mb-0">Give dedicated user accounts score-entry access for this event only.</p>
+      </div>
+    </div>
+    <div class="card-body">
+      <label class="form-label" for="scoring-accounts">Accounts allowed to score</label>
+      <select id="scoring-accounts"
+              class="form-select select2-scoring-accounts"
+              name="scoring_accounts" multiple
+              data-placeholder="Select scoring accounts">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $scoringUsers; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $user): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <option value="<?php echo e($user->id); ?>" <?php if(in_array($user->id, $scoringAccountIds)): echo 'selected'; endif; ?>>
+            <?php echo e($user->name); ?> (<?php echo e($user->email); ?>)
+          </option>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </select>
+      <div class="field-help">These accounts can enter and correct scores, but cannot change draws, publish, or lock the event. Existing convenor accounts can be used here, provided they are not also an Event director for this event.</div>
+
+      <div class="access-window mt-3" aria-labelledby="scoring-venue-heading">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="ti ti-map-pin text-primary" aria-hidden="true"></i>
+          <span class="fw-semibold" id="scoring-venue-heading">Venue responsibility</span>
+        </div>
+        <div id="scoring-venue-assignments" class="d-grid gap-3">
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $scoringAccounts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $account): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+            <div class="scoring-venue-row" data-user-id="<?php echo e($account->user_id); ?>">
+              <label class="form-label mb-1" for="scoring-venue-<?php echo e($account->user_id); ?>">
+                <?php echo e($account->user->name ?? 'Unknown'); ?> <span class="text-muted fw-normal"><?php echo e($account->user->email ?? ''); ?></span>
+              </label>
+              <select id="scoring-venue-<?php echo e($account->user_id); ?>"
+                      class="form-select scoring-venue-select"
+                      name="scoring_venues[<?php echo e($account->user_id); ?>]"
+                      data-user-id="<?php echo e($account->user_id); ?>">
+                <option value="">All event venues</option>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $scoringVenues; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $venue): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                  <option value="<?php echo e($venue->id); ?>" <?php if((int) $account->venue_id === (int) $venue->id): echo 'selected'; endif; ?>><?php echo e($venue->name); ?></option>
+                <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+              </select>
+            </div>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+            <p class="text-muted small mb-0 scoring-venue-empty">Select a scoring account to assign its venue.</p>
+          <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div>
+        <div class="field-help">Choose one venue to limit that account to its match queue. Leave “All event venues” selected for unrestricted event scoring.</div>
+      </div>
+
+      <div class="access-window mt-3">
+      <div class="d-flex align-items-center gap-2 mb-3"><i class="ti ti-clock text-primary" aria-hidden="true"></i><span class="fw-semibold">Scoring access window</span></div>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="scoring-starts-at">Scoring access starts</label>
+          <input id="scoring-starts-at" type="datetime-local" class="form-control autosave"
+                 name="scoring_starts_at" aria-describedby="scoring-window-help"
+                 value="<?php echo e($firstScoringAccount?->starts_at?->format('Y-m-d\TH:i') ?? $event->start_date?->copy()->startOfDay()->format('Y-m-d\TH:i')); ?>">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="scoring-expires-at">Scoring access expires</label>
+          <input id="scoring-expires-at" type="datetime-local" class="form-control autosave"
+                 name="scoring_expires_at" aria-describedby="scoring-window-help"
+                 value="<?php echo e($firstScoringAccount?->expires_at?->format('Y-m-d\TH:i') ?? $event->end_date?->copy()->endOfDay()->format('Y-m-d\TH:i')); ?>">
+        </div>
+      </div>
+      <div class="field-help" id="scoring-window-help">Expiry must be later than the start. Access is unavailable outside this window.</div>
+      </div>
+
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($scoringAccounts->isNotEmpty()): ?>
+        <div class="mt-3">
+          <small class="text-muted fw-semibold">Assigned scoring accounts</small>
+          <ul class="list-unstyled assignment-list mb-0 mt-1">
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $scoringAccounts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $account): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <li class="d-flex flex-column flex-sm-row justify-content-between gap-1 py-2 border-bottom">
+                <span><?php echo e($account->user->name ?? 'Unknown'); ?> <span class="text-muted"><?php echo e($account->user->email ?? ''); ?></span></span>
+                <span class="d-flex flex-wrap gap-1 justify-content-sm-end">
+                  <span class="badge bg-label-primary"><?php echo e($account->venue?->name ?? 'All venues'); ?></span>
+                  <span class="badge <?php echo e($account->isActive() ? 'bg-success' : 'bg-secondary'); ?>">
+                    <?php echo e($account->isActive() ? 'Scoring access active' : 'Outside access window'); ?>
+
+                  </span>
+                </span>
+              </li>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          </ul>
+        </div>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($event->isTeam()): ?>
+<div class="col-12"><section class="card settings-card"><div class="card-body">
+  <h5>Main conveners by age group</h5>
+  <p class="text-muted">Assign one account per age group. They can view that age group's standings after every match in the group has been processed.</p>
+  <div class="row g-3">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $convenerAges; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $age): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+    <div class="col-md-6">
+      <label class="form-label" for="age-convener-<?php echo e($age); ?>"><?php echo e($age); ?> main convener</label>
+      <select id="age-convener-<?php echo e($age); ?>" class="form-select age-convener-select" data-age="<?php echo e($age); ?>">
+        <option value="">No convener assigned</option>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($account = $users->firstWhere('id', $ageGroupConveners[$age] ?? null)): ?>
+          <option value="<?php echo e($account->id); ?>" selected><?php echo e($account->name); ?> (<?php echo e($account->email); ?>)</option>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </select>
+    </div>
+  <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+    <p class="mb-0">Create age-group draws to assign main conveners.</p>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </div>
+</div></section></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </div>
+</section>
+</form>
+</div>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('page-script'); ?>
+<link rel="stylesheet" href="<?php echo e(asset('css/event-rich-text.css')); ?>">
+<script src="<?php echo e(asset('js/event-rich-text.js')); ?>"></script>
+
+<script>
+$(function () {
+
+  const csrf = $('meta[name="csrf-token"]').attr('content');
+  const updateUrl = <?php echo json_encode(route('admin.events.settings.update', $event), 512) ?>;
+  const userSearchUrl = <?php echo json_encode(route('admin.events.settings.users', $event), 512) ?>;
+  const scoringVenues = <?php echo json_encode($scoringVenues->map(fn ($venue) => ['id' => $venue->id, 'name' => $venue->name])->values(), 512) ?>;
+  const initialScoringVenueAssignments = <?php echo json_encode($scoringAccounts->mapWithKeys(fn ($account) => [(string) $account->user_id => $account->venue_id]), 15, 512) ?>;
+  const feedback = window.AppFeedback;
+  const sharingFields = '#point-sharing-enabled, [data-sharing-active], [data-sharing-mode], [data-sharing-region]';
+  let sharingVersion = 0;
+  $('#save-point-sharing').on('click', function () {
+    const button = $(this).prop('disabled', true);
+    const version = sharingVersion;
+    $('#point-sharing-status').text('Saving point sharing…');
+    const rules = $('[data-point-sharing-team]').map(function () {
+      const row = $(this);
+      const enabled = row.find('[data-sharing-active]').prop('checked');
+      const mode = row.find('[data-sharing-mode]').val();
+      const regionIds = row.find('[data-sharing-region]:checked').map(function () { return Number(this.value); }).get();
+      if (this.dataset.sharingSaved !== 'true' && !enabled && mode === 'full' && !regionIds.length) return null;
+      return {team_id: Number(this.dataset.pointSharingTeam), enabled, mode, region_ids: regionIds};
+    }).get();
+    const enabled = $('#point-sharing-enabled').prop('checked');
+    $.ajax({url: <?php echo json_encode(route('admin.events.point-sharing.update', $event), 512) ?>, method:'PUT', headers:{'X-CSRF-TOKEN':csrf},
+      contentType:'application/json', data: JSON.stringify({enabled, rules})})
+      .done(function (data) {
+        const persisted = new Set(rules.map(rule => rule.team_id));
+        $('[data-point-sharing-team]').each(function () {
+          this.dataset.sharingSaved = String(persisted.has(Number(this.dataset.pointSharingTeam)));
+        });
+        const dirty = version !== sharingVersion;
+        if (!dirty) $('#point-sharing-status').text(data.message);
+        document.getElementById('settings-point-sharing').dispatchEvent(new CustomEvent('point-sharing:saved', {detail: {enabled, dirty}}));
+      })
+      .fail(function (xhr) { $('#point-sharing-status').text(Object.values(xhr.responseJSON?.errors || {}).flat().join(' ') || xhr.responseJSON?.message || 'Could not save point sharing.'); })
+      .always(function () { button.prop('disabled', false); });
+  });
+  $('#settings-point-sharing').on('change', sharingFields, function () {
+    sharingVersion += 1;
+    $('#point-sharing-status').text('Unsaved point-sharing changes. Use Save point sharing.');
+  });
+  let selectionVersion = 0;
+  $('#settings-team-selection').on('change input', 'input, select', function () {
+    selectionVersion += 1;
+    $('#selection-criteria-status').text('Unsaved selection criteria. Use Save selection criteria.');
+  });
+  $('#save-selection-criteria').on('click', function () {
+    const button = $(this).prop('disabled', true);
+    const version = selectionVersion;
+    $('#selection-criteria-status').text('Saving…');
+    $.ajax({url: <?php echo json_encode(route('backend.team-selection-criteria.store', $event), 512) ?>, method:'PUT', headers:{'X-CSRF-TOKEN':csrf}, contentType:'application/json', data:JSON.stringify({
+      criteria_preset: $('#selection-criteria-preset').val(),
+      criteria_expected_matches: $('#selection-expected-matches').val() || null,
+      criteria_weak_max_wins: $('#selection-weak-wins').val() || null,
+      excluded_result_region_ids: $('[data-selection-criteria-excluded]:checked').map(function(){return Number(this.value);}).get()
+    })}).done(function(){
+      if (version === selectionVersion) $('#selection-criteria-status').text('Selection criteria saved. Review the current results before saving a fresh draft.');
+    })
+      .fail(function(xhr){$('#selection-criteria-status').text(xhr.responseJSON?.message || 'Could not save selection criteria.');})
+      .always(function(){button.prop('disabled',false);});
+  });
+
+  if (window.toastr) {
+    Object.assign(window.toastr.options, { closeButton:true, progressBar:true, timeOut:3500, preventDuplicates:true });
+  }
+
+  let saveTimer = null;
+  let saveRequestInFlight = false;
+  let saveQueued = false;
+  let registrationControlDirty = false;
+  let registrationControlVersion = 0;
+  const pendingSections = new Set();
+
+  function setSaveStatus(section, state, message) {
+    const states = {
+      saved: 'text-success',
+      saving: 'text-primary',
+      error: 'text-danger'
+    };
+    $('[data-settings-status="' + section + '"]')
+      .removeClass('text-body-secondary text-success text-primary text-danger')
+      .addClass(states[state])
+      .text(message);
+  }
+
+  function focusSettingsField(field) {
+    const panel = field?.closest('[data-settings-panel]');
+    if (panel?.hidden) openSettingsSection('#' + panel.querySelector('[id]').id, true, false);
+    field?.focus();
+  }
+
+  /* =========================
+     HELPERS
+  ========================= */
+  function computeDate(start, days) {
+    const d = new Date(start + 'T12:00:00');
+    d.setDate(d.getDate() - days);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function showRequestErrors(xhr, fallback) {
+    $('.settings-validation').remove();
+    $('.is-invalid').removeClass('is-invalid');
+
+    const errors = xhr.responseJSON?.errors || {};
+    Object.entries(errors).forEach(function ([name, messages]) {
+      const field = $('[name="' + name.split('.')[0] + '"]').first();
+      if (!field.length) return;
+      field.addClass('is-invalid');
+      const anchor = field.hasClass('select2-hidden-accessible') ? field.next('.select2') : field;
+      $('<div class="invalid-feedback settings-validation d-block"></div>')
+        .text(Array.isArray(messages) ? messages[0] : messages)
+        .insertAfter(anchor);
+    });
+
+    const messages = Object.values(errors).flat().filter(Boolean);
+    (messages.length ? messages : [xhr.responseJSON?.message || fallback]).forEach(function (message) {
+      feedback.error(message);
+    });
+    focusSettingsField($('.is-invalid')[0]);
+  }
+
+  function accessWindowsAreValid() {
+    const pairs = [
+      ['convenor_starts_at', 'convenor_expires_at', 'Director access expiry must be later than its start.'],
+      ['scoring_starts_at', 'scoring_expires_at', 'Scoring access expiry must be later than its start.']
+    ];
+
+    $('.settings-validation').remove();
+    $('.autosave').removeClass('is-invalid');
+    for (const pair of pairs) {
+      const start = $('[name="' + pair[0] + '"]').val();
+      const end = $('[name="' + pair[1] + '"]').val();
+      if (start && end && new Date(end) <= new Date(start)) {
+        const field = $('[name="' + pair[1] + '"]').addClass('is-invalid');
+        $('<div class="invalid-feedback settings-validation d-block"></div>').text(pair[2]).insertAfter(field);
+        setSaveStatus('access', 'error', 'Fix the access window before settings can be saved.');
+        feedback.warning(pair[2]);
+        focusSettingsField(field[0]);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function renderScoringVenueAssignments() {
+    const selectedIds = $('.select2-scoring-accounts').val() || [];
+    const assignments = { ...initialScoringVenueAssignments };
+
+    $('.scoring-venue-select').each(function () {
+      assignments[String($(this).data('user-id'))] = $(this).val() || null;
+    });
+
+    const container = $('#scoring-venue-assignments').empty();
+    if (!selectedIds.length) {
+      $('<p class="text-muted small mb-0 scoring-venue-empty"></p>')
+        .text('Select a scoring account to assign its venue.')
+        .appendTo(container);
+      return;
+    }
+
+    selectedIds.forEach(function (userId) {
+      const option = $('.select2-scoring-accounts option[value="' + userId + '"]');
+      const row = $('<div class="scoring-venue-row"></div>').attr('data-user-id', userId);
+      $('<label class="form-label mb-1"></label>')
+        .attr('for', 'scoring-venue-' + userId)
+        .text(option.text().trim())
+        .appendTo(row);
+      const select = $('<select class="form-select scoring-venue-select"></select>')
+        .attr({ id: 'scoring-venue-' + userId, name: 'scoring_venues[' + userId + ']' })
+        .data('user-id', userId)
+        .append($('<option></option>').val('').text('All event venues'));
+      scoringVenues.forEach(function (venue) {
+        select.append($('<option></option>').val(venue.id).text(venue.name));
+      });
+      select.val(assignments[String(userId)] || '').on('change', () => autosave('access')).appendTo(row);
+      row.appendTo(container);
+    });
+  }
+
+  /* =========================
+     AUTOSAVE
+  ========================= */
+  function autosave(section) {
+
+    console.log('⏳ Autosave triggered (debounced)');
+    if (section) pendingSections.add(section);
+    pendingSections.forEach(key => setSaveStatus(key, 'saving', 'Saving changes…'));
+    clearTimeout(saveTimer);
+
+    saveTimer = setTimeout(function () {
+
+      if (!accessWindowsAreValid()) {
+        pendingSections.forEach(key => setSaveStatus(key, 'error', 'Changes pending. Fix the access window first.'));
+        return;
+      }
+      if (saveRequestInFlight) {
+        saveQueued = true;
+        return;
+      }
+
+      console.groupCollapsed('💾 AUTOSAVE PAYLOAD BUILD');
+
+      const payload = {};
+
+      $('.autosave').each(function () {
+        const el = $(this);
+        const name = el.attr('name');
+        if (!name) return;
+        if (name === 'registration_open' && !registrationControlDirty) return;
+
+        if (el.attr('type') === 'checkbox') {
+          payload[name] = el.is(':checked') ? 1 : 0;
+          return;
+        }
+
+        payload[name] = el.val() === '' ? null : el.val();
+      });
+
+      payload.admins = $('.select2-admins').val() || [];
+      if ($('.age-convener-select').length) {
+        payload.age_group_conveners = {};
+        $('.age-convener-select').each(function () {
+          payload.age_group_conveners[$(this).data('age')] = $(this).val() || null;
+        });
+      }
+      payload.convenors = $('.select2-convenors').val() || [];
+      payload.scoring_accounts = $('.select2-scoring-accounts').val() || [];
+      payload.scoring_venues = {};
+      $('.scoring-venue-select').each(function () {
+        payload.scoring_venues[String($(this).data('user-id'))] = $(this).val() || null;
+      });
+
+      // 🔹 Withdrawal logic
+      if (payload.withdrawal_days !== undefined && payload.start_date) {
+
+        console.log('↩️ Withdrawal calculation', {
+          start_date: payload.start_date,
+          withdrawal_days: payload.withdrawal_days
+        });
+
+        payload.withdrawal_deadline =
+          payload.withdrawal_days === null
+            ? null
+            : computeDate(
+                payload.start_date,
+                parseInt(payload.withdrawal_days, 10)
+              );
+
+        console.log('📆 Computed withdrawal_deadline:', payload.withdrawal_deadline);
+      }
+
+      delete payload.withdrawal_days;
+
+      const submittedRegistrationVersion = payload.registration_open === undefined
+        ? null
+        : registrationControlVersion;
+
+      console.log('📦 Final payload:', payload);
+      console.groupEnd();
+
+      console.log('🚀 Sending PATCH →', updateUrl);
+      const submittedSections = new Set(pendingSections);
+      pendingSections.clear();
+      saveRequestInFlight = true;
+
+      $.ajax({
+        url: updateUrl,
+        method: 'PATCH',
+        headers: { 'X-CSRF-TOKEN': csrf },
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify(payload)
+      })
+      .done(function (res) {
+        console.log('✅ Saved response:', res);
+        if (submittedRegistrationVersion !== null && submittedRegistrationVersion === registrationControlVersion) {
+          registrationControlDirty = false;
+        }
+        $('[data-result-state]').each(function () {
+          const input = document.getElementById(this.dataset.resultState);
+          if (payload[input.name] !== undefined && Number(payload[input.name]) === (input.checked ? 1 : 0)) this.textContent = input.checked ? 'On' : 'Off';
+        });
+        submittedSections.forEach(key => {
+          if (!pendingSections.has(key)) setSaveStatus(key, 'saved', 'Changes saved.');
+        });
+        feedback.success(res.message || 'Event settings saved.');
+        updatePreviews();
+      })
+      .fail(function (xhr) {
+        console.error('❌ Save failed');
+        console.error('Status:', xhr.status);
+        console.error('Response:', xhr.responseText);
+
+        submittedSections.forEach(key => {
+          if (!pendingSections.has(key)) setSaveStatus(key, 'error', 'Changes not saved.');
+          pendingSections.add(key);
+        });
+        showRequestErrors(xhr, 'Event settings could not be saved. Please try again.');
+      })
+      .always(function () {
+        saveRequestInFlight = false;
+        if (saveQueued) {
+          saveQueued = false;
+          autosave();
+        }
+      });
+
+    }, 700);
+  }
+
+  const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')];
+  const settingsLinks = [...document.querySelectorAll('.settings-section-links a')];
+
+  function openSettingsSection(hash, updateHash = true, focus = true) {
+    const section = document.getElementById(hash.replace(/^#/, ''));
+    const panel = section?.closest('[data-settings-panel]');
+    if (!panel) return;
+    settingsPanels.forEach(item => { item.hidden = item !== panel; });
+    settingsLinks.forEach(link => {
+      const anchor = document.getElementById(link.hash.slice(1));
+      if (panel.contains(anchor)) {
+        link.setAttribute('aria-current', 'location');
+        $('#settings-section-select').val(link.hash);
+      } else {
+        link.removeAttribute('aria-current');
+      }
+    });
+    if (updateHash && location.hash !== hash) history.pushState(null, '', hash);
+    if (focus) {
+      section.setAttribute('tabindex', '-1');
+      section.focus({ preventScroll: true });
+      section.scrollIntoView({ block: 'start' });
+    }
+  }
+
+  $('#settings-section-select').on('change', function () {
+    openSettingsSection(this.value, true, false);
+  });
+  $('.settings-section-links a').on('click', function (event) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openSettingsSection(this.hash);
+  });
+  $(window).on('hashchange', function () { openSettingsSection(location.hash || '#settings-basics', false); });
+  if (location.hash) openSettingsSection(location.hash, false);
+  $('[data-result-state]').each(function () {
+    const badge = this;
+    $('#' + badge.dataset.resultState).on('change', function () { badge.textContent = (this.checked ? 'On' : 'Off') + ' - unsaved'; });
+  });
+  /* =========================
+     BIND AUTOSAVE
+  ========================= */
+  $(document).on('change keyup', '.autosave', function () {
+    if ($(this).attr('name') === 'registration_open') {
+      registrationControlDirty = true;
+      registrationControlVersion += 1;
+    }
+    autosave(this.closest('[data-settings-panel]').dataset.settingsPanel);
+  });
+  $('#event-settings-form').on('submit', function (event) {
+    event.preventDefault();
+    const section = settingsPanels.find(panel => !panel.hidden)?.dataset.settingsPanel;
+    if (['basics', 'results', 'access'].includes(section)) autosave(section);
+  });
+
+  $('.age-convener-select').select2({
+    width: '100%', allowClear: true, placeholder: 'No convener assigned',
+    ajax: {
+      url: userSearchUrl, dataType: 'json', delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] })
+    }
+  }).on('change', () => autosave('access'));
+
+  $('.select2-admins').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: $('.select2-admins').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
+  }).on('change', function () {
+    console.log('👥 Admins changed:', $(this).val());
+    autosave('access');
+  });
+
+  $('.select2-convenors').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: $('.select2-convenors').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'management' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
+  }).on('change', function () {
+    console.log('👥 Convenors changed:', $(this).val());
+    autosave('access');
+  });
+
+  $('.select2-scoring-accounts').select2({
+    width: '100%',
+    allowClear: true,
+    placeholder: $('.select2-scoring-accounts').data('placeholder'),
+    ajax: {
+      url: userSearchUrl,
+      dataType: 'json',
+      delay: 250,
+      data: params => ({ q: params.term || '', scope: 'scoring' }),
+      processResults: data => ({ results: data.results || [] }),
+      cache: true
+    }
+  }).on('change', function () {
+    console.log('🎾 Scoring accounts changed:', $(this).val());
+    renderScoringVenueAssignments();
+    autosave('access');
+  });
+
+  /* =========================
+     QUILL AUTOSAVE
+  ========================= */
+  const quill = new EventRichTextEditor('#info-editor');
+  let infoTimer = null;
+
+  quill.on('text-change', function () {
+    setSaveStatus('information', 'saving', 'Saving information…');
+    clearTimeout(infoTimer);
+
+    infoTimer = setTimeout(function () {
+
+      const html = quill.root.innerHTML || null;
+
+      console.groupCollapsed('📝 QUILL SAVE');
+      console.log('HTML length:', html?.length ?? 0);
+      console.groupEnd();
+
+      $.ajax({
+        url: updateUrl,
+        method: 'PATCH',
+        headers: { 'X-CSRF-TOKEN': csrf },
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify({ information: html })
+      })
+      .done(() => {
+        console.log('✅ Info saved');
+        setSaveStatus('information', 'saved', 'Public information saved.');
+        feedback.success('Public information saved.');
+      })
+      .fail((xhr) => {
+        console.error('❌ Info save failed', xhr.responseText);
+        setSaveStatus('information', 'error', 'Information not saved.');
+        showRequestErrors(xhr, 'Public information could not be saved.');
+      });
+
+    }, 1000);
+  });
+
+  /* =========================
+     DATE PREVIEWS
+  ========================= */
+  function updatePreviews() {
+    const start = $('[name="start_date"]').val();
+    const reg = parseInt($('[name="deadline"]').val(), 10);
+    const wit = parseInt($('[name="withdrawal_days"]').val(), 10);
+
+    console.log('📅 Preview update', { start, reg, wit });
+
+    if (start && !isNaN(reg)) {
+      const d = new Date(start + 'T12:00:00');
+      d.setDate(d.getDate() - reg);
+
+      $('#registration-closure-text').html(
+        `Registration closes on <strong>${
+          d.toLocaleDateString('en-ZA', {
+            day:'2-digit', month:'short', year:'numeric'
+          })
+        }</strong>`
+      );
+    }
+
+    if (start && !isNaN(wit)) {
+      const d = new Date(start + 'T12:00:00');
+      d.setDate(d.getDate() - wit);
+
+      $('#withdrawal-closure-text').html(
+        `Withdrawals close on <strong>${
+          d.toLocaleDateString('en-ZA', {
+            day:'2-digit', month:'short', year:'numeric'
+          })
+        }</strong>`
+      );
+    }
+  }
+
+  $(document).on(
+    'keyup change',
+    '[name="deadline"], [name="withdrawal_days"], [name="start_date"]',
+    updatePreviews
+  );
+
+  updatePreviews();
+  // =========================
+// LOGO PREVIEW (EXISTING)
+// =========================
+$('#logo-existing-select').on('change', function () {
+  const filename = $(this).val();
+
+  console.log('🖼 Existing logo selected:', filename);
+
+  if (!filename) {
+    $('#logo-preview').attr(
+      'src',
+      '<?php echo e(asset('assets/img/placeholder-logo.png')); ?>'
+    );
+    return;
+  }
+
+  $('#logo-preview').attr(
+    'src',
+    '<?php echo e(asset('assets/img/logos')); ?>/' + filename
+  );
+});
+$('[name="logo_upload"], #logo-existing-select').on('change', function () {
+
+  const logoControls = $('[name="logo_upload"], #logo-existing-select');
+  if (this.id === 'logo-existing-select') {
+    $('[name="logo_upload"]').val('');
+  }
+  setSaveStatus('logo', 'saving', 'Saving logo…');
+
+  const formData = new FormData();
+  formData.append('_method', 'PATCH');
+  formData.append('_token', csrf);
+
+  const file = $('[name="logo_upload"]')[0].files[0];
+  const existing = $('#logo-existing-select').val();
+
+  if (file) {
+    if (file.size > 2 * 1024 * 1024) {
+      $('[name="logo_upload"]').val('');
+      setSaveStatus('logo', 'error', 'Logo not saved.');
+      feedback.error('The event logo must be 2 MB or smaller.');
+      return;
+    }
+    formData.append('logo_upload', file);
+  } else {
+    formData.append('logo_existing', existing || '');
+  }
+
+  logoControls.prop('disabled', true);
+  $.ajax({
+    url: updateUrl,
+    method: 'POST',
+    processData: false,
+    contentType: false,
+    data: formData
+  })
+  .done((response) => {
+    $('#logo-preview').attr('src', response.logo_url);
+    const select = $('#logo-existing-select');
+    if (response.logo && !Array.from(select[0].options).some(option => option.value === response.logo)) {
+      select.append(new Option(response.logo, response.logo));
+    }
+    select.val(response.logo || '');
+    $('[name="logo_upload"]').val('');
+    console.log('✅ Logo autosaved');
+    setSaveStatus('logo', 'saved', 'Logo saved.');
+    feedback.success(existing || file ? 'Event logo saved.' : 'Event logo removed.');
+  })
+  .fail((xhr) => {
+    console.error('❌ Logo autosave failed', xhr.responseText);
+    setSaveStatus('logo', 'error', 'Logo not saved.');
+    showRequestErrors(xhr, 'The event logo could not be saved.');
+  })
+  .always(() => {
+    logoControls.prop('disabled', false);
+  });
+
+});
+
+});
+</script>
+
+
+
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\event\settings.blade.php ENDPATH**/ ?>

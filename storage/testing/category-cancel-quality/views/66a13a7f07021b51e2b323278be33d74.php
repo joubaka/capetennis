@@ -1,0 +1,1688 @@
+
+<?php
+  $paidManualEntryRequired = $event->isInterprovincialTrials() && (float) $event->entryFee > 0;
+  $manualPlayerActionLabel = $paidManualEntryRequired ? 'Add paid player' : 'Add player manually';
+  $manualPlayerSubmitLabel = $paidManualEntryRequired ? 'Add paid player' : 'Add player';
+?>
+
+<?php $__env->startSection('title', $event->name . ' – Entries'); ?>
+
+
+<?php $__env->startSection('vendor-style'); ?>
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/quill/typography.css')); ?>">
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/quill/editor.css')); ?>">
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/select2/select2.css')); ?>">
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/sweetalert2/sweetalert2.css')); ?>">
+<link rel="stylesheet" href="<?php echo e(asset('assets/vendor/libs/toastr/toastr.css')); ?>">
+<?php $__env->stopSection(); ?>
+
+
+<?php $__env->startSection('vendor-script'); ?>
+<script src="<?php echo e(asset('assets/vendor/libs/quill/quill.js')); ?>"></script>
+<script src="<?php echo e(asset('assets/vendor/libs/select2/select2.js')); ?>"></script>
+<script src="<?php echo e(asset('assets/vendor/libs/sweetalert2/sweetalert2.js')); ?>"></script>
+<script src="<?php echo e(asset('assets/vendor/libs/toastr/toastr.js')); ?>"></script>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('page-style'); ?>
+<style>
+  /* ============================
+   CATEGORY CARD STYLING
+============================ */
+  .category-card {
+    border: 1px solid rgba(105,108,255,.35);
+    border-left: 4px solid #696cff;
+    border-radius: .375rem;
+  }
+
+    .category-card:hover {
+      box-shadow: 0 0 0 1px rgba(105,108,255,.25);
+    }
+
+    .category-card .card-header {
+      background: #f8f8f8;
+    }
+
+    /* ============================
+   TABLE LAYOUT
+============================ */
+    .category-card table {
+      table-layout: fixed;
+      width: 100%;
+      min-width: 760px; /* forces scroll on mobile */
+    }
+
+    .category-card th,
+    .category-card td {
+      vertical-align: middle;
+      white-space: nowrap;
+      font-size: 0.85rem;
+    }
+
+  /* Bootstrap scroll wrapper */
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* ============================
+   COLUMN WIDTHS
+============================ */
+  .col-idx {
+    width: 48px;
+    text-align: center;
+  }
+
+  .col-player {
+    width: 200px;
+  }
+
+  .col-email {
+    width: 220px;
+    font-size: 0.8rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .col-cell {
+    width: 120px;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  .col-status {
+    width: 90px;
+    text-align: center;
+  }
+
+  .col-payment {
+    width: 90px;
+    text-align: center;
+  }
+
+  .col-actions {
+    width: 110px;
+  }
+
+  /* ============================
+   ROW CONSISTENCY
+============================ */
+  .category-card tbody tr {
+    height: 44px;
+  }
+
+  /* ============================
+   BADGES
+============================ */
+  .badge {
+    font-weight: 500;
+    font-size: 0.7rem;
+  }
+
+  /* ============================
+   BUTTON SAFETY
+============================ */
+  .add-player-btn,
+  .remove-player-btn,
+  .email-btn,
+  .category-lock-btn {
+    position: relative;
+    z-index: 2;
+  }
+
+  .category-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  /* ============================
+   MOBILE OPTIMISATION
+============================ */
+  @media (max-width: 768px) {
+
+    .category-card .card-header {
+      align-items: flex-start !important;
+      flex-wrap: wrap;
+      gap: .75rem;
+    }
+
+    .category-actions {
+      justify-content: flex-start;
+      width: 100%;
+    }
+
+    /* Hide email column */
+    .col-email {
+      display: none;
+    }
+
+    /* Allow player name wrapping */
+    .col-player {
+      white-space: normal;
+      font-size: 0.85rem;
+    }
+
+    /* Smaller cell column */
+    .col-cell {
+      width: 90px;
+      font-size: 0.75rem;
+    }
+
+    /* Stack action buttons */
+    .col-actions {
+      width: 110px;
+    }
+
+    /* Touch-friendly rows */
+    .category-card tbody tr {
+      height: auto;
+    }
+  }
+
+  /* ============================
+   DROPDOWN OVERFLOW FIX
+   Ensures action menus are always
+   visible even on small/narrow cards
+============================ */
+  .category-card {
+    overflow: visible !important;
+  }
+
+  .category-card .card-body {
+    overflow: visible !important;
+  }
+
+  .category-card .card {
+    overflow: visible !important;
+  }
+
+  .category-card .table-responsive {
+    overflow: visible !important;
+  }
+
+  /* Keep the horizontal scroll only via the wrapper */
+  .table-scroll-wrapper {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Dropdowns escape the card/table stacking context */
+  .dropdown-menu {
+    z-index: 1080;
+  }
+
+  .entry-actions-menu {
+    min-width: 210px;
+    max-width: calc(100vw - 16px);
+    max-height: min(60vh, 360px);
+    overflow-y: auto;
+    padding: .375rem;
+    border: 1px solid #dce4ed;
+    border-radius: .625rem;
+    box-shadow: 0 8px 24px rgba(32, 48, 68, .12);
+  }
+  /* Menus move under body while open, so these styles must be self-contained. */
+  .entry-actions-menu .dropdown-item {
+    display:flex; align-items:center; gap:.625rem;
+    min-height:44px; padding:.625rem .75rem;
+    border-radius:.375rem; color:#334155;
+    font-size:.875rem; line-height:1.4; white-space:normal;
+  }
+  .entry-actions-menu .dropdown-item i { width:20px; flex:0 0 20px; margin:0!important; font-size:1.125rem; }
+  .entry-actions-menu .dropdown-item:is(:hover, :focus-visible) { background:#eef3f8; color:#172b42; }
+  .entry-actions-menu .withdraw-player-btn { color:#b42318; }
+  .entry-actions-menu .withdraw-player-btn:is(:hover, :focus-visible) { background:#fff1f0; color:#912018; }
+  .entry-actions-menu .dropdown-divider { margin:.375rem 0; }
+
+
+  .entries-workspace [hidden] { display:none!important; }
+  .entries-workspace :is(.btn, .dropdown-item, summary, input, select) { min-height:44px; }
+  .entries-workspace summary { cursor:pointer; align-content:center; }
+  .entries-workspace .category-card table { table-layout:fixed; min-width:900px; }
+  .entries-workspace .category-card :is(th, td) { padding-inline:.75rem; text-align:left; }
+  .entries-workspace .category-card td { white-space:normal; overflow-wrap:break-word; }
+  .entries-workspace .col-idx { width:4%; white-space:nowrap!important; overflow-wrap:normal!important; }
+  .entries-workspace .col-player { width:22%; }
+  .entries-workspace .col-status { width:10%; }
+  .entries-workspace .col-payment { width:23%; }
+  .entries-workspace .col-contact { width:20%; }
+  .entries-workspace .col-poc { width:7%; }
+  .entries-workspace .col-actions { width:14%; }
+  .entries-workspace [data-admin-payment-note] { align-items:flex-start!important; }
+  .entries-workspace .col-payment .badge { max-width:100%; white-space:normal; line-height:1.4; text-align:left; }
+  @media(max-width:767px) {
+    .entries-workspace .category-card table { min-width:0; }
+    .entries-workspace .category-card thead { display:none; }
+    .entries-workspace .category-card tbody, .entries-workspace .category-card tr { display:block; }
+    .entries-workspace .category-card tr { padding:.75rem; border-bottom:1px solid #ddd; }
+    .entries-workspace .category-card td { display:grid; grid-template-columns:75px minmax(0,1fr); gap:.5rem; width:100%; text-align:left!important; border:0; padding:.375rem 0; }
+    .entries-workspace .category-card td::before { content:attr(data-label); font-weight:600; }
+    .entries-workspace .category-card td > * { min-width:0; }
+    .entries-workspace .col-contact a { overflow-wrap:anywhere; }
+    .entries-workspace .col-actions .dropdown { justify-self:start; }
+    .entries-workspace .table-scroll-wrapper { overflow:visible; }
+  }
+</style>
+<?php $__env->stopSection(); ?>
+
+
+
+<?php $__env->startSection('content'); ?>
+<meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
+<?php
+  $isMasters = $event->isMasters();
+  $canManageMasters = auth()->user()->hasRole('super-user')
+    || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id));
+?>
+
+<div class="container-xl entries-workspace">
+
+  <?php echo $__env->make('backend.event.partials.header', [
+    'eventWorkspaceActive' => 'entries',
+    'eventWorkspaceIcon' => 'ti-users',
+    'eventWorkspaceSubtitle' => 'Entries by category',
+  ], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isMasters): ?>
+    <div class="alert alert-info d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4" role="status">
+      <div>
+        <strong>Confirmed Masters roster</strong>
+        <div class="small mt-1">This page contains paid entries used for draws, results, exports and event communication. Manage invitations, reserves, category placement and private payments in the Masters dashboard.</div>
+      </div>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($canManageMasters): ?>
+        <a class="btn btn-sm btn-primary" href="<?php echo e($mastersBatch ? route('backend.masters.show', $mastersBatch) : route('backend.masters.setup', $event)); ?>">
+          <i class="ti ti-trophy me-1"></i>Manage Masters
+        </a>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </div>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 no-print">
+    <div><h2 class="h4 mb-1">Entries by category</h2><p class="text-muted mb-0">Manage players, category access and event communication.</p></div>
+    <div class="d-flex gap-2 flex-wrap">
+       <button type="button"
+        class="btn btn-outline-primary btn-sm email-btn"
+        data-scope="event">
+
+          <i class="ti ti-mail me-1"></i>Email All
+        </button>
+
+        <a href="<?php echo e(route('admin.events.entries.export', $event)); ?>" class="btn btn-outline-success btn-sm">
+          <i class="ti ti-download me-1"></i>Export
+        </a>
+    </div>
+  </div>
+
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()->hasRole('super-user') && $pendingCheckouts->isNotEmpty()): ?>
+    <section class="card border-warning mb-4" id="pending-checkouts" aria-labelledby="pending-checkouts-title" data-super-admin-only>
+      <div class="card-header bg-label-warning">
+        <h3 class="h5 mb-1" id="pending-checkouts-title">Pending checkouts and payment review</h3>
+        <p class="small mb-0">Canonical unpaid checkout drafts are shown separately from confirmed entries. Rows with recorded payment evidence or inconsistent checkout records are labelled for review. Private collection notes do not change their payment state.</p>
+        <p class="small mb-0 mt-1">Eligible unpaid checkouts expire after <?php echo e(\App\Domain\Payments\Services\CheckoutExpiryPolicy::MINUTES); ?> minutes from PayFast handoff, when present, or checkout creation. Paid checkouts and pending or verified EFT proof are protected. Entries needing review remain visible.</p>
+      </div>
+      <div class="table-responsive">
+        <table class="table mb-0">
+          <thead>
+            <tr>
+              <th>Player</th>
+              <th>Category</th>
+              <th>Checkout created</th>
+              <th>Canonical payment</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $pendingCheckouts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $pendingCheckout): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <?php
+                $pendingPlayer = $pendingCheckout->registration?->players?->first();
+                $checkoutClock = $pendingCheckoutClocks[$pendingCheckout->id] ?? ['created_at' => null, 'review' => 'Checkout needs review'];
+              ?>
+              <tr data-pending-checkout-id="<?php echo e($pendingCheckout->id); ?>">
+                <td><?php echo e(trim(($pendingPlayer?->name ?? '') . ' ' . ($pendingPlayer?->surname ?? '')) ?: 'Unknown player'); ?></td>
+                <td><?php echo e($pendingCheckout->categoryEvent?->category?->name ?? 'Uncategorised'); ?></td>
+                <td><?php echo e($checkoutClock['created_at']?->format('d M Y H:i') ?? $checkoutClock['review']); ?></td>
+                <td><span class="badge text-wrap text-start text-dark <?php echo e(!empty($checkoutClock['payment_pending']) ? 'bg-warning' : 'bg-label-secondary'); ?>"><?php echo e($checkoutClock['payment_label'] ?? 'Review required'); ?></span></td>
+              </tr>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+          </tbody>
+        </table>
+      </div>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($pendingCheckouts->count() === 100): ?>
+        <div class="card-footer small text-muted">Showing the 100 most recent checkout records needing payment or review.</div>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </section>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+  <div class="card card-body mb-4">
+    <div class="row g-3"><div class="col-md-5"><label class="form-label" for="entry-category-search">Find a category</label><input type="search" id="entry-category-search" class="form-control" data-entry-category-search placeholder="Category name"></div><div class="col-md-7"><label class="form-label" for="entry-player-search">Find a player</label><input type="search" id="entry-player-search" class="form-control" data-entry-player-search placeholder="Player name"></div></div>
+    <p class="small text-muted mt-2 mb-0">Search changes the displayed entries only. Email audiences and exports stay unchanged.</p>
+    <button type="button" class="btn btn-outline-secondary mt-2 align-self-start" data-entry-search-clear>Clear search</button>
+    <p class="small mt-2 mb-0" data-entry-match-count role="status" aria-live="polite"></p>
+  </div>
+  
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $categoryEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $categoryEvent): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+    <div class="card mb-4 category-card"
+         data-category-id="<?php echo e($categoryEvent->id); ?>"
+         data-locked="<?php echo e($categoryEvent->isLocked() ? '1' : '0'); ?>">
+<div class="card-header d-flex justify-content-between align-items-center">
+  <div class="category-meta">
+    <h5 class="mb-0"><?php echo e($categoryEvent->category?->name); ?></h5>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($categoryEvent->isCancelled()): ?><span class="badge bg-danger">Cancelled</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <small class="text-muted">
+        <span class="entry-count"><?php echo e($categoryEvent->allCategoryEventRegistrations->count()); ?></span> confirmed entries
+      </small>
+  </div>
+
+<div class="category-actions d-flex gap-2">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!$isMasters && !$event->isCamp() && !$event->isInterprovincialTrials() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id)))): ?>
+    <a class="btn btn-outline-danger btn-sm" href="<?php echo e(route('admin.category.cancel.show', [$event, $categoryEvent])); ?>"><?php echo e($categoryEvent->isCancelled() ? 'Cancellation details' : 'Cancel category'); ?></a>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+  
+  <button type="button"
+          class="btn btn-outline-primary btn-sm email-btn"
+          data-scope="category"
+          data-category="<?php echo e($categoryEvent->id); ?>">
+    <i class="ti ti-mail me-1"></i>Email Category
+  </button>
+
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($isMasters)): ?><div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Category access</button><div class="dropdown-menu dropdown-menu-end">
+  
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!$isMasters && $categoryEvent->isLocked() && !$categoryEvent->isCancelled()): ?>
+    <button type="button"
+            class="dropdown-item category-lock-btn"
+            data-locked="1"
+            data-url-unlock="<?php echo e(route('admin.category.unlock', $categoryEvent)); ?>">
+      <i class="ti ti-lock-open me-1"></i>Unlock
+    </button>
+  <?php elseif(!$isMasters && !$categoryEvent->isCancelled()): ?>
+    <button type="button"
+            class="dropdown-item category-lock-btn"
+            data-locked="0"
+            data-url-lock="<?php echo e(route('admin.category.lock', $categoryEvent)); ?>">
+      <i class="ti ti-lock me-1"></i>Lock
+    </button>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+  </div></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!$isMasters && !$categoryEvent->isLocked()): ?>
+    <button type="button"
+            class="btn btn-outline-success btn-sm add-player-btn"
+            data-category="<?php echo e($categoryEvent->id); ?>"
+            data-locked="0">
+      <i class="ti ti-plus me-1"></i><?php echo e($manualPlayerActionLabel); ?>
+
+    </button>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+</div>
+
+
+</div>
+
+     <div class="card-body p-0">
+  <div class="table-scroll-wrapper">
+    <table class="table table-striped mb-0">
+
+   <thead class="table-light">
+  <tr>
+    <th class="col-idx">#</th>
+    <th class="col-player">Player</th>
+    <th class="col-status">Status</th>
+    <th class="col-payment">Payment</th>
+    <th class="col-contact">Contact</th>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()->hasAnyRole(['super-user', 'admin'])): ?><th class="col-poc">POC</th><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <th class="col-actions text-end">Actions</th>
+  </tr>
+</thead>
+
+
+
+          <tbody>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $categoryEvent->allCategoryEventRegistrations; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $reg): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+
+              <?php $player = optional($reg->registration?->players)->first(); ?>
+              <tr class="<?php echo e($reg->status === 'withdrawn' ? 'table-danger text-muted' : ''); ?>" data-entry-id="<?php echo e($reg->id); ?>">
+                <td class="col-idx" data-label="#"><?php echo e($reg->status !== 'withdrawn' ? $loop->iteration : '—'); ?></td>
+                <td class="col-player" data-label="Player"><span><?php echo e($player?->name); ?> <?php echo e($player?->surname); ?></span></td>
+                <td class="col-status" data-label="Status">
+                  <div>
+                  <span class="badge <?php echo e($reg->status === 'withdrawn' ? 'bg-danger' : 'bg-success'); ?>">
+                    <?php echo e(ucfirst($reg->status ?? 'active')); ?>
+
+                  </span>
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($reg->status === 'withdrawn' && $reg->refund_status): ?>
+                    <br>
+                    <?php
+                      $rsBadge = match($reg->refund_status) {
+                        'completed'    => 'bg-success',
+                        'pending'      => 'bg-warning text-dark',
+                        'not_refunded' => 'bg-secondary',
+                        default        => 'bg-light text-dark',
+                      };
+                    ?>
+                    <span class="badge <?php echo e($rsBadge); ?> mt-1" style="font-size:.65rem;">
+                      <?php echo e(str_replace('_', ' ', ucfirst($reg->refund_status))); ?>
+
+                    </span>
+                  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                  </div>
+                </td>
+                <td class="col-payment" data-label="Payment">
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isMasters): ?>
+                    <span class="badge bg-success">Paid</span>
+                  <?php else: ?>
+                    <?php echo $__env->make('backend.event.partials.admin-payment-note', ['reg' => $reg], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+                  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </td>
+               <td class="col-contact" data-label="Contact"><details><summary>Contact details</summary><div class="mt-2 text-break">
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($player?->email): ?><a href="mailto:<?php echo e($player->email); ?>"><?php echo e($player->email); ?></a><?php else: ?><span>No email captured</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                  <div><?php echo e($player?->cellNr ?? 'No cell number captured'); ?></div>
+                </div></details></td>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()->hasAnyRole(['super-user', 'admin'])): ?>
+                  <td class="col-poc" data-label="POC">
+                    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($player?->is_player_of_colour === true): ?>
+                      <span class="badge bg-info">Yes</span>
+                    <?php elseif($player?->is_player_of_colour === false): ?>
+                      <span class="badge bg-light text-dark">No</span>
+                    <?php else: ?>
+                      <span class="text-muted">—</span>
+                    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                  </td>
+                <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+                <td class="col-actions text-end" data-label="Actions">
+  <div class="dropdown">
+    <button type="button"
+            class="btn btn-outline-secondary btn-sm dropdown-toggle"
+            data-bs-toggle="dropdown"
+            data-bs-boundary="viewport"
+            aria-expanded="false">
+      Actions
+    </button>
+    <ul class="dropdown-menu dropdown-menu-end entry-actions-menu">
+
+      <li>
+        <button type="button"
+                class="dropdown-item email-btn"
+                data-scope="player"
+                data-registration="<?php echo e($reg->registration_id); ?>">
+          <i class="ti ti-mail me-1"></i>Email
+        </button>
+      </li>
+
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($isMasters)): ?>
+      <li>
+        <button type="button"
+                class="dropdown-item move-player-btn"
+                data-entry="<?php echo e($reg->id); ?>"
+                data-player="<?php echo e($player?->name); ?> <?php echo e($player?->surname); ?>"
+                data-from-category="<?php echo e($categoryEvent->category?->name); ?>">
+          <i class="ti ti-arrows-exchange me-1"></i>Move category
+        </button>
+      </li>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+
+
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()->hasRole('super-user')): ?>
+
+        <li>
+          <button type="button"
+                  class="dropdown-item view-entry-details-btn" data-super-admin-only
+                  data-url="<?php echo e(route('admin.entry.details', $reg)); ?>">
+            <i class="ti ti-info-circle me-1"></i>View details
+          </button>
+        </li>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($reg->status !== 'withdrawn' && (!$isMasters || $canManageMasters)): ?>
+        <li><hr class="dropdown-divider"></li>
+        <li>
+          <button type="button"
+                  class="dropdown-item withdraw-player-btn"
+                  data-url="<?php echo e(route('admin.category.registration.withdraw', $reg)); ?>"
+                  data-player="<?php echo e(trim(($player?->name ?? '') . ' ' . ($player?->surname ?? ''))); ?>">
+            <i class="ti ti-user-minus me-1"></i>Remove player
+          </button>
+        </li>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </ul>
+  </div>
+</td>
+
+              </tr>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+            <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ($unansweredNominations ?? collect())->get($categoryEvent->id, collect()); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $nomination): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <?php $nominee = $nomination->player; $contactEmail = $nominee?->email ?: $nomination->nominee_email; ?>
+              <tr class="table-danger" data-nomination-id="<?php echo e($nomination->id); ?>" data-nominee-player-id="<?php echo e($nomination->player_id); ?>">
+                <td class="col-idx" data-label="#">—</td>
+                <td class="col-player" data-label="Player"><?php echo e($nomination->display_name); ?><div class="small">Nominated · not registered</div></td>
+                <td class="col-status" data-label="Status"><span class="badge bg-danger">No response</span></td>
+                <td class="col-payment" data-label="Payment">—</td>
+                <td class="col-contact" data-label="Contact">
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($nominee?->cellNr): ?><div><a href="tel:<?php echo e($nominee->cellNr); ?>"><?php echo e($nominee->cellNr); ?></a></div><?php else: ?><div>No cell number captured</div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($contactEmail): ?><a class="text-break" href="mailto:<?php echo e($contactEmail); ?>"><?php echo e($contactEmail); ?></a><?php else: ?><div>No email captured</div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </td>
+                <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(auth()->user()->hasAnyRole(['super-user', 'admin'])): ?><td class="col-poc" data-label="POC">—</td><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                <td class="col-actions text-end" data-label="Actions">
+                  <div class="dropdown">
+                    <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false">Actions</button>
+                    <ul class="dropdown-menu dropdown-menu-end entry-actions-menu">
+                      <li><a class="dropdown-item" href="<?php echo e(route('backend.event-communications.index', ['event' => $event, 'compose_scope' => 'individual', 'individual_key' => $nomination->player_id ? 'player:'.$nomination->player_id : 'nominee:'.$nomination->id, 'compose_filter' => 'all', 'followup_nomination_id' => $nomination->id])); ?>"><i class="ti ti-mail me-1"></i>Email this player</a></li>
+                      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($event->isInterprovincialTrials()): ?>
+                      <li><button type="button" class="dropdown-item nominee-action-btn" data-action="move" data-url="<?php echo e(route('admin.events.nominees.action', [$event, $categoryEvent, $nomination])); ?>" data-category="<?php echo e($categoryEvent->id); ?>" data-player="<?php echo e($nomination->display_name); ?>" data-revision="<?php echo e(app(\App\Services\NomineeFollowUpService::class)->revision($nomination)); ?>"><i class="ti ti-arrows-exchange me-1"></i>Move category</button></li>
+                      <li><hr class="dropdown-divider"></li>
+                      <li><button type="button" class="dropdown-item text-danger nominee-action-btn" data-action="remove" data-url="<?php echo e(route('admin.events.nominees.action', [$event, $categoryEvent, $nomination])); ?>" data-category="<?php echo e($categoryEvent->id); ?>" data-player="<?php echo e($nomination->display_name); ?>" data-revision="<?php echo e(app(\App\Services\NomineeFollowUpService::class)->revision($nomination)); ?>"><i class="ti ti-user-minus me-1"></i>Remove nomination</button></li>
+                      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                    </ul>
+                  </div>
+                </td>
+              </tr>
+            <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+</div>
+    </div>
+  <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div>
+
+
+<script>
+(function () {
+  const destinations = <?php echo json_encode($categoryEvents->filter(fn ($category) => $category->nominations_published && !$category->isLocked())->map(fn ($category) => ['id' => (string) $category->id, 'name' => $category->category?->name])->values(), 512) ?>;
+  document.addEventListener('click', async function (event) {
+    const button = event.target.closest('.nominee-action-btn');
+    if (!button || button.disabled) return;
+    event.preventDefault();
+    let target = null;
+    if (button.dataset.action === 'move') {
+      const options = Object.fromEntries(destinations.filter(category => category.id !== button.dataset.category).map(category => [category.id, category.name]));
+      if (!Object.keys(options).length) { toastr.info('There is no other published, unlocked category available.'); return; }
+      const selection = await Swal.fire({ title: 'Move nomination', text: 'Choose the category for ' + button.dataset.player + '.', input: 'select', inputOptions: options, inputPlaceholder: 'Choose a category', showCancelButton: true, confirmButtonText: 'Continue', inputValidator: value => value ? undefined : 'Choose a category.' });
+      if (!selection.isConfirmed) return;
+      target = selection.value;
+    }
+    const moving = button.dataset.action === 'move';
+    const confirmation = await Swal.fire({ title: moving ? 'Move nomination?' : 'Remove nomination?', text: moving ? button.dataset.player + ' will move to ' + destinations.find(category => category.id === target)?.name + '. Previous invitation history is retained. No email will be sent.' : 'Remove ' + button.dataset.player + ' from the current nomination list? Existing invitation history is retained.', icon: 'warning', showCancelButton: true, confirmButtonText: moving ? 'Move nomination' : 'Remove nomination' });
+    if (!confirmation.isConfirmed) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(button.dataset.url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: JSON.stringify({ action: button.dataset.action, revision: button.dataset.revision, target_category_id: target }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Could not change nomination.');
+      window.location.reload();
+    } catch (error) { toastr.error(error.message); button.disabled = false; }
+  });
+})();
+(function () {
+  const root = document.querySelector('.entries-workspace');
+  if (!root) return;
+  function filterEntries() {
+    const categoryTerms = root.querySelector('[data-entry-category-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const playerTerms = root.querySelector('[data-entry-player-search]').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let count = 0;
+    let nomineeCount = 0;
+    root.querySelectorAll('.category-card').forEach(card => {
+      const categoryMatch = categoryTerms.every(term => card.querySelector('.category-meta h5').textContent.toLowerCase().includes(term));
+      let matches = 0;
+      card.querySelectorAll('tbody tr[data-entry-id], tbody tr[data-nomination-id]').forEach(row => {
+        const labels = ['#', 'Player', 'Status', 'Payment', 'Contact', ...(row.querySelector('.col-poc') ? ['POC'] : []), 'Actions'];
+        Array.from(row.cells).forEach((cell, index) => { cell.dataset.label = labels[index] || ''; });
+        const playerName = row.cells[1]?.textContent.toLowerCase() || '';
+        const visible = categoryMatch && playerTerms.every(term => playerName.includes(term));
+        row.hidden = !visible;
+        if (visible) { matches++; if (row.hasAttribute('data-nomination-id')) nomineeCount++; else count++; }
+      });
+      card.hidden = !categoryMatch || (playerTerms.length > 0 && matches === 0);
+    });
+    const status = root.querySelector('[data-entry-match-count]');
+    const message = count + ' entries shown.' + (nomineeCount ? ' ' + nomineeCount + ' nominees with no response shown.' : '') + ' Category totals show all confirmed entries.';
+    if (status.textContent !== message) status.textContent = message;
+  }
+  root.querySelectorAll('[data-entry-category-search], [data-entry-player-search]').forEach(input => input.addEventListener('input', filterEntries));
+  root.querySelector('[data-entry-search-clear]').addEventListener('click', () => { root.querySelectorAll('[data-entry-category-search], [data-entry-player-search]').forEach(input => { input.value = ''; }); filterEntries(); });
+  new MutationObserver(filterEntries).observe(root, { childList:true, subtree:true });
+  filterEntries();
+})();
+</script>
+<?php echo $__env->make('backend.event.partials.email-modal', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($isMasters)): ?>
+<div class="modal fade" id="addPlayerModal" tabindex="-1" aria-labelledby="addPlayerModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form id="addPlayerForm" class="modal-content">
+      <?php echo csrf_field(); ?>
+      <input type="hidden" id="add_player_category_id">
+
+      <div class="modal-header bg-primary text-white">
+        <h5 class="modal-title" id="addPlayerModalTitle"><?php echo e($manualPlayerActionLabel); ?></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <label class="form-label fw-semibold" for="addPlayerRegistration">Player</label>
+     <select name="registration_id"
+        id="addPlayerRegistration"
+        class="form-select select2-player"
+        style="width:100%;"
+        required>
+
+          <option value="">Select player</option>
+        </select>
+
+        <label class="form-label fw-semibold mt-3" for="offlineCollectionStatus">Payment collection</label>
+        <select name="collection_status" id="offlineCollectionStatus" class="form-select" required>
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($paidManualEntryRequired)): ?><option value="unpaid">Unpaid</option><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          <option value="paid_privately">Paid outside the app (cash/EFT)</option>
+        </select>
+        <div class="form-text" id="offlineCollectionHelp">
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($paidManualEntryRequired): ?>Only use once payment has been collected outside the app.<?php else: ?> Choose “Paid outside the app” only if you have collected payment.<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+          This records a collection note; no payment amount or receipt is reconciled in the app. The player is added to the event, and Cape Tennis fees still appear in Finances. No online payment or refund is created.
+        </div>
+        <div id="existingCheckoutPayment" class="alert alert-warning mt-3" hidden role="status">
+          <strong>Record payment against the existing checkout</strong>
+          <p class="mb-2">Checkout <span data-existing-checkout-number></span>: <strong>R <span data-existing-checkout-amount></span></strong>.
+            Confirm you received this full amount by cash/EFT. This confirms the existing entry and records a receipt.</p>
+          <input type="hidden" name="existing_order_id" disabled>
+          <input type="hidden" name="confirmed_amount" disabled>
+          <label class="form-label" for="existingCheckoutReference">Cash/EFT receipt or bank reference</label>
+          <input type="text" id="existingCheckoutReference" name="reference" class="form-control" minlength="3" maxlength="120" disabled>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+       <button type="button"
+        class="btn btn-outline-secondary"
+        data-bs-dismiss="modal">
+  Cancel
+</button>
+     <button type="submit" class="btn btn-primary" data-register-offline-submit><?php echo e($manualPlayerSubmitLabel); ?></button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+<div class="modal fade" id="movePlayerModal" tabindex="-1">
+  <div class="modal-dialog modal-md modal-dialog-centered">
+    <form id="movePlayerForm" class="modal-content">
+      <?php echo csrf_field(); ?>
+      <input type="hidden" id="move_entry_id">
+
+      <div class="modal-header bg-info text-white">
+        <h5 class="modal-title">Move Player</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="alert alert-light border mb-3">
+          <div><strong>Player:</strong> <span id="move_player_name"></span></div>
+          <div><strong>From:</strong> <span id="move_from_category"></span></div>
+          <div><strong>To:</strong> <span id="move_to_category" class="text-primary"></span></div>
+        </div>
+
+        <label class="form-label">Select New Category</label>
+        <select name="new_category_id" id="moveCategorySelect" class="form-select" required>
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $categoryEvents; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $cat): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+              <option value="<?php echo e($cat->id); ?>">
+                  <?php echo e($cat->category?->name); ?>
+
+              </option>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </select>
+
+        <p class="small text-muted mt-2">Paid category changes are reviewed before confirmation. Wallet credit to the original payer is the default for a decrease. Increases must be paid by the registering account through PayFast.</p>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          Cancel
+        </button>
+        <button class="btn btn-info">
+          Move
+        </button>
+      </div>
+
+    </form>
+  </div>
+</div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+
+<script>
+window.routes = {
+  availableRegistrations: <?php echo json_encode(route('admin.category.availableRegistrations', ':id'), 512) ?>,
+  addPlayer: <?php echo json_encode(route('admin.category.addPlayer', ':id'), 512) ?>,
+  movePlayer: <?php echo json_encode(route('admin.category.movePlayer', ':id'), 512) ?>
+};
+</script>
+
+
+
+<?php $__env->stopSection(); ?>
+
+
+<div class="modal fade" id="entryDetailsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title"><i class="ti ti-search me-2"></i>Entry Provenance Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="entryDetailsBody">
+        <div class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<?php $__env->startSection('page-script'); ?>
+<script>
+
+console.log('📧 Entries page JS loaded');
+
+const csrf = document.querySelector('meta[name="csrf-token"]').content;
+
+/* =====================
+   SAFE MODAL INIT
+===================== */
+const sendMailEl   = document.getElementById('sendMailModal');
+const addPlayerEl  = document.getElementById('addPlayerModal');
+const movePlayerEl = document.getElementById('movePlayerModal');
+
+const sendMailModal  = sendMailEl  ? new bootstrap.Modal(sendMailEl)  : null;
+const addPlayerModal = addPlayerEl ? new bootstrap.Modal(addPlayerEl) : null;
+const movePlayerModal = movePlayerEl ? new bootstrap.Modal(movePlayerEl) : null;
+
+/* =====================
+   ACTIONS DROPDOWN INIT
+===================== */
+const entryDropdownMenus = new WeakMap();
+
+document.addEventListener('show.bs.dropdown', (event) => {
+    const toggle = event.target.matches('.col-actions .dropdown-toggle')
+        ? event.target
+        : event.target.querySelector?.('.col-actions .dropdown-toggle');
+    if (!toggle) return;
+
+    const dropdown = toggle.closest('.dropdown');
+    const menu = dropdown?.querySelector('.dropdown-menu');
+    const scrollArea = toggle.closest('.table-scroll-wrapper');
+    if (!dropdown || !menu || !scrollArea) return;
+
+    const toggleRect = toggle.getBoundingClientRect();
+    const areaRect = scrollArea.getBoundingClientRect();
+    const visibleTop = Math.max(8, areaRect.top);
+    const visibleBottom = Math.min(window.innerHeight - 8, areaRect.bottom);
+    const menuHeight = Math.min(menu.scrollHeight || 220, window.innerHeight * .6);
+    const roomBelow = visibleBottom - toggleRect.bottom;
+    const roomAbove = toggleRect.top - visibleTop;
+
+    dropdown.classList.toggle('dropup', roomBelow < menuHeight && roomAbove > roomBelow);
+    menu.classList.add('entry-actions-menu');
+    entryDropdownMenus.set(toggle, { menu, dropdown });
+    document.body.appendChild(menu);
+});
+
+document.addEventListener('hidden.bs.dropdown', (event) => {
+    const toggle = event.target.matches('.col-actions .dropdown-toggle')
+        ? event.target
+        : event.target.querySelector?.('.col-actions .dropdown-toggle');
+    const mounted = toggle ? entryDropdownMenus.get(toggle) : null;
+    if (mounted) {
+        mounted.dropdown.appendChild(mounted.menu);
+        entryDropdownMenus.delete(toggle);
+    }
+});
+
+document.querySelectorAll('.col-actions .dropdown-toggle').forEach((el) => {
+    bootstrap.Dropdown.getOrCreateInstance(el, {
+        popperConfig: (defaultConfig) => ({
+            ...defaultConfig,
+            strategy: 'fixed',
+            modifiers: [
+                ...(defaultConfig.modifiers || []),
+                {
+                    name: 'computeStyles',
+                    options: { adaptive: false }
+                },
+                {
+                    name: 'preventOverflow',
+                    options: { boundary: 'viewport', padding: 8 }
+                },
+                {
+                    name: 'flip',
+                    options: { fallbackPlacements: ['top-end', 'bottom-end'] }
+                }
+            ]
+        })
+    });
+});
+
+// Dropdown boundary is configured on each Actions toggle button.
+
+/* =====================
+   QUILL INIT
+===================== */
+let quill = null;
+if (document.getElementById('messageEditor')) {
+    quill = new Quill('#messageEditor', {
+        theme: 'snow',
+        placeholder: 'Type your message here…'
+    });
+}
+
+/* =====================
+   SELECT2 INIT
+===================== */
+function initPlayerSelect2(url) {
+    const select = $('#addPlayerRegistration');
+    if (!select.length) return;
+
+    select.select2({
+        dropdownParent: $('#addPlayerModal'),
+        placeholder: 'Search by player name...',
+        allowClear: true,
+        width: '100%',
+        minimumInputLength: 2,
+        ajax: {
+            url,
+            dataType: 'json',
+            delay: 250,
+            data: params => ({
+                q: params.term || '',
+                page: params.page || 1
+            }),
+            processResults: data => ({
+                results: data.results || [],
+                pagination: data.pagination || { more: false }
+            })
+        }
+    });
+}
+
+/* =====================
+   EMAIL MODAL OPEN
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.email-btn');
+    if (!btn || !sendMailModal) return;
+
+    e.preventDefault();
+
+    const form = document.getElementById('sendMailForm');
+    if (!form) return;
+
+    form.reset();
+    if (quill) quill.setText('');
+
+    document.getElementById('mail_scope').value = btn.dataset.scope || 'event';
+    document.getElementById('mail_category').value = btn.dataset.category || '';
+    document.getElementById('mail_registration').value = btn.dataset.registration || '';
+
+    sendMailModal.show();
+});
+
+/* =====================
+   SEND EMAIL
+===================== */
+const mailForm = document.getElementById('sendMailForm');
+if (mailForm) {
+    mailForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        if (quill) {
+            document.getElementById('emailMessage').value = quill.root.innerHTML;
+        }
+
+        fetch('<?php echo e(route('admin.events.email.send')); ?>', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            },
+            body: new FormData(mailForm)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if (res.review_required && res.review_url) { window.CapeMailReview.open(res.review_url); return; }
+            sendMailModal.hide();
+            const feedback = !res.success ? 'error' : (res.stats?.skipped || res.stats?.failed ? 'warning' : 'success');
+            toastr[feedback](res.message || `${res.queued} emails queued. Check the event Email Log.`);
+            if (res.report_url) window.location.assign(res.report_url);
+        })
+        .catch(() => toastr.error('Email failed. Please try again.'));
+    });
+}
+
+/* =====================
+   CATEGORY LOCK / UNLOCK
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.category-lock-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+
+    const locked = btn.dataset.locked === '1';
+    const url = locked ? btn.dataset.urlUnlock : btn.dataset.urlLock;
+
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json'
+        }
+    })
+    .then(r => r.json())
+    .then(res => {
+        const card = btn.closest('.category-card');
+        const nowLocked = res.locked;
+
+        // Build the opposite URL (swap /lock <-> /unlock in path)
+        const oppositeUrl = nowLocked
+            ? url.replace(/\/lock$/, '/unlock')
+            : url.replace(/\/unlock$/, '/lock');
+
+        // Update card data attribute
+        if (card) card.dataset.locked = nowLocked ? '1' : '0';
+
+        // Toggle button appearance
+        if (nowLocked) {
+            btn.dataset.locked = '1';
+            btn.className = 'dropdown-item category-lock-btn text-warning';
+            btn.innerHTML = '<i class="ti ti-lock-open me-1"></i>Unlock';
+            btn.dataset.urlUnlock = oppositeUrl;
+            delete btn.dataset.urlLock;
+            // Hide Add Player button
+            if (card) card.querySelectorAll('.add-player-btn').forEach(b => b.style.display = 'none');
+            toastr.success('Category locked.');
+        } else {
+            btn.dataset.locked = '0';
+            btn.className = 'dropdown-item category-lock-btn';
+            btn.innerHTML = '<i class="ti ti-lock me-1"></i>Lock';
+            btn.dataset.urlLock = oppositeUrl;
+            delete btn.dataset.urlUnlock;
+            // Show Add Player button (or create one if missing)
+            if (card) {
+                let addBtn = card.querySelector('.add-player-btn');
+                if (addBtn) {
+                    addBtn.style.display = '';
+                } else {
+                    const newBtn = document.createElement('button');
+                    newBtn.type = 'button';
+                    newBtn.className = 'btn btn-outline-success btn-sm add-player-btn';
+                    newBtn.dataset.category = card.dataset.categoryId;
+                    newBtn.dataset.locked = '0';
+                    newBtn.innerHTML = '<i class="ti ti-plus me-1"></i>' + <?php echo json_encode($manualPlayerActionLabel, 15, 512) ?>;
+                    btn.parentElement.appendChild(newBtn);
+                }
+            }
+            toastr.success('Category unlocked.');
+        }
+    })
+    .catch(() => toastr.error('Lock / unlock failed. Please try again.'));
+});
+
+/* =====================
+   REMOVE PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.remove-player-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+
+    Swal.fire({
+        title: 'Remove player?',
+        text: 'This will remove the player from this category.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, remove',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33',
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+        fetch(btn.dataset.url, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            }
+        })
+        .then(r => r.json())
+        .then(() => {
+            const row = btn.closest('tr');
+            const card = btn.closest('.category-card');
+            if (row) row.remove();
+            if (card) reindexRows(card);
+            updateEntryCount(card, -1);
+            toastr.success('Player removed from category.');
+        })
+        .catch(() => toastr.error('Remove failed. Please try again.'));
+    });
+});
+
+    /* =====================
+   WITHDRAW PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.withdraw-player-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+
+    const playerName = btn.dataset.player || 'this player';
+
+    const escapeWithdrawalHtml = value => String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+    const showDrawImpact = (impact, redirectUrl) => {
+        if (!impact?.requires_attention || !Array.isArray(impact.draws) || !impact.draws.length) {
+            if (redirectUrl) window.location.href = redirectUrl;
+            return;
+        }
+
+        const drawItems = impact.draws.map(draw => {
+            const scheduleNote = draw.has_schedule
+                ? `${draw.scheduled_matches} scheduled ${draw.scheduled_matches === 1 ? 'match' : 'matches'} must be reviewed`
+                : 'not scheduled yet';
+
+            return `<li><strong>${escapeWithdrawalHtml(draw.name)}</strong> — ${escapeWithdrawalHtml(scheduleNote)}</li>`;
+        }).join('');
+        const oneDraw = impact.draws.length === 1 ? impact.draws[0] : null;
+
+        Swal.fire({
+            title: 'Draw and schedule need attention',
+            html: `<p class="text-start">${escapeWithdrawalHtml(playerName)} was already placed in a draw.</p>
+                   <ul class="text-start mb-3">${drawItems}</ul>
+                   <p class="text-start mb-0"><strong>Next:</strong> redraw without this player first, then reschedule that draw. The other draws can stay unchanged.</p>`,
+            icon: 'warning',
+            confirmButtonText: redirectUrl ? 'Continue to refund' : (oneDraw ? 'Open affected draw' : 'OK'),
+            showCancelButton: !redirectUrl && !!oneDraw,
+            cancelButtonText: 'Stay on entries',
+            allowOutsideClick: false,
+        }).then(result => {
+            if (redirectUrl) {
+                window.location.href = redirectUrl;
+            } else if (result.isConfirmed && oneDraw?.draw_url) {
+                window.location.href = oneDraw.draw_url;
+            }
+        });
+    };
+
+    Swal.fire({
+        title: 'Remove ' + playerName + '?',
+        text: 'Removes the player from active event participation. Entry and payment history are retained. Any refund is handled separately.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Yes, remove',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#d33',
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+    fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(r => {
+        if (!r.ok && r.status !== 200) throw new Error('Could not remove player');
+        // If JSON response, update DOM; if redirect (non-JSON), reload
+        const ct = r.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+            return r.json().then(res => {
+                const row = btn.closest('tr');
+                const card = btn.closest('.category-card');
+                if (row) {
+                    row.classList.add('table-danger', 'text-muted');
+                    // Update status badge cell
+                    const statusCell = row.querySelector('td[data-label="Status"]');
+                    if (statusCell) {
+                        statusCell.innerHTML = '<span class="badge bg-danger">Withdrawn</span>';
+                    }
+                    // Update index cell to dash
+                    const idxCell = row.querySelector('td:first-child');
+                    if (idxCell) idxCell.textContent = '—';
+                    // Remove the withdraw button from the dropdown
+                    btn.closest('li')?.remove();
+                    // Match the active-only list shown after a page refresh.
+                    // The canonical withdrawal retains the server-side history.
+                    row.remove();
+                }
+                updateWithdrawnCount(card, +1);
+                updateEntryCount(card, -1);
+                reindexRows(card);
+                toastr.success(playerName + ' removed from active entries.');
+                showDrawImpact(res.draw_impact, res.redirect);
+            });
+        } else {
+            // Controller returned a redirect (e.g. refund page) – follow it
+            if (r.redirected) {
+                window.location.href = r.url;
+            } else {
+                location.reload();
+            }
+        }
+    })
+    .catch(() => toastr.error('Could not remove player. Please try again.'));
+    }); // end Swal.then
+});
+
+    /* =====================
+   ADD PLAYER MODAL
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.add-player-btn');
+    if (!btn || !addPlayerModal) return;
+
+    e.preventDefault();
+
+    if (btn.dataset.locked === '1') {
+        toastr.warning('This category is locked. Unlock it before adding players.');
+        return;
+    }
+
+    const categoryId = btn.dataset.category;
+    document.getElementById('add_player_category_id').value = categoryId;
+    document.getElementById('offlineCollectionStatus').value = <?php echo json_encode($paidManualEntryRequired ? 'paid_privately' : 'unpaid', 15, 512) ?>;
+    resetExistingCheckoutPayment();
+
+    const select = $('#addPlayerRegistration');
+
+    if (select.hasClass('select2-hidden-accessible')) {
+        select.select2('destroy');
+    }
+
+    select.empty().append(new Option('', '', false, false));
+
+    const url = window.routes.availableRegistrations.replace(':id', categoryId);
+    initPlayerSelect2(url);
+    addPlayerModal.show();
+});
+
+    /* =====================
+   ADD PLAYER SUBMIT
+===================== */
+const addForm = document.getElementById('addPlayerForm');
+function resetExistingCheckoutPayment() {
+    const panel = document.getElementById('existingCheckoutPayment');
+    if (!panel) return;
+    panel.hidden = true;
+    panel.querySelectorAll('input').forEach(input => { input.disabled = true; input.required = false; input.value = ''; });
+    document.getElementById('offlineCollectionHelp').hidden = false;
+    const button = document.querySelector('[data-register-offline-submit]');
+    if (button) button.textContent = <?php echo json_encode($manualPlayerSubmitLabel, 15, 512) ?>;
+}
+$('#addPlayerRegistration').on('change', resetExistingCheckoutPayment);
+document.getElementById('offlineCollectionStatus')?.addEventListener('change', resetExistingCheckoutPayment);
+if (addForm) {
+    addForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const categoryId = document.getElementById('add_player_category_id').value;
+        const url = window.routes.addPlayer.replace(':id', categoryId);
+        const submitButton = addForm.querySelector('[data-register-offline-submit]');
+        const submittedData = new FormData(addForm);
+
+        if (submitButton?.disabled) return;
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = <?php echo json_encode($paidManualEntryRequired ? 'Adding paid player…' : 'Adding player…', 15, 512) ?>;
+        }
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrf,
+                'Accept': 'application/json'
+            },
+            body: submittedData
+        })
+        .then(async response => {
+            const res = await response.json();
+
+            if (document.getElementById('add_player_category_id').value !== categoryId
+                || document.getElementById('addPlayerRegistration').value !== submittedData.get('registration_id')
+                || document.getElementById('offlineCollectionStatus').value !== submittedData.get('collection_status')) {
+                if (response.ok) { location.reload(); return null; }
+                throw new Error('The selected player or payment option changed. Review the selection and try again.');
+            }
+
+            if (response.status === 409 && res.existing_checkout) {
+                const panel = document.getElementById('existingCheckoutPayment');
+                panel.querySelector('[data-existing-checkout-number]').textContent = '#' + res.existing_checkout.order_id;
+                panel.querySelector('[data-existing-checkout-amount]').textContent = res.existing_checkout.amount;
+                panel.querySelector('[name="existing_order_id"]').value = res.existing_checkout.order_id;
+                panel.querySelector('[name="confirmed_amount"]').value = res.existing_checkout.amount;
+                panel.querySelectorAll('input').forEach(input => { input.disabled = false; });
+                panel.querySelector('[name="reference"]').required = true;
+                panel.hidden = false;
+                document.getElementById('offlineCollectionHelp').hidden = true;
+                panel.querySelector('[name="reference"]').focus();
+                return null;
+            }
+
+            if (!response.ok) {
+                const firstValidationError = res.errors
+                    ? Object.values(res.errors).flat()[0]
+                    : null;
+
+                throw new Error(firstValidationError || res.message || 'Could not add player.');
+            }
+
+            return res;
+        })
+        .then(res => {
+            if (!res) return;
+            if (!res.success) {
+                toastr.error(res.message || 'Add player failed.');
+                return;
+            }
+            addPlayerModal.hide();
+            toastr.success(res.existing_checkout_settled ? 'Payment recorded and existing entry confirmed.' : 'Player added successfully.');
+            // Find the category card
+            const card = document.querySelector(`.category-card[data-category-id="${categoryId}"]`);
+            if (card && res.row) {
+                const tbody = card.querySelector('tbody');
+                if (tbody) {
+                    tbody.querySelectorAll('[data-nominee-player-id]').forEach(row => {
+                        if (row.dataset.nomineePlayerId === submittedData.get('registration_id')) row.remove();
+                    });
+                    const existingRow = tbody.querySelector(`[data-entry-id="${res.entry_id}"]`);
+                    if (existingRow) existingRow.outerHTML = res.row;
+                    else {
+                        const firstNominee = tbody.querySelector('[data-nomination-id]');
+                        if (firstNominee) firstNominee.insertAdjacentHTML('beforebegin', res.row);
+                        else tbody.insertAdjacentHTML('beforeend', res.row);
+                    }
+                    reindexRows(card);
+                    const countEl = card.querySelector('.entry-count');
+                    if (countEl) countEl.textContent = res.count;
+                }
+            }
+        })
+        .catch(error => toastr.error(error.message || 'Could not add player. Please try again.'))
+        .finally(() => {
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = document.getElementById('existingCheckoutPayment').hidden
+                    ? <?php echo json_encode($manualPlayerSubmitLabel, 15, 512) ?> : 'Record payment & confirm entry';
+            }
+        });
+    });
+}
+
+    /* =====================
+   ADMIN PRIVATE PAYMENT NOTE
+===================== */
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.admin-payment-toggle-btn');
+    if (!btn) return;
+
+    e.preventDefault();
+    if (btn.disabled) return;
+
+    const paid = btn.dataset.nextPaid === '1';
+    btn.disabled = true;
+
+    fetch(btn.dataset.url, {
+        method: 'PATCH',
+        headers: {
+            'X-CSRF-TOKEN': csrf,
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ paid })
+    })
+    .then(async response => {
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Private collection note could not be updated.');
+        }
+        return result;
+    })
+    .then(result => {
+        const isPaid = result.admin_payment_status === 'paid';
+        const container = btn.closest('[data-admin-payment-note]');
+        const badge = container?.querySelector('[data-admin-payment-badge]');
+
+        if (badge) {
+            badge.textContent = `Private collection ${isPaid ? 'noted paid' : 'not marked paid'} (not reconciled)`;
+            badge.className = `badge ${isPaid ? 'bg-success' : 'bg-warning text-dark'}`;
+        }
+
+        btn.dataset.nextPaid = isPaid ? '0' : '1';
+        btn.textContent = isPaid ? 'Mark note unpaid' : 'Mark note paid';
+        btn.className = `btn btn-xs ${isPaid ? 'btn-outline-warning' : 'btn-outline-success'} admin-payment-toggle-btn`;
+        toastr.success(`Private collection note marked ${isPaid ? 'paid' : 'unpaid'}; no payment was reconciled.`);
+    })
+    .catch(error => toastr.error(error.message || 'Private collection note could not be updated.'))
+    .finally(() => { btn.disabled = false; });
+});
+
+    /* =====================
+   MOVE PLAYER
+===================== */
+document.addEventListener('click', function(e) {
+
+    const btn = e.target.closest('.move-player-btn');
+    if (!btn || !movePlayerModal) return;
+
+    const entryId = btn.dataset.entry;
+    const playerName = btn.dataset.player || '';
+    const fromCategory = btn.dataset.fromCategory || '';
+
+    document.getElementById('move_entry_id').value = entryId;
+
+    const nameEl = document.getElementById('move_player_name');
+    const fromEl = document.getElementById('move_from_category');
+    const toEl   = document.getElementById('move_to_category');
+    const select = document.getElementById('moveCategorySelect');
+
+    if (nameEl) nameEl.textContent = playerName;
+    if (fromEl) fromEl.textContent = fromCategory;
+    if (toEl && select) {
+        toEl.textContent = select.options[select.selectedIndex].text;
+    }
+
+    movePlayerModal.show();
+});
+
+    /* =====================
+   UPDATE DESTINATION LIVE
+===================== */
+const moveSelect = document.getElementById('moveCategorySelect');
+if (moveSelect) {
+    moveSelect.addEventListener('change', function () {
+        const toEl = document.getElementById('move_to_category');
+        if (toEl) {
+            toEl.textContent = this.options[this.selectedIndex].text;
+        }
+    });
+}
+
+    /* =====================
+   MOVE PLAYER SUBMIT
+===================== */
+const moveForm = document.getElementById('movePlayerForm');
+if (moveForm) {
+    moveForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const entryId = document.getElementById('move_entry_id').value;
+        const url = window.routes.movePlayer.replace(':id', entryId);
+        const submit = moveForm.querySelector('button:not([type="button"]):not([data-bs-dismiss])');
+        if (submit) submit.disabled = true;
+        try {
+            async function send(body) {
+                const response = await fetch(url, {method:'POST',headers:{'X-CSRF-TOKEN':csrf,'Accept':'application/json'},body});
+                const result = await response.json();
+                if (!response.ok || result.success === false) throw new Error(Object.values(result.errors || {}).flat()[0] || result.message || 'Move failed.');
+                return result;
+            }
+            const review = new FormData(moveForm); review.set('preview', '1');
+            const quote = await send(review);
+            const text = quote.legacy_unpaid ? 'Move this unpaid entry? No payment or wallet credit will be recorded.' : Number(quote.wallet_credit) > 0 ? 'Change category and credit R'+Number(quote.wallet_credit).toFixed(2)+' to the original payer wallet?' : 'Change category with no additional payment?';
+            if (!window.confirm(text)) return;
+            const body = new FormData(moveForm);
+            if (!quote.legacy_unpaid) { body.set('quote_token', quote.quote_token); body.set('request_token', quote.request_token); }
+            const result = await send(body);
+            movePlayerModal.hide();
+            toastr.success(result.message || 'Category changed.');
+            window.location.reload();
+        } catch (exception) { toastr.error(exception.message); }
+        finally { if (submit) submit.disabled = false; }
+    });
+}
+
+/* =====================
+   DOM HELPER FUNCTIONS
+===================== */
+function reindexRows(card) {
+    if (!card) return;
+    let idx = 1;
+    card.querySelectorAll('tbody tr').forEach(row => {
+        const idxCell = row.querySelector('td:first-child');
+        if (!idxCell) return;
+        if (row.classList.contains('table-danger')) {
+            idxCell.textContent = '—';
+        } else {
+            idxCell.textContent = idx++;
+        }
+    });
+}
+
+function updateEntryCount(card, delta) {
+    if (!card) return;
+    const countEl = card.querySelector('.entry-count');
+    if (countEl) {
+        const current = parseInt(countEl.textContent, 10) || 0;
+        countEl.textContent = Math.max(0, current + delta);
+    }
+}
+
+function updateWithdrawnCount(card, delta) {
+    if (!card) return;
+    let wEl = card.querySelector('.withdrawn-count');
+    const current = wEl ? (parseInt(wEl.textContent, 10) || 0) : 0;
+    const newVal = current + delta;
+    if (newVal <= 0) {
+        if (wEl) wEl.remove();
+    } else if (wEl) {
+        wEl.textContent = `(${newVal} withdrawn)`;
+    } else {
+        const meta = card.querySelector('.category-meta small');
+        if (meta) {
+            meta.insertAdjacentHTML('beforeend', ` &nbsp;<span class="text-danger withdrawn-count">(${newVal} withdrawn)</span>`);
+        }
+    }
+}
+
+// ============================
+//  ENTRY DETAILS (Super Admin)
+// ============================
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.view-entry-details-btn');
+    if (!btn) return;
+
+    const url = btn.dataset.url;
+    const modal = new bootstrap.Modal(document.getElementById('entryDetailsModal'));
+    document.getElementById('entryDetailsBody').innerHTML =
+        '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
+    modal.show();
+
+    fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' } })
+        .then(r => r.json())
+        .then(d => {
+            if (d.error) {
+                document.getElementById('entryDetailsBody').innerHTML =
+                    `<div class="alert alert-danger">${d.error}</div>`;
+                return;
+            }
+            const na = v => v ?? '—';
+            const badge = (label, cls) => `<span class="badge ${cls} me-1">${label}</span>`;
+
+
+            let txHtml = '';
+            if (d.transactions && d.transactions.length) {
+                txHtml = `<table class="table table-sm table-bordered mt-2 mb-0">
+                  <thead class="table-light"><tr>
+                    <th>TX ID</th><th>PayFast ID</th><th>Gross</th><th>Fee</th><th>Net</th>
+                    <th>CT Fee</th><th>Item</th><th>Payer Name</th><th>Test</th><th>Date</th>
+                  </tr></thead><tbody>`;
+                d.transactions.forEach(t => {
+                    txHtml += `<tr>
+                      <td>${na(t.id)}</td>
+                      <td>${na(t.pf_payment_id)}</td>
+                      <td>R${parseFloat(t.amount_gross||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.amount_fee||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.amount_net||0).toFixed(2)}</td>
+                      <td>R${parseFloat(t.cape_tennis_fee||0).toFixed(2)}</td>
+                      <td>${na(t.item_name)}</td>
+                      <td>${na(t.payer_name)}</td>
+                      <td>${t.is_test ? badge('TEST','bg-danger') : badge('Live','bg-success')}</td>
+                      <td style="white-space:nowrap">${na(t.created_at)}</td>
+                    </tr>`;
+                });
+                txHtml += '</tbody></table>';
+            } else {
+                txHtml = '<em class="text-muted">No transactions found for this entry.</em>';
+            }
+
+            let addedByHtml = '—';
+            if (d.added_by) {
+                const roleClass = d.added_by.role === 'Super Admin' ? 'bg-danger' : 'bg-secondary';
+                addedByHtml = `
+
+
+                  <strong>${na(d.added_by.name)}</strong>
+                  ${badge(d.added_by.role, roleClass)}
+                  <br><small class="text-muted">ID: ${d.added_by.id} &nbsp;|&nbsp; ${na(d.added_by.email)} &nbsp;|&nbsp; userType: ${na(d.added_by.userType)}</small>`;
+            }
+
+            const pmClass = d.payment_method?.includes('PayFast') && d.payment_method?.includes('Wallet') ? 'bg-success'
+                          : d.payment_method?.includes('PayFast') ? 'bg-success'
+                          : d.payment_method?.includes('Wallet') ? 'bg-info text-dark'
+                          : d.payment_method?.includes('Admin') ? 'bg-warning text-dark'
+                          : 'bg-secondary';
+
+            const pmBadge = d.payment_method?.includes('Wallet') && d.payment_method?.includes('PayFast')
+                ? `<span class="badge bg-success me-1">PayFast</span><span class="badge bg-info text-dark">+ Wallet</span>`
+                : `<span class="badge ${pmClass}">${na(d.payment_method)}</span>`;
+
+
+            // Wallet section
+            let walletHtml = '';
+            if (d.wallet_payment || d.wallet_refund) {
+                walletHtml = `<div class="col-12"><div class="card border-0 bg-light"><div class="card-body">
+                  <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Wallet</h6>`;
+                if (d.wallet_payment) {
+                    const meta = (() => { try { return JSON.parse(d.wallet_payment.meta); } catch(e) { return {}; } })();
+                    walletHtml += `<p class="mb-1"><strong>Payment:</strong> R${parseFloat(d.wallet_payment.amount||0).toFixed(2)}
+                      &nbsp;<span class="badge bg-info text-dark">Wallet debit</span>
+                      &nbsp;<small class="text-muted">${na(d.wallet_payment.created_at)}</small></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">WT ID: ${d.wallet_payment.wt_id} &nbsp;|&nbsp; Payable: ${na(d.wallet_payment.payable)}</p>
+                      ${meta.reference ? `<p class="mb-0 text-muted" style="font-size:.82rem">Ref: ${meta.reference}</p>` : ''}`;
+                }
+                if (d.wallet_refund) {
+                    const meta2 = (() => { try { return JSON.parse(d.wallet_refund.meta); } catch(e) { return {}; } })();
+                    walletHtml += `<p class="mb-1 mt-2"><strong>Refund credited to wallet:</strong> R${parseFloat(d.wallet_refund.amount||0).toFixed(2)}
+                      &nbsp;<span class="badge bg-success">Wallet credit</span>
+                      &nbsp;<small class="text-muted">${na(d.wallet_refund.created_at)}</small></p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">WT ID: ${d.wallet_refund.wt_id}${meta2.gross ? ' &nbsp;|&nbsp; Gross: R'+meta2.gross : ''}</p>`;
+                }
+                walletHtml += `</div></div></div>`;
+            }
+
+            document.getElementById('entryDetailsBody').innerHTML = `
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-3" style="font-size:.7rem;letter-spacing:.08em">Player</h6>
+                      <p class="mb-1"><strong>${na(d.player)}</strong></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">${na(d.player_email)}</p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">Cell: ${na(d.player_cell)}</p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">Player ID: ${na(d.player_id)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-3" style="font-size:.7rem;letter-spacing:.08em">Entry Info</h6>
+                      <p class="mb-1"><strong>${na(d.category)}</strong></p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">${na(d.event)}</p>
+                      <p class="mb-1">
+                        Status: ${badge(d.entry_status ?? '—', d.entry_status === 'withdrawn' ? 'bg-danger' : 'bg-success')}
+                        ${badge(d.payment_status ?? '—', d.payment_status === 'Paid' ? 'bg-success' : 'bg-warning text-dark')}
+                      </p>
+                      <p class="mb-1">Payment: ${pmBadge}</p>
+                      <p class="mb-1 text-muted" style="font-size:.82rem">PF Transaction ID: ${na(d.pf_transaction_id)}</p>
+                      <p class="mb-0 text-muted" style="font-size:.82rem">CER ID: ${na(d.entry_id)} &nbsp;|&nbsp; Created: ${na(d.created_at)}</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="card border-0 bg-light">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Added By</h6>
+                      ${addedByHtml}
+                    </div>
+                  </div>
+                </div>
+                ${d.entry_status === 'withdrawn' ? `                <div class="col-12">
+                  <div class="card border-0 bg-light">
+                    <div class="card-body">
+                      <h6 class="card-title text-uppercase text-muted mb-2" style="font-size:.7rem;letter-spacing:.08em">Withdrawal / Refund</h6>
+                      <p class="mb-1">Withdrawn at: ${na(d.withdrawn_at)}</p>
+                      <p class="mb-1">Refund status: ${na(d.refund_status)} &nbsp;|&nbsp; Method: ${na(d.refund_method)}</p>
+                      <p class="mb-0">Refund gross: R${parseFloat(d.refund_gross||0).toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>` : ''}
+
+                ${walletHtml}
+                <div class="col-12">
+                  <h6 class="text-uppercase text-muted mb-1" style="font-size:.7rem;letter-spacing:.08em">Transactions (transactions_pf)</h6>
+                  <div class="table-responsive">${txHtml}</div>
+                </div>
+              </div>`;
+        })
+        .catch(() => {
+            document.getElementById('entryDetailsBody').innerHTML =
+                '<div class="alert alert-danger">Failed to load entry details.</div>';
+        });
+});
+
+</script>
+<?php $__env->stopSection(); ?>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\event\individual\entries.blade.php ENDPATH**/ ?>

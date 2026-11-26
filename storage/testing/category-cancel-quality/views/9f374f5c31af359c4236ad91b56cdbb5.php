@@ -1,0 +1,11 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = ['up' => 'Move up', 'down' => 'Move down']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $direction => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+  <form method="POST" action="<?php echo e(route('team.order.player.list')); ?>" data-team-roster-change>
+    <?php echo csrf_field(); ?>
+    <input type="hidden" name="team_id" value="<?php echo e($team->id); ?>"><input type="hidden" name="event_id" value="<?php echo e($event->id); ?>">
+    <input type="hidden" name="direction" value="<?php echo e($direction); ?>">
+    <input type="hidden" name="slot_id" value="<?php echo e($identity->id); ?>"><input type="hidden" name="expected_rank" value="<?php echo e($identity->rank); ?>">
+    <input type="hidden" name="expected_player_id" value="<?php echo e($team->noProfile ? (int) $identity->player_profile : $identity->player_id); ?>">
+    <button class="btn btn-sm btn-outline-secondary <?php echo e($compactRoster ? 'roster-icon-control' : ''); ?>" <?php if($compactRoster): ?> title="<?php echo e($label); ?>" aria-label="<?php echo e($label); ?>: <?php echo e($name); ?>" <?php endif; ?>><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($compactRoster): ?><i class="ti ti-arrow-<?php echo e($direction); ?>" aria-hidden="true"></i><?php else: ?><?php echo e($label); ?><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></button>
+  </form>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\adminPage\admin_show\_roster-order-buttons.blade.php ENDPATH**/ ?>

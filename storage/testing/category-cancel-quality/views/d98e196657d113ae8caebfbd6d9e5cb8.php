@@ -1,0 +1,13 @@
+<?php $__env->startSection('title','Review camp invitations'); ?>
+<?php $__env->startSection('content'); ?>
+<div data-camp-workflow class="container-xxl container-p-y" style="max-width:1100px;overflow-wrap:anywhere"><h1 class="h3">Review camp invitations</h1><p><?php echo e(count($review->snapshot['rows'])); ?> messages. This review expires <?php echo e($review->expires_at->format('j M Y H:i')); ?>.</p>
+<p>From: <?php echo e($review->snapshot['envelope']['from_name']); ?> &lt;<?php echo e($review->snapshot['envelope']['from_address']); ?>&gt;<br>Reply to: <?php echo e($review->snapshot['envelope']['reply_to']); ?></p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $review->snapshot['rows']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $row): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div class="card mb-3"><div class="card-body"><h2 class="h5"><?php echo e($row['name']); ?> · <?php echo e($row['email']); ?></h2><p><?php echo e($row['notification_only']?'Notification only — no private decision or entry link':'Primary actionable invitation'); ?></p><p>Subject: <?php echo e($row['subject']); ?></p><iframe title="Email preview for <?php echo e($row['name']); ?>" sandbox srcdoc="<?php echo e($row['html']); ?>" style="width:100%;min-height:350px;border:1px solid #ddd"></iframe></div></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<form method="POST" action="<?php echo e(route('backend.camps.mail-queue',[$plan,$review])); ?>"><?php echo csrf_field(); ?><label><input type="checkbox" name="confirmed" value="1" required> I reviewed these exact recipients and messages.</label><br><button class="btn btn-primary mt-3">Queue reviewed invitations</button> <a class="btn btn-outline-secondary mt-3" href="<?php echo e(route('backend.camps.show',$plan)); ?>">Back without sending</a></form></div>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('page-script'); ?>
+<?php echo $__env->make('backend.practice-camps.feedback', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\practice-camps\mail-review.blade.php ENDPATH**/ ?>

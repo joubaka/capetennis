@@ -1,0 +1,4 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $row['shared_contributions'] ?? []; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $contribution): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+  <small class="d-block text-muted text-wrap">Includes <?php echo e(\App\Support\StandingsPoints::format($contribution['points'])); ?> shared points from <?php echo e($contribution['source']); ?> (<?php echo e($contribution['mode'] === 'full' ? 'full points' : 'equal split'); ?>).</small>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\fixtures\partials\shared-point-contributions.blade.php ENDPATH**/ ?>

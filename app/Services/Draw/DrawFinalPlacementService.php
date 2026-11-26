@@ -57,7 +57,7 @@ final class DrawFinalPlacementService
         }
         if (InterproRoundRobinFormat::selected($draw)) {
             $rows = collect();
-            foreach ($fixtures->whereNotNull('position') as $fixture) {
+            foreach ($fixtures->where('stage', '!=', 'CHALLENGE')->whereNotNull('position') as $fixture) {
                 if ((int) $fixture->match_status === 5) {
                     $rows->put((int) $fixture->position, $this->bye((int) $fixture->position));
                     $rows->put((int) $fixture->position + 1, $this->bye((int) $fixture->position + 1));
@@ -65,6 +65,19 @@ final class DrawFinalPlacementService
                 }
                 $fixture->winner_registration = app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture);
                 $this->applyPair($rows, $fixture, (int) $fixture->position);
+            }
+            foreach (InterproRoundRobinFormat::challengePairs($draw) as $upper) {
+                $challenge = $fixtures->firstWhere('match_nr', 5000 + $upper);
+                if ($challenge) $challenge->winner_registration = app(\App\Services\IndividualMatchOutcomeService::class)->winner($challenge);
+                if ($challenge && (int) $challenge->match_status === 5) {
+                    $rows->put($upper, $this->bye($upper));
+                    $rows->put($upper + 1, $this->bye($upper + 1));
+                } elseif (!$challenge?->winner_registration) {
+                    $rows->put($upper, $this->awaiting($upper));
+                    $rows->put($upper + 1, $this->awaiting($upper + 1));
+                } else {
+                    $this->applyPair($rows, $challenge, $upper);
+                }
             }
             return $rows->sortKeys()->values();
         }

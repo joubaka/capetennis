@@ -1621,6 +1621,11 @@ final class EventVenueScheduleService
         }
         $nodes = [];
         foreach ($fixtures as $fixture) {
+            if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw) && $fixture->stage === 'CHALLENGE') {
+                foreach ($fixtures->where('stage', '!=', 'RR')->where('stage', '!=', 'CHALLENGE') as $source) {
+                    $feeders[$fixture->id][] = $source->id;
+                }
+            }
             if ($draw->isTwoStageRoundRobin() && (int) $fixture->drawGroup?->round_robin_phase === 2) {
                 foreach ($fixtures as $source) {
                     if ((int) $source->drawGroup?->round_robin_phase === 1) $feeders[$fixture->id][] = $source->id;
@@ -1629,7 +1634,7 @@ final class EventVenueScheduleService
             $automatic = $fixture->fixtureResults->isEmpty() && (! $fixture->registration1_id || ! $fixture->registration2_id)
                 && ($fixture->winner_registration || (empty($feeders[$fixture->id])
                     && (int) $fixture->bracket_id === 1 && (int) $fixture->round === 1));
-            $automatic = $automatic || \App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture);
+            $automatic = $automatic || \App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture);
             $labels = $sourceLabels[$fixture->id] ?? [];
             ksort($labels);
             $dependencies = array_values(array_unique($feeders[$fixture->id] ?? []));

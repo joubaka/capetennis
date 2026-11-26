@@ -61,7 +61,7 @@ class DrawSetupController extends Controller
             'groups' => ['nullable', 'integer', 'min:1', 'max:26'],
             'second_stage_format' => ['sometimes', Rule::in(['equal_positions', \App\Services\Draw\HybridRoundRobinService::FORMAT])],
             'challenge_playoffs' => ['sometimes', 'boolean'],
-            'challenge_pairs' => [Rule::requiredIf(fn () => $request->input('workflow') === 'feed_in_monrad' && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
+            'challenge_pairs' => [Rule::requiredIf(fn () => in_array($request->input('workflow'), ['feed_in_monrad', \App\Services\Draw\InterproRoundRobinFormat::PRESET], true) && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
             'challenge_pairs.*' => ['integer', 'distinct', Rule::in(range(2, 62, 2))],
         ]);
         $trials = $data['workflow'] === \App\Services\Draw\InterproRoundRobinFormat::PRESET;
@@ -89,7 +89,7 @@ class DrawSetupController extends Controller
             abort_if($draw->locked || $draw->published || $draw->oop_published, 409,
                 'Unlock and unpublish the draw and its schedule before choosing a format.');
             abort_if($draw->isTeamDraw(), 422, 'Use the team draw setup for team fixtures.');
-            $challengePlayoffs = $data['workflow'] === 'feed_in_monrad' && (bool) ($data['challenge_playoffs'] ?? false);
+            $challengePlayoffs = ($trials || $data['workflow'] === 'feed_in_monrad') && (bool) ($data['challenge_playoffs'] ?? false);
             $sameWorkflow = $draw->settings?->workflow === $data['workflow']
                 && \App\Services\Draw\InterproRoundRobinFormat::selected($draw) === $trials;
             $roundRobin = in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
@@ -117,9 +117,12 @@ class DrawSetupController extends Controller
                     'Choose this format in a new draw before preparing later-stage fixtures. Existing fixtures and bookings remain protected.');
             }
             $groupsChanged = $groupCount !== null && $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() !== $groupCount;
-            $currentChallenges = $draw->settings?->workflow === 'feed_in_monrad' && (bool) ($draw->settings?->playoff_config['challenge_playoffs'] ?? false);
+            $currentChallenges = ($draw->settings?->workflow === 'feed_in_monrad' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) && (bool) ($draw->settings?->playoff_config['challenge_playoffs'] ?? false);
             $challengePairs = $challengePlayoffs ? array_map('intval', $data['challenge_pairs'] ?? []) : [];
             sort($challengePairs);
+            if ($trials && array_diff($challengePairs, [2, 4, 6, 8, 10])) {
+                throw \Illuminate\Validation\ValidationException::withMessages(['challenge_pairs' => 'Interpro challenges support base positions 2 v 3 through 10 v 11 only.']);
+            }
             $fieldCount = count($draw->flexibleMonrad?->graph['positions'] ?? [])
                 ?: count(array_filter($draw->flexibleMonrad?->draft['slots'] ?? [], fn ($slot) => ($slot['type'] ?? null) === 'player'));
             $eligibilityDraw = clone $draw;
@@ -192,7 +195,8 @@ class DrawSetupController extends Controller
             }
             if ($trials) {
                 $settings['preset_key'] = \App\Services\Draw\InterproRoundRobinFormat::PRESET;
-                $settings['playoff_config'] = \App\Services\Draw\InterproRoundRobinFormat::configuration();
+                $settings['playoff_config'] = \App\Services\Draw\InterproRoundRobinFormat::configuration()
+                    + ['challenge_playoffs' => $challengePlayoffs, 'challenge_pairs' => $challengePairs];
                 $settings['playoff_size'] = 4;
             }
             $draw->settings()->updateOrCreate(['draw_id' => $draw->id], $settings);

@@ -1,0 +1,65 @@
+<?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('team-draw.createFormat', $draw->event)): ?>
+<?php
+  $decisionService = app(\App\Services\TeamCompetitionDecisionService::class);
+  $phase = $draw->team_draw_selection['competition']['phase'] ?? null;
+  $decisionToken = $decisionService->token($draw);
+?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div class="alert alert-danger" role="alert"><?php echo e($errors->first()); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?><div class="alert alert-success" role="status"><?php echo e(session('success')); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<style>.organiser-decision input,.organiser-decision select,.organiser-decision button,.organiser-decision textarea{min-height:44px}.organiser-decision{overflow-wrap:anywhere}.organiser-decision .decision-row{display:grid;grid-template-columns:minmax(0,1fr) 5rem;gap:.75rem;align-items:center;padding:.75rem 0;border-bottom:1px solid #ddd}.organiser-decision .form-control,.organiser-decision .form-select{max-width:100%}</style>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($phase === 'round_robin'): ?>
+<?php ($savedDecision = $decisionService->standingsDecision($draw)); ?>
+<details class="card card-body my-3 organiser-decision" <?php if($errors->any()): ?> open <?php endif; ?>>
+  <summary style="min-height:44px">Organiser: decide final standings</summary>
+  <p class="mt-3">Set the final order for tied standings, a scoring mistake or a disqualification. Recorded scores and points remain unchanged. Reasons and decision history are private to organisers.</p>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($savedDecision): ?>
+    <div class="alert <?php echo e($savedDecision['valid'] ? 'alert-info' : 'alert-warning'); ?>"><?php echo e($savedDecision['valid'] ? 'An organiser final order is active.' : 'Results or teams changed. Review and save a new decision before progressing.'); ?></div>
+    <p class="small">Last decision: <?php echo e($savedDecision['decided_at']); ?> · <?php echo e($savedDecision['reason']); ?></p>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($draw->team_draw_selection['competition']['playoff_draw_id'])): ?>
+    <p>Playoffs already exist. These qualified positions are frozen to protect their pairings and results.</p>
+  <?php else: ?>
+  <?php ($decisionRows = app(\App\Services\TeamStandingsService::class)->forDraw($draw)); ?>
+  <form method="POST" action="<?php echo e(route('team-draw.decision.standings', $draw)); ?>"><?php echo csrf_field(); ?>
+    <input type="hidden" name="token" value="<?php echo e($decisionToken); ?>"><input type="hidden" name="request_id" value="<?php echo e((string) \Illuminate\Support\Str::uuid()); ?>">
+    <p>Choose each side once, in final position order. Excluded sides cannot qualify.</p>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $decisionRows; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $index => $row): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+      <div class="mb-3"><label class="form-label" for="decision-rank-<?php echo e($draw->id); ?>-<?php echo e($index); ?>">Position <?php echo e($index + 1); ?></label>
+        <select class="form-select" id="decision-rank-<?php echo e($draw->id); ?>-<?php echo e($index); ?>" name="order[]" required>
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $decisionRows; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $option): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($option['team_id']); ?>" <?php if((int) old('order.'.$index, $row['team_id']) === (int) $option['team_id']): echo 'selected'; endif; ?>><?php echo e($option['name']); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </select>
+      </div>
+    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <fieldset class="mb-3"><legend class="h6">Exclude from playoff qualification</legend>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $decisionRows; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $row): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><label class="form-check d-flex gap-2 align-items-center mb-2"><input class="form-check-input m-0" type="checkbox" name="excluded[]" value="<?php echo e($row['team_id']); ?>" <?php if(in_array($row['team_id'], old('excluded', $savedDecision['excluded'] ?? []))): echo 'checked'; endif; ?>><span><?php echo e($row['name']); ?></span></label><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </fieldset>
+    <label class="form-label" for="standings-reason-<?php echo e($draw->id); ?>">Private reason / evidence</label><textarea class="form-control mb-3" id="standings-reason-<?php echo e($draw->id); ?>" name="reason" minlength="5" maxlength="2000" required><?php echo e(old('reason')); ?></textarea>
+    <label class="form-check d-flex gap-2 align-items-center mb-3"><input class="form-check-input m-0" type="checkbox" name="accept_incomplete" value="1"><span>I authorise progression even if round-robin results are incomplete.</span></label>
+    <button class="btn btn-primary" <?php if($draw->locked): echo 'disabled'; endif; ?>>Save final standings decision</button>
+  </form>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</details>
+<?php elseif($phase === 'playoff'): ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $draw->teamTies()->with('rubbers.teamResults', 'rubbers.draw')->orderBy('tie_nr')->get(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $decisionTie): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php ($restoreDecision = (int) old('decision_tie_id') === (int) $decisionTie->id); ?>
+<?php ($rawOutcome = app(\App\Services\TeamStandingsService::class)->tieOutcome($decisionTie, false)); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($rawOutcome['complete'] && $rawOutcome['home'] === $rawOutcome['away']): ?>
+<details class="card card-body my-3 organiser-decision" <?php if($errors->any()): ?> open <?php endif; ?>>
+  <summary style="min-height:44px">Resolve <?php echo e($decisionTie->tie_nr === 1 ? '1st / 2nd' : '3rd / 4th'); ?> playoff: <?php echo e($rawOutcome['home']); ?>–<?php echo e($rawOutcome['away']); ?></summary>
+  <p class="mt-3">Record the agreed deciding procedure. The original match results and round-robin standings remain unchanged.</p>
+  <?php ($existingPlayoffDecision = $draw->team_draw_selection['decisions']['playoff_'.$decisionTie->id] ?? null); ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($existingPlayoffDecision): ?><p class="small">Previous organiser reason: <?php echo e($existingPlayoffDecision['reason']); ?></p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <form method="POST" action="<?php echo e(route('team-draw.decision.playoff', [$draw, $decisionTie])); ?>"><?php echo csrf_field(); ?>
+    <input type="hidden" name="token" value="<?php echo e($decisionToken); ?>"><input type="hidden" name="request_id" value="<?php echo e((string) \Illuminate\Support\Str::uuid()); ?>"><input type="hidden" name="decision_tie_id" value="<?php echo e($decisionTie->id); ?>">
+    <label class="form-label" for="method-<?php echo e($decisionTie->id); ?>">Agreed deciding method</label><select class="form-select mb-3" name="method" id="method-<?php echo e($decisionTie->id); ?>"><option value="sets_games" <?php if($restoreDecision && old('method') === 'sets_games'): echo 'selected'; endif; ?>>Sets won, then games won</option><option value="mixed_tiebreak" <?php if($restoreDecision && old('method') === 'mixed_tiebreak'): echo 'selected'; endif; ?>>Deciding mixed-doubles tie-break to 10 (win by two)</option><option value="ruling" <?php if($restoreDecision && old('method') === 'ruling'): echo 'selected'; endif; ?>>Organiser ruling / disqualification</option></select>
+    <label class="form-label" for="winner-<?php echo e($decisionTie->id); ?>">Winning side</label><select class="form-select mb-3" name="winner_team_id" id="winner-<?php echo e($decisionTie->id); ?>"><option value="<?php echo e($decisionTie->home_team_id); ?>" <?php if($restoreDecision && (int) old('winner_team_id') === (int) $decisionTie->home_team_id): echo 'selected'; endif; ?>><?php echo e($decisionTie->home_side_name); ?></option><option value="<?php echo e($decisionTie->away_team_id); ?>" <?php if($restoreDecision && (int) old('winner_team_id') === (int) $decisionTie->away_team_id): echo 'selected'; endif; ?>><?php echo e($decisionTie->away_side_name); ?></option></select>
+    <details class="mb-3"><summary style="min-height:44px">Deciding mixed-doubles score and players</summary><p>Complete these only when using a deciding mixed-doubles tie-break.</p><div class="row g-3"><div class="col-6"><label class="form-label" for="home-<?php echo e($decisionTie->id); ?>">Home score</label><input class="form-control" type="number" min="0" max="999" name="home_score" value="<?php echo e($restoreDecision ? old('home_score') : ''); ?>" id="home-<?php echo e($decisionTie->id); ?>"></div><div class="col-6"><label class="form-label" for="away-<?php echo e($decisionTie->id); ?>">Away score</label><input class="form-control" type="number" min="0" max="999" name="away_score" value="<?php echo e($restoreDecision ? old('away_score') : ''); ?>" id="away-<?php echo e($decisionTie->id); ?>"></div></div><label class="form-label mt-3" for="players-<?php echo e($decisionTie->id); ?>">Players on each side</label><textarea class="form-control" name="participants" maxlength="500" id="players-<?php echo e($decisionTie->id); ?>"><?php echo e($restoreDecision ? old('participants') : ''); ?></textarea></details>
+    <label class="form-label" for="reason-<?php echo e($decisionTie->id); ?>">Private reason / evidence</label><textarea class="form-control mb-3" name="reason" id="reason-<?php echo e($decisionTie->id); ?>" minlength="5" maxlength="2000" required><?php echo e($restoreDecision ? old('reason') : ''); ?></textarea>
+    <button class="btn btn-primary" <?php if($draw->locked): echo 'disabled'; endif; ?>>Confirm deciding result</button>
+  </form>
+</details>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\team-draw\partials\organiser-decisions.blade.php ENDPATH**/ ?>

@@ -252,17 +252,22 @@
       return;
     }
 
-    // The public schedule reads chronologically across group matches and playoffs.
-    // Hidden/unreleased times must not affect the visible ordering.
-    const timestamp = fx => {
-      if (!fx.time || fx.schedule_hidden === true) return Number.POSITIVE_INFINITY;
-      const value = new Date(String(fx.time).replace(' ', 'T')).getTime();
-      return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
-    };
+    // Visit every group's round before moving on to the next round. Membership
+    // comes from the full group, never the currently displayed fixture subset.
+    const groupById = new Map(RR_GROUPS.map(group => [Number(group.id), group]));
     const sorted = RR_OOP.slice().sort((a, b) => {
-      const first = timestamp(a), second = timestamp(b);
-      if (first !== second) return first < second ? -1 : 1;
-      return (Number(a.match_nr) || 0) - (Number(b.match_nr) || 0)
+      const aRR = a.stage === 'RR', bRR = b.stage === 'RR';
+      if (aRR !== bRR) return aRR ? -1 : 1;
+      if (aRR) {
+        const ga = groupById.get(Number(a.group_id)) || {};
+        const gb = groupById.get(Number(b.group_id)) || {};
+        const phase = Number(a.round_robin_phase || 1) - Number(b.round_robin_phase || 1);
+        const round = Number(a.round || 1) - Number(b.round || 1);
+        const size = (gb.registrations || []).length - (ga.registrations || []).length;
+        const name = String(ga.name || a.group_name || '').localeCompare(String(gb.name || b.group_name || ''), undefined, {numeric: true});
+        if (phase || round || size || name) return phase || round || size || name;
+      }
+      return (Number(a.play_order) || Number(a.match_nr) || 0) - (Number(b.play_order) || Number(b.match_nr) || 0)
         || (Number(a.id) || 0) - (Number(b.id) || 0);
     });
 
@@ -271,7 +276,7 @@
     sorted.forEach(fx => {
       const schedule = formatScheduleParts(fx);
       const scheduleHidden = fx.schedule_hidden === true;
-      const followedBy = 'Followed by';
+      const followedBy = window.RR_SCHEDULE_AVAILABLE === false ? 'Time to follow' : 'Followed by';
       const stage = fx.group_name ? 'Box ' + fx.group_name : (fx.stage || '');
 
       html += `
@@ -332,13 +337,17 @@
   $(document).ready(init);
 
   $(document).ready(function () {
-    const tabs = {'oop-tab': 'schedule', 'matrix-tab': 'draw', 'standings-tab': 'standings', 'main-bracket-tab': 'playoffs'};
+    const tabs = {'oop-tab': 'fixtures', 'standings-tab': 'standings', 'main-bracket-tab': 'playoffs'};
     function openHash() {
       const hash = window.location.hash;
-      const id = ['#draw', '#matrix'].includes(hash) ? 'matrix-tab'
+      const id = ['#draw', '#matrix'].includes(hash) ? 'standings-tab'
         : hash === '#standings' ? 'standings-tab'
         : ['#playoffs', '#main-bracket'].includes(hash) ? 'main-bracket-tab' : 'oop-tab';
       document.getElementById(id)?.click();
+      if (['#draw', '#matrix'].includes(hash)) {
+        const grid = document.getElementById('matrix-pane');
+        if (grid) grid.open = true;
+      }
     }
     Object.entries(tabs).forEach(([id, name]) => {
       document.getElementById(id)?.addEventListener('shown.bs.tab', () => {

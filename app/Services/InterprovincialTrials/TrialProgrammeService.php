@@ -61,6 +61,10 @@ class TrialProgrammeService
                 $draws = $category->draws()->with(['drawFixtures.fixtureResults', 'groups.groupRegistrations', 'registrations', 'flexibleMonrad', 'settings'])->get();
                 $fixtures = $draws->flatMap->drawFixtures;
                 if ($draws->isEmpty() || $fixtures->isEmpty() || $fixtures->contains(function ($fixture) {
+                    if (\App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture)) {
+                        return (int) $fixture->match_status !== 5
+                            && !app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture);
+                    }
                     if (! in_array((int) $fixture->match_status, [1, 3, \App\Domain\Draws\Enums\FixtureState::STATUS_RETIRED, 5], true)) {
                         return true;
                     }

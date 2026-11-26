@@ -79,6 +79,137 @@ class InterproRoundRobinFormatTest extends TestCase
         return $sets ? [implode(' ', array_column($sets, 0)), implode(' ', array_column($sets, 1))] : [];
     }
 
+    public function test_optional_challenges_wait_for_base_results_and_use_fixed_adjacent_positions(): void
+    {
+        $draw = $this->context();
+        $draw->settings()->update(['playoff_config' => InterproRoundRobinFormat::configuration()
+            + ['challenge_playoffs' => true, 'challenge_pairs' => [2, 4, 6, 8]]]);
+        $draw = $draw->fresh();
+        $service = app(InterproRoundRobinFormat::class);
+        $this->assertCount(22, $service->prepare($draw));
+        $this->assertCount(0, $service->prepare($draw));
+        $planning = $draw->fresh()->load(['drawFixtures.fixtureResults', 'groups', 'settings']);
+        $nodes = (new \ReflectionMethod(EventVenueScheduleService::class, 'nodesForDraw'))->invoke(
+            app(EventVenueScheduleService::class), $planning, \Carbon\Carbon::parse('2026-11-28 08:00'), 30);
+        $challengeId = $this->fixture($draw, 5002)->id;
+        $feeders = (new \ReflectionMethod(\App\Services\ScheduleEngine::class, 'feederMap'))->invoke(
+            app(\App\Services\ScheduleEngine::class), $planning->drawFixtures->keyBy('id'));
+        foreach ($draw->drawFixtures()->whereNotIn('stage', ['RR', 'CHALLENGE'])->pluck('id') as $baseId) {
+            $this->assertContains($baseId, $nodes[$challengeId]['dependencies']);
+            $this->assertContains($baseId, $feeders[$challengeId]);
+        }
+        $this->reachCarries($draw);
+        $this->assertNull($this->fixture($draw, 5002)->registration1_id);
+        foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009] as $nr) $this->score($draw, $nr);
+        $this->assertNull($this->fixture($draw, 5002)->registration1_id);
+        $this->score($draw, 3011);
+        $base = [2 => ['L', 2003, 3009], 4 => ['L', 3009, 3011], 6 => ['L', 3011, 3010], 8 => ['L', 3010, 4003]];
+        $setsBefore = DB::table('fixture_results')->count();
+        $played = 0;
+        foreach ($base as $upper => [, $higherFinal, $lowerFinal]) {
+            $challenge = $this->fixture($draw, 5000 + $upper);
+            $higher = $this->fixture($draw, $higherFinal);
+            $expectedHigher = (int) $higher->registration1_id === (int) $higher->winner_registration ? $higher->registration2_id : $higher->registration1_id;
+            $this->assertSame((int) $expectedHigher, (int) $challenge->registration1_id);
+            $this->assertSame((int) $this->fixture($draw, $lowerFinal)->winner_registration, (int) $challenge->registration2_id);
+            if (InterproRoundRobinFormat::noMatchRequired($challenge)) {
+                $this->assertSame((int) $challenge->registration1_id, app(IndividualMatchOutcomeService::class)->winner($challenge));
+                $this->assertSame(0, $challenge->fixtureResults()->count());
+                $this->assertStringContainsString('base positions retained', InterproRoundRobinFormat::score($challenge));
+            } else {
+                $before = app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->keyBy('position');
+                $this->assertSame('awaiting', $before[$upper]['status']);
+                $category = CategoryEvent::findOrFail($draw->category_event_id);
+                $eligible = $draw->groups()->with('groupRegistrations')->get()->flatMap->groupRegistrations->pluck('registration_id');
+                $this->assertEmpty(app(\App\Services\Draw\DrawResultOrderService::class)->forCategory(
+                    $category, collect([$draw->fresh()->load(['drawFixtures.fixtureResults', 'groups'])]), $eligible, collect()));
+                $this->score($draw, 5000 + $upper, 2);
+                $positions = app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->keyBy('position');
+                $this->assertSame((int) $challenge->registration2_id, (int) $positions[$upper]['registration_id']);
+                $this->assertSame((int) $challenge->registration1_id, (int) $positions[$upper + 1]['registration_id']);
+                $played++;
+            }
+        }
+        $this->assertGreaterThan(0, $played);
+        $this->assertSame($setsBefore + $played, DB::table('fixture_results')->count());
+        $positions = app(DrawFinalPlacementService::class)->forDraw($draw->fresh());
+        $this->assertCount(12, $positions->pluck('registration_id')->unique());
+        $projection = $this->bracketProjection($this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->getContent());
+        $this->assertCount(22, $projection['matches']);
+        $this->assertSame('challenges', $projection['boards'][2]['key']);
+        $this->assertSame([5002], $projection['boards'][2]['sections'][0]['matches']);
+        $skipped = $this->fixture($draw, 5002);
+        $this->assertTrue(InterproRoundRobinFormat::noMatchRequired($skipped));
+        $venue = Venue::forceCreate(['name' => 'Fictional challenge courts']);
+        $draw->event->venues()->attach($venue->id, ['num_courts' => 4]);
+        $draw->venues()->attach($venue->id, ['num_courts' => 4]);
+        try {
+            app(\App\Services\ScheduleEngine::class)->saveFixture($draw, $skipped->id, '2026-11-28 09:00', $venue->id, '1', 30);
+            $this->fail('Skipped challenge must not be booked.');
+        } catch (HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
+        $preview = app(EventVenueScheduleService::class)->preview($draw->event, ['draw_ids' => [$draw->id], 'venue_ids' => [$venue->id],
+            'start' => '2026-11-28 08:00', 'end' => '2026-11-28 20:00', 'duration' => 30, 'player_rest' => 15]);
+        $this->assertNotContains($skipped->id, collect($preview['matches'])->pluck('fixture_id')->all());
+        $before = $skipped->getAttributes();
+        $entry = CategoryEventRegistration::where('category_event_id', $draw->category_event_id)->where('registration_id', $skipped->registration1_id)->firstOrFail();
+        $entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
+        app(\App\Services\InterprovincialTrials\TrialWithdrawalProgressionService::class)->resolve($entry);
+        $this->assertSame($before, $skipped->fresh()->getAttributes());
+        $this->assertSame(0, DB::table('draw_audit_logs')->where('fixture_id', $skipped->id)->where('action', 'trials_withdrawal_loss')->count());
+    }
+
+    public function test_interpro_challenge_choices_save_at_setup_and_preserve_result_freeze(): void
+    {
+        $source = $this->context();
+        $draw = Draw::factory()->create(['event_id' => $source->event_id, 'category_event_id' => $source->category_event_id,
+            'published' => false, 'oop_published' => false, 'locked' => false]);
+        // Setup is permitted only before any tournament result, exactly as other format options.
+        DB::table('fixture_results')->delete();
+        $source->drawFixtures()->delete();
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET,
+            'challenge_playoffs' => true])->assertUnprocessable();
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET,
+            'challenge_playoffs' => true, 'challenge_pairs' => [12]])->assertUnprocessable();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET,
+            'challenge_playoffs' => true, 'challenge_pairs' => [8, 2, 6, 4]])->assertRedirect();
+        $this->assertSame([2, 4, 6, 8], InterproRoundRobinFormat::challengePairs($draw->fresh()));
+        $this->assertSame(4, $draw->groups()->count());
+        $settings = $draw->fresh()->settings->getAttributes();
+        $this->post(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET,
+            'challenge_playoffs' => true, 'challenge_pairs' => [2, 4, 6, 8]])->assertRedirect();
+        $this->assertSame($settings, $draw->fresh()->settings->getAttributes());
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR']);
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
+        $this->postJson(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET,
+            'challenge_playoffs' => true, 'challenge_pairs' => [2]])->assertConflict();
+        $this->assertSame($settings, $draw->fresh()->settings->getAttributes());
+    }
+
+    public function test_trial_rankings_wait_for_selected_challenges_and_accept_skipped_pairings(): void
+    {
+        $draw = $this->context([3, 3, 3, 3]);
+        $draw->settings()->update(['playoff_config' => InterproRoundRobinFormat::configuration()
+            + ['challenge_playoffs' => true, 'challenge_pairs' => [2, 4, 6, 8]]]);
+        $draw = $draw->fresh();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachCarries($draw);
+        foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009, 3011] as $nr) $this->score($draw, $nr);
+        $programme = app(\App\Services\InterprovincialTrials\TrialProgrammeService::class);
+        $this->assertNull($programme->refresh($draw->event));
+        foreach ([2, 4, 6, 8] as $upper) {
+            if (!InterproRoundRobinFormat::noMatchRequired($this->fixture($draw, 5000 + $upper))) $this->score($draw, 5000 + $upper, 2);
+        }
+        $run = $programme->refresh($draw->event);
+        $this->assertNotNull($run);
+        $this->assertCount(12, $run->positions);
+        $this->assertSame(app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->pluck('registration_id')->all(),
+            array_column($run->positions, 'registration_id'));
+        $source = $this->fixture($draw, 3007);
+        $original = InterproRoundRobinFormat::source($source);
+        $original->fixtureResults()->first()->update(['registration2_score' => 3]);
+        $this->assertNull($programme->refresh($draw->event));
+    }
+
     private function bracketProjection(string $html): array
     {
         $document = new \DOMDocument();
@@ -122,7 +253,8 @@ class InterproRoundRobinFormatTest extends TestCase
 
         // Event administrators can navigate the same draft preview through either URL.
         $this->get(route('frontend.fixtures.index', $draw))->assertOk()
-            ->assertSee('href="'.$link.'"', false)->assertSee('View playoff bracket');
+            ->assertSee('id="main-bracket-tab"', false)->assertSee('Playoff bracket')->assertSee('Round-robin standings')
+            ->assertDontSee('data-live-results-reload', false);
         $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('Draft preview');
 
         $foreignAdmin = User::factory()->create()->assignRole('admin');
@@ -135,7 +267,8 @@ class InterproRoundRobinFormatTest extends TestCase
         $draw->event->update(['published' => true]);
         $draw->update(['published' => true]);
         $this->get(route('frontend.fixtures.index', $draw))->assertOk()
-            ->assertSee('href="'.$link.'"', false)->assertSee('View playoff bracket');
+            ->assertSee('id="main-bracket-tab"', false)->assertSee('Playoff bracket')->assertSee('Round-robin standings')
+            ->assertSee('data-live-results-reload', false)->assertSee('data-draw-revision', false);
         $this->get(route('public.roundrobin.show', $draw))->assertOk()->assertSee('id="main-bracket-tab"', false);
         $bracket = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk();
         $this->assertCount(18, $this->bracketProjection($bracket->getContent())['matches']);
@@ -152,8 +285,8 @@ class InterproRoundRobinFormatTest extends TestCase
             'published' => false, 'oop_published' => false]);
         $draw->settings()->create(['workflow' => 'round_robin_playoffs', 'preset_key' => InterproRoundRobinFormat::PRESET,
             'playoff_config' => InterproRoundRobinFormat::configuration()]);
-        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('No matches are available')
-            ->assertSee('href="'.route('public.roundrobin.show', $draw).'#playoffs"', false);
+        $this->get(route('frontend.fixtures.index', $draw))->assertOk()->assertSee('id="main-bracket-tab"', false)->assertSee('Fixtures')
+            ->assertSee('window.RR_OOP       = []', false);
         $planning = $this->get(route('public.roundrobin.main-bracket', $draw))->assertOk()->assertSee('Group A position 1');
         $this->assertSame(12, substr_count($planning->getContent(), 'class="ct-final-position is-awaiting"'));
         $this->assertSame(0, $draw->drawFixtures()->count());

@@ -91,6 +91,9 @@ class PublicRoundRobinController extends Controller
       'rrFixtures' => $hub['rrFixtures'],
       'oops' => $hub['oops'],
       'standings' => $hub['standings'],
+      'liveResultsRevision' => $draw->published && ! (auth()->user()?->can('view', $draw) ?? false)
+        && ($draw->event->result_auto_refresh_enabled ?? true)
+        ? app(\App\Services\Draw\PublicDrawResultsRevision::class)->forDraw($draw, false) : null,
     ])->withHeaders($this->freshDrawHeaders());
   }
 

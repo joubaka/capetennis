@@ -3,13 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {chromium} = require('playwright');
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(__dirname, '../..');
 // Concatenated CSS must not retain byte-order marks / charset directives between sheets.
 const cleanCss = source => source.replace(/\uFEFF/g, '').replace(/@charset\s+["'][^"']+["'];/gi, '');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('public schedule is default and matrix venue text stays inside cells at phone and desktop widths', async () => {
+test('public fixtures rotate through group rounds and tabs fit phone and desktop widths', async () => {
   const browser = await chromium.launch({headless: true, channel: 'msedge'});
   try {
     const view = read('resources/views/frontend/roundrobin/show.blade.php');
@@ -27,14 +27,15 @@ test('public schedule is default and matrix venue text stays inside cells at pho
       await page.route('**/*', route => route.abort());
       await page.setContent(`<html class="light-style" data-theme="theme-default"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${cleanCss(styles)}</style></head><body class="ct-frontend">
         <main style="max-width:1450px;margin:auto;padding:16px"><div id="round-robin-app" class="rr-public-view" data-draw-id="1">${tabs}
-        <div class="tab-content"><div class="tab-pane fade" id="matrix-pane"><div class="card"><div class="card-body p-0"><div id="rr-matrix-wrapper" class="rr-public-matrices p-2"></div></div></div></div>
-        <div class="tab-pane fade show active" id="oop-pane"><table id="rr-order-table"><tbody></tbody></table></div>
-        <div class="tab-pane fade" id="standings-pane"></div><div class="tab-pane fade" id="main-bracket-pane"></div></div></div></main></body></html>`);
-      await page.addScriptTag({path: path.join(root, 'node_modules/jquery/dist/jquery.min.js')});
-      await page.addScriptTag({path: path.join(root, 'node_modules/bootstrap/dist/js/bootstrap.bundle.min.js')});
+        <div class="tab-content">
+        <div class="tab-pane fade show active" id="oop-pane"><div class="card"><div class="card-body p-0"><table id="rr-order-table"><tbody></tbody></table></div></div></div>
+        <div class="tab-pane fade" id="standings-pane"><div id="rr-standings-wrapper"></div><details id="matrix-pane"><summary>Results grid</summary><div id="rr-matrix-wrapper" class="rr-public-matrices p-2"></div></details></div><div class="tab-pane fade" id="main-bracket-pane">Playoff bracket content</div></div></div></main></body></html>`);
+      await page.addScriptTag({path: path.join(process.env.DRAW_NODE_MODULES || path.join(root, 'node_modules'), 'jquery/dist/jquery.min.js')});
+      await page.addScriptTag({path: path.join(process.env.DRAW_NODE_MODULES || path.join(root, 'node_modules'), 'bootstrap/dist/js/bootstrap.bundle.min.js')});
       await page.evaluate(() => {
         const names = ['Alexandra Example Longsurname', 'Jasper Example', 'Karli Example', 'Liam Example', 'Lize Example'];
-        window.RR_GROUPS = [{id: 1, name: 'A', registrations: names.map((name, i) => ({id: i + 1, display_name: name, pivot: {seed: i + 1}}))}];
+        window.RR_GROUPS = [{id: 1, name: 'A', registrations: names.map((name, i) => ({id: i + 1, display_name: name, pivot: {seed: i + 1}}))},
+          {id: 2, name: 'B', registrations: names.slice(0, 4).map((name, i) => ({id: i + 6, display_name: name}))}];
         const fixtures = [];
         for (let i = 1; i <= 5; i++) for (let j = i + 1; j <= 5; j++) fixtures.push({id: fixtures.length + 1, r1_id: i, r2_id: j,
           time: '2026-10-31 11:15:00', venue_name: 'Fictional Very Long Tennis Sports Club and Academy', all_sets: []});
@@ -42,15 +43,15 @@ test('public schedule is default and matrix venue text stays inside cells at pho
         fixtures[0].venue_name = 'SECRET HIDDEN VENUE';
         window.RR_FIXTURES = {1: fixtures};
         window.RR_OOP = [
-          {id: 2, match_nr: 2, round: 1, stage: 'RR', time: '2026-10-31 09:00:00'},
+          {id: 2, match_nr: 2, group_id: 2, round: 1, stage: 'RR', time: '2026-10-31 09:00:00'},
           {id: 7, match_nr: 7, round: 1, stage: 'MAIN', time: '2026-11-01 08:00:00'},
           {id: 3, match_nr: 3, round: 2, stage: 'RR', time: '2026-10-31 08:20:00'},
           {id: 1, match_nr: 1, round: 1, stage: 'RR', time: '2026-10-31 08:00:00'},
           {id: 6, match_nr: 6, round: 2, stage: 'MAIN', time: '2026-10-31 10:00:00'},
-          {id: 5, match_nr: 5, round: 1, stage: 'RR', time: null},
-          {id: 4, match_nr: 4, round: 1, stage: 'RR', time: '2026-10-30 07:00:00', schedule_hidden: true},
+          {id: 5, match_nr: 5, group_id: 2, round: 2, stage: 'RR', time: null},
+          {id: 4, match_nr: 4, group_id: 2, round: 1, stage: 'RR', time: '2026-10-30 07:00:00', schedule_hidden: true},
           {id: 8, match_nr: 8, round: 2, stage: 'PLATE', time: '2026-10-31 10:00:00'},
-        ].map(row => ({home: 'Synthetic player A', away: 'Synthetic player B', ...row}));
+        ].map(row => ({home: 'Synthetic player A', away: 'Synthetic player B', group_id: 1, ...row}));
         window.RR_STANDINGS = {};
         window.CTPlayerRatings = {marker: () => '<span style="display:inline-block;white-space:nowrap;font-size:10px">55.9 | MEDIUM</span>'};
       });
@@ -59,13 +60,16 @@ test('public schedule is default and matrix venue text stays inside cells at pho
       await page.waitForSelector('.rr-group-section', {state: 'attached'});
       assert.equal(await page.locator('#oop-tab').getAttribute('aria-selected'), 'true');
       assert.equal(await page.locator('#oop-pane').isVisible(), true);
-      assert.deepEqual(await page.locator('#rr-order-table tbody td[data-label="Match"]').allTextContents(), ['1', '3', '2', '6', '8', '7', '4', '5']);
-      await page.locator('#matrix-tab').click();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      await page.screenshot({path: path.join(root, `storage/framework/testing/public-roundrobin-fixtures-${width}.png`), fullPage: true});
+      assert.deepEqual(await page.locator('#rr-order-table tbody td[data-label="Match"]').allTextContents(), ['1', '2', '4', '3', '5', '6', '7', '8']);
+      assert.equal(await page.locator('#rrTabs button').count(), 3);
+      await page.locator('#standings-tab').click();
       await page.waitForTimeout(250);
-      assert.equal(await page.evaluate(() => location.hash), '#draw');
-      await page.locator('#matrix-tab').press('ArrowLeft');
+      assert.equal(await page.evaluate(() => location.hash), '#standings');
+      await page.locator('#standings-tab').press('ArrowLeft');
       await page.waitForTimeout(250);
-      assert.equal(await page.evaluate(() => location.hash), '#schedule');
+      assert.equal(await page.evaluate(() => location.hash), '#fixtures');
       await page.evaluate(() => { location.hash = '#draw'; });
       await page.waitForTimeout(250);
       assert.equal(await page.locator('#matrix-pane').isVisible(), true);
@@ -78,10 +82,14 @@ test('public schedule is default and matrix venue text stays inside cells at pho
         }
         assert.equal(await page.locator('.rr-public-match-time').first().isVisible(), true);
       } else {
-        assert.equal(await page.locator('.rr-matrix-table-shell').isVisible(), false);
+        assert.equal(await page.locator('.rr-matrix-table-shell').first().isVisible(), false);
         assert.equal(await page.locator('.rr-mobile-match').first().isVisible(), true);
       }
       await page.screenshot({path: path.join(root, `storage/framework/testing/public-roundrobin-${width}.png`), fullPage: true});
+      await page.locator('#main-bracket-tab').click();
+      await page.waitForTimeout(250);
+      assert.equal(await page.locator('#main-bracket-pane').isVisible(), true);
+      assert.equal(await page.evaluate(() => location.hash), '#playoffs');
       assert.deepEqual(errors, []);
       await page.close();
     }
@@ -89,7 +97,7 @@ test('public schedule is default and matrix venue text stays inside cells at pho
     const source = read('public/assets/js/roundrobin-public.js');
     const startup = source.slice(source.lastIndexOf('  $(document).ready(function () {'), source.lastIndexOf('})(jQuery'));
     const vm = require('node:vm');
-    for (const [hash, expected] of [['', 'oop-tab'], ['#schedule', 'oop-tab'], ['#matrix', 'matrix-tab'], ['#draw', 'matrix-tab'], ['#standings', 'standings-tab'], ['#playoffs', 'main-bracket-tab']]) {
+    for (const [hash, expected] of [['', 'oop-tab'], ['#fixtures', 'oop-tab'], ['#schedule', 'oop-tab'], ['#matrix', 'standings-tab'], ['#draw', 'standings-tab'], ['#standings', 'standings-tab'], ['#playoffs', 'main-bracket-tab']]) {
       let clicked;
       vm.runInNewContext(startup, {$: () => ({ready(fn) {fn();}}), document: {getElementById: id => ({click() {clicked = id;}, addEventListener() {}})}, window: {location: {hash}, addEventListener() {}}, history: {replaceState() {}}});
       assert.equal(clicked, expected);

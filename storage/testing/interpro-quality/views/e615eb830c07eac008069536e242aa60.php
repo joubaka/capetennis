@@ -1,0 +1,268 @@
+
+<?php $__env->startSection('title', 'Choose draw format — '.$draw->drawName); ?>
+<?php $__env->startSection('content'); ?>
+<div class="operational-page">
+<?php echo $__env->make('backend.partials.operational-controls', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+<?php echo $__env->make('backend.draw.partials.workspace-header', ['workspaceContext' => 'settings', 'workspaceSurface' => 'standalone'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php echo $__env->make('backend.draw.partials.workspace-links', ['workspaceTab' => 'settings'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<div class="mx-auto" style="max-width:900px">
+  <p class="text-primary mb-1">Step 1 of 6 · Setup · Choose the format</p>
+  <h3 class="mb-2">How should this draw start?</h3>
+  <p class="text-muted mb-4"><?php echo e($draw->drawName); ?> · Choose the format first. Player placement and format-specific settings come next.</p>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->settings?->workflow === 'feed_in_monrad' && !empty($draw->flexibleMonrad?->graph)): ?>
+    <?php if (app(\Illuminate\Contracts\Auth\Access\Gate::class)->check('enableRollingChallenges', $draw)): ?>
+      <div class="alert alert-info" role="note">
+        <strong>Choose individual playoff matches in the draw's Settings tab.</strong>
+        <p class="mb-2">You can change challenge match choices there without resetting the draw format or recorded results.</p>
+        <a class="btn btn-outline-primary" href="<?php echo e(route('backend.draw.roundrobin.show', $draw)); ?>#settings">Choose playoff matches</a>
+      </div>
+    <?php endif; ?>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <details class="alert alert-info mb-4">
+    <summary class="fw-semibold" style="cursor:pointer">Help me choose a format</summary>
+    <div class="small mt-3">
+      <p class="mb-2"><strong>Most tournaments:</strong> choose Round robin → playoffs so everyone plays a group stage before the knockout rounds.</p>
+      <p class="mb-2"><strong>Small field or league:</strong> choose Round robin only when final standings should decide the result.</p>
+      <p class="mb-2"><strong>Fast knockout:</strong> choose Playoffs only; a player may have only one match.</p>
+      <p class="mb-0"><strong>Placement matches:</strong> choose Monrad. Feed-in Monrad lets earlier-round losers meet later-round losers. Custom Monrad is an advanced option for placing players into different starting rounds.</p>
+    </div>
+  </details>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div class="alert alert-danger" role="alert"><?php echo e($errors->first()); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->locked || $draw->published || $draw->oop_published): ?>
+    <div class="alert alert-warning" role="alert">
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->locked): ?><p class="mb-1">This draw is locked. Open the draw workspace and choose More tools → Unlock draw.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->published): ?><p class="mb-1">The draw is published. Use Publish → Unpublish draw before changing format.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($draw->oop_published): ?><p class="mb-1">Match times are published. Review and hide the published times before changing format.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <a href="<?php echo e(route('backend.draw.roundrobin.show', $draw)); ?>#settings">Return to draw setup controls</a>
+    </div>
+  <?php elseif($resetSummary['results'] > 0): ?>
+    <div class="alert alert-danger" role="alert">
+      This draw has <?php echo e($resetSummary['results']); ?> recorded result<?php echo e($resetSummary['results'] === 1 ? '' : 's'); ?> and cannot be reset from this page.
+    </div>
+  <?php elseif($draw->event->hasRecordedResults()): ?>
+    <div class="alert alert-danger" role="alert">Results have been recorded elsewhere in this event. Competition format and group rules cannot be changed.</div>
+  <?php elseif($resetSummary['has_format_state']): ?>
+    <div class="alert alert-warning" role="alert">
+      <strong>Changing format resets this draw.</strong>
+      It will permanently remove <?php echo e($resetSummary['fixtures']); ?> generated match<?php echo e($resetSummary['fixtures'] === 1 ? '' : 'es'); ?>,
+      <?php echo e($resetSummary['scheduled_times']); ?> scheduled time<?php echo e($resetSummary['scheduled_times'] === 1 ? '' : 's'); ?> and current group placements.
+      Starting positions and byes are kept when switching between Monrad and Feed-in Monrad; other format changes reset them.
+      The draw, venue allocation and <?php echo e($resetSummary['roster_entries']); ?> roster entr<?php echo e($resetSummary['roster_entries'] === 1 ? 'y' : 'ies'); ?> remain available for rebuilding.
+    </div>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <form method="POST" action="<?php echo e(route('draw.setup.store', $draw)); ?>" id="draw-format-form"
+    data-current-workflow="<?php echo e(\App\Services\Draw\InterproRoundRobinFormat::selected($draw) ? 'interpro_rr_feed_in' : $draw->settings?->workflow); ?>" data-current-groups="<?php echo e($draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count()); ?>" data-current-challenges="<?php echo e(($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0'); ?>" data-current-pairs='<?php echo json_encode($selectedChallengePairs, 15, 512) ?>' data-has-format-state="<?php echo e($resetSummary['has_format_state'] ? '1' : '0'); ?>">
+    <?php echo csrf_field(); ?>
+    <fieldset <?php if($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0 || $draw->event->hasRecordedResults()): echo 'disabled'; endif; ?>>
+      <legend class="visually-hidden">Draw format</legend>
+      <div class="row g-3 mb-4">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $options; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $value => [$label, $description]): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <?php if($value === 'interpro_rr_feed_in' && !$draw->event?->isInterprovincialTrials()) continue; ?>
+          <div class="col-12 col-md-6">
+            <label class="card h-100 p-4 d-flex flex-row gap-3" style="cursor:pointer">
+              <input type="radio" name="workflow" value="<?php echo e($value); ?>" class="form-check-input flex-shrink-0" required
+                <?php if(old('workflow', \App\Services\Draw\InterproRoundRobinFormat::selected($draw) ? 'interpro_rr_feed_in' : $draw->settings?->workflow) === $value): echo 'checked'; endif; ?>>
+              <span>
+                <strong class="d-flex align-items-center gap-2 mb-2">
+                  <?php echo e($label); ?>
+
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($value === 'round_robin_playoffs'): ?><span class="badge bg-label-primary">Recommended</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($value === 'custom_monrad'): ?><span class="badge bg-label-secondary">Advanced</span><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </strong>
+                <span class="text-muted d-block"><?php echo e($description); ?></span>
+                <small class="d-block mt-2">
+                  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($value === 'round_robin'): ?> Best when every player should meet everyone in their group.
+                  <?php elseif($value === 'round_robin_playoffs'): ?> Best for a full tournament with group play and a championship finish.
+                  <?php elseif($value === 'round_robin_round_robin'): ?> Best for a second group stage, or top-four playoffs with a lower round robin.
+                  <?php elseif($value === 'playoffs'): ?> Fastest format, but eliminated players do not continue.
+                  <?php elseif($value === 'monrad'): ?> Best when finishing positions and additional matches matter.
+                  <?php elseif($value === 'feed_in_monrad'): ?> Use crossed feed-in paths and placement matches, as in the Interpro trials draws.
+                  <?php elseif($value === 'custom_monrad'): ?> Use when seeded players must enter in different rounds.
+                  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+                </small>
+              </span>
+            </label>
+          </div>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </div>
+      <section id="format-group-question" class="card card-body mb-4" hidden>
+        <h4>How many groups do you want?</h4>
+        <p>Choose the groups first. Next, review scoring and the suggested playoffs, then place your players.</p>
+        <label for="format-group-count" class="form-label">Number of groups</label>
+        <select id="format-group-count" name="groups" class="form-select mb-2" disabled>
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = range(1, 26); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $count): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+            <option value="<?php echo e($count); ?>" <?php if((int) old('groups', request('groups', $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() ?: 1)) === $count): echo 'selected'; endif; ?>><?php echo e($count); ?></option>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </select>
+        <p id="format-playoff-suggestion" class="small text-muted mb-0" role="status"></p>
+        <div id="second-stage-format-question" class="mt-3" hidden>
+          <label for="second-stage-format" class="form-label">How should the second stage work?</label>
+          <select id="second-stage-format" name="second_stage_format" class="form-select" disabled>
+            <option value="equal_positions" <?php if(!$draw->hasHybridRoundRobin()): echo 'selected'; endif; ?>>Equal finishing positions → new round-robin groups</option>
+            <option value="top_two_playoffs_remainder_rr" <?php if($draw->hasHybridRoundRobin()): echo 'selected'; endif; ?>>Top two from each group → semifinals; remaining players → one round robin</option>
+          </select>
+          <p class="form-text">The top-four option uses exactly two groups with at least three players each. A1 plays B2 and B1 plays A2, followed by a final and a third-place match. Other players carry their mutual results forward and play only new opponents. Choose this before preparing later-stage fixtures.</p>
+        </div>
+      </section>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($resetSummary['has_format_state']): ?>
+        <p class="text-muted">Switching between Monrad and Feed-in Monrad preserves the bracket size, player starting positions and explicit byes. Fixtures and scheduled times still reset.</p>
+        <label class="form-check border rounded p-3 mb-3" for="confirm-format-reset">
+          <input class="form-check-input ms-0 me-2" type="checkbox" name="reset_existing" value="1" id="confirm-format-reset">
+          <span class="form-check-label"><strong>I understand this removes the current fixtures and scheduled times.</strong></span>
+        </label>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <label class="form-check border rounded p-3 mb-3">
+        <input type="hidden" name="challenge_playoffs" value="0">
+        <input type="checkbox" class="form-check-input ms-0 me-2" name="challenge_playoffs" value="1" id="challenge-playoffs"
+          <?php if(old('challenge_playoffs', $draw->settings?->playoff_config['challenge_playoffs'] ?? false)): echo 'checked'; endif; ?>>
+        <span class="form-check-label"><strong>Optional challenge play-offs (Feed-in Monrad or Interpro trials)</strong><br>
+          After every base match is complete, base positions 2 v 3, 4 v 5, 6 v 7 and so on may play once more.
+          Players who already played each other in this draw skip the challenge and keep their base positions.
+          The winner takes the higher position; first and the last unpaired position stay unchanged.</span>
+      </label>
+      <div id="challenge-pair-options" class="border rounded p-3 mb-3" hidden>
+        <input type="hidden" name="challenge_pairs_submitted" value="1">
+        <p class="fw-semibold mb-2">Choose the base-position pairs that may challenge</p>
+        <div class="d-flex flex-wrap gap-3">
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php for($upper = 2; $upper < $challengePairLimit; $upper += 2): ?>
+            <label class="form-check mb-1 border rounded px-3 py-2 d-flex align-items-center" style="min-height:44px;cursor:pointer"><input type="checkbox" class="form-check-input ms-0 me-2" name="challenge_pairs[]" value="<?php echo e($upper); ?>"
+              <?php if(in_array($upper, array_map('intval', (array) old('challenge_pairs', old('challenge_pairs_submitted') ? [] : $selectedChallengePairs)), true)): echo 'checked'; endif; ?>>
+              <span class="form-check-label"><?php echo e($upper); ?> v <?php echo e($upper + 1); ?></span></label>
+          <?php endfor; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </div>
+        <p class="form-text mb-0">Select at least one pair. Ranks refer to the completed base draw and remain fixed after challenge upsets. Only pairs present in the final field can play.</p>
+      </div>
+      <button class="btn btn-primary" type="submit"><?php echo e($resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →'); ?></button>
+    </fieldset>
+  </form>
+  <p class="text-muted small mt-3">Recorded results are always protected. A confirmed reset keeps the draw and eligible roster, but removes generated fixtures and timetable entries.</p>
+</div>
+<script>
+(() => {
+  const form = document.getElementById('draw-format-form');
+  const option = document.getElementById('challenge-playoffs');
+  const pairs = document.getElementById('challenge-pair-options');
+  const groups = document.getElementById('format-group-question');
+  const count = document.getElementById('format-group-count');
+  const submit = form.querySelector('button[type="submit"]');
+  const secondStage = document.getElementById('second-stage-format-question');
+  const secondFormat = document.getElementById('second-stage-format');
+  const describeGroups = () => {
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    const staged = workflow === 'round_robin_round_robin';
+    secondStage.hidden = !staged;
+    secondFormat.disabled = !staged || groups.hidden;
+    [...count.options].forEach(option => { option.disabled = staged && Number(option.value) < 2; });
+    if (staged && Number(count.value) < 2) count.value = '2';
+    if (staged && secondFormat.value === 'top_two_playoffs_remainder_rr') count.value = '2';
+    const n = Number(count.value);
+    document.getElementById('format-playoff-suggestion').textContent = workflow === 'round_robin_playoffs'
+      ? (n === 1 ? 'Suggested: the top two players play a championship final.' : `Suggested: each group winner qualifies for a ${2 ** Math.ceil(Math.log2(n))}-place championship bracket. Unused places are byes.`) + ' You can change qualifiers and add placement playoffs in the next step.'
+      : staged ? (secondFormat.value === 'top_two_playoffs_remainder_rr' ? 'Two groups qualify into top-four playoffs and one lower round robin with carried results.' : 'Equal finishing positions will enter second-stage groups after the first round robin.') : 'Final standings decide each group; no playoffs are created.';
+  };
+  const refresh = () => {
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    option.disabled = !['feed_in_monrad', 'interpro_rr_feed_in'].includes(workflow);
+    pairs.querySelectorAll('[name="challenge_pairs[]"]').forEach(input => {
+      input.closest('label').hidden = workflow === 'interpro_rr_feed_in' && Number(input.value) > 10;
+      if (input.closest('label').hidden) input.checked = false;
+    });
+    pairs.hidden = option.disabled || !option.checked;
+    pairs.querySelectorAll('input').forEach(input => { input.disabled = pairs.hidden; });
+    groups.hidden = true;
+    count.disabled = true;
+    submit.textContent = ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'].includes(form.querySelector('[name="workflow"]:checked')?.value)
+      ? 'Continue to groups →' : '<?php echo e($resetSummary['has_format_state'] ? 'Change format and reset draw' : 'Continue to players →'); ?>';
+  };
+  count.addEventListener('change', describeGroups);
+  secondFormat.addEventListener('change', describeGroups);
+  form.addEventListener('submit', event => {
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    if (['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'].includes(workflow) && groups.hidden) {
+      event.preventDefault();
+      groups.hidden = false;
+      count.disabled = false;
+      describeGroups();
+      submit.textContent = 'Save groups & review scoring' + (workflow === 'round_robin_playoffs' ? ' & playoffs →' : ' →');
+      groups.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      count.focus();
+    }
+  });
+  form.querySelectorAll('[name="workflow"]').forEach(input => input.addEventListener('change', refresh));
+  option.addEventListener('change', refresh);
+  refresh();
+})();
+</script>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($resetSummary['has_format_state']): ?>
+<script>
+document.getElementById('draw-format-form')?.addEventListener('submit', event => {
+  const form = event.currentTarget;
+  if (event.defaultPrevented) return;
+  const selected = form.querySelector('input[name="workflow"]:checked')?.value;
+  const challenges = ['feed_in_monrad', 'interpro_rr_feed_in'].includes(selected) && form.querySelector('#challenge-playoffs').checked;
+  const pairs = challenges ? [...form.querySelectorAll('[name="challenge_pairs[]"]:checked')].map(input => Number(input.value)).sort((a, b) => a - b) : [];
+  const previousPairs = JSON.parse(form.dataset.currentPairs || '[]').map(Number).sort((a, b) => a - b);
+  const groupCount = form.querySelector('[name="groups"]');
+  const sameGroups = groupCount.disabled || Number(groupCount.value) === Number(form.dataset.currentGroups);
+  if (!selected || (sameGroups && selected === form.dataset.currentWorkflow && challenges === (form.dataset.currentChallenges === '1') && JSON.stringify(pairs) === JSON.stringify(previousPairs))) return;
+  const confirmation = document.getElementById('confirm-format-reset');
+  if (!confirmation?.checked) {
+    event.preventDefault();
+    confirmation?.focus();
+    confirmation?.setCustomValidity('Confirm the draw reset before changing format.');
+    confirmation?.reportValidity();
+    return;
+  }
+  confirmation.setCustomValidity('');
+  const preservesStarts = ['monrad', 'feed_in_monrad'].includes(form.dataset.currentWorkflow) && ['monrad', 'feed_in_monrad'].includes(selected);
+  const placementWarning = preservesStarts ? ' Starting positions and byes are kept.' : ' Group and starting-position placements are removed.';
+  if (!window.confirm('Change draw format or challenge option? This permanently removes the current fixtures and scheduled times.' + placementWarning + ' Recorded results are protected.')) {
+    event.preventDefault();
+  }
+});
+document.getElementById('confirm-format-reset')?.addEventListener('change', event => event.currentTarget.setCustomValidity(''));
+</script>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<dialog id="draw-progress-modal" aria-labelledby="draw-progress-title" aria-describedby="draw-progress-description" style="border:0;border-radius:1rem;padding:2rem;max-width:min(420px,calc(100vw - 2rem));text-align:center;color:inherit">
+  <div class="spinner-border text-primary mb-3" aria-hidden="true"></div>
+  <h2 id="draw-progress-title" class="h5">Updating draw…</h2>
+  <p id="draw-progress-description" class="mb-0" role="status" aria-live="polite">Please wait while we save the draw setup. This can take a moment.</p>
+</dialog>
+<style>#draw-progress-modal::backdrop{background:rgba(15,23,42,.55)}#format-group-question[hidden]{display:none!important}</style>
+<script>
+(() => {
+  const form = document.getElementById('draw-format-form');
+  const modal = document.getElementById('draw-progress-modal');
+  const button = form.querySelector('button[type="submit"]');
+  let submitting = false;
+  let slowTimer;
+  modal.addEventListener('cancel', event => event.preventDefault());
+  form.addEventListener('submit', event => {
+    if (event.defaultPrevented) return;
+    if (submitting) {
+      event.preventDefault();
+      return;
+    }
+    submitting = true;
+    button.disabled = true;
+    form.setAttribute('aria-busy', 'true');
+    modal.showModal();
+    slowTimer = window.setTimeout(() => {
+      document.getElementById('draw-progress-description').textContent = 'This is taking longer than usual. Please keep this page open and avoid submitting again while the request is processing.';
+    }, 20000);
+  });
+  window.addEventListener('pageshow', () => {
+    window.clearTimeout(slowTimer);
+    submitting = false;
+    button.disabled = false;
+    form.removeAttribute('aria-busy');
+    if (modal.open) modal.close();
+    document.getElementById('draw-progress-description').textContent = 'Please wait while we save the draw setup. This can take a moment.';
+  });
+})();
+</script>
+</div>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views/backend/draw/setup.blade.php ENDPATH**/ ?>

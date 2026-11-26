@@ -45,9 +45,10 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('Draft preview', $html);
         $this->assertStringContainsString('Draw not published', $html);
         $this->assertStringContainsString('Manage this draw', $html);
-        $this->assertStringContainsString('Schedule', $html);
-        $this->assertMatchesRegularExpression('/id="matrix-tab"[\s\S]*?aria-selected="false"/', $html);
-        $this->assertMatchesRegularExpression('/class="tab-pane fade"\s+id="matrix-pane"/', $html);
+        $this->assertStringContainsString('Fixtures', $html);
+        $this->assertStringContainsString('Round-robin standings', $html);
+        $this->assertStringNotContainsString('id="matrix-tab"', $html);
+        $this->assertStringContainsString('<details class="mt-4 rr-matrix-details" id="matrix-pane">', $html);
         $this->assertMatchesRegularExpression('/id="oop-tab"[\s\S]*?aria-selected="true"/', $html);
         $this->assertMatchesRegularExpression('/class="tab-pane fade show active"\s+id="oop-pane"/', $html);
         $this->assertStringContainsString('Find your name, then confirm the date, time and venue.', $html);
@@ -62,7 +63,7 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringNotContainsString('<span class="badge bg-label-success">Draw published</span>', $html);
     }
 
-    public function test_public_script_orders_schedule_by_time_and_preserves_public_venue_only_display(): void
+    public function test_public_script_orders_fixtures_by_round_and_preserves_public_venue_only_display(): void
     {
         $script = str_replace("\r\n", "\n", file_get_contents(public_path('assets/js/roundrobin-public.js')));
 
@@ -73,12 +74,12 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString('data-label="Venue"', $script);
         $this->assertStringNotContainsString('data-label="Court"', $script);
         $this->assertStringNotContainsString("'Court ' + fx.court", $script);
-        $this->assertStringContainsString("const followedBy = 'Followed by';", $script);
+        $this->assertStringContainsString("const followedBy = window.RR_SCHEDULE_AVAILABLE === false ? 'Time to follow' : 'Followed by';", $script);
         $this->assertStringContainsString("fx.schedule_hidden === true\n            ? 'Followed by'", $script);
         $this->assertStringContainsString("data-label=\"Date\" class=\"text-center\">\${escapeHtml(schedule.date || '—')}", $script);
         $this->assertStringContainsString("data-label=\"Time\" class=\"text-center\">\${escapeHtml(scheduleHidden ? followedBy", $script);
         $this->assertStringContainsString("data-label=\"Venue\">\${escapeHtml(fx.venue_name", $script);
-        $this->assertStringNotContainsString('if (a.round !== b.round)', $script);
+        $this->assertStringContainsString('const round = Number(a.round || 1) - Number(b.round || 1);', $script);
         $this->assertStringContainsString('wrapper.empty();', $script);
         $this->assertStringContainsString('rr-matrix-table-shell', $script);
         $this->assertStringContainsString('rr-mobile-match-list', $script);

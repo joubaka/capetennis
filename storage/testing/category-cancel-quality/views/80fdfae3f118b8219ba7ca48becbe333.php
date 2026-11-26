@@ -1,0 +1,82 @@
+
+<?php $__env->startSection('title', 'Review event emails'); ?>
+<?php $__env->startSection('content'); ?>
+<?php echo $__env->make('backend.event.partials.header', ['eventWorkspaceActive' => 'communications', 'eventWorkspaceRegionalOnly' => !app(\App\Services\EventCommunicationService::class)->managesWholeEvent($event, auth()->user())], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php
+  $scheduledAnnouncement = ($batch->options['source'] ?? null) === 'announcement' && isset($batch->options['scheduled_for']);
+  $coveredPlayers = collect($batch->recipients)->flatMap(fn ($recipient) => $recipient['player_keys'] ?? [])->unique()->count();
+  $isWrapUp = !empty($batch->options['wrap_up']);
+  $wrapUpState = $isWrapUp ? app(\App\Services\EventWrapUpMessage::class)->sendState($event) : null;
+  $wrapUpRepeat = $isWrapUp && !$batch->approved_at && app(\App\Services\EventCommunicationService::class)->hasApprovedWrapUp($event);
+  $addressCount = count($batch->recipients);
+  $mailRecipients = $batch->recipients;
+  if ($mailRecipients && $scheduledAnnouncement) {
+      $mailRecipients[0]['html'] = \App\Services\EventAnnouncementService::renderBatch($batch);
+  }
+?>
+<div data-mail-review>
+<h4><?php echo e($event->name); ?> — Review emails</h4>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isWrapUp && $errors->any()): ?>
+<div class="alert alert-danger" role="alert"><?php echo e($errors->first()); ?></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<h5>1. Recipients</h5><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['source'] ?? null) === 'selection_regions'): ?><p>Recipients are players and parents in <?php echo e(count($batch->options['selection_region_ids'])); ?> selected regions. Review all selected teams and reserves below.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<p><?php echo e(count($batch->recipients)); ?> emails. <?php echo e($scheduledAnnouncement ? 'This audience was confirmed when the announcement was published.' : 'Nothing is sent until you approve below.'); ?></p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['source'] ?? null) === 'selection_regions' && !empty($batch->options['bcc_emails'])): ?>
+<div class="card card-body mb-3"><h5>Extra BCC addresses</h5><p class="text-break"><?php echo e(implode(', ', $batch->options['bcc_emails'])); ?></p><p class="mb-0">Each extra address receives one hidden copy. Addresses already receiving a player or parent email are not copied again. BCC addresses are hidden from recipients.</p></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($isWrapUp): ?>
+<p><?php echo e($coveredPlayers + count($batch->issues ?? [])); ?> confirmed participants · <?php echo e($addressCount); ?> unique email <?php echo e(Str::plural('address', $addressCount)); ?> · <?php echo e(count($batch->issues ?? [])); ?> missing contacts. Shared addresses receive one email.</p>
+<?php elseif($coveredPlayers): ?><p><?php echo e($coveredPlayers); ?> distinct players covered; <?php echo e(count($batch->issues ?? [])); ?> missing contacts. <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['source'] ?? null) === 'team_selection_lifecycle' && ($batch->options['lifecycle_action'] ?? '') !== 'reminder'): ?>Invitation emails retain each player’s personal links.<?php else: ?> Shared addresses receive one email.<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['scope'] ?? null)==='rankings'): ?>
+
+<div class="card card-body mb-3"><h5>Review ranked players</h5>
+<p>Matched ranking rows: <?php echo e($rankingReview['counts']['matched']); ?>  -  Included: <?php echo e($rankingReview['counts']['included']); ?>  -  Missing contacts: <?php echo e($rankingReview['counts']['missing_contacts']); ?></p>
+<p>Excluded (counts can overlap): team listed <?php echo e($rankingReview['counts']['team_listed']); ?>, declined <?php echo e($rankingReview['counts']['declined']); ?>, reserves <?php echo e($rankingReview['counts']['reserves']); ?>, withdrawn <?php echo e($rankingReview['counts']['withdrawn']); ?>, manually <?php echo e($rankingReview['counts']['manual']); ?>.</p>
+<form method="post" action="<?php echo e(route('backend.event-communications.preview',$event)); ?>"><?php echo csrf_field(); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $batch->options; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key=>$value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($key!=='excluded_player_ids'): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(is_array($value)): ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $value; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><input type="hidden" name="<?php echo e($key); ?>[]" value="<?php echo e($item); ?>"><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?> <?php else: ?><input type="hidden" name="<?php echo e($key); ?>" value="<?php echo e($value); ?>"><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?> <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?> <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<input type="hidden" name="subject" value="<?php echo e($batch->subject); ?>"><input type="hidden" name="body" value="<?php echo e($batch->body); ?>">
+<div class="table-responsive"><table class="table"><thead><tr><th>Exclude manually</th><th>Player</th><th>Region / list / rank</th><th>Contacts / exclusions</th></tr></thead><tbody>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $rankingReview['rows']->groupBy('player_id'); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $playerRows): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><?php ($player = $playerRows->first()); ?><tr><td><input aria-label="Exclude <?php echo e($player['name']); ?>" type="checkbox" name="excluded_player_ids[]" value="<?php echo e($player['player_id']); ?>" <?php if(in_array($player['player_id'],$batch->options['excluded_player_ids'] ?? [])): echo 'checked'; endif; ?>></td><td><?php echo e($player['name']); ?></td><td><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $playerRows; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $row): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><div><?php echo e($row['region']); ?> / <?php echo e($row['category']); ?> / <?php echo e($row['rank']); ?></div><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></td><td class="text-break"><?php echo e(implode(', ',$player['emails']) ?: 'No valid contact'); ?><br><?php echo e(implode(', ',$player['excluded'])); ?></td></tr><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</tbody></table></div><button class="btn btn-outline-primary">Update selection and review fresh emails</button>
+<p class="form-text">Changing these checkboxes requires a fresh preview using the button above before approving.</p></form></div>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($batch->issues): ?><div class="alert alert-warning"><strong>Missing contacts</strong><ul class="mb-0"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $batch->issues; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $issue): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><li><?php echo e($issue); ?></li><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></ul></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php echo $__env->make('backend.partials.email-sample', ['mailRecipients' => $mailRecipients, 'mailSender' => $batch->options, 'mailSampleHeading' => '2. Message preview'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($scheduledAnnouncement || ($isWrapUp && $batch->approved_at)): ?>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.event-communications.index', ['event' => $event, 'batch' => $batch->id, 'report_scope' => 'batch'])); ?>">View send report</a>
+<?php else: ?>
+<h5>3. Approve</h5>
+<form method="post" action="<?php echo e(route('backend.event-communications.send',$event)); ?>"><?php echo csrf_field(); ?><input type="hidden" name="token" value="<?php echo e($batch->token); ?>">
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($batch->issues): ?><label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="acknowledge_missing" value="1" required>I reviewed the missing contacts. These recipients will not receive an email.</label><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($wrapUpState === 'same_day'): ?>
+<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="wrap_up_finished" value="1" required>The event has finished.</label>
+<?php elseif($wrapUpState === 'too_early'): ?>
+<p class="alert alert-info">Sending opens after the event ends.</p>
+<?php elseif($wrapUpState === 'unavailable'): ?>
+<p class="alert alert-info">Sending is unavailable for this event.</p>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($wrapUpRepeat): ?>
+<label class="d-block mb-3"><input class="form-check-input me-2" type="checkbox" name="wrap_up_resend" value="1" required>A wrap-up was already approved for this event. Send this additional summary.</label>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<input type="hidden" name="confirm_send" value="1">
+<div class="d-flex flex-wrap gap-2">
+<button id="approve-ranking-mail" type="submit" class="btn btn-primary" <?php if($isWrapUp && (!$addressCount || !in_array($wrapUpState, ['ready', 'same_day'], true))): echo 'disabled'; endif; ?>><?php echo e($isWrapUp ? 'Send to '.$addressCount.' email '.Str::plural('address', $addressCount) : 'Send '.($addressCount === 1 ? 'email' : $addressCount.' emails')); ?></button>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['source'] ?? null) === 'regional_registration_open'): ?>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.regional-registration-mail.compose', ['event' => $event, 'edit_batch' => $batch->id])); ?>">Back to composer</a>
+<?php elseif(($batch->options['source'] ?? null) === 'selection_regions'): ?>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.selection-region-mail.compose', ['event' => $event, 'edit_batch' => $batch->id])); ?>">Back to composer</a>
+<?php elseif(($batch->options['source'] ?? null) === 'team_selection_lifecycle'): ?>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.team-selection.index', ['event' => $event])); ?>">Back to team workspace</a>
+<?php else: ?>
+<a class="btn btn-outline-secondary" href="<?php echo e(route('backend.event-communications.index', !empty($batch->options['wrap_up']) ? ['event' => $event, 'wrap_up' => 1, 'edit_batch' => $batch->id] : ['event' => $event])); ?>">Back to composer</a>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div>
+</form>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($batch->options['scope'] ?? null)==='rankings'): ?>
+<script>document.querySelectorAll('input[name="excluded_player_ids[]"]').forEach(input=>input.addEventListener('change',()=>{const button=document.getElementById('approve-ranking-mail'); button.disabled=true; button.textContent='Update selection above before approving';}));</script>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\event\communications\preview.blade.php ENDPATH**/ ?>

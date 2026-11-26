@@ -1,0 +1,137 @@
+<section class="card plus-preview" data-rating-preview aria-labelledby="rating-preview-title">
+  <style>
+    .plus-preview { overflow:hidden;border:1px solid #dbe4ef; }
+    .plus-preview .plus-hero { display:grid;grid-template-columns:1.1fr 1fr;gap:2rem;padding:clamp(1.25rem,3vw,2.5rem);background:linear-gradient(120deg,#f7f9fc,#e8f0fa);color:#172e45;align-items:center; }
+    .plus-preview .plus-eyebrow { display:inline-block;color:#004177;font-size:.75rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:1rem; }
+    .plus-preview h2 { color:#172e45;font-size:clamp(1.65rem,2.6vw,2.6rem);line-height:1.15;max-width:20ch;margin-bottom:1rem; }
+    .plus-preview .plus-intro { color:#536873;line-height:1.65;max-width:49ch;margin-bottom:1.25rem; }
+    .plus-preview .plus-demo { background:#fff;color:#172e45;border:1px solid #dbe4ef;border-radius:18px;padding:1.25rem;box-shadow:0 8px 24px #172e4508;min-width:0; }
+    .plus-preview .plus-demo-label { font-size:.72rem;color:#536c73;margin:0 0 1rem; }
+    .plus-preview .plus-demo-top { display:flex;justify-content:space-between;gap:1rem;align-items:center; }
+    .plus-preview .plus-score { font-size:2.75rem;line-height:1.1;font-weight:750;letter-spacing:-.04em; }
+    .plus-preview .plus-change { background:#fff0e1;color:#884000;border-radius:20px;padding:.4rem .7rem;font-size:.75rem;font-weight:600; }
+    .plus-preview .plus-chart { width:100%;height:auto;display:block;margin:.5rem 0; }
+    .plus-preview .plus-chart-labels { display:flex;justify-content:space-between;font-size:.75rem;color:#536c73; }
+    .plus-preview .plus-body { padding:clamp(1.25rem,3vw,2.5rem); }
+    .plus-preview .plus-features { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.5rem;margin-bottom:1.75rem; }
+    .plus-preview .plus-feature-number { color:#004177;font-size:.75rem;font-weight:700;letter-spacing:.1em;display:block;margin-bottom:.6rem; }
+    .plus-preview h3 { font-size:1.05rem;color:#172e45;margin-bottom:.5rem; }
+    .plus-preview .plus-features p { font-size:.875rem;line-height:1.6;margin:0;color:#536873; }
+    .plus-preview .plus-offer { background:#f1f5fa;border:1px solid #dbe4ef;border-radius:14px;padding:1.25rem;display:flex;justify-content:space-between;align-items:center;gap:1.5rem; }
+    .plus-preview .plus-price { color:#172e45;font-size:1.8rem;font-weight:700;line-height:1.3; }
+    .plus-preview .plus-price small { font-size:.85rem;font-weight:400;color:#536873; }
+    .plus-preview .plus-cta { display:inline-flex;align-items:center;justify-content:center;gap:.5rem;background:#004177;color:#fff;border:1px solid #004177;min-height:48px;padding:.8rem 1.25rem;font-weight:700;white-space:normal; }
+    .plus-preview .plus-cta:hover,.plus-preview .plus-cta:focus-visible { background:#172e45;color:#fff;border-color:#172e45; }
+    .plus-preview .plus-terms { margin-top:1rem;color:#536873;font-size:.8rem;line-height:1.6; }
+    .plus-preview summary { cursor:pointer;min-height:44px;display:list-item;padding:.65rem 0;color:#004177;font-weight:600; }
+    .plus-preview .plus-hero { background:linear-gradient(120deg,#172e45,#004177);color:#fff; }
+    .plus-preview .plus-eyebrow { color:#ff9f43; }
+    .plus-preview h2 { color:#fff; }
+    .plus-preview .plus-intro { color:#e0ebf5; }
+    .plus-preview .plus-hero .plus-cta { background:#ff9f43;border-color:#ff9f43;color:#172e45; }
+    .plus-preview .plus-hero .plus-cta:hover { background:#ffb568;border-color:#ffb568; }
+    .plus-preview a:focus-visible,.plus-preview summary:focus-visible { outline:3px solid #b85b00;outline-offset:3px; }
+    .plus-preview .plus-features > div { border:1px solid #dbe4ef;border-radius:14px;padding:1.25rem;background:#f7f9fc; }
+    .plus-preview .plus-feature-icon { display:block;color:#004177;font-size:1.7rem;margin-bottom:.6rem; }
+    @media(max-width:767.98px) { .plus-preview .plus-hero { grid-template-columns:1fr;gap:1.5rem; }.plus-preview .plus-features { grid-template-columns:1fr;gap:1.25rem; }.plus-preview .plus-offer { align-items:stretch;flex-direction:column;gap:1rem; }.plus-preview .plus-cta { width:100%; } }
+  </style>
+  <div class="plus-hero">
+    <div>
+      <span class="plus-eyebrow">Cape Tennis · Player Plus</span>
+      <h2 id="rating-preview-title">Know their game.<br>Find their next step.</h2>
+      <p class="plus-intro">Follow <?php echo e($ratingPlayer->name); ?>’s rating, understand their results and explore tournament options with their coach.</p>
+      <a class="btn plus-cta" href="<?php echo e(app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : route('player-plus.player', $ratingPlayer)); ?>">Explore Player Plus <span aria-hidden="true">→</span></a>
+      <p class="small mt-2 mb-0">Essential tournament information remains free.</p>
+    </div>
+    <div class="plus-demo">
+      <p class="plus-demo-label">Illustration only · not this player's rating or results</p>
+      <div class="plus-demo-top">
+        <div><span class="small">Example CTR</span><div><?php if (isset($component)) { $__componentOriginalbe486b4b2948917b8d6df3788e886b6d = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalbe486b4b2948917b8d6df3788e886b6d = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ctr-badge','data' => ['size' => 'small','score' => 54.2,'overall' => true,'title' => 'Illustrative CTR score, not this player’s rating.']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('ctr-badge'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['size' => 'small','score' => 54.2,'overall' => true,'title' => 'Illustrative CTR score, not this player’s rating.']); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalbe486b4b2948917b8d6df3788e886b6d)): ?>
+<?php $attributes = $__attributesOriginalbe486b4b2948917b8d6df3788e886b6d; ?>
+<?php unset($__attributesOriginalbe486b4b2948917b8d6df3788e886b6d); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalbe486b4b2948917b8d6df3788e886b6d)): ?>
+<?php $component = $__componentOriginalbe486b4b2948917b8d6df3788e886b6d; ?>
+<?php unset($__componentOriginalbe486b4b2948917b8d6df3788e886b6d); ?>
+<?php endif; ?></div></div>
+        <span class="plus-change">Illustrative change +5.6</span>
+      </div>
+      <svg class="plus-chart" viewBox="0 0 420 130" role="img" aria-label="Illustrative rating trend from 48.6 to 51.3 to 54.2. Actual ratings can rise or fall.">
+        <path d="M12 30H408M12 70H408M12 110H408" fill="none" stroke="#e3ece8" />
+        <path d="M12 105L80 91L145 97L210 64L275 70L340 43L408 20L408 120H12Z" fill="#e8f0fa" />
+        <path d="M12 105L80 91L145 97L210 64L275 70L340 43L408 20" fill="none" stroke="#004177" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+        <g fill="#004177" stroke="#fff" stroke-width="3"><circle cx="12" cy="105" r="5"/><circle cx="210" cy="64" r="5"/><circle cx="408" cy="20" r="6"/></g>
+      </svg>
+      <div class="plus-chart-labels"><span>48.6 · Earlier</span><span>51.3</span><span>54.2 · Latest</span></div>
+      <p class="small mt-3 mb-0">Explore up to 12 months of rating history.</p>
+    </div>
+  </div>
+  <div class="plus-body">
+    <?php echo $__env->make('frontend.my-tennis.feature-preview', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+    <div class="plus-features">
+      <div><i class="ti ti-route plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">01 / PLAN</span><h3>What could I play next?</h3><p>Explore ball-level progress and event options from Red Ball to Wilson and TSA. Check dates and entry rules with the organiser.</p></div>
+      <div><i class="ti ti-chart-line plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">02 / FOLLOW</span><h3>How am I progressing?</h3><p>Follow monthly reports, recent form and up to 12 months of rating history.</p></div>
+      <div><?php if (isset($component)) { $__componentOriginalb7701658b742c1480bd9cae408300c9d = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalb7701658b742c1480bd9cae408300c9d = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.ctr-mark','data' => ['size' => 'heading','class' => 'plus-feature-icon']] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('ctr-mark'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes(['size' => 'heading','class' => 'plus-feature-icon']); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalb7701658b742c1480bd9cae408300c9d)): ?>
+<?php $attributes = $__attributesOriginalb7701658b742c1480bd9cae408300c9d; ?>
+<?php unset($__attributesOriginalb7701658b742c1480bd9cae408300c9d); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalb7701658b742c1480bd9cae408300c9d)): ?>
+<?php $component = $__componentOriginalb7701658b742c1480bd9cae408300c9d; ?>
+<?php unset($__componentOriginalb7701658b742c1480bd9cae408300c9d); ?>
+<?php endif; ?><span class="plus-feature-number">03 / UNDERSTAND</span><h3>What is my rating?</h3><p>See their Cape Tennis Rating (CTR), its supporting results and their age-group Top 10 where available.</p></div>
+      <div><i class="ti ti-list-details plus-feature-icon" aria-hidden="true"></i><span class="plus-feature-number">04 / PREPARE</span><h3>How do I compare with my opponent?</h3><p>Compare available opponent ratings and revisit recorded meetings. Ratings must share a comparable scale.</p></div>
+    </div>
+    <div class="plus-offer">
+      <div><div class="fw-semibold mb-1">Player Plus for <?php echo e($ratingPlayer->full_name); ?></div><?php if (isset($component)) { $__componentOriginalcb87716e04f6f80d0db3faaf0d26cc5f = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginalcb87716e04f6f80d0db3faaf0d26cc5f = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.player-plus-pricing','data' => []] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('player-plus-pricing'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginalcb87716e04f6f80d0db3faaf0d26cc5f)): ?>
+<?php $attributes = $__attributesOriginalcb87716e04f6f80d0db3faaf0d26cc5f; ?>
+<?php unset($__attributesOriginalcb87716e04f6f80d0db3faaf0d26cc5f); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginalcb87716e04f6f80d0db3faaf0d26cc5f)): ?>
+<?php $component = $__componentOriginalcb87716e04f6f80d0db3faaf0d26cc5f; ?>
+<?php unset($__componentOriginalcb87716e04f6f80d0db3faaf0d26cc5f); ?>
+<?php endif; ?><p class="small mt-1 mb-0">One player. Shared with their linked parents or guardians.</p></div>
+      <a class="btn plus-cta" href="<?php echo e(app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? route('ctr.index', ['player' => ($ratingPlayer ?? null)?->id]) : route('player-plus.player', $ratingPlayer)); ?>">Explore Player Plus <span aria-hidden="true">→</span></a>
+    </div>
+    <div class="plus-terms">
+      <p class="mb-1">Eligible results are needed for a rating; purchasing Plus does not guarantee one. Ratings can rise or fall and may be provisional or unavailable.</p>
+      <details><summary>How membership works</summary><p>Review available plans and renewal terms before paying. Membership does not change a rating, ranking, selection or tournament entry.</p><p>Paying for a player does not link them to your account or give you access to their private information.</p><p class="mb-0">Essential tournament information remains free. Event email updates, including draw alerts, are coming soon and are not included in the current purchase.</p></details>
+    </div>
+  </div>
+</section>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\my-tennis\rating-preview.blade.php ENDPATH**/ ?>

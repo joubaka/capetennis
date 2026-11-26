@@ -1,0 +1,43 @@
+<?php ($connection = app(\App\Services\Performance\TeamSheetProfileLinkService::class)->status(auth()->user(), $selectedPlayer)); ?>
+<section class="card mb-4 ct-teamsheet-profile" aria-labelledby="teamsheet-connection-title" data-teamsheet-profile-link="v1">
+  <div class="card-body">
+    <h3 id="teamsheet-connection-title" class="h5 ct-teamsheet-profile-brand">
+      <img src="<?php echo e(asset('assets/img/logos/teamsheet-ts.png')); ?>" width="56" height="56" alt="">
+      <span><strong>Team<span class="ct-teamsheet-profile-accent">Sheet</span></strong> profile</span>
+    </h3>
+    <p class="mb-0">Once your school signs up for TeamSheet, you can link your player profile and see your tennis ladder, school tournament and league match results as they’re published.</p>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('teamsheet_success')): ?>
+      <p class="alert alert-success" role="status"><?php echo e(session('teamsheet_success')); ?></p>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__errorArgs = ['teamsheet'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+      <p class="alert alert-danger" role="alert"><?php echo e($message); ?></p>
+    <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($connection['available'] && $connection['linked']): ?>
+      <p class="mt-3">Connected · Verified singles results can count toward the player’s rating.</p>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($connection['can_unlink']): ?>
+        <form method="post" action="<?php echo e(route('my.tennis.teamsheet.unlink', $selectedPlayer)); ?>">
+          <?php echo csrf_field(); ?>
+          <?php echo method_field('DELETE'); ?>
+          <button class="btn btn-outline-secondary" type="submit">Disconnect TeamSheet</button>
+        </form>
+      <?php else: ?>
+        <p class="text-muted mb-0">Contact Cape Tennis support if this connection needs changing.</p>
+      <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php elseif($connection['available']): ?>
+      <form class="mt-3" method="post" action="<?php echo e(route('my.tennis.teamsheet.start', $selectedPlayer)); ?>">
+        <?php echo csrf_field(); ?>
+        <p class="small text-muted">Sign in to TeamSheet and select the same player. You must be the player or their linked parent on both sites.</p>
+        <button class="btn ct-teamsheet-profile-primary" type="submit">Link TeamSheet</button>
+      </form>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <a class="btn ct-teamsheet-profile-link mt-3" href="https://www.teamsheet.co.za/" referrerpolicy="no-referrer">Open TeamSheet</a>
+  </div>
+</section>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\my-tennis\teamsheet-connection.blade.php ENDPATH**/ ?>

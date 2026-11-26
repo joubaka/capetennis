@@ -52,7 +52,7 @@
     </div>
   @endif
   <form method="POST" action="{{ route('draw.setup.store', $draw) }}" id="draw-format-form"
-    data-current-workflow="{{ $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
+    data-current-workflow="{{ \App\Services\Draw\InterproRoundRobinFormat::selected($draw) ? 'interpro_rr_feed_in' : $draw->settings?->workflow }}" data-current-groups="{{ $draw->groups()->when($draw->isTwoStageRoundRobin(), fn ($query) => $query->where('round_robin_phase', 1))->count() }}" data-current-challenges="{{ ($draw->settings?->playoff_config['challenge_playoffs'] ?? false) ? '1' : '0' }}" data-current-pairs='@json($selectedChallengePairs)' data-has-format-state="{{ $resetSummary['has_format_state'] ? '1' : '0' }}">
     @csrf
     <fieldset @disabled($draw->locked || $draw->published || $draw->oop_published || $resetSummary['results'] > 0 || $draw->event->hasRecordedResults())>
       <legend class="visually-hidden">Draw format</legend>
@@ -115,7 +115,7 @@
         <input type="hidden" name="challenge_playoffs" value="0">
         <input type="checkbox" class="form-check-input ms-0 me-2" name="challenge_playoffs" value="1" id="challenge-playoffs"
           @checked(old('challenge_playoffs', $draw->settings?->playoff_config['challenge_playoffs'] ?? false))>
-        <span class="form-check-label"><strong>Optional challenge play-offs (Feed-in Monrad only)</strong><br>
+        <span class="form-check-label"><strong>Optional challenge play-offs (Feed-in Monrad or Interpro trials)</strong><br>
           After every base match is complete, base positions 2 v 3, 4 v 5, 6 v 7 and so on may play once more.
           Players who already played each other in this draw skip the challenge and keep their base positions.
           The winner takes the higher position; first and the last unpaired position stay unchanged.</span>
@@ -161,7 +161,12 @@
       : staged ? (secondFormat.value === 'top_two_playoffs_remainder_rr' ? 'Two groups qualify into top-four playoffs and one lower round robin with carried results.' : 'Equal finishing positions will enter second-stage groups after the first round robin.') : 'Final standings decide each group; no playoffs are created.';
   };
   const refresh = () => {
-    option.disabled = form.querySelector('[name="workflow"]:checked')?.value !== 'feed_in_monrad';
+    const workflow = form.querySelector('[name="workflow"]:checked')?.value;
+    option.disabled = !['feed_in_monrad', 'interpro_rr_feed_in'].includes(workflow);
+    pairs.querySelectorAll('[name="challenge_pairs[]"]').forEach(input => {
+      input.closest('label').hidden = workflow === 'interpro_rr_feed_in' && Number(input.value) > 10;
+      if (input.closest('label').hidden) input.checked = false;
+    });
     pairs.hidden = option.disabled || !option.checked;
     pairs.querySelectorAll('input').forEach(input => { input.disabled = pairs.hidden; });
     groups.hidden = true;
@@ -194,7 +199,7 @@ document.getElementById('draw-format-form')?.addEventListener('submit', event =>
   const form = event.currentTarget;
   if (event.defaultPrevented) return;
   const selected = form.querySelector('input[name="workflow"]:checked')?.value;
-  const challenges = selected === 'feed_in_monrad' && form.querySelector('#challenge-playoffs').checked;
+  const challenges = ['feed_in_monrad', 'interpro_rr_feed_in'].includes(selected) && form.querySelector('#challenge-playoffs').checked;
   const pairs = challenges ? [...form.querySelectorAll('[name="challenge_pairs[]"]:checked')].map(input => Number(input.value)).sort((a, b) => a - b) : [];
   const previousPairs = JSON.parse(form.dataset.currentPairs || '[]').map(Number).sort((a, b) => a - b);
   const groupCount = form.querySelector('[name="groups"]');

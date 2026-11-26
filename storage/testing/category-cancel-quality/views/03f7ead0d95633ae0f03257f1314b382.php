@@ -1,0 +1,25 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!$config): ?>
+<p class="alert alert-info">Save camp setup first. Then approve roster players together here.</p>
+<?php elseif($rosterRows->isEmpty()): ?>
+<p>Choose regions and teams to bring their players into your draft, or add a player below.</p>
+<?php else: ?>
+<form method="POST" action="<?php echo e(route('backend.camps.approve-roster',$plan)); ?>" class="mb-4" data-camp-selection="keys[]"><?php echo csrf_field(); ?>
+<input type="hidden" name="revision" value="<?php echo e($plan->revision); ?>">
+<p>Select the players you want to invite. A single matching camp division is suggested; check the list before approval. Imported identities are reviewed individually below.</p>
+<label><input type="checkbox" data-camp-select-all="keys[]"> Select all ready roster players</label>
+<div class="mt-2 mb-3" style="max-height:30rem;overflow-y:auto" tabindex="0" role="region" aria-label="Roster players to review">
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $rosterRows; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $row): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php ($candidate=$row['candidate']); ?>
+<div class="camp-item row g-2 align-items-center"><div class="col-12 col-md-7"><label><input type="checkbox" name="keys[]" value="<?php echo e($candidate['key']); ?>" data-camp-ready="<?php echo e($row['matches']->count()===1 ? '1' : '0'); ?>" <?php if(!$row['player'] || $row['matches']->isEmpty() || $row['decision'] || !str_starts_with($candidate['key'],'player:')): echo 'disabled'; endif; ?>> <strong><?php echo e($candidate['name']); ?></strong></label>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($row['decision']): ?><small class="d-block">Already <?php echo e($row['decision']); ?> — review in nominations below.</small><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<small class="d-block"><?php echo e($row['player']?->dateOfBirth ? \Carbon\Carbon::parse($row['player']->dateOfBirth)->format('j M Y') : 'Identity needs individual review'); ?></small></div>
+<div class="col-12 col-md-5"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($row['player'] && $row['matches']->isNotEmpty()): ?><label class="visually-hidden" for="roster-division-<?php echo e($row['player']->id); ?>">Camp division for <?php echo e($candidate['name']); ?></label><select class="form-select" id="roster-division-<?php echo e($row['player']->id); ?>" name="division_ids[<?php echo e($row['player']->id); ?>]"><option value="">Choose division</option><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $divisions->whereIn('id',$row['matches']->keys()); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $division): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($division->id); ?>" <?php if($row['matches']->count()===1): echo 'selected'; endif; ?>><?php echo e($division->category?->name); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></select><?php else: ?><small>Resolve this player individually.</small><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></div></div>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div>
+<label class="form-label" for="roster-reason">Reason for this selection</label><input class="form-control mb-3" id="roster-reason" name="reason" maxlength="2000" required value="<?php echo e(old('reason','Reviewed regional team roster candidates for this camp.')); ?>">
+<label class="d-block mb-3"><input type="checkbox" name="identity_confirmed" value="1" required> I reviewed the selected players and their camp divisions.</label>
+<button class="btn btn-primary">Approve selected roster players</button>
+<p class="small mt-2" data-camp-selection-count aria-live="polite">Choose players to approve (up to 200 at once).</p>
+</form>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\practice-camps\roster-approval.blade.php ENDPATH**/ ?>

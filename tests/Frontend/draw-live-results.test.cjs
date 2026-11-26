@@ -83,3 +83,32 @@ test('draw checks skip unchanged results, back off after failures, and stop on u
   assert.equal(cleared, true);
   assert.equal(timers.size, 0);
 });
+
+test('round-robin revision changes reload the whole workspace while retaining its tab hash', async () => {
+  const status = {dataset: {autoRefresh: '1', drawRevision: 'initial'}};
+  const region = {dataset: {liveResults: 'round-robin', liveResultsReload: '', liveResultsUrl: 'http://localhost/frontend/fixtures/draw/index/8'}};
+  const timers = new Map();
+  let timerId = 0, reloads = 0, responseRevision = 'initial';
+  const requests = [];
+  const location = {href: 'http://localhost/roundrobin/8#standings', hash: '#standings', reload: () => reloads++};
+  vm.runInNewContext(script, {
+    document: {hidden: false, querySelectorAll: () => [region], querySelector: selector => selector === '[data-live-results-status]' ? status : null, addEventListener() {}},
+    window: {location}, AbortController, Date, Math: {min: Math.min, random: () => 0},
+    setTimeout(callback, delay) {timers.set(++timerId, {callback, delay}); return timerId;},
+    clearTimeout: id => timers.delete(id),
+    fetch: async (url, options) => {
+      requests.push([url, options.headers['X-Draw-Live']]);
+      return {status: 200, ok: true, json: async () => ({enabled: true, revision: responseRevision})};
+    },
+  });
+  const tick = async () => {
+    const [id, timer] = [...timers][0]; timers.delete(id); await timer.callback();
+  };
+  await tick();
+  assert.equal(reloads, 0);
+  responseRevision = 'new-score';
+  await tick();
+  assert.equal(reloads, 1);
+  assert.equal(location.hash, '#standings');
+  assert.deepEqual(requests, [[region.dataset.liveResultsUrl, 'revision'], [region.dataset.liveResultsUrl, 'revision']]);
+});

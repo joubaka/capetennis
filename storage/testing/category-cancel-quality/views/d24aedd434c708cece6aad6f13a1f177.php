@@ -1,0 +1,376 @@
+<?php
+  $configData = Helper::appClasses();
+?>
+
+
+
+<?php $__env->startSection('title', 'Home'); ?>
+
+<?php $__env->startSection('page-style'); ?>
+<style>
+  .home-controls {
+    align-items: center;
+    background: #fff;
+    border: 1px solid rgba(75,70,92,.12);
+    border-radius: .7rem;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: minmax(20rem, 1fr) minmax(15rem, .9fr);
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+  }
+  .home-brand {
+    align-items: center;
+    display: flex;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .home-brand-logo {
+    height: 5.5rem;
+    max-width: 13rem;
+    object-fit: contain;
+    width: auto;
+  }
+  .home-brand-copy { min-width: 0; }
+  .home-brand-copy h1 { color: #004177; margin-bottom: .25rem; }
+  .home-periods { display: grid; gap: .45rem; grid-template-columns: repeat(3, 1fr); }
+  .home-periods .period-option {
+    align-items: center;
+    background: #f2f2f5 !important;
+    border: 1px solid transparent !important;
+    border-radius: .5rem;
+    color: #6f6b7d !important;
+    display: flex;
+    font-weight: 600;
+    justify-content: center;
+    min-height: 2.65rem;
+    padding: .5rem .65rem;
+  }
+  .home-periods .btn-check:checked + .period-option {
+    background: #172e45 !important;
+    box-shadow: 0 .2rem .55rem rgba(23,46,69,.18);
+    color: #fff !important;
+  }
+  .event-search-wrap { position: relative; }
+  .event-search-wrap .ti { color: #6f6b7d; left: .9rem; position: absolute; top: 50%; transform: translateY(-50%); }
+  .event-search-wrap .form-control { min-height: 2.75rem; padding-left: 2.6rem; }
+  .events-title-row { align-items: center; display: flex; justify-content: space-between; margin: 0 .2rem .75rem; }
+  #eventResults { color: #8a8794; font-size: .82rem; }
+
+  .event-card {
+    border: 1px solid rgba(75,70,92,.1);
+    border-radius: .65rem;
+    box-shadow: 0 .25rem 1rem rgba(75,70,92,.07);
+    overflow: hidden;
+  }
+  .event-card-header { background: #004177; padding: 1.15rem 1.35rem; }
+  .event-name {
+    border-radius: .35rem;
+    color: #fff;
+    display: inline-block;
+    line-height: 1.35;
+    margin: -.2rem -.35rem;
+    overflow-wrap: anywhere;
+    padding: .2rem .35rem;
+    transition: background-color .2s ease;
+  }
+  .event-name:hover { background: rgba(255,255,255,.14); color: #fff; text-decoration: none; }
+  .event-card-body { align-items: center; display: grid; gap: 1.5rem; grid-template-columns: 9rem minmax(0, 1fr); }
+  .event-logo-wrap { align-items: center; display: flex; justify-content: center; min-height: 8rem; }
+  .event-logo { height: 8rem; max-width: 9rem; object-fit: contain; width: 100%; }
+  .event-logo-placeholder { color: #14796e; font-size: 3rem; }
+  .event-details { min-width: 0; }
+  .event-dates { display: grid; gap: .7rem; grid-template-columns: 1fr 1fr; margin: 0; }
+  .event-date { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; margin: 0; min-width: 0; }
+  .event-date dt { color: #6f6b7d; font-size: .84rem; font-weight: 600; margin: 0; }
+  .event-date dd { margin: 0; }
+  .event-date-value { border: 1px solid transparent; border-radius: .45rem; display: inline-block; font-size: .78rem; font-weight: 700; line-height: 1.4; padding: .35rem .65rem; }
+  .home-layout .event-date-value.start_date { background: #e7f0ff; border-color: #c4d8f7; color: #174575; }
+  .home-layout .event-date-value.end_date { background: #edf1f6; border-color: #d0dce8; color: #243e59; }
+  .home-layout .event-date-value.deadline { background: #fff0dc; border-color: #f4cc95; color: #874600; }
+  .deadline-date { grid-column: 1 / -1; }
+  .event-card-footer { align-items: center; display: flex; justify-content: space-between; margin-top: 1rem; }
+  .event-card .buttons { position: relative; }
+  .event-card .buttons .btn { background: #dff7e9; border: 0; color: #28c76f; font-weight: 700; }
+  .event-card .buttons .btn:hover { background: #28c76f; color: #fff; }
+
+  .rankings-title { color: #5d596c; font-size: 1.8rem; margin-bottom: 1.1rem; }
+  .rankings-list { border: 1px solid rgba(75,70,92,.14); border-radius: .45rem; overflow: hidden; }
+  .ranking-link { border: 0; border-top: 1px solid rgba(75,70,92,.12); gap: 1rem; min-height: 5.1rem; }
+  .ranking-link:first-child { border-top: 0; }
+  .ranking-icon { align-items: center; background: #172e45; border-radius: .6rem; color: #fff; display: flex; flex: 0 0 3.15rem; height: 3.15rem; justify-content: center; }
+  .ranking-icon-svg { fill: none; height: 1.65rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; width: 1.65rem; }
+  .ranking-name { color: #5d596c; line-height: 1.35; overflow-wrap: anywhere; }
+  .ranking-link:hover .ranking-name { color: #14796e; }
+  .home-state { background: #fff; border: 1px dashed rgba(75,70,92,.25); border-radius: .65rem; padding: 2.5rem 1rem; text-align: center; }
+  .home-ctr { align-items: center; background: radial-gradient(ellipse at 90% 5%, #244d75, transparent 65%), linear-gradient(115deg, #102438, #132f49); border: 1px solid #395c7f; border-radius: 1rem; box-shadow: 0 .6rem 1.6rem rgba(23,46,69,.15); color: #fff; display: grid; gap: clamp(1rem, 2vw, 2rem); grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); padding: 1rem clamp(1rem, 2vw, 1.75rem); }
+  .home-layout .home-ctr h2 { color: #fff !important; font-size: clamp(1.5rem, 2.5vw, 2.25rem); font-weight: 800; letter-spacing: -.04em; line-height: 1.1; margin: .25rem 0 .4rem; text-wrap: balance; }
+  .home-ctr h2 span, .home-ctr-open { color: #ffbd70; }
+  .home-ctr-open { background: #ffbd701a; border: 1px solid #ffbd7080; border-radius: 2rem; display: inline-block; font-size: .75rem; font-weight: 800; letter-spacing: .07em; padding: .35rem .7rem; text-transform: uppercase; }
+  .home-ctr p { color: #e4efff; font-size: 1rem; line-height: 1.45; margin: 0; max-width: 65ch; }
+  .home-ctr-benefits { color: #e4efff; display: flex; flex-wrap: wrap; gap: .35rem 1rem; list-style: none; margin: .45rem 0 .65rem; padding: 0; }
+  .home-ctr-benefits li { align-items: baseline; display: flex; font-size: .85rem; gap: .35rem; }
+  .home-ctr-benefits li::before { background: #ffbd70; border-radius: 50%; content: ''; height: .3rem; width: .3rem; }
+  .home-ctr p.home-ctr-availability { font-size: .85rem; margin: .45rem 0 .65rem; }
+  .home-ctr-copy { min-width: 0; }
+  .home-ctr .home-ctr-mobile-summary { display: none; }
+  .home-ctr-mobile-details { grid-column: 1 / -1; }
+  .home-ctr-mobile-details summary { align-content: center; color: #e4efff; cursor: pointer; font-size: .85rem; min-height: 44px; width: fit-content; }
+  .home-ctr-mobile-details > .home-ctr-examples { display: none; }
+  .home-ctr-copy > .home-ctr-benefits { display: none; }
+  .home-ctr { row-gap: 0; }
+  .home-ctr-examples { background: #0e243a66; border: 1px solid #9ec9f24a; border-radius: .85rem; isolation: isolate; overflow: hidden; padding: .65rem .75rem; position: relative; text-align: center; }
+  .home-ctr-examples::before { background: linear-gradient(90deg, transparent 49%, #fff 49% 51%, transparent 51%), linear-gradient(0deg, transparent 24%, #fff 24% 25%, transparent 25% 75%, #fff 75% 76%, transparent 76%); border: 2px solid #fff; content: ''; height: 16rem; inset: -2.5rem auto auto 50%; opacity: .12; pointer-events: none; position: absolute; transform: translateX(-50%) rotate(-20deg); width: 9rem; z-index: -1; }
+  .home-ctr-example-title { color: #fff; font-size: .9rem; font-weight: 800; letter-spacing: .06em; margin-bottom: .35rem; text-transform: uppercase; }
+  .home-ctr-badges { display: flex; gap: clamp(.25rem, 1.5vw, 1.15rem); justify-content: center; }
+  .home-ctr-badge-preview { align-items: center; display: flex; flex-direction: column; gap: .35rem; }
+  .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.75rem, 6vw, 4.75rem) !important; margin-inline: 0 !important; width: clamp(3.75rem, 6vw, 4.75rem) !important; }
+  .home-ctr-badge-preview > .small { display: none; }
+  .home-ctr-badge-label { color: #e4efff; font-size: .75rem; font-weight: 700; }
+  .home-ctr-example-note { color: #c4d5eb; font-size: .7rem; margin-top: .5rem; }
+  .home-ctr [data-player-plus-coming-soon] { align-items: center; background: rgba(255,180,91,.12) !important; border: 1px solid rgba(255,180,91,.65); color: #ffbd70 !important; display: inline-flex; font-size: .7rem !important; font-weight: 800; gap: .45rem; letter-spacing: .08em; padding: .4rem .7rem !important; text-transform: uppercase; }
+  .home-ctr [data-player-plus-coming-soon]::before { background: currentColor; border-radius: 50%; content: ''; height: .35rem; width: .35rem; }
+  .home-layout .home-ctr .btn { align-items: center; background: #ffab45 !important; border: 1px solid #ffbd70 !important; border-radius: .6rem; box-shadow: 0 .3rem .8rem rgba(8,30,59,.2); color: #102a4a !important; display: inline-flex; font-weight: 800 !important; gap: .15rem; justify-content: center; min-height: 48px !important; padding: .45rem .9rem; transition: background-color .2s ease, box-shadow .2s ease; white-space: normal; }
+  .home-layout .home-ctr .btn:hover { background: #ffc077 !important; box-shadow: 0 .4rem 1rem rgba(8,30,59,.3); }
+  .home-layout .home-ctr .btn:focus-visible { outline: 3px solid #fff; outline-offset: 4px; }
+
+  @media (max-width: 991.98px) {
+    .home-controls { grid-template-columns: 1fr; }
+    .rankings-title { font-size: 1.45rem; margin-top: .5rem; }
+  }
+  @media (min-width: 1200px) {
+    /* The desktop navbar already carries the brand; avoid a duplicate below it. */
+    .home-brand { display: none; }
+    .home-layout { padding-top: 1.5rem; }
+  }
+  @media (max-width: 767.98px) {
+    .home-ctr { gap: 0; grid-template-columns: minmax(0, 1fr); padding: .85rem 1rem .35rem; }
+    .home-layout .home-ctr h2 { font-size: 1.25rem; letter-spacing: -.025em; margin: 0 0 .25rem; text-wrap: wrap; }
+    .home-ctr .home-ctr-description,
+    .home-ctr-copy > .home-ctr-benefits,
+    .home-ctr > .home-ctr-examples { display: none; }
+    .home-ctr .home-ctr-mobile-summary { display: block; font-size: .875rem; line-height: 1.4; }
+    .home-ctr p.home-ctr-availability { font-size: .75rem; line-height: 1.4; margin: .25rem 0 0; }
+    .home-ctr .home-ctr-open,
+    .home-ctr [data-player-plus-coming-soon] { margin-bottom: .4rem; }
+    .home-layout .home-ctr .btn { font-size: .85rem; margin-top: .55rem; padding: .4rem .75rem; }
+    .home-ctr-mobile-details { display: block; }
+    .home-ctr-mobile-details > .home-ctr-examples { display: block; }
+    .home-ctr-mobile-details summary { align-content: center; color: #e4efff; cursor: pointer; font-size: .85rem; min-height: 44px; width: fit-content; }
+    .home-ctr-mobile-details[open] { padding-bottom: .5rem; }
+    .home-ctr-mobile-details .home-ctr-benefits { margin-top: 0; }
+    .home-ctr-badge-preview [data-ctr-badge] { height: clamp(3.1rem, 16vw, 5.5rem) !important; width: clamp(3.1rem, 16vw, 5.5rem) !important; }
+    body { overflow-x: hidden; }
+    .content-backdrop { max-width: 100%; }
+    .home-controls { min-width: 0; padding: .8rem; }
+    .home-brand { align-items: flex-start; gap: .9rem; }
+    .home-brand-logo { height: 4.5rem; max-width: 8rem; }
+    .home-periods .period-option { font-size: .78rem; padding-inline: .25rem; }
+    .event-card-header { padding: 1rem; }
+    .event-card-header .h4 { font-size: 1.05rem; }
+    .event-card-body { align-items: start; gap: 1rem; grid-template-columns: 5.25rem minmax(0, 1fr); }
+    .event-logo-wrap { min-height: 5.25rem; }
+    .event-logo { height: 5.25rem; max-width: 5.25rem; }
+    .event-dates { gap: .6rem; grid-template-columns: 1fr; }
+    .deadline-date { grid-column: auto; }
+    .event-card-footer { align-items: stretch; flex-direction: column; gap: .7rem; }
+    .event-card .buttons .btn { width: 100%; }
+  }
+  @media (max-width: 359.98px) {
+    .home-periods { grid-template-columns: 1fr; }
+    .event-card-body { grid-template-columns: 1fr; }
+    .event-logo-wrap { justify-content: flex-start; }
+  }
+</style>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('content'); ?>
+<div class="home-layout row g-4 align-items-start">
+  <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user())): ?>
+  <?php ($plusSalesOpen = \App\Services\Performance\PlayerPlusService::salesEnabled()); ?>
+  <div class="col-12">
+    <section class="home-ctr" aria-labelledby="home-ctr-title" data-home-ctr>
+      <div class="home-ctr-copy">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($plusSalesOpen): ?>
+          <span class="home-ctr-open">Player Plus · Now open</span>
+          <h2 id="home-ctr-title">Know your game.<span class="d-none d-md-inline"><br>Find your next step.</span></h2>
+          <p class="home-ctr-description">Follow your rating, monthly reports and tournament options with Player Plus.</p>
+        <?php else: ?>
+          <?php if (isset($component)) { $__componentOriginal42d2545d0ae398c2199755893eaa354f = $component; } ?>
+<?php if (isset($attributes)) { $__attributesOriginal42d2545d0ae398c2199755893eaa354f = $attributes; } ?>
+<?php $component = Illuminate\View\AnonymousComponent::resolve(['view' => 'components.player-plus-coming-soon','data' => []] + (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag ? $attributes->all() : [])); ?>
+<?php $component->withName('player-plus-coming-soon'); ?>
+<?php if ($component->shouldRender()): ?>
+<?php $__env->startComponent($component->resolveView(), $component->data()); ?>
+<?php if (isset($attributes) && $attributes instanceof Illuminate\View\ComponentAttributeBag): ?>
+<?php $attributes = $attributes->except(\Illuminate\View\AnonymousComponent::ignoredParameterNames()); ?>
+<?php endif; ?>
+<?php $component->withAttributes([]); ?>
+<?php echo $__env->renderComponent(); ?>
+<?php endif; ?>
+<?php if (isset($__attributesOriginal42d2545d0ae398c2199755893eaa354f)): ?>
+<?php $attributes = $__attributesOriginal42d2545d0ae398c2199755893eaa354f; ?>
+<?php unset($__attributesOriginal42d2545d0ae398c2199755893eaa354f); ?>
+<?php endif; ?>
+<?php if (isset($__componentOriginal42d2545d0ae398c2199755893eaa354f)): ?>
+<?php $component = $__componentOriginal42d2545d0ae398c2199755893eaa354f; ?>
+<?php unset($__componentOriginal42d2545d0ae398c2199755893eaa354f); ?>
+<?php endif; ?>
+          <h2 id="home-ctr-title">Know your game.<span class="d-none d-md-inline"><br>Find your next step.</span></h2>
+          <p class="home-ctr-description">Player Plus brings together your rating, progress and tournament guidance.</p>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        <p class="home-ctr-mobile-summary">Ratings, progress and next steps.</p>
+        <?php echo $__env->make('frontend.partials.home-ctr-benefits', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if (! ($plusSalesOpen)): ?>
+          <p class="home-ctr-availability"><?php echo e(app(\App\Services\Performance\PlayerRatingAccess::class)->comingSoon() ? 'Player Plus purchases are not open yet.' : 'New Player Plus purchases are currently paused.'); ?> Free accounts remain available.</p>
+        <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        <a class="btn btn-warning" href="<?php echo e(route('ctr.index')); ?>"><?php echo e($plusSalesOpen ? 'Explore Player Plus' : 'Discover Player Plus'); ?> <i class="ti ti-arrow-right ms-2" aria-hidden="true"></i></a>
+      </div>
+      <?php echo $__env->make('frontend.partials.home-ctr-examples', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+      <details class="home-ctr-mobile-details">
+        <summary>CTR benefits and badge examples</summary>
+        <?php echo $__env->make('frontend.partials.home-ctr-benefits', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+        <?php echo $__env->make('frontend.partials.home-ctr-examples', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+      </details>
+    </section>
+  </div>
+  <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  <main class="col-xl-8">
+    <?php ($homeBrandLogo = \App\Models\SiteSetting::brandLogoPath()); ?>
+    <?php ($homeBrandLogoUrl = filter_var($homeBrandLogo, FILTER_VALIDATE_URL) ? $homeBrandLogo : asset(ltrim($homeBrandLogo, '/'))); ?>
+    <section class="home-brand" aria-label="Cape Tennis">
+      <img class="home-brand-logo" src="<?php echo e($homeBrandLogoUrl); ?>" alt="Cape Tennis logo">
+      <div class="home-brand-copy">
+        <h1 class="h3">Cape Tennis</h1>
+        <p class="text-muted mb-0">Find events, follow results and explore the latest series rankings.</p>
+      </div>
+    </section>
+    <section class="home-controls" aria-label="Filter events">
+      <fieldset class="m-0 time_period">
+        <legend class="visually-hidden">Event period</legend>
+        <div class="home-periods">
+          <input class="btn-check" type="radio" name="period" id="periodUpcoming" value="upcoming" checked>
+          <label class="btn period-option" for="periodUpcoming">Upcoming</label>
+          <input class="btn-check" type="radio" name="period" id="periodPast" value="past">
+          <label class="btn period-option" for="periodPast">Past</label>
+          <input class="btn-check" type="radio" name="period" id="periodAll" value="all">
+          <label class="btn period-option" for="periodAll">All events</label>
+        </div>
+      </fieldset>
+      <div>
+        <label class="visually-hidden" for="eventSearch">Search events</label>
+        <div class="event-search-wrap">
+          <i class="ti ti-search" aria-hidden="true"></i>
+          <input type="search" id="eventSearch" class="form-control" maxlength="100" autocomplete="off" placeholder="Search events by name…">
+        </div>
+      </div>
+    </section>
+
+    <div class="events-title-row">
+      <h1 class="h5 mb-0" id="eventsHeading">Upcoming events</h1>
+      <span id="eventResults" aria-live="polite"></span>
+    </div>
+
+    <div id="eventList" aria-labelledby="eventsHeading" aria-busy="true"></div>
+    <div class="home-state" id="eventLoading" role="status">
+      <div class="spinner-border text-primary mb-2" aria-hidden="true"></div>
+      <div>Loading events…</div>
+    </div>
+    <div class="home-state d-none" id="eventEmpty">
+      <i class="ti ti-calendar-off ti-xl text-muted mb-2" aria-hidden="true"></i>
+      <h2 class="h6 mb-1">No events found</h2>
+      <p class="text-muted mb-0">Try another period or clear your search.</p>
+    </div>
+    <div class="home-state d-none" id="eventError" role="alert">
+      <i class="ti ti-alert-circle ti-xl text-danger mb-2" aria-hidden="true"></i>
+      <h2 class="h6 mb-1">Events could not be loaded</h2>
+      <p class="text-muted mb-3">Please check your connection and try again.</p>
+      <button class="btn btn-label-primary" id="retryEvents" type="button">Try again</button>
+    </div>
+    <div class="text-center mt-3 d-none" id="eventLoadMoreWrap">
+      <button class="btn btn-outline-primary" id="eventLoadMore" type="button">Load more events <i class="ti ti-chevron-down ms-1" aria-hidden="true"></i></button>
+    </div>
+  </main>
+
+  <aside class="col-xl-4" aria-labelledby="rankingsHeading">
+    <h2 class="rankings-title fw-semibold" id="rankingsHeading">Series Rankings</h2>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($series->isNotEmpty()): ?>
+      <div class="list-group rankings-list">
+        <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $series; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $value): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+          <a href="<?php echo e(route('frontend.ranking.show', $value->id)); ?>" class="ranking-link list-group-item list-group-item-action d-flex align-items-center p-3">
+            <span class="ranking-icon" aria-hidden="true">
+              <svg class="ranking-icon-svg" viewBox="0 0 24 24" focusable="false">
+                <path d="M9 5h6m-7 4h8m-8 4h5m-5 4h8M9 3h6a2 2 0 0 1 2 2v1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h1V5a2 2 0 0 1 2-2Z" />
+              </svg>
+            </span>
+            <span class="ranking-name fw-semibold flex-grow-1"><?php echo e($value->name); ?></span>
+          </a>
+        <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      </div>
+    <?php else: ?>
+      <div class="card"><div class="card-body text-muted">No series rankings have been published yet.</div></div>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </aside>
+</div>
+
+<?php echo $__env->make('templates.homeEventTemplate', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+
+<script>
+  window.routes = window.routes || {};
+  window.routes.homeGetEvents = "<?php echo e(route('home.events.get')); ?>";
+  window.routes.eventShow     = "<?php echo e(url('/events')); ?>/";
+  window.assetBase            = "<?php echo e(asset('')); ?>";
+</script>
+<?php $__env->stopSection(); ?>
+
+<?php $__env->startSection('page-script'); ?>
+  <script>
+    (function () {
+      'use strict';
+
+      const prefix = '[HomeEvents]';
+      const bundleUrl = <?php echo json_encode(asset(mix('js/home.js')), 15, 512) ?>;
+
+      console.info(`${prefix} Bootstrap diagnostics`, {
+        pageUrl: window.location.href,
+        documentReadyState: document.readyState,
+        jqueryAvailable: typeof window.jQuery === 'function',
+        routes: {
+          homeGetEvents: window.routes?.homeGetEvents || null,
+          eventShow: window.routes?.eventShow || null
+        },
+        assetBase: window.assetBase || null,
+        bundleUrl
+      });
+
+      window.addEventListener('error', function (event) {
+        if (event.target && event.target !== window) {
+          console.error(`${prefix} Resource failed to load`, {
+            tagName: event.target.tagName || null,
+            source: event.target.src || event.target.href || null
+          });
+          return;
+        }
+
+        console.error(`${prefix} Uncaught JavaScript error`, {
+          message: event.message || null,
+          source: event.filename || null,
+          line: event.lineno || null,
+          column: event.colno || null
+        });
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (event) {
+        console.error(`${prefix} Unhandled promise rejection`, {
+          reason: event.reason instanceof Error ? event.reason.message : String(event.reason)
+        });
+      });
+    })();
+  </script>
+  <script
+    src="<?php echo e(asset(mix('js/home.js'))); ?>"
+    onload="console.info('[HomeEvents] Bundle asset loaded')"
+    onerror="console.error('[HomeEvents] Bundle asset failed to load', { source: this.src })"></script>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts/layoutMaster', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\frontend\home.blade.php ENDPATH**/ ?>

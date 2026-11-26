@@ -1,0 +1,6 @@
+<form method="get" class="mp-filters">
+    <div><label for="mp-cohort">Age group</label><select id="mp-cohort" name="cohort"><option value="">All preview groups</option><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $cohorts; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $key => $label): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($key); ?>" <?php if($selected === $key): echo 'selected'; endif; ?>><?php echo e($label); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></select></div>
+    <div><label for="mp-search">Player name</label><input type="search" name="search" id="mp-search" maxlength="100" value="<?php echo e($search); ?>" placeholder="Search this preview"></div>
+    <button class="mp-btn" type="submit">Apply filters</button>
+</form>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\player-performance\membership-preview\filters.blade.php ENDPATH**/ ?>

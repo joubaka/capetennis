@@ -166,7 +166,11 @@
 </style>
 
 
+@if($draw->published)
+  @include('frontend.fixtures.partials.live-results-status')
+@endif
 <div id="round-robin-app" class="rr-public-view"
+     @if(!empty($liveResultsRevision)) data-live-results="round-robin" data-live-results-reload data-live-results-url="{{ route('frontend.fixtures.index', $draw) }}" @endif
      data-draw-id="{{ $draw->id }}">
 
   @include('frontend.draw.partials.public-header')
@@ -188,17 +192,7 @@
             data-bs-toggle="tab"
             data-bs-target="#oop-pane"
             type="button" role="tab" aria-controls="oop-pane" aria-selected="true">
-      Schedule
-    </button>
-  </li>
-
-  <li class="nav-item" role="presentation">
-    <button class="nav-link"
-            id="matrix-tab"
-            data-bs-toggle="tab"
-            data-bs-target="#matrix-pane"
-            type="button" role="tab" aria-controls="matrix-pane" aria-selected="false">
-      Draw
+      Fixtures
     </button>
   </li>
 
@@ -208,7 +202,7 @@
             data-bs-toggle="tab"
             data-bs-target="#standings-pane"
             type="button" role="tab" aria-controls="standings-pane" aria-selected="false">
-      Standings
+      Round-robin standings
     </button>
   </li>
   @unless($draw->isRoundRobinOnly())
@@ -219,7 +213,7 @@
             data-bs-target="#main-bracket-pane"
             type="button"
             role="tab" aria-controls="main-bracket-pane" aria-selected="false">
-      Playoffs
+      Playoff bracket
     </button>
 </li>
   @endunless
@@ -233,38 +227,7 @@
   <div class="tab-content" id="rrTabsContent">
 
     {{-- ============================
-         TAB 1 — MATRIX + STANDINGS
-       ============================ --}}
-    <div class="tab-pane fade"
-         id="matrix-pane" 
-         role="tabpanel" aria-labelledby="matrix-tab">
-      <div class="row"> 
-        <div class="col-12">
-        <div class="card mb-3">
-        <div class="card-header d-flex justify-content-between align-items-center">
-          <h5 class="card-title mb-0">Round Robin Matrix</h5>
-          <small class="text-muted">Who plays who + results</small>
-        </div>
-        <div class="card-body p-0">
-        <div id="rr-matrix-wrapper" class="rr-public-matrices p-2">
-
-            <div class="text-center text-muted py-5" id="rr-matrix-loading">
-              <div class="spinner-border spinner-border-sm"></div>
-              <div class="mt-2">Loading round-robin grid…</div>
-            </div>
-          </div>
-        </div>
-      </div></div>
-        
-      </div>
-    
-
-    
-
-    </div>
-
-    {{-- ============================
-         TAB 2 — ORDER OF PLAY
+         FIXTURES
        ============================ --}}
     <div class="tab-pane fade show active"
          id="oop-pane" 
@@ -273,7 +236,7 @@
             <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
-            <h5 class="card-title mb-1">Match times &amp; venues</h5>
+            <h5 class="card-title mb-1">Fixtures &amp; results</h5>
             <div class="small text-muted">
               Find your name, then confirm the date, time and venue.
               @if($draw->settings?->showsFirstMatchOnly()) Later matches are marked <strong>Followed by</strong> until their times are released. @endif
@@ -282,7 +245,12 @@
        
         </div>
         <div class="card-body p-0">
-        @if($publicDrawSummary['available'] ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'])
+        @unless($publicDrawSummary['available'] ?? app(\App\Services\PublicDrawPresentation::class)->summary($draw)['available'])
+          <div class="alert alert-info rounded-0 mb-0" role="status">
+            <div class="fw-semibold">Match times and venues have not been published yet.</div>
+            <div class="small">Fixtures and results are shown below. Match times will appear here once published.</div>
+          </div>
+        @endunless
          <table class="table table-sm table-hover mb-0" id="rr-order-table">
     <caption class="visually-hidden">Player match dates, start times, venues and scores</caption>
     <thead class="table-light">
@@ -301,12 +269,6 @@
     </thead>
     <tbody></tbody>
 </table>
-        @else
-          <div class="alert alert-info rounded-0 mb-0 py-4 text-center" role="status">
-            <div class="fw-semibold">Match times and venues have not been published yet.</div>
-            <div class="small">The draw is available now; return here after the organiser releases the schedule.</div>
-          </div>
-        @endif
         </div>
       </div>
         </div>
@@ -320,7 +282,7 @@
 
   <div class="card">
     <div class="card-header">
-      <h5 class="card-title mb-0">Standings</h5>
+      <h5 class="card-title mb-0">Round-robin standings</h5>
     </div>
 
     <div class="card-body">
@@ -330,6 +292,11 @@
           <div class="mt-2">Loading standings…</div>
         </div>
       </div>
+      <details class="mt-4 rr-matrix-details" id="matrix-pane">
+        <summary class="fw-semibold">Round-robin results grid</summary>
+        <p class="text-muted small mt-2">See each group’s head-to-head results.</p>
+        <div id="rr-matrix-wrapper" class="rr-public-matrices"></div>
+      </details>
     </div>
   </div>
 
@@ -347,7 +314,7 @@
   <div class="tab-pane fade" id="main-bracket-pane" role="tabpanel" aria-labelledby="main-bracket-tab">
     <div class="card">
       <div class="card-header d-flex justify-content-between align-items-center py-2">
-        <h5 class="card-title mb-0">Main Bracket</h5>
+        <h5 class="card-title mb-0">Playoff bracket</h5>
         <div class="bracket-zoom-controls d-flex gap-2 align-items-center">
           <button type="button" class="btn btn-sm btn-outline-secondary btn-bracket-zoom" data-dir="out" style="width:30px;height:30px;padding:0;">−</button>
           <button type="button" class="btn btn-sm btn-outline-secondary btn-bracket-zoom" data-dir="in" style="width:30px;height:30px;padding:0;">+</button>
@@ -378,12 +345,14 @@
 
 
 @section('page-script')
+@include('frontend.fixtures.partials.live-results-script')
 
 <script>
     window.RR_FIXTURES  = @json($rrFixtures);
     window.RR_GROUPS    = @json($groupsJson);   // THE ONLY CORRECT ONE
     window.RR_OOP       = @json($oops);
     window.RR_STANDINGS = @json($standings);
+    window.RR_SCHEDULE_AVAILABLE = @json($publicDrawSummary['available'] ?? false);
     window.RR_SCORE_FORMAT = @json($draw->settings?->score_format);
 
     window.RR_MAIN_BRACKET_URL = "{{ route('public.roundrobin.main-bracket', $draw) }}";

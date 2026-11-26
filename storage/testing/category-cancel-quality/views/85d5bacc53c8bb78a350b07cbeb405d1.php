@@ -1,0 +1,2 @@
+<?php echo $__env->make('emails.interprovincial-trials.invitation', ['recipientName' => '[recipient name]', 'messageBody' => $body, 'invitationUrl' => '#'], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\emails\interprovincial-trials\invitation-preview.blade.php ENDPATH**/ ?>

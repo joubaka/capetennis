@@ -97,7 +97,10 @@ final class DrawResultOrderService
             }
         }
 
-        $placements = $this->placements->forDraw($draw)
+        $placements = $this->placements->forDraw($draw);
+        if (InterproRoundRobinFormat::selected($draw) && InterproRoundRobinFormat::challengePairs($draw)
+            && ($placements->count() !== 12 || $placements->contains(fn ($row) => $row['status'] === 'awaiting'))) return collect();
+        $placements = $placements
             ->where('status', 'resolved')
             ->sortBy(fn (array $row) => (int) $row['position'])
             ->pluck('registration_id')

@@ -1,0 +1,2 @@
+<img <?php echo e($attributes); ?> src="<?php echo e(asset('assets/img/logos/cape-tennis-logo-transparent.png')); ?>" alt="Cape Tennis logo">
+<?php /**PATH D:\wamp64\www\ct\resources\views\components\application-logo.blade.php ENDPATH**/ ?>

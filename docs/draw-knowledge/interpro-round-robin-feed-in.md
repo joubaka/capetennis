@@ -22,6 +22,30 @@ topology. Its 18 playoff identities remain stable after preparation, including
 before qualifiers are known. A full 16-player field has 24 RR matches and up to
 18 playoff matches; carried results reduce the matches actually played.
 
+## Optional adjacent-position challenges
+
+Before results are recorded, draw setup can enable selected base-position
+challenges: 2 v 3, 4 v 5, 6 v 7, 8 v 9 and 10 v 11. The default remains off.
+The normal setup authorization, publication, result-freeze and explicit-reset
+guards apply; this option is not a post-result draw conversion.
+
+Selected challenges are stable `CHALLENGE` fixtures numbered 5000 plus the
+higher base position. All eighteen base matches must resolve before challenge
+participants qualify, and scheduling uses the same full-base dependency barrier.
+Pairs use the fixed base positions, never positions changed by another challenge.
+The winner takes the higher position. A pairing already played in this exact
+draw skips its challenge and retains both base positions, without copied scores,
+a synthetic played match or new rating evidence. Skipped fixtures cannot be
+scored, booked or converted into withdrawal walkovers. Working bookings are
+released with audit history; immutable published snapshots remain intact.
+
+Pending challenges withhold their two final positions and the ordered category
+results prefill until all positions are decided. Admin, public and print brackets
+use the shared challenge board and canonical schedule publication projection.
+`InterproRoundRobinFormatTest` covers setup persistence, fixed sources, repeat
+preparation, pending results, upset positions, skipped-pair evidence counts,
+scheduling exclusions and preserved withdrawal history.
+
 ## First result stands
 
 The first decisive meeting in this exact draw determines a repeated pairing.
@@ -127,11 +151,16 @@ Schedule labels always come from `SchedulePublicationService::publishedRows()`
 for this exact draw and individual fixture, including on staff previews. Retain
 event/draw/schedule publication and first-match visibility filtering; never read
 working times/courts directly into this shared public AJAX response.
-The separate `frontend.fixtures.index` match-list page exposes a **View playoff
-bracket** action to `public.roundrobin.show#playoffs` for this exact preset,
-including its empty planning view and legacy individual staff view. The match
-list remains available; both URLs retain the canonical event/draw visibility
-checks. Navigation never prepares fixtures or publishes a draft.
+The individual round-robin `frontend.fixtures.index` page reuses the canonical
+public draw workspace: **Fixtures**, **Round-robin standings**, and **Playoff
+bracket**. Fixtures open first, including unscheduled pairings; private times and
+venues remain filtered by the publication service. The results grid is optional
+detail under standings. Fixtures visit each group’s round before the next round,
+using full group membership for larger-group-first/name ordering. Existing
+`#draw` and `#matrix` links open that detail; `#playoffs` opens the bracket.
+Both entry URLs retain canonical event/draw visibility checks and navigation
+never prepares fixtures or publishes a draft. Public revision checks reload the
+whole workspace on changes, preserving the selected tab hash.
 The fictional browser harness uses the actual workspace wrappers and stylesheet
 order to check readable names, reachable final rounds and zoom/reset behavior.
 It also generates a four-player draw through the actual Monrad demo UI using a

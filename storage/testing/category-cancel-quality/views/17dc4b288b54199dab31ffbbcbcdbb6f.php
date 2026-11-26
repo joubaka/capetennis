@@ -1,0 +1,12 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($players->isNotEmpty()): ?>
+  <form method="get" action="<?php echo e(route('my.tennis')); ?>" class="ct-workspace-player-selector" data-workspace-player-selector>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($previewNonPlus ?? false): ?><input type="hidden" name="preview_non_plus" value="1"><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <label for="my-tennis-player" class="small d-block mb-1">Player</label>
+    <select id="my-tennis-player" name="player" class="form-select my-tennis-player-select">
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(($ratingPreviewPlayer ?? null) && !$selectedPlayer): ?><option value="<?php echo e($ratingPreviewPlayer->id); ?>" selected><?php echo e($ratingPreviewPlayer->full_name); ?> · Admin preview</option><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+      <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $players; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $playerOption): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><option value="<?php echo e($playerOption->id); ?>" <?php if($selectedPlayer?->id === $playerOption->id): echo 'selected'; endif; ?>><?php echo e($playerOption->full_name); ?></option><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    </select>
+    <noscript><button type="submit" class="btn btn-outline-primary">Open</button></noscript>
+  </form>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\my-tennis\player-selector.blade.php ENDPATH**/ ?>

@@ -1,0 +1,83 @@
+<div class="card event-section-card mb-4">
+  <div class="card-body event-card-padding p-4 p-xl-5">
+    <div class="event-section-heading mb-4">
+      <span class="event-section-icon" aria-hidden="true">
+        <svg class="event-section-icon-svg" viewBox="0 0 24 24" focusable="false">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 10v6m0-9v.01" />
+        </svg>
+      </span>
+      <div>
+        <h4 class="mb-1">Event information</h4>
+        <p class="text-muted mb-0">Please review these details before entering the tournament.</p>
+      </div>
+    </div>
+
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(app(\App\Services\RichTextSanitizer::class)->hasEventContent($event->information)): ?>
+      <div class="event-information-content">
+        <?php echo $event->information; ?>
+
+      </div>
+    <?php else: ?>
+      <div class="alert alert-secondary mb-0" role="status">
+        The organiser has not added further event information yet.
+      </div>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+    <?php ($cappedDivisions = collect($event->eventCategories ?? [])->filter(fn ($division) => $division->entry_limit !== null)); ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($cappedDivisions->isNotEmpty()): ?>
+      <div class="mt-3 pt-3 border-top" data-division-entry-limits>
+        <h5>Division entry limits</h5>
+        <p>Entries are capped per division. Available places are shown when you enter.</p>
+        <ul class="mb-0">
+          <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $cappedDivisions; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $division): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+            <li><?php echo e($division->category?->name ?? 'Division'); ?>: maximum <?php echo e($division->entry_limit); ?> players</li>
+          <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+        </ul>
+      </div>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+
+    <?php ($publishedDrawCount = ($eventDraws ?? collect())->where('published', true)->count()); ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($publishedDrawCount > 0): ?>
+      <div class="mt-3 pt-3 border-top">
+        <a href="#event-draws-match-times" class="btn btn-outline-primary" data-event-draw-jump style="min-height:44px;white-space:normal">
+          <i class="ti ti-tournament me-1" aria-hidden="true"></i>
+          <?php echo e($publishedDrawCount === 1 ? 'View published draw' : 'View published draws'); ?>
+
+          <i class="ti ti-arrow-down ms-1" aria-hidden="true"></i>
+        </a>
+      </div>
+    <?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </div>
+</div>
+
+<?php if (! $__env->hasRenderedOnce('260ff331-e9c0-467c-8cb7-59e98777474e')): $__env->markAsRenderedOnce('260ff331-e9c0-467c-8cb7-59e98777474e'); ?>
+  <style>
+    [data-event-draw-section] { scroll-margin-top: 8rem; }
+    [data-event-draw-section]:focus { outline: 3px solid #173f7a; outline-offset: 3px; }
+  </style>
+  <script>
+    function openEventDrawSection() {
+      if (!['#event-draws-match-times', '#event-draws-mobile'].includes(location.hash)) return;
+      const target = Array.from(document.querySelectorAll('[data-event-draw-section]'))
+        .find(section => section.getClientRects().length > 0);
+      if (!target) return;
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+    }
+    document.addEventListener('DOMContentLoaded', openEventDrawSection);
+    window.addEventListener('hashchange', openEventDrawSection);
+    document.addEventListener('click', function (event) {
+      const link = event.target.closest('[data-event-draw-jump]');
+      if (!link) return;
+      const target = Array.from(document.querySelectorAll('[data-event-draw-section]'))
+        .find(section => section.getClientRects().length > 0);
+      if (!target) return;
+      event.preventDefault();
+      target.focus({ preventScroll: true });
+      target.scrollIntoView({ block: 'start', behavior: 'instant' });
+      history.replaceState(null, '', '#' + target.id);
+    });
+  </script>
+<?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\frontend\event\partials\event-information.blade.php ENDPATH**/ ?>

@@ -1,0 +1,10 @@
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($paginator->hasPages()): ?>
+<nav class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3" aria-label="<?php echo e($label); ?> pages" <?php if($ajax ?? false): ?> data-share-pagination <?php endif; ?>>
+  <span class="text-muted small">Page <?php echo e($paginator->currentPage()); ?> of <?php echo e($paginator->lastPage()); ?> · <?php echo e($paginator->total()); ?> accounts</span>
+  <div class="d-flex gap-2">
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($paginator->previousPageUrl()): ?><a class="btn btn-outline-secondary btn-sm" href="<?php echo e($paginator->previousPageUrl()); ?>" <?php if($ajax ?? false): ?> data-share-page <?php endif; ?>>Previous</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+    <?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($paginator->nextPageUrl()): ?><a class="btn btn-outline-secondary btn-sm" href="<?php echo e($paginator->nextPageUrl()); ?>" <?php if($ajax ?? false): ?> data-share-page <?php endif; ?>>Next</a><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+  </div>
+</nav>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\adminPage\_partials\share-pagination.blade.php ENDPATH**/ ?>

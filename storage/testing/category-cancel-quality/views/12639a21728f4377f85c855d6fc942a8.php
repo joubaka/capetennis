@@ -1,0 +1,28 @@
+<?php $__env->startSection('title', 'Event payout requests'); ?>
+<?php $__env->startSection('content'); ?>
+<h1 class="h4">Event payout requests</h1>
+<p>Review only. No bank transfer, payout record, wallet change or notification is made here. Reconcile expenses, reimbursements, director profit shares, refunds and recipient identity separately.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(session('success')): ?><div class="alert alert-success" role="status"><?php echo e(session('success')); ?></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($errors->any()): ?><div class="alert alert-danger" role="alert"><ul class="mb-0"><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><li><?php echo e($error); ?></li><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?></ul></div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__empty_1 = true; $__currentLoopData = $requests; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $item): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+<article class="card mb-3"><div class="card-body">
+<h2 class="h5"><?php echo e($item->event?->name ?? 'Unavailable event'); ?></h2><p><?php echo e(ucfirst($item->kind)); ?> request: <strong>R<?php echo e(number_format($item->amount, 2)); ?></strong> - <?php echo e(ucfirst($item->status)); ?></p>
+<p>Requested by <?php echo e($item->requester?->name ?? 'Unavailable account'); ?> - <?php echo e($item->created_at->format('d M Y H:i')); ?></p><p><?php echo e($item->reason); ?></p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($previews[$item->event_id])): ?>
+<?php ($current = $previews[$item->event_id]); ?>
+<p>Current provisional registration funds: R<?php echo e(number_format($current['balance_cents'] / 100, 2)); ?>. Clothing excluded. Pending registration refunds: <?php echo e($current['pending_refunds']); ?>.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($current != $item->snapshot): ?><div class="alert alert-warning">Balance or completion state changed since this request. Reject it with a note and ask for a fresh request.</div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<p><a href="<?php echo e(route('superadmin.finances.event', $item->event)); ?>">Review event finances</a></p>
+<form method="POST" action="<?php echo e(route('superadmin.payout-requests.review', [$item->event, $item])); ?>"><?php echo csrf_field(); ?>
+<input type="hidden" name="preview_token" value="<?php echo e($service->token($current)); ?>">
+<label class="form-label" for="review-note-<?php echo e($item->id); ?>">Review note</label><textarea required maxlength="2000" class="form-control mb-3" name="review_note" id="review-note-<?php echo e($item->id); ?>"><?php echo e($item->review_note); ?></textarea>
+<div class="d-flex flex-wrap gap-2"><button type="submit" class="btn btn-outline-primary" name="status" value="reviewed">Mark reviewed - no payment</button><button type="submit" class="btn btn-outline-danger" name="status" value="rejected">Reject request</button><button type="submit" class="btn btn-outline-secondary" name="status" value="closed">Close administratively</button></div>
+<div class="form-text">Closing releases this request for a new submission. Record the reason or separate reconciliation reference in the note; closing does not claim a payment occurred.</div>
+</form><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+</div></article>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?><div class="alert alert-info">No outstanding event payout requests.</div><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php echo e($requests->links()); ?>
+
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\superadmin\payout-requests.blade.php ENDPATH**/ ?>

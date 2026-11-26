@@ -1,0 +1,1 @@
+<?php /**PATH D:\wamp64\www\ct\resources\views\backend\event\camp\index.blade.php ENDPATH**/ ?>

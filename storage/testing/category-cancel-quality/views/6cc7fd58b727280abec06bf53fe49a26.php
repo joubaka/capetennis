@@ -1,0 +1,23 @@
+<?php ($configData = Helper::appClasses()); ?>
+
+<?php $__env->startSection('title', 'Historical identity rating preview'); ?>
+<?php $__env->startSection('content'); ?>
+<div class="card"><div class="card-body" style="overflow-wrap:anywhere">
+<style>.identity-preview-table{min-width:900px;table-layout:auto;overflow-wrap:normal;word-break:normal}.identity-preview-table th{white-space:normal;min-width:95px}.identity-preview-table td:first-child{min-width:160px}.identity-preview-table td:nth-child(2),.identity-preview-table td:nth-child(3){white-space:nowrap}.identity-preview-table td:last-child{min-width:240px}.table-responsive:focus-visible{outline:2px solid currentColor;outline-offset:2px}</style>
+<h1 class="h3">Historical identity rating preview</h1>
+<p><?php echo e($event->name); ?> · evidence as of <?php echo e($preview['as_of']); ?> · <a href="<?php echo e(route('backend.player-performance.identity-review', $event)); ?>">Back to evidence review</a></p>
+<div class="alert alert-warning">Hypothetical review only. No records, publication or saved ratings changed. Positions are within each comparison group, not Masters eligibility. When group membership changes, before/after positions are not directly comparable. Primary-school status and age eligibility still require review.</div>
+<p>Proposals: <?php echo e($preview['proposals']->pluck('id')->implode(', ')); ?>. Newly included scored sources: <?php echo e(count($preview['added_matches'])); ?>.</p>
+<p class="small">Tables keep comparison groups separate and follow proposed positions within each group. Positions use rating, then player name. Equal displayed ratings do not resolve a qualification tie.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['source_checks']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $check): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?><p class="<?php echo e($check['reason'] ? 'text-danger' : 'text-success'); ?>">Fixture #<?php echo e($check['fixture_id']); ?>: <?php echo e($check['reason'] ?? 'Canonical source checks pass in this hypothetical preview.'); ?></p><?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $preview['cohorts']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $label => $data): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<h2 class="h4 mt-4"><?php echo e($label); ?></h2><p>Comparison groups: <?php echo e($data['before_components']); ?> before → <?php echo e($data['after_components']); ?> proposed.</p>
+<h3 class="h6">Positions 8–12, Top 10 membership changes and new identities</h3>
+<?php echo $__env->make('backend.player-performance.identity-preview-table', ['reviewRows' => collect($data['rows'])->filter(fn($row) => $row['cutoff'] || $row['top10_changed'] || $row['new_node'])], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?>
+<details><summary>All players in this affected cohort</summary><?php echo $__env->make('backend.player-performance.identity-preview-table', ['reviewRows' => $data['rows']], array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?></details>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<details class="mt-3"><summary>Calculation evidence</summary><p>Both calculations use the same source read, date, calculator and unchanged weighting. Selected proposals are passed only to the hypothetical calculation. No proposal is used by normal ratings.</p><p>Source fingerprint: <?php echo e($preview['fingerprint']); ?></p></details>
+</div></div>
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.backend', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\wamp64\www\ct\resources\views\backend\player-performance\identity-preview.blade.php ENDPATH**/ ?>

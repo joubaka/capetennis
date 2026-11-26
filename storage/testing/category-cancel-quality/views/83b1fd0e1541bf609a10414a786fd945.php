@@ -1,0 +1,22 @@
+<h1><?php echo e($event->name); ?>: event update</h1>
+<p>Public information for an event your Plus player has entered has changed.</p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($delivery->changes['draws'])): ?><p>The published draw or match schedule has changed. Check the latest opponents, times and courts on the event page.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($delivery->changes['information'])): ?>
+<p>Event information has been updated.</p>
+<p>Dates: <?php echo e($delivery->snapshot['information']['start_date'] ?? 'Check event page'); ?> – <?php echo e($delivery->snapshot['information']['end_date'] ?? ''); ?></p>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($delivery->snapshot['information']['registration_closes_at'] ?? null): ?><p>Registration closes: <?php echo e($delivery->snapshot['information']['registration_closes_at']); ?></p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if($delivery->snapshot['information']['venue_notes'] ?? null): ?><p>Venue: <?php echo e($delivery->snapshot['information']['venue_notes']); ?></p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<p><?php echo e(\Illuminate\Support\Str::limit(strip_tags($delivery->snapshot['information']['information'] ?? ''), 500)); ?></p>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($delivery->changes['announcements'])): ?>
+<h2>New or updated event announcements</h2>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php $__currentLoopData = $delivery->changes['announcements']; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $id): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(isset($delivery->snapshot['announcements'][$id])): ?>
+<?php ($post = $delivery->snapshot['announcements'][$id]); ?><h3><?php echo e($post['title']); ?></h3><p><?php echo e($post['excerpt']); ?></p>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if BLOCK]><![endif]--><?php endif; ?><?php if(!empty($delivery->changes['announcement_removed'])): ?><p>An event announcement was removed. Check the event page for the current information.</p><?php endif; ?><?php if(\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()): ?><!--[if ENDBLOCK]><![endif]--><?php endif; ?>
+<p><a href="<?php echo e(route('events.show', $event->id)); ?>">View the latest event details, draws and announcements</a></p>
+<p><a href="<?php echo e(route('player-plus.notifications')); ?>">Snooze or turn off Plus update emails</a></p>
+<?php /**PATH D:\wamp64\www\ct\resources\views\emails\plus-event-update.blade.php ENDPATH**/ ?>

@@ -25,9 +25,9 @@ final class InterproRoundRobinFormat
     }
 
     /** Topological order is deliberate; source references never depend on fixture IDs. */
-    public static function template(): array
+    public static function template(?Draw $draw = null): array
     {
-        return [
+        $template = [
             2001 => ['MAIN', 1, ['A1', 'D1']], 2002 => ['MAIN', 1, ['B1', 'C1']],
             3001 => ['PLATE', 1, ['A2', 'D3']], 3002 => ['PLATE', 1, ['B2', 'C3']],
             3003 => ['PLATE', 1, ['C2', 'B3']], 3004 => ['PLATE', 1, ['D2', 'A3']],
@@ -41,6 +41,19 @@ final class InterproRoundRobinFormat
             3009 => ['PLATE', 4, ['W3007', 'W3008'], 3],
             3011 => ['PLATE', 4, ['L3007', 'L3008'], 5],
         ];
+        $terminals = [1 => 2003, 3 => 3009, 5 => 3011, 7 => 3010, 9 => 4003, 11 => 4004];
+        foreach (self::challengePairs($draw) as $upper) {
+            $template[5000 + $upper] = ['CHALLENGE', 5,
+                ['L'.$terminals[$upper - 1], 'W'.$terminals[$upper + 1]], $upper];
+        }
+        return $template;
+    }
+
+    public static function challengePairs(?Draw $draw): array
+    {
+        $config = $draw?->settings?->playoff_config ?? [];
+        if (!($config['challenge_playoffs'] ?? false)) return [];
+        return array_values(array_intersect([2, 4, 6, 8, 10], array_map('intval', $config['challenge_pairs'] ?? [])));
     }
 
     public function prepare(Draw $draw): Collection
@@ -54,16 +67,16 @@ final class InterproRoundRobinFormat
                 422, 'Interpro trials require four groups A–D with three or four players each.');
             $existing = $draw->drawFixtures()->where('stage', '!=', 'RR')->get();
             if ($existing->isNotEmpty()) {
-                abort_unless($existing->count() === count(self::template())
-                    && $existing->pluck('match_nr')->sort()->values()->all() === collect(array_keys(self::template()))->sort()->values()->all(),
+                abort_unless($existing->count() === count(self::template($draw))
+                    && $existing->pluck('match_nr')->sort()->values()->all() === collect(array_keys(self::template($draw)))->sort()->values()->all(),
                     409, 'Existing playoff fixtures do not match the selected Interpro format. Review the draw before continuing.');
                 return collect();
             }
             abort_if($draw->published || $draw->oop_published, 409, 'Prepare the trial playoffs before publishing the draw or its schedule.');
             $fixtures = collect();
-            foreach (self::template() as $number => [$stage, $round, $sources]) {
+            foreach (self::template($draw) as $number => [$stage, $round, $sources]) {
                 $attributes = ['draw_id' => $draw->id, 'match_nr' => $number, 'stage' => $stage, 'round' => $round,
-                    'position' => self::template()[$number][3] ?? null];
+                    'position' => self::template($draw)[$number][3] ?? null];
                 foreach ($sources as $slot => $source) {
                     if (preg_match('/^([A-D])([1-3])$/', $source, $match)) {
                         $attributes['registration'.($slot + 1).'_source_group_id'] = $groups->firstWhere('name', $match[1])->id;
@@ -72,7 +85,7 @@ final class InterproRoundRobinFormat
                 }
                 $fixtures->put($number, Fixture::create($attributes));
             }
-            foreach (self::template() as $number => $definition) {
+            foreach (self::template($draw) as $number => $definition) {
                 foreach ($definition[2] as $source) {
                     if (preg_match('/^([WL])(\d+)$/', $source, $match)) {
                         $fixtures[(int) $match[2]]->update([$match[1] === 'W' ? 'parent_fixture_id' : 'loser_parent_fixture_id' => $fixtures[$number]->id]);
@@ -94,7 +107,7 @@ final class InterproRoundRobinFormat
             if (!$confirm && empty($config[0]['trials_confirmed'])) return 0;
             $fixtures = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings'])->lockForUpdate()->get();
             $byNumber = $fixtures->where('stage', '!=', 'RR')->keyBy('match_nr');
-            abort_unless($byNumber->count() === count(self::template()), 409, 'Prepare the complete Interpro playoff before progressing.');
+            abort_unless($byNumber->count() === count(self::template($draw)), 409, 'Prepare the complete Interpro playoff before progressing.');
             foreach ($byNumber as $fixture) abort_if(self::hasReference($fixture) && !self::source($fixture), 409,
                 'A carried trial result changed or is unavailable. Review its original result before progressing.');
             $standings ??= app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
@@ -103,8 +116,10 @@ final class InterproRoundRobinFormat
             $changed = 0;
             $earlier = $fixtures->where('stage', 'RR')->values();
             $outcomes = app(IndividualMatchOutcomeService::class);
-            foreach (self::template() as $number => $definition) {
+            foreach (self::template($draw) as $number => $definition) {
                 $fixture = $byNumber[$number];
+                if ($definition[0] === 'CHALLENGE' && $byNumber->where('stage', '!=', 'CHALLENGE')->contains(
+                    fn ($base) => (int) $base->match_status !== 5 && !$outcomes->winner($base))) continue;
                 $absent = [];
                 foreach ($definition[2] as $slot => $source) {
                     $registration = null;
@@ -135,8 +150,22 @@ final class InterproRoundRobinFormat
                 if ($fixture->registration1_id && $fixture->registration2_id && $fixture->fixtureResults->isEmpty()) {
                     $pair = self::pair($fixture);
                     $prior = $earlier->filter(fn ($candidate) => self::pair($candidate) === $pair)
-                        ->sortBy(fn ($candidate) => $candidate->stage === 'RR' ? 0 : array_search((int) $candidate->match_nr, array_keys(self::template()), true) + 1)->first();
-                    if ($prior) {
+                        ->sortBy(fn ($candidate) => $candidate->stage === 'RR' ? 0 : array_search((int) $candidate->match_nr, array_keys(self::template($draw)), true) + 1)->first();
+                    if ($prior && $fixture->stage === 'CHALLENGE') {
+                        $config[0]['trials_skipped_challenges'][$fixture->id] = (int) $fixture->registration1_id;
+                        $config[0]['trials_advances'][$fixture->id] = (int) $fixture->registration1_id;
+                        $fixture->winner_registration = $fixture->registration1_id;
+                        $fixture->setRelation('draw', $draw);
+                        $draw->settings->playoff_config = $config;
+                        $bookings = $fixture->orderOfPlay()->get();
+                        if ($bookings->isNotEmpty()) {
+                            DrawAuditLog::record($draw->id, 'interpro_skipped_challenge_booking_released', $fixture->id,
+                                ['previous_assignments' => $bookings->map(fn ($booking) => $booking->getAttributes())->all()]);
+                        }
+                        $fixture->orderOfPlay()->delete();
+                        DB::table('schedules')->where('draw_id', $draw->id)->where('fixture_id', $fixture->id)->delete();
+                        $fixture->scheduled = 0;
+                    } elseif ($prior) {
                         $winner = $outcomes->winner($prior);
                         abort_unless($winner, 409, 'The first meeting has no decisive result. Resolve it before continuing this trial branch.');
                         $original = self::source($prior) ?? $prior;
@@ -175,7 +204,7 @@ final class InterproRoundRobinFormat
         if (!$source || (int) $source->id === (int) $fixture->id || self::pair($source) !== self::pair($fixture)
             || $source->fixtureResults->isEmpty() && !$source->isWalkover() && !$source->isRetired()
             || !hash_equals($reference['fingerprint'], self::fingerprint($source))) return null;
-        $order = array_flip(array_keys(self::template()));
+        $order = array_flip(array_keys(self::template($draw)));
         if (!isset($order[(int) $fixture->match_nr]) || ($source->stage !== 'RR'
             && (!isset($order[(int) $source->match_nr]) || $order[(int) $source->match_nr] >= $order[(int) $fixture->match_nr]))) return null;
         return $source;
@@ -198,7 +227,8 @@ final class InterproRoundRobinFormat
     {
         if (!$fixture->draw || !self::selected($fixture->draw)) return null;
         $winner = (int) ($fixture->draw->settings->playoff_config[0]['trials_advances'][$fixture->id] ?? 0);
-        return $winner && !$fixture->fixtureResults->count() && (!$fixture->registration1_id || !$fixture->registration2_id)
+        return $winner && !$fixture->fixtureResults->count() && (!$fixture->registration1_id || !$fixture->registration2_id
+                || isset($fixture->draw->settings->playoff_config[0]['trials_skipped_challenges'][$fixture->id]))
             && in_array($winner, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true) ? $winner : null;
     }
 
@@ -218,7 +248,7 @@ final class InterproRoundRobinFormat
     {
         if (!self::selected($fixture->draw)) return;
         $config = $fixture->draw->settings->playoff_config[0] ?? [];
-        abort_if(array_key_exists($fixture->id, $config['trials_advances'] ?? []), 409, 'This trial position advances without a match because its opponent is unavailable.');
+        abort_if(array_key_exists($fixture->id, $config['trials_advances'] ?? []), 409, 'This trial position is resolved without a new match.');
         abort_if($fixture->stage !== 'RR' && (empty($config['trials_confirmed']) || !$fixture->registration1_id || !$fixture->registration2_id),
             409, 'Confirm the trial group standings and both participants before scoring this playoff.');
         abort_if(isset($config['trials_carries'][$fixture->id]), 409, 'First result stands. This pairing uses its original result and must not be scored again.');
@@ -234,6 +264,9 @@ final class InterproRoundRobinFormat
     public static function score(Fixture $fixture): ?string
     {
         $source = self::source($fixture);
+        if (isset($fixture->draw?->settings?->playoff_config[0]['trials_skipped_challenges'][$fixture->id])) {
+            return 'Challenge skipped · already played · base positions retained';
+        }
         if (!$source) return self::hasReference($fixture) ? 'Original result changed · review required'
             : (self::automaticWinner($fixture) ? 'No match required · opponent withdrawn' : null);
         $reverse = (int) $source->registration1_id !== (int) $fixture->registration1_id;
