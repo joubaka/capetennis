@@ -23,7 +23,9 @@ account. Super User previews remain separate from membership.
 The global pending bank-refund count and its controls are Super User only,
 matching the destination route. Check both the view composer and desktop/mobile
 controls; hiding a link alone does not protect the count. Mark the applicable
-interactive controls with the shared Super Admin border.
+interactive controls with the shared Super Admin border on shared pages. On
+pages already guarded exclusively for Super Users, omit these markers throughout
+the page, including navigation; route/controller authorization stays unchanged.
 
 Regression coverage: `AccountNavigationTest`, `MyTennisOverviewTest`,
 `PlayerPlusFeaturePreviewTest`, and `PlayerPlusMembershipTest`. Browser checks

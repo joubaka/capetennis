@@ -45,6 +45,29 @@ class SuperAdminControlsTest extends TestCase
         }
     }
 
+    public function test_exclusive_pages_omit_markers_but_shared_pages_retain_them(): void
+    {
+        $user = \Mockery::mock(\App\Models\User::class)->makePartial();
+        $user->shouldReceive('hasRole')->with('super-user')->andReturn(true);
+        auth()->setUser($user);
+        $routes = app('router')->getRoutes();
+        foreach (['backend.player-performance.event-ratings', 'admin.refunds.bank.index', 'engine.draw.show'] as $name) {
+            $route = $routes->getByName($name);
+            $this->assertNotNull($route);
+            request()->setRouteResolver(fn () => $route);
+            $html = view('layouts.sections.super-admin-controls')->render();
+            $this->assertStringNotContainsString('super-admin-controls.css', $html);
+            $this->assertStringNotContainsString('ct-super-admin-routes', $html);
+            $this->assertStringNotContainsString('super-admin-controls.js', $html);
+        }
+        foreach (['backend.dashboard', 'backend.email-issues'] as $name) {
+            $route = $routes->getByName($name);
+            $this->assertNotNull($route);
+            request()->setRouteResolver(fn () => $route);
+            $this->assertStringContainsString('ct-super-admin-routes', view('layouts.sections.super-admin-controls')->render());
+        }
+    }
+
     public function test_manifest_contains_route_patterns_methods_and_exclusive_flags(): void
     {
         $manifest = (new SuperAdminControls)->manifest();
