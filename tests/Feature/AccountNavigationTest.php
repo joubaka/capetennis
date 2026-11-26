@@ -70,4 +70,30 @@ class AccountNavigationTest extends TestCase
             $this->assertStringNotContainsString('Bank refunds', $html);
         }
     }
+
+    public function test_account_and_super_admin_links_have_one_menu_home_in_both_layouts(): void
+    {
+        foreach ([null, 'admin', 'super-user'] as $role) {
+            $user = User::factory()->create();
+            if ($role) $user->assignRole(Role::findOrCreate($role, 'web'));
+            $this->actingAs($user);
+            $profile = View::make('layouts.sections.navbar.navbar', ['navbarFull' => true])->render();
+            foreach (['verticalMenu', 'horizontalMenu'] as $layout) {
+                $navigation = View::make('layouts.sections.menu.'.$layout, ['containerNav' => '', 'navbarFull' => true])->render();
+                $document = new \DOMDocument;
+                @$document->loadHTML($profile.$navigation);
+                $xpath = new \DOMXPath($document);
+                $statement = $xpath->query('//a[@href="'.route('account.statement').'"]');
+                $this->assertSame(1, $statement->length);
+                $this->assertSame('dropdown-item', trim($statement->item(0)->getAttribute('class')));
+                foreach (['superadmin.marketing.index', 'superadmin.account-statements.index'] as $destination) {
+                    $links = $xpath->query('//a[@href="'.route($destination).'"]');
+                    $this->assertSame($role === 'super-user' ? 1 : 0, $links->length);
+                    if ($role === 'super-user') {
+                        $this->assertSame(1, $xpath->query('//ul[@class="menu-sub"]//a[@href="'.route($destination).'"]')->length);
+                    }
+                }
+            }
+        }
+    }
 }

@@ -58,9 +58,15 @@
         },
         {
           "url": "superadmin/account-statements",
-          "name": "Account statements",
+          "name": "User account statements",
           "icon": "circle",
           "slug": ["superadmin.account-statements.index", "superadmin.account-statements.show"]
+        },
+        {
+          "url": "superadmin/marketing",
+          "name": "CTR marketing",
+          "icon": "circle",
+          "slug": ["superadmin.marketing.index", "superadmin.marketing.contacts.index", "superadmin.marketing.contacts.create", "superadmin.marketing.contacts.edit", "superadmin.marketing.campaigns.index", "superadmin.marketing.campaigns.create", "superadmin.marketing.campaigns.edit", "superadmin.marketing.calculator", "superadmin.marketing.calculate", "superadmin.marketing.applications.index", "superadmin.marketing.applications.show"]
         },
         {
           "url": "backend/user",

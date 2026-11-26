@@ -2,36 +2,45 @@
 @extends('layouts.backend')
 @section('title', $event ? 'Event player ratings' : 'Site-wide player ratings')
 @section('content')
+@include('backend.player-performance.partials.ctr-directory-style')
 <div class="operational-page">
 <style>
     .ratings-page .ratings-explanation summary, .ratings-page .rating-evidence summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: .5rem; }
     .ratings-page summary::before { content: '+'; font-weight: 600; }
     .ratings-page details[open] > summary::before { content: '−'; }
     .ratings-page summary:focus-visible, .ratings-page a:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-    .ratings-page .rating-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .35rem 1rem; align-items: center; }
-    .ratings-page .rating-player { min-width: 0; overflow-wrap: anywhere; }
     .ratings-page h2, .ratings-page h3 { overflow-wrap: anywhere; }
-    .ratings-page .rating-score { text-align: right; white-space: nowrap; }
-    .ratings-page .rating-score small { display: block; }
-    .ratings-page .rating-evidence { font-size: .875rem; }
-    .ratings-page .rating-evidence p { margin-bottom: .35rem; }
+    .ratings-page .ctr-hero h2 { color: #fff !important; margin: 0 0 .35rem; }
+    .ratings-page .ctr-hero summary { color: #fff; }
+    .ratings-page .rating-evidence { display: inline-block; max-width: 100%; }
+    .ratings-page .rating-evidence summary { display: inline-flex; width: fit-content; padding: .15rem .45rem; }
+    .ratings-page .rating-evidence[open] { display: block; }
+    .ratings-page .rating-evidence p { margin: .35rem 0; }
+    .ratings-page .ctr-score { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem; }
     .ratings-page .ratings-status { font-size: .875rem; }
     .ratings-page .ratings-filters button { min-height: 44px; width: 100%; }
     .ratings-page .ratings-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 1rem; }
     .ratings-page .ratings-tools { display: flex; flex-wrap: wrap; gap: .5rem; }
     .ratings-page .ratings-tools a { min-height: 44px; display: inline-flex; align-items: center; }
-    .ratings-page .ratings-filters { padding: 1rem; border-radius: .5rem; background: #f5f7fb; }
-    @media (max-width: 575.98px) { .ratings-page .card-body { padding: 1rem; } .ratings-page .rating-row { column-gap: .5rem; } .ratings-page .list-group-item { padding: .65rem .75rem; } }
+    .ratings-page .ratings-filters { margin: 0 0 1rem; }
+    .ratings-page .ratings-filters > div { width: auto; padding: 0; }
+    @media (max-width: 575.98px) {
+        .ratings-page .ratings-filters { grid-template-columns: minmax(0, 1fr); }
+        .ratings-page .ctr-ranking-row { grid-template-columns: 1.5rem minmax(0, 1fr) 4.5rem; }
+        .ratings-page .ctr-player { grid-column: 2; grid-row: 1; }
+        .ratings-page .ctr-score { grid-column: 3; grid-row: 1; }
+        .ratings-page .ctr-evidence { grid-column: 2/-1; grid-row: 2; }
+    }
 </style>
 @include('backend.partials.operational-controls')
 @if($event)
     @include('backend.event.partials.header', ['event' => $event, 'eventWorkspaceActive' => 'ratings', 'eventWorkspaceShowHome' => false])
 @endif
-<div class="card ratings-page"><div class="card-body">
-    <div class="ratings-heading mb-3">
+<div class="ctr-directory ratings-page">
+    <div class="ctr-hero ratings-heading">
         <div>
             @if($event)<h2 class="h3">Player ratings</h2>@else<h1 class="h3">Site-wide player ratings</h1>@endif
-            <p class="text-muted mb-0">Private provisional singles ratings.</p>
+            <p>Private provisional singles ratings.</p>
         </div>
         <details class="ratings-explanation small">
             <summary>Review tools</summary>
@@ -41,7 +50,8 @@
             </div>
         </details>
     </div>
-    <p class="mb-2">Red CTR, Orange CTR and CTR (Green/Yellow) are separate rating pools. Compare players only within the same ball pool and comparison group. @if($event)The all-pools view shows separate lists, never a combined score.@endif</p>
+    <div class="ctr-content">
+    <p class="ctr-intro mb-2">Red CTR, Orange CTR and CTR (Green/Yellow) are separate rating pools. Compare players only within the same ball pool and comparison group. @if($event)The all-pools view shows separate lists, never a combined score.@endif</p>
     <details class="ratings-explanation small text-muted mb-2">
         <summary>How to read these ratings</summary>
         <p>Cohorts follow age order. Players are grouped by comparison group within each exact cohort, highest rating to lowest within each group, with unrated players last. Positions refer to each comparison group. Separate groups cannot be compared directly. Ratings are calculated from published evidence; they cannot be edited here.</p>
@@ -58,7 +68,7 @@
     @endif
     @if(!$refreshStatus['pending'] && !$refreshStatus['failed'] && $snapshot['reason'])<div class="alert alert-warning" role="status">{{ $snapshot['reason'] }}</div>@endif
     @if($limitReason)<div class="alert alert-warning" role="status">{{ $limitReason }}</div>@endif
-    <form method="get" class="row g-2 mb-3 ratings-filters">
+    <form method="get" class="ctr-filters ratings-filters">
         <div class="{{ $event ? 'col-md-4' : 'col-md-6' }}"><label for="cohort" class="form-label">{{ $event ? 'Division' : 'Exact age / gender / playing context' }}</label>
             <select name="cohort" id="cohort" class="form-select" style="min-height:44px">
                 <option value="">{{ $event ? 'All event divisions' : 'Choose a cohort' }}</option>
@@ -85,28 +95,32 @@
         <p class="small text-muted mb-3">{{ $players->total() }} player / cohort entries · ordered within separate comparison groups.</p>
         @if(!$event)<p class="small text-muted">Membership follows recorded categories and saved rating evidence. Legacy teams without a category are available in their event view as unresolved; they are not assigned an age group by guesswork.</p>@endif
         @forelse($players->getCollection()->groupBy(fn ($row) => $row['cohort'].'|'.($row['ball_stage'] ?? 'unknown')) as $group => $members)
-            <section class="mb-4" aria-label="{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}"><h2 class="h5">{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}</h2>
+            <section class="ctr-results-section mb-4" aria-label="{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}"><h2 class="h5">{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}</h2>
                 @foreach($members->groupBy('component') as $component => $comparisonMembers)
                 <h3 class="h6 mt-3">{{ $snapshot['reason'] ? 'Ratings unavailable' : ($comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players') }}</h3>
+                <div class="ctr-column-head" aria-hidden="true"><span>Position</span><span>Player</span><span>CTR</span><span>Evidence</span></div>
                 <ul class="list-group mb-3">
                 @foreach($comparisonMembers as $member)
                     @php($displayRating = $snapshot['reason'] ? null : $member['rating'])
-                    <li class="list-group-item">
-                        <div class="rating-row">
-                            <div class="rating-player">@if($displayRating && $member['position'])<span class="text-muted me-2">{{ $member['position'] }}.</span>@endif
-                                @if($member['player_id'])<a class="d-inline-flex align-items-center" style="min-height:44px" href="{{ route('backend.player-performance.show', [$member['player_id'], 'ball_type' => $member['ball_stage'] ?? 'standard']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
-                                @if($event && $member['regions'])<span class="text-muted">({{ implode(', ', $member['regions']) }})</span>@endif
+                    <li class="list-group-item ctr-ranking-row" data-event-rating-row>
+                            <div class="ctr-place">@if($displayRating && $member['position'])<strong>{{ $member['position'] }}.</strong>@else<span aria-label="No position">—</span>@endif</div>
+                            <div class="ctr-player">
+                                @if($member['player_id'])<a href="{{ route('backend.player-performance.show', [$member['player_id'], 'ball_type' => $member['ball_stage'] ?? 'standard']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
+                                @if($event && $member['regions'])<p>({{ implode(', ', $member['regions']) }})</p>@endif
                             </div>
-                            <div class="rating-score">@if($displayRating)<x-ctr-badge :stage="$member['ball_stage']" :compact="true" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" /><small class="text-muted">{{ $displayRating['confidence_label'] }} confidence</small>@elseif($snapshot['reason'] && $member['player_id'])<strong>Rating unavailable</strong>@else<strong>Unrated</strong>@endif</div>
-                        </div>
+                            <div class="ctr-score">@if($displayRating)<x-ctr-badge :stage="$member['ball_stage']" size="inline" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" />@elseif($snapshot['reason'] && $member['player_id'])<span class="small text-muted">Rating unavailable</span>@else<span class="small text-muted">Unrated</span>@endif</div>
+                        <div class="ctr-evidence">
                         @if($displayRating)
-                            <p class="small text-muted mb-1">{{ $displayRating['played'] ?? 'Unknown' }} recorded played matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents · last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>
-                            @if(!empty($displayRating['historical_connection']))<p class="small mb-1"><strong>Low confidence — historical connection</strong> · link dated {{ $displayRating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
+                            <p><x-ctr-confidence-badge :rating="$displayRating" /></p>
+                            <p>{{ $displayRating['played'] ?? 'Unknown' }} matches · {{ $displayRating['direct_opponents'] ?? 'Unknown' }} opponents</p>
+                            @if(!empty($displayRating['historical_connection']))<p><strong>Low confidence — historical connection</strong> · link dated {{ $displayRating['connection_reference_date'] ?? 'unknown' }}.</p>@endif
                             <details class="rating-evidence text-muted"><summary>Rating evidence</summary>
+                            <p>Last match {{ $displayRating['last_direct_match'] ?? 'unknown' }}</p>
                             <p class="small text-muted mb-1">Last eligible activity: {{ $displayRating['last_eligible_activity'] ?? $displayRating['last_played'] ?? 'unknown' }} · {{ $displayRating['baseline_status'] ?? 'No connected main-trial baseline' }}</p>
                             <p class="small text-muted mb-0">{{ $displayRating['confidence_explanation'] }}</p>
                             </details>
                         @else<p class="small text-muted mb-0">{{ !$member['player_id'] ? 'Imported roster member has no linked player profile.' : ($snapshot['reason'] ? 'A safe current estimate is unavailable; this does not mean the player has no rating evidence.' : ($member['rating_reason'] ?? 'No eligible saved estimate; check the player evidence or pending update.')) }}</p>@endif
+                        </div>
                     </li>
                 @endforeach
                 </ul>

@@ -104,6 +104,12 @@ remain unrated without borrowing another pool; unresolved ball contexts remain
 visible in the default view. See `PlayerRatingLeaderboardController`,
 `PlayerRatingLeaderboardService` and `PlayerRatingLeaderboardTest`.
 
+Event rating lists reuse `partials/ctr-directory-style.blade.php` and its
+ranking-grid classes. Use `<x-ctr-badge size="inline">` for compact list seals
+(3rem); the legacy `compact` prop alone does not reduce badge diameter.
+The event list regression verifies the inline diameter and shared confidence
+badge while retaining separate pool sections and unavailable states.
+
 Regression references: `tests/Unit/BallRatingModelTest.php` and
 `tests/Feature/BallRatingPipelineTest.php`, with current-group selection in
 `tests/Feature/PlayerRatingCurrentGroupTest.php` and pathway rules in

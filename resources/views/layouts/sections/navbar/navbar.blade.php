@@ -4,7 +4,10 @@
   max-height: calc(100dvh - 5rem);
   overflow-y: auto;
 }
-.dropdown-user .dropdown-item { min-height: 44px; white-space: normal; }
+.dropdown-user .dropdown-item { min-height: 44px; white-space: normal; display: flex; align-items: center; gap: .75rem; }
+.dropdown-user .dropdown-item > i { flex: 0 0 1.25rem; width: 1.25rem; margin: 0 !important; text-align: center; }
+.dropdown-user .dropdown-item > .badge { margin-left: auto !important; flex-shrink: 0; }
+.dropdown-user .account-menu-label { min-width: 0; }
 .dropdown-user > .dropdown-toggle { border: 0; background: transparent; min-width: 44px; min-height: 44px; }
 .desktop-announcement-badge {
   position: absolute;
@@ -367,13 +370,14 @@ $walletUrl = route('backend.dashboard', ['wallet_page' => 1]).'#wallet-history';
             </button>
           </li>
           @if(\Illuminate\Support\Facades\Schema::hasTable('event_mail_issues'))
-          <li><a class="dropdown-item" href="{{ route('backend.email-issues') }}">Email issues <span class="badge bg-danger">{{ \App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count() }}</span></a></li>
+          <li><a class="dropdown-item" href="{{ route('backend.email-issues') }}"><i class="ti ti-mail" aria-hidden="true"></i><span class="account-menu-label">Email issues</span><span class="badge bg-danger">{{ \App\Models\EventMailIssue::where('user_id',Auth::id())->whereNull('read_at')->count() }}</span></a></li>
           @endif
           <li>
             <a class="dropdown-item" href="{{ route('my.tennis') }}">
               <i class="ti ti-ball-tennis me-2"></i>
-              My Tennis
-              <small class="d-block text-muted">Player profiles, activity and Plus</small>
+              <span class="account-menu-label">My Tennis
+                <small class="d-block text-muted">Player profiles, activity and Plus</small>
+              </span>
             </a>
           </li>
           @endauth
@@ -410,10 +414,6 @@ $walletUrl = route('backend.dashboard', ['wallet_page' => 1]).'#wallet-history';
               Account statement
             </a>
           </li>
-          @role('super-user')
-          <li><a class="dropdown-item" href="{{ route('superadmin.marketing.index') }}" data-super-admin-only><i class="ti ti-speakerphone me-2"></i>CTR marketing</a></li>
-          <li><a class="dropdown-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}" href="{{ route('superadmin.account-statements.index') }}" data-super-admin-only @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="ti ti-users me-2"></i>User account statements</a></li>
-          @endrole
           @endauth
 
           @if (Auth::check() && Laravel\Jetstream\Jetstream::hasApiFeatures())

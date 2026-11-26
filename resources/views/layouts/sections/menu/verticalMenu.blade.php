@@ -25,18 +25,6 @@ $configData = Helper::appClasses();
   <div class="menu-inner-shadow"></div>
 
   <ul class="menu-inner py-1">
-    @auth
-    <li class="menu-item {{ request()->routeIs('account.statement') ? 'active' : '' }}">
-      <a href="{{ route('account.statement') }}" class="menu-link" @if(request()->routeIs('account.statement')) aria-current="page" @endif>
-        <i class="menu-icon tf-icons ti ti-file-invoice"></i>
-        <div>Account statement</div>
-      </a>
-    </li>
-    @role('super-user')
-    <li class="menu-item {{ request()->routeIs('superadmin.marketing.*') ? 'active' : '' }}"><a class="menu-link" href="{{ route('superadmin.marketing.index') }}"><i class="menu-icon tf-icons ti ti-speakerphone"></i><div>CTR marketing</div></a></li>
-    <li class="menu-item {{ request()->routeIs('superadmin.account-statements.*') ? 'active' : '' }}"><a href="{{ route('superadmin.account-statements.index') }}" class="menu-link" @if(request()->routeIs('superadmin.account-statements.*')) aria-current="page" @endif><i class="menu-icon tf-icons ti ti-users"></i><div>User account statements</div></a></li>
-    @endrole
-    @endauth
     @foreach ($menuData[0]->menu as $menu)
       @continue(($menu->playerPlusMarketing ?? false) && !app(\App\Services\Performance\PlayerRatingAccess::class)->allowsMarketing(auth()->user()))
 

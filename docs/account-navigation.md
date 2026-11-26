@@ -1,6 +1,9 @@
 # Account and player navigation
 
 The shared account menu separates account management from player information.
+Keep Account statement in that menu only. CTR marketing and User account
+statements belong under Super Admin in both navigation layouts, without
+duplicate top-level sidebar or account-menu shortcuts.
 `My Account` opens `backend.dashboard?manage_players=1#dashboard-account`.
 The query opens the account details for administrators, whose dashboard also
 contains event management. The anchor exists for ordinary accounts as well.

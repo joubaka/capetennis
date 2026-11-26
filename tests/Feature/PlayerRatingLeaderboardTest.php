@@ -40,6 +40,10 @@ class PlayerRatingLeaderboardTest extends TestCase
         $response = $this->get(route('backend.player-performance.event-ratings', $event))->assertOk();
         $response->assertSee('Orange ball')->assertSee('Green/Yellow ball')->assertSee('ball_type=orange', false)->assertSee('ball_type=standard', false);
         $response->assertSee('data-ctr-stage="orange"', false)->assertSee('data-ctr-stage="standard"', false);
+        $response->assertSee('class="ctr-directory ratings-page"', false)
+            ->assertSee('class="ctr-column-head"', false)->assertSee('ctr-ranking-row', false)
+            ->assertSee('data-ctr-confidence', false)->assertSee('width:3rem;height:3rem', false)
+            ->assertDontSee('width:7rem;height:7rem', false);
     }
 
     use RefreshDatabase;
@@ -285,8 +289,8 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->assertSee('Imported Unrated')->assertDontSee('Stale Imported name')->assertDontSee('Foreign Player')->assertHeader('Cache-Control', 'no-store, private')
             ->assertSee('Private provisional singles ratings')->assertSee('not a win percentage')
             ->assertSee('Confidence describes the strength and freshness of the evidence, not rating accuracy.')
-            ->assertSee('Rating evidence')->assertSee('CTR 62.0')->assertSee('Medium confidence')
-            ->assertSee('14 recorded played matches')->assertSee('8 opponents')->assertSee('last match 2026-09-01');
+            ->assertSee('Rating evidence')->assertSee('CTR 62.0')->assertSee('evidence confidence')
+            ->assertSee('14 matches')->assertSee('8 opponents')->assertSee('Last match 2026-09-01');
         $this->assertNull($rows->firstWhere('name', 'Dangling Profile')['rating']);
         if (getenv('CT_LEADERBOARD_QA_HTML') === '1') {
             file_put_contents(storage_path('framework/testing/leaderboard-qa.html'), $response->getContent());
