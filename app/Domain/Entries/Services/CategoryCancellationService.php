@@ -22,9 +22,9 @@ class CategoryCancellationService
             'Category cancellation currently supports ordinary individual events only.');
     }
 
-    public function preview(Event $event, CategoryEvent $category, User $actor, string $reason): array
+    public function preview(Event $event, CategoryEvent $category, User $actor, string $reason, bool $sendEmails = true): array
     {
-        $snapshot = DB::transaction(fn () => $this->snapshot($event, $category, $actor, $reason));
+        $snapshot = DB::transaction(fn () => $this->snapshot($event, $category, $actor, $reason, $sendEmails));
         return $snapshot + ['token' => Crypt::encryptString(json_encode([
             'snapshot' => $snapshot, 'expires' => now()->addMinutes(15)->timestamp,
         ], JSON_THROW_ON_ERROR))];
@@ -35,7 +35,7 @@ class CategoryCancellationService
         throw ValidationException::withMessages(['cancellation' => $message]);
     }
 
-    private function snapshot(Event $event, CategoryEvent $category, User $actor, string $reason): array
+    private function snapshot(Event $event, CategoryEvent $category, User $actor, string $reason, bool $sendEmails): array
     {
         $event = Event::lockForUpdate()->findOrFail($event->id);
         $category = CategoryEvent::lockForUpdate()->findOrFail($category->id);
@@ -79,20 +79,27 @@ class CategoryCancellationService
                 ->when(filled($entry->pf_transaction_id), fn ($q) => $q->orWhere('pf_payment_id', $entry->pf_transaction_id))->exists()) {
                 $this->reject('A provider refund was attempted. Reconcile it before cancelling.');
             }
-            $funding = app(AdminRegistrationWalletRefundService::class)->categoryCancellationSnapshot($event, $entry);
+            $funding = app(AdminRegistrationWalletRefundService::class)->categoryCancellationSnapshot($event, $entry, requireReceiptEmail: $sendEmails);
             $gross = $funding['gross'] ?? 0.0;
             $emails = $entry->registration?->players->flatMap(fn ($player) => $contactService->emails($player))->unique()->sort()->values()->all() ?? [];
-            if (!$emails) $this->reject('A player has no valid notification contact. Add the contact and review again.');
-            foreach ($emails as $email) $contacts[$email] = ['email' => $email, 'name' => null];
+            if ($sendEmails && !$emails) $this->reject('A player has no valid notification contact. Add the contact and review again.');
+            foreach ($entry->registration->players as $player) {
+                foreach ($contactService->emails($player) as $email) {
+                    $keys = array_unique([...($contacts[$email]['player_keys'] ?? []), 'player:'.$player->id]);
+                    sort($keys);
+                    $contacts[$email] = ['email' => $email, 'name' => null, 'player_keys' => array_values($keys)];
+                }
+            }
             $rows[] = ['entry_id' => $entry->id, 'player' => $entry->display_name, 'status' => $entry->status,
                 'funding' => $funding, 'amount' => $gross, 'emails' => $emails];
         }
         ksort($contacts);
-        $sender = CommunicationSender::eventDefaults($event, $actor);
+        $sender = $sendEmails ? CommunicationSender::eventDefaults($event, $actor) : [];
+        $senderName = $sender['from_name'] ?? 'Cape Tennis';
         $subject = $category->category->name.' cancelled — '.$event->name;
-        $message = "Dear Parents and Players,\n\nThe {$category->category->name} category at {$event->name} has been cancelled.\n\n{$reason}\n\nThe full entry fee has been credited to the Cape Tennis wallet of the original payer, with no handling fee. This credit can be used towards future Cape Tennis events. Free entries have no payment to refund.\n\nWe are sorry for the disappointment and thank you for your understanding.\n\nKind regards,\n{$sender['from_name']}";
+        $message = "Dear Parents and Players,\n\nThe {$category->category->name} category at {$event->name} has been cancelled.\n\n{$reason}\n\nAny entry fee paid through Cape Tennis has been credited in full to the original payer's Cape Tennis wallet, with no handling fee. This credit can be used towards future Cape Tennis events. Entries without a captured payment have no funds to refund.\n\nWe are sorry for the disappointment and thank you for your understanding.\n\nKind regards,\n{$senderName}";
         return ['event_id' => $event->id, 'category_id' => $category->id, 'category' => $category->category->name,
-            'actor_id' => $actor->id, 'reason' => $reason, 'rows' => $rows, 'contacts' => array_values($contacts),
+            'actor_id' => $actor->id, 'reason' => $reason, 'send_emails' => $sendEmails, 'rows' => $rows, 'contacts' => array_values($contacts),
             'total' => round(collect($rows)->sum('amount'), 2), 'sender' => $sender, 'subject' => $subject, 'message' => $message];
     }
 
@@ -109,7 +116,7 @@ class CategoryCancellationService
             || ($approved['snapshot']['category_id'] ?? null) !== $category->id) {
             $this->reject('The cancellation preview does not match this actor, event and category.');
         }
-        if (config('queue.connections.database.connection') && config('queue.connections.database.connection') !== config('database.default')) {
+        if (($approved['snapshot']['send_emails'] ?? true) && config('queue.connections.database.connection') && config('queue.connections.database.connection') !== config('database.default')) {
             $this->reject('The managed database mail queue must use the application database before cancellation.');
         }
         return DB::transaction(function () use ($event, $category, $actor, $approved) {
@@ -119,7 +126,7 @@ class CategoryCancellationService
                 if (($category->cancellation['snapshot'] ?? null) != $approved['snapshot']) $this->reject('This category was cancelled from a different review.');
                 return $category->cancellation + ['duplicate' => true];
             }
-            $snapshot = $this->snapshot($event, $category, $actor, $approved['snapshot']['reason']);
+            $snapshot = $this->snapshot($event, $category, $actor, $approved['snapshot']['reason'], (bool) ($approved['snapshot']['send_emails'] ?? true));
             if (($approved['expires'] ?? 0) < now()->timestamp || $snapshot != $approved['snapshot']) {
                 $this->reject('Entries, payments or contacts changed, or this review expired. Review again before confirming.');
             }
@@ -130,10 +137,13 @@ class CategoryCancellationService
                     $payer = User::lockForUpdate()->findOrFail($funding['payer_id']);
                     $wallet = $payer->wallet ?? $payer->wallet()->create([]);
                     app(RefundExecutionService::class)->executeWalletRefund($entry, $wallet, $row['amount'], 'category_cancellation_refund', $entry->id,
-                        ['category_event_id' => $category->id, 'event_id' => $event->id, 'payer_id' => $payer->id, 'actor_id' => $actor->id, 'reason' => $snapshot['reason']],
+                        ['category_event_id' => $category->id, 'event_id' => $event->id, 'payer_id' => $payer->id, 'actor_id' => $actor->id, 'reason' => $snapshot['reason'], 'emails_suppressed' => !$snapshot['send_emails']],
                         ['refund_method' => 'wallet', 'refund_gross' => $row['amount'], 'refund_fee' => 0, 'refund_net' => $row['amount']]);
                 }
             }
+            $batch = null;
+            $queued = 0;
+            if ($snapshot['send_emails']) {
             $recipients = array_map(fn ($contact) => $contact + ['kind' => 'players', 'player_keys' => [], 'subject' => $snapshot['subject'],
                 'html' => nl2br(e($snapshot['message']))], $snapshot['contacts']);
             foreach ($snapshot['rows'] as $row) {
@@ -147,17 +157,17 @@ class CategoryCancellationService
             $batch = EventCommunicationBatch::create(['event_id' => $event->id, 'created_by' => $actor->id, 'token' => (string) Str::uuid(),
                 'subject' => $snapshot['subject'], 'body' => $snapshot['message'], 'options' => ['source' => 'category_cancellation', 'category_id' => $category->id] + $snapshot['sender'],
                 'recipients' => $recipients, 'issues' => [], 'fingerprint' => hash('sha256', json_encode($snapshot, JSON_THROW_ON_ERROR)), 'status' => 'approved', 'approved_at' => now()]);
-            $queued = 0;
             foreach ($recipients as $index => $recipient) {
                 $stats = app(BulkMailDispatcher::class)->dispatch('bulk_event_mail', $batch, [$recipient],
                     ['event_id' => $event->id, 'created_by' => $actor->id, 'event_communication_batch_id' => $batch->id,
                         'campaign_key' => 'category-cancellation:'.$category->id.':'.$index, 'recipient_kind' => $recipient['kind'],
-                        'subject' => $recipient['subject'], 'body' => $recipient['html'], 'manual_retry_only' => true] + $snapshot['sender'],
+                        'subject' => $recipient['subject'], 'body' => $recipient['html'], 'player_keys' => $recipient['player_keys'] ?? [], 'manual_retry_only' => true] + $snapshot['sender'],
                     atomicDatabaseQueue: true);
                 if ($stats['queued'] !== 1) throw new \RuntimeException('The cancellation email outbox could not be saved. Nothing was cancelled.');
                 $queued++;
             }
-            $result = ['snapshot' => $snapshot, 'batch_id' => $batch->id, 'queued' => $queued, 'total' => $snapshot['total'], 'entries' => count($snapshot['rows'])];
+            }
+            $result = ['snapshot' => $snapshot, 'batch_id' => $batch?->id, 'queued' => $queued, 'emails_suppressed' => !$snapshot['send_emails'], 'total' => $snapshot['total'], 'entries' => count($snapshot['rows'])];
             $category->update(['cancelled_at' => now(), 'locked_at' => now(), 'cancellation' => $result]);
             activity('category_cancellation')->performedOn($category)->causedBy($actor)->withProperties($result)->log('Category cancelled with full original-payer wallet refunds');
             return $result + ['duplicate' => false];

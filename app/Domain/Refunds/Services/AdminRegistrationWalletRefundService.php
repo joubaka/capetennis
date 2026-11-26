@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 class AdminRegistrationWalletRefundService
 {
     /** Cancellation refunds each immutable basket item, never an equal division of the basket. */
-    public function categoryCancellationSnapshot(Event $event, CategoryEventRegistration $entry): ?array
+    public function categoryCancellationSnapshot(Event $event, CategoryEventRegistration $entry, bool $requireReceiptEmail = true): ?array
     {
         abort_unless((int) $entry->categoryEvent?->event_id === (int) $event->id, 404);
         $items = RegistrationOrderItems::where('registration_id', $entry->registration_id)
@@ -40,8 +40,11 @@ class AdminRegistrationWalletRefundService
         $captured = round(($order?->payfast_paid ? (float) $order->payfast_amount_due : 0)
             + ($order?->wallet_debited ? (float) $order->wallet_reserved : 0), 2);
         $total = $basket ? round((float) $basket->sum('item_price'), 2) : -1;
-        if ($basket && $basket->contains(fn ($row) => (int) $row->category_event_id !== (int) $entry->category_event_id)) {
-            throw ValidationException::withMessages(['refund' => 'This checkout includes another category. Finance must review its remaining refund entitlements before this category can be cancelled.']);
+        $mixed = $basket && $basket->contains(fn ($row) => (int) $row->category_event_id !== (int) $entry->category_event_id);
+        $mixedProof = [];
+        if ($mixed && (!$order->payfast_paid || (float) $order->wallet_reserved !== 0.0 || $order->wallet_debited
+            || $order->wallet_transaction_id || $gross <= 0 || $basket->contains(fn ($row) => round((float) $row->item_price, 2) !== $gross))) {
+            throw ValidationException::withMessages(['refund' => 'A mixed-category checkout requires identical verified PayFast-only item prices. Finance must review this basket before cancellation.']);
         }
         foreach ($basket ?? [] as $row) {
             $siblings = CategoryEventRegistration::withTrashed()->where('registration_id', $row->registration_id)
@@ -53,6 +56,28 @@ class AdminRegistrationWalletRefundService
                     || round((float) $sibling->refund_net, 2) !== round((float) $row->item_price, 2)
                     || (float) $sibling->refund_fee !== 0.0))) {
                 throw ValidationException::withMessages(['refund' => 'An existing basket refund needs reconciliation before cancelling.']);
+            }
+            if ($mixed) {
+                $paid = $sibling->paymentInfo();
+                $noRefund = in_array((string) $sibling->refund_status, CategoryEventRegistration::NO_REFUND_STATUSES, true)
+                    && !$sibling->refunded_at && !filled($sibling->refund_method) && !$sibling->refund_waived_at
+                    && (float) $sibling->refund_gross === 0.0 && (float) $sibling->refund_fee === 0.0 && (float) $sibling->refund_net === 0.0;
+                $fullRefund = $sibling->refund_status === 'completed' && $sibling->status === 'withdrawn';
+                if (!$sibling->is_paid || $sibling->trashed() || !in_array($sibling->status, ['active', 'withdrawn'], true)
+                    || (!$noRefund && !$fullRefund) || (int) $sibling->categoryEvent?->event_id !== (int) $event->id
+                    || (int) $row->user_id !== (int) $payer?->id || (int) $sibling->user_id !== (int) $payer?->id
+                    || !in_array($sibling->payment_method, ['payfast', null], true) || $sibling->wallet_transaction_id
+                    || (string) $sibling->pf_transaction_id !== (string) $order->payfast_pf_payment_id
+                    || RegistrationOrderItems::where('registration_id', $row->registration_id)->where('category_event_id', $row->category_event_id)->count() !== 1
+                    || \App\Models\CategoryAdjustment::where('entry_id', $sibling->id)->exists()
+                    || \App\Models\IndividualProviderRefundAttempt::where('entry_id', $sibling->id)->orWhere('pf_payment_id', $order->payfast_pf_payment_id)->exists()
+                    || empty($paid['transaction_id']) || ($paid['_legacy'] ?? false)
+                    || round((float) ($paid['gross'] ?? 0), 2) !== $gross || (float) ($paid['wallet_paid'] ?? 0) !== 0.0
+                    || round((float) ($paid['total_paid'] ?? 0), 2) !== $gross) {
+                    throw ValidationException::withMessages(['refund' => 'The mixed-category basket has unresolved funding, identity or refund evidence. Reconcile it before cancelling.']);
+                }
+                $mixedProof[] = ['entry_id' => $sibling->id, 'status' => $sibling->status, 'refund_status' => $sibling->refund_status,
+                    'refund_net' => $sibling->refund_net, 'receipt_id' => $paid['transaction_id'], 'gross' => $paid['gross'], 'wallet_paid' => $paid['wallet_paid']];
             }
         }
         $valid = $order && $payer && $entry->is_paid && $order->pay_status && $gross >= 0
@@ -73,13 +98,14 @@ class AdminRegistrationWalletRefundService
             throw ValidationException::withMessages(['refund' => 'The original basket, captured funds or beneficiary needs reconciliation before category cancellation.']);
         }
         if ($gross === 0.0) return null;
-        if (!filter_var($payer->email, FILTER_VALIDATE_EMAIL)) {
+        if ($requireReceiptEmail && !filter_var($payer->email, FILTER_VALIDATE_EMAIL)) {
             throw ValidationException::withMessages(['refund' => 'The original payer needs a valid refund receipt email.']);
         }
         return ['entry_id' => $entry->id, 'event_id' => $event->id, 'payer_id' => $payer->id,
             'payer_name' => $payer->name, 'to' => strtolower(trim($payer->email)), 'gross' => $gross,
             'order_id' => $order->id, 'order_pf_id' => $order->payfast_pf_payment_id,
             'wallet_transaction_id' => $order->wallet_transaction_id,
+            'mixed_basket_proof' => $mixedProof,
             'basket' => $basket->map(fn ($row) => $row->only(['id', 'registration_id', 'category_event_id', 'player_id', 'user_id', 'item_price']))->all()];
     }
 

@@ -51,6 +51,27 @@ class CategoryCancellationTest extends TestCase
         return $this->postJson(route('admin.category.cancel.store', [$event, $category]), $extra + ['preview_token' => $preview['token'], 'confirm' => 1]);
     }
 
+    private function uniformMixedBasket(): array
+    {
+        [$event, $category, $actor, $entries] = $this->scenario(1);
+        $row = $entries[0];
+        $category->update(['entry_fee' => 250]);
+        $row['entry']->update(['user_id' => $row['payer']->id]);
+        DB::table('registration_order_items')->where('order_id', $row['order']->id)->update(['item_price' => 250]);
+        $siblingCategory = CategoryEvent::factory()->create(['event_id' => $event->id, 'entry_fee' => 250]);
+        $sibling = CategoryEventRegistration::factory()->paid()->create(['category_event_id' => $siblingCategory->id,
+            'user_id' => $row['payer']->id, 'payment_method' => 'payfast', 'pf_transaction_id' => $row['order']->payfast_pf_payment_id]);
+        $player = Player::factory()->create();
+        $sibling->registration->players()->attach($player);
+        DB::table('registration_order_items')->insert(['order_id' => $row['order']->id, 'registration_id' => $sibling->registration_id,
+            'category_event_id' => $siblingCategory->id, 'player_id' => $player->id, 'user_id' => $row['payer']->id, 'item_price' => 250]);
+        $row['order']->update(['total_fee' => 500, 'payfast_amount_due' => 500]);
+        $receiptId = DB::table('transactions_pf')->insertGetId(['pf_payment_id' => $row['order']->payfast_pf_payment_id,
+            'amount_gross' => 500, 'amount_net' => 480, 'amount_fee' => 20, 'event_id' => $event->id,
+            'custom_int5' => $row['order']->id, 'created_at' => now(), 'updated_at' => now()]);
+        return [$event, $category, $actor, $row, $siblingCategory, $sibling, $receiptId];
+    }
+
     public function test_preview_then_confirmation_refunds_original_payers_and_queues_private_notices_once(): void
     {
         [$event, $category, $actor, $entries] = $this->scenario();
@@ -62,9 +83,12 @@ class CategoryCancellationTest extends TestCase
         $this->assertFalse($category->fresh()->isCancelled());
         $this->apply($event, $category, $preview, ['amount' => 99999, 'payer_id' => $actor->id])->assertRedirect();
         $this->assertTrue($category->fresh()->isCancelled());
+        $this->assertArrayNotHasKey('cancellation', $category->fresh()->toArray());
         $this->assertDatabaseCount('wallet_transactions', 2);
         $this->assertDatabaseCount('bulk_email_logs', 5); // Three deduplicated contacts and two payer-only receipts.
         $this->assertDatabaseCount('event_communication_batches', 1);
+        $this->assertCount(2, collect(\App\Models\BulkEmailLog::where('payload->recipient_kind', 'players')->get())
+            ->flatMap(fn ($log) => $log->payload['player_keys'])->unique());
         foreach ($entries as $row) {
             $this->assertDatabaseHas('category_event_registrations', ['id' => $row['entry']->id, 'status' => 'withdrawn',
                 'refund_status' => 'completed', 'refund_gross' => 285, 'refund_fee' => 0, 'refund_net' => 285, 'payment_status_id' => 1]);
@@ -322,5 +346,111 @@ class CategoryCancellationTest extends TestCase
         $this->assertSame('withdrawn', $entry->fresh()->status);
         $this->assertSame('not_refunded', $entry->fresh()->refund_status);
         $this->assertDatabaseCount('wallet_transactions', 1);
+    }
+
+    public function test_browser_validation_returns_to_the_get_form_instead_of_the_post_preview(): void
+    {
+        [$event, $category] = $this->scenario(1);
+        $preview = $this->preview($event, $category)->assertOk()->viewData('preview');
+        $this->travel(16)->minutes();
+        $this->from(route('admin.category.cancel.preview', [$event, $category]))
+            ->post(route('admin.category.cancel.store', [$event, $category]), ['preview_token' => $preview['token'], 'confirm' => 1])
+            ->assertRedirect(route('admin.category.cancel.show', [$event, $category]))->assertSessionHasErrors('cancellation');
+        $this->get(route('admin.category.cancel.show', [$event, $category]))->assertOk();
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_no_email_confirmation_refunds_once_without_any_batch_log_or_job(): void
+    {
+        $realBus = Bus::getFacadeRoot();
+        [$event, $category] = $this->scenario();
+        Bus::swap($realBus);
+        $preview = $this->post(route('admin.category.cancel.preview', [$event, $category]), [
+            'reason' => 'Already notified; insufficient entries.', 'send_emails' => 0,
+        ])->assertOk()->assertSee('No emails will be sent or queued.')->viewData('preview');
+        $this->assertFalse($preview['send_emails']);
+        // Posted settings cannot override the immutable reviewed choice.
+        $this->apply($event, $category, $preview, ['send_emails' => 1])->assertRedirect();
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->assertDatabaseCount('jobs', 0);
+        $this->assertTrue($category->fresh()->cancellation['emails_suppressed']);
+        $this->apply($event, $category, $preview)->assertRedirect();
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        Mail::assertNothingSent();
+        Mail::assertNothingQueued();
+    }
+
+    public function test_no_email_cancellation_does_not_require_notification_contacts_or_sender_email(): void
+    {
+        [$event, $category, $actor, $entries] = $this->scenario(1);
+        $entries[0]['player']->update(['email' => null, 'email_2' => null, 'email_3' => null]);
+        $entries[0]['payer']->update(['email' => 'invalid']);
+        $actor->update(['email' => 'invalid-actor']);
+        $event->update(['email' => 'invalid-event', 'organizer' => '']);
+        $preview = $this->post(route('admin.category.cancel.preview', [$event, $category]), ['reason' => 'Already notified.', 'send_emails' => 0])
+            ->assertOk()->viewData('preview');
+        $this->apply($event, $category, $preview)->assertRedirect();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertDatabaseCount('bulk_email_logs', 0);
+        $this->assertDatabaseCount('event_communication_batches', 0);
+    }
+
+    public function test_posted_no_email_flag_cannot_suppress_a_review_which_approved_emails(): void
+    {
+        [$event, $category] = $this->scenario(1);
+        $preview = $this->preview($event, $category)->assertOk()->viewData('preview');
+        $this->assertTrue($preview['send_emails']);
+        $this->apply($event, $category, $preview, ['send_emails' => 0])->assertRedirect();
+        $this->assertDatabaseCount('bulk_email_logs', 3);
+        $this->assertFalse($category->fresh()->cancellation['emails_suppressed']);
+    }
+
+    public function test_uniform_payfast_only_mixed_basket_preserves_exact_future_sibling_refund(): void
+    {
+        [$event, $category, $actor, $row, $siblingCategory, $sibling] = $this->uniformMixedBasket();
+        $preview = $this->post(route('admin.category.cancel.preview', [$event, $category]), ['reason' => 'Already notified.', 'send_emails' => 0])
+            ->assertOk()->viewData('preview');
+        $this->assertEquals(250, $preview['total']);
+        $this->assertCount(2, $preview['rows'][0]['funding']['mixed_basket_proof']);
+        $this->apply($event, $category, $preview)->assertRedirect();
+        $this->assertSame('active', $sibling->fresh()->status);
+        $this->assertSame('not_refunded', $sibling->fresh()->refund_status);
+        $this->assertFalse($siblingCategory->fresh()->isCancelled());
+        $this->assertEquals(250, $sibling->fresh()->paymentInfo()['gross']);
+        $this->assertEquals(250, $sibling->fresh()->maxRefundableAmount());
+        app(EntryService::class)->withdrawEntryAsAdmin($sibling, $actor);
+        $this->actingAs($row['payer']);
+        $this->post(route('registrations.refund.request', $sibling), ['method' => 'wallet'])->assertRedirect()->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('category_event_registrations', ['id' => $sibling->id, 'refund_gross' => 250, 'refund_fee' => 25, 'refund_net' => 225]);
+        $this->assertEquals(475, $row['payer']->fresh()->wallet->transactions()->where('type', 'credit')->sum('amount'));
+        $this->actingAs($actor);
+        $this->apply($event, $category, $preview)->assertRedirect();
+        $this->assertDatabaseCount('wallet_transactions', 2);
+        $this->assertEquals(475, $row['payer']->fresh()->wallet->transactions()->where('type', 'credit')->sum('amount'));
+    }
+
+    public function test_uniform_mixed_basket_rejects_missing_receipt_pending_claim_and_identity_drift(): void
+    {
+        [$event, $category, , $row, , $sibling, $receiptId] = $this->uniformMixedBasket();
+        $sibling->update(['refund_status' => 'pending', 'refund_method' => 'bank', 'refund_gross' => 250, 'refund_fee' => 25, 'refund_net' => 225]);
+        $this->preview($event, $category)->assertSessionHasErrors('refund');
+        $sibling->update(['refund_status' => 'not_refunded', 'refund_method' => null, 'refund_gross' => 0, 'refund_fee' => 0, 'refund_net' => 0]);
+        $sibling->update(['user_id' => User::factory()->create()->id]);
+        $this->preview($event, $category)->assertSessionHasErrors('refund');
+        $sibling->update(['user_id' => $row['payer']->id]);
+        $sibling->update(['status' => 'withdrawn', 'refund_status' => 'completed', 'refund_gross' => 300, 'refund_net' => 300]);
+        $this->preview($event, $category)->assertSessionHasErrors('refund');
+        $sibling->update(['status' => 'active', 'refund_status' => 'not_refunded', 'refund_gross' => 0, 'refund_net' => 0]);
+        $row['order']->update(['wallet_reserved' => 10, 'wallet_debited' => true, 'payfast_amount_due' => 490]);
+        $this->preview($event, $category)->assertSessionHasErrors('refund');
+        $row['order']->update(['wallet_reserved' => 0, 'wallet_debited' => false, 'payfast_amount_due' => 500]);
+        DB::table('transactions_pf')->where('id', $receiptId)->delete();
+        $this->preview($event, $category)->assertSessionHasErrors('refund'); // Legacy fallback would incorrectly quote 125 per item.
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        $this->assertFalse($category->fresh()->isCancelled());
+        $this->assertSame('active', $sibling->fresh()->status);
     }
 }

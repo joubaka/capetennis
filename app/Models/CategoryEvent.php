@@ -24,6 +24,7 @@ class CategoryEvent extends Model
   public $timestamps = false;
 
   protected $casts = ['cancelled_at' => 'datetime', 'cancellation' => 'array'];
+  protected $hidden = ['cancellation'];
 
   public function isCancelled(): bool
   {
