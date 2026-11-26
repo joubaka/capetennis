@@ -353,6 +353,10 @@ class RegistrationPaymentService
     public function finalizePayment(RegistrationOrder $order, array $context = []): RegistrationOrder
     {
         return DB::transaction(function () use ($order, $context) {
+            $current = RegistrationOrder::with('items')->lockForUpdate()->findOrFail($order->id);
+            if (!$current->pay_status && \App\Models\CategoryEvent::whereIn('id', $current->items->pluck('category_event_id'))->whereNotNull('cancelled_at')->exists()) {
+                throw ValidationException::withMessages(['category' => 'This category has been cancelled. Payment requires reconciliation; participation cannot be activated.']);
+            }
             /** @var RegistrationOrder $finalized */
             $finalized = $this->paymentOrchestrator->finalizePayment($order, $context);
             $this->markOrderRegistrationsPaid($finalized, $context['pf_payment_id'] ?? null, $context['user_id'] ?? $finalized->user_id);
@@ -493,6 +497,10 @@ class RegistrationPaymentService
                     ->findOrFail($order->id);
 
                 foreach ($lockedOrder->items as $item) {
+                    if (\App\Models\CategoryEvent::whereKey($item->category_event_id)->whereNotNull('cancelled_at')->exists()) {
+                        // Verified paid callbacks may replay after cancellation. Retain paid history without reattaching participation.
+                        continue;
+                    }
                     $currentInvitation = \App\Models\InterprovincialTrialInvitation::where('order_id', $lockedOrder->id)->first();
                     if ($currentInvitation && app(\App\Domain\Entries\Services\IndividualBeneficiaryCorrectionService::class)->matches($lockedOrder, $item, $currentInvitation)) {
                         // The entire corrected order is a single already-paid item.
@@ -537,6 +545,9 @@ class RegistrationPaymentService
                         ->findOrFail($order->id);
 
                     foreach ($lockedOrder->items as $item) {
+                        if (\App\Models\CategoryEvent::whereKey($item->category_event_id)->whereNotNull('cancelled_at')->exists()) {
+                            throw ValidationException::withMessages(['category' => 'This category has been cancelled.']);
+                        }
                         $registration = Registration::find($item->registration_id);
                         if ($registration) {
                             $registration->categoryEvents()->updateExistingPivot($item->category_event_id, [

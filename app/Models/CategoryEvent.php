@@ -17,9 +17,18 @@ class CategoryEvent extends Model
     'locked_at',
     'entry_limit',
     'pathway_level',
+    'cancelled_at',
+    'cancellation',
   ];
 
   public $timestamps = false;
+
+  protected $casts = ['cancelled_at' => 'datetime', 'cancellation' => 'array'];
+
+  public function isCancelled(): bool
+  {
+      return $this->cancelled_at !== null;
+  }
 
     /** Category overrides take precedence, including an explicit free entry. */
     public function effectiveEntryFee(): float
@@ -138,7 +147,7 @@ class CategoryEvent extends Model
 
   public function isLocked(): bool
   {
-    return !is_null($this->locked_at);
+    return $this->isCancelled() || !is_null($this->locked_at);
   }
 
 

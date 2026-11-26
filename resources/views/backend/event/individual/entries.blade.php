@@ -366,12 +366,16 @@
 <div class="card-header d-flex justify-content-between align-items-center">
   <div class="category-meta">
     <h5 class="mb-0">{{ $categoryEvent->category?->name }}</h5>
+    @if($categoryEvent->isCancelled())<span class="badge bg-danger">Cancelled</span>@endif
     <small class="text-muted">
         <span class="entry-count">{{ $categoryEvent->allCategoryEventRegistrations->count() }}</span> confirmed entries
       </small>
   </div>
 
 <div class="category-actions d-flex gap-2">
+  @if(!$isMasters && !$event->isCamp() && !$event->isInterprovincialTrials() && (auth()->user()->hasRole('super-user') || (auth()->user()->hasRole('admin') && auth()->user()->is_event_admin($event->id))))
+    <a class="btn btn-outline-danger btn-sm" href="{{ route('admin.category.cancel.show', [$event, $categoryEvent]) }}">{{ $categoryEvent->isCancelled() ? 'Cancellation details' : 'Cancel category' }}</a>
+  @endif
 
   {{-- EMAIL CATEGORY --}}
   <button type="button"
@@ -383,14 +387,14 @@
 
   @unless($isMasters)<div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Category access</button><div class="dropdown-menu dropdown-menu-end">
   {{-- LOCK / UNLOCK --}}
-  @if(!$isMasters && $categoryEvent->isLocked())
+  @if(!$isMasters && $categoryEvent->isLocked() && !$categoryEvent->isCancelled())
     <button type="button"
             class="dropdown-item category-lock-btn"
             data-locked="1"
             data-url-unlock="{{ route('admin.category.unlock', $categoryEvent) }}">
       <i class="ti ti-lock-open me-1"></i>Unlock
     </button>
-  @elseif(!$isMasters)
+  @elseif(!$isMasters && !$categoryEvent->isCancelled())
     <button type="button"
             class="dropdown-item category-lock-btn"
             data-locked="0"

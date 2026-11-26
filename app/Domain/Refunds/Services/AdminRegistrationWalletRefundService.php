@@ -15,7 +15,99 @@ use Illuminate\Validation\ValidationException;
 
 class AdminRegistrationWalletRefundService
 {
-    public function snapshot(Event $event, CategoryEventRegistration $entry, float $percentage, string $reason): array
+    /** Cancellation refunds each immutable basket item, never an equal division of the basket. */
+    public function categoryCancellationSnapshot(Event $event, CategoryEventRegistration $entry): ?array
+    {
+        abort_unless((int) $entry->categoryEvent?->event_id === (int) $event->id, 404);
+        $items = RegistrationOrderItems::where('registration_id', $entry->registration_id)
+            ->where('category_event_id', $entry->category_event_id)->get();
+        if ($items->isEmpty() && $entry->isAdminEntry() && $entry->admin_payment_status === 'unpaid' && $entry->is_paid
+            && !$entry->pf_transaction_id && !$entry->wallet_transaction_id && !\App\Models\CategoryAdjustment::where('entry_id', $entry->id)->exists()) {
+            $receipts = DB::table('transactions_pf')->where('registration_id', $entry->registration_id)
+                ->where('category_event_id', $entry->category_event_id)->where('event_id', $event->id)->get();
+            if ($receipts->count() === 1 && $receipts->every(fn ($receipt) => $receipt->item_name === 'Admin Entry'
+                && !$receipt->pf_payment_id && (float) $receipt->amount_gross === 0.0 && (float) $receipt->amount_net === 0.0
+                && (float) $receipt->amount_fee === 0.0 && (int) $receipt->custom_int4 === (int) $entry->user_id)) return null;
+        }
+        if ($items->count() !== 1) {
+            throw ValidationException::withMessages(['refund' => 'A unique original checkout item is required. Reconcile this entry before cancelling.']);
+        }
+        $item = $items->first();
+        $order = $item->order()->lockForUpdate()->first();
+        $basket = $order?->items()->orderBy('id')->lockForUpdate()->get();
+        $payer = $order?->user;
+        $gross = round((float) $item->item_price, 2);
+        $captured = round(($order?->payfast_paid ? (float) $order->payfast_amount_due : 0)
+            + ($order?->wallet_debited ? (float) $order->wallet_reserved : 0), 2);
+        $total = $basket ? round((float) $basket->sum('item_price'), 2) : -1;
+        if ($basket && $basket->contains(fn ($row) => (int) $row->category_event_id !== (int) $entry->category_event_id)) {
+            throw ValidationException::withMessages(['refund' => 'This checkout includes another category. Finance must review its remaining refund entitlements before this category can be cancelled.']);
+        }
+        foreach ($basket ?? [] as $row) {
+            $siblings = CategoryEventRegistration::withTrashed()->where('registration_id', $row->registration_id)
+                ->where('category_event_id', $row->category_event_id)->lockForUpdate()->get();
+            $sibling = $siblings->first();
+            if ($siblings->count() !== 1 || !$row->player_id || !$sibling->registration?->players()->whereKey($row->player_id)->exists()
+                || ($sibling->refund_status === 'completed'
+                && (round((float) $sibling->refund_gross, 2) !== round((float) $row->item_price, 2)
+                    || round((float) $sibling->refund_net, 2) !== round((float) $row->item_price, 2)
+                    || (float) $sibling->refund_fee !== 0.0))) {
+                throw ValidationException::withMessages(['refund' => 'An existing basket refund needs reconciliation before cancelling.']);
+            }
+        }
+        $valid = $order && $payer && $entry->is_paid && $order->pay_status && $gross >= 0
+            && $total === round((float) $order->total_fee, 2) && $captured === $total
+            && $basket->every(fn ($row) => $row->registration_id && $row->category_event_id && (float) $row->item_price >= 0
+                && (!$row->user_id || (int) $row->user_id === (int) $payer->id))
+            && $basket->unique(fn ($row) => $row->registration_id.':'.$row->category_event_id)->count() === $basket->count()
+            && ((float) $order->payfast_amount_due <= 0 || ($order->payfast_paid && filled($order->payfast_pf_payment_id)
+                && (string) $entry->pf_transaction_id === (string) $order->payfast_pf_payment_id))
+            && (float) $order->wallet_reserved >= 0 && (float) $order->payfast_amount_due >= 0
+            && ((float) $order->wallet_reserved <= 0 || ($order->wallet_debited && $order->walletTransaction?->type === 'debit'
+                && round((float) $order->walletTransaction->amount, 2) === round((float) $order->wallet_reserved, 2)
+                && $order->walletTransaction->wallet?->payable_type === User::class
+                && (int) $order->walletTransaction->wallet?->payable_id === (int) $payer->id
+                && (int) $entry->wallet_transaction_id === (int) $order->wallet_transaction_id));
+        if (!$valid || \App\Models\CategoryAdjustment::where('entry_id', $entry->id)->exists()
+            || \App\Models\IndividualBeneficiaryCorrection::where('order_id', $order?->id)->exists()) {
+            throw ValidationException::withMessages(['refund' => 'The original basket, captured funds or beneficiary needs reconciliation before category cancellation.']);
+        }
+        if ($gross === 0.0) return null;
+        if (!filter_var($payer->email, FILTER_VALIDATE_EMAIL)) {
+            throw ValidationException::withMessages(['refund' => 'The original payer needs a valid refund receipt email.']);
+        }
+        return ['entry_id' => $entry->id, 'event_id' => $event->id, 'payer_id' => $payer->id,
+            'payer_name' => $payer->name, 'to' => strtolower(trim($payer->email)), 'gross' => $gross,
+            'order_id' => $order->id, 'order_pf_id' => $order->payfast_pf_payment_id,
+            'wallet_transaction_id' => $order->wallet_transaction_id,
+            'basket' => $basket->map(fn ($row) => $row->only(['id', 'registration_id', 'category_event_id', 'player_id', 'user_id', 'item_price']))->all()];
+    }
+
+    public function snapshot(Event $event, CategoryEventRegistration $entry, float $percentage, string $reason, ?User $actor = null): array
+    {
+        $financial = $this->financialSnapshot($event, $entry);
+        $admins = $event->admins()->orderBy('users.id')->get()->filter(fn ($user) => filter_var($user->email, FILTER_VALIDATE_EMAIL));
+        $actor ??= auth()->user();
+        if ($admins->isEmpty() && $actor?->hasRole('super-user') && filter_var($actor->email, FILTER_VALIDATE_EMAIL)) {
+            $admins = collect([$actor]);
+        }
+        if ($admins->isEmpty()) {
+            throw ValidationException::withMessages(['refund' => 'Assign an event admin with a valid email, or ask a Super User with a valid email to confirm this refund.']);
+        }
+        if (!SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
+            throw ValidationException::withMessages(['refund' => 'Wallet refund confirmation emails are disabled.']);
+        }
+        $fee = round($financial['gross'] * $percentage / 100, 2);
+        if ($financial['gross'] - $fee <= 0) {
+            throw ValidationException::withMessages(['percentage' => 'The refund must be greater than zero.']);
+        }
+        $emails = $admins->pluck('email')->map(fn ($email) => strtolower(trim($email)))->unique()->values()->all();
+        return $financial + ['review_actor_id' => $actor?->id, 'cc' => $emails, 'reply_to' => $emails, 'fee' => $fee,
+            'net' => round($financial['gross'] - $fee, 2), 'percentage' => $percentage, 'reason' => $reason];
+    }
+
+    /** Verified original funding; callers must independently authorize their workflow. */
+    public function financialSnapshot(Event $event, CategoryEventRegistration $entry): array
     {
         abort_unless((int) $entry->categoryEvent?->event_id === (int) $event->id, 404);
         if ($entry->refund_status === 'completed' || $entry->refund_status === 'pending') {
@@ -57,27 +149,15 @@ class AdminRegistrationWalletRefundService
                 || $gross !== round((float) $adjustment->payment_after['total_paid'], 2)))) {
             throw ValidationException::withMessages(['refund' => 'The item price and captured payment do not match. Reconcile before refunding.']);
         }
-        $admins = $event->admins()->orderBy('users.id')->get()->filter(fn ($user) => filter_var($user->email, FILTER_VALIDATE_EMAIL));
         if (!$payer || !filter_var($payer->email, FILTER_VALIDATE_EMAIL) || $gross <= 0 || !$entry->is_paid) {
             throw ValidationException::withMessages(['refund' => 'A paid entry and valid payer email are required.']);
-        }
-        if ($admins->isEmpty()) {
-            throw ValidationException::withMessages(['refund' => 'Assign an event admin with a valid email before confirming this refund.']);
-        }
-        if (!SiteSetting::emailEnabled('player_email_on_wallet_refund')) {
-            throw ValidationException::withMessages(['refund' => 'Wallet refund confirmation emails are disabled.']);
-        }
-        $fee = round($gross * $percentage / 100, 2);
-        if ($gross - $fee <= 0) {
-            throw ValidationException::withMessages(['percentage' => 'The refund must be greater than zero.']);
         }
         return [
             'entry_id' => $entry->id, 'event_id' => $event->id, 'payer_id' => $payer->id,
             'payer_name' => $payer->name, 'to' => $payer->email,
-            'cc' => $admins->pluck('email')->unique()->values()->all(),
-            'reply_to' => $admins->pluck('email')->unique()->values()->all(),
-            'gross' => $gross, 'fee' => $fee, 'net' => round($gross - $fee, 2),
-            'percentage' => $percentage, 'reason' => $reason, 'status' => $entry->status,
+            'gross' => $gross, 'status' => $entry->status,
+            'funding_order_id' => $order?->id, 'funding_pf_id' => $order?->payfast_pf_payment_id,
+            'funding_wallet_transaction_id' => $order?->wallet_transaction_id,
             'event_name' => $event->name, 'player_name' => $entry->display_name,
             'category_name' => $entry->categoryEvent?->category?->name,
         ];
@@ -112,7 +192,7 @@ class AdminRegistrationWalletRefundService
             $item = $adjustment ? RegistrationOrderItems::find($adjustment->original_order_item_id)
                 : RegistrationOrderItems::where('registration_id', $locked->registration_id)->where('category_event_id', $locked->category_event_id)->first();
             $item?->order()->lockForUpdate()->first();
-            $snapshot = $this->snapshot($event, $locked, $percentage, $reason);
+            $snapshot = $this->snapshot($event, $locked, $percentage, $reason, $actor);
             if (($approved['expires'] ?? 0) < now()->timestamp || ($approved['snapshot'] ?? []) != $snapshot) {
                 throw ValidationException::withMessages(['preview_token' => 'The refund or recipients changed. Refresh the email preview before confirming.']);
             }

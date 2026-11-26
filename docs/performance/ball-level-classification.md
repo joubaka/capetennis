@@ -104,6 +104,18 @@ remain unrated without borrowing another pool; unresolved ball contexts remain
 visible in the default view. See `PlayerRatingLeaderboardController`,
 `PlayerRatingLeaderboardService` and `PlayerRatingLeaderboardTest`.
 
+The event list's `Group by` control can display actual player ages within the
+selected division. This means attained birthday age on the event start date in
+the application timezone, not the site directory's calendar-year age bands.
+When the start date is unavailable, the page explicitly labels today's date as
+the reference. Invalid, missing or future birth dates and unlinked imported
+players remain Unknown age. Age sections retain separate divisions, ball pools
+and comparison groups, with unchanged saved scores and original positions.
+Grouping sorts the bounded membership before pagination; pagination retains the
+grouping and all filters. This display option never changes event eligibility,
+recorded membership or rating calculations. See `groupByPlayerAge()` and the
+event-age regressions in `PlayerRatingLeaderboardTest`.
+
 Event rating lists reuse `partials/ctr-directory-style.blade.php` and its
 ranking-grid classes. Use `<x-ctr-badge size="inline">` for compact list seals
 (3rem); the legacy `compact` prop alone does not reduce badge diameter.

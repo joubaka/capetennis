@@ -23,7 +23,12 @@
     .ratings-page .ratings-tools { display: flex; flex-wrap: wrap; gap: .5rem; }
     .ratings-page .ratings-tools a { min-height: 44px; display: inline-flex; align-items: center; }
     .ratings-page .ratings-filters { margin: 0 0 1rem; }
+    .ratings-page .ratings-filters-event { grid-template-columns: repeat(5, minmax(0, 1fr)); }
     .ratings-page .ratings-filters > div { width: auto; padding: 0; }
+    @media (min-width: 576px) and (max-width: 991.98px) {
+        .ratings-page .ratings-filters-event { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ratings-page .ratings-filters-event .ratings-submit { grid-column: 1/-1; }
+    }
     @media (max-width: 575.98px) {
         .ratings-page .ratings-filters { grid-template-columns: minmax(0, 1fr); }
         .ratings-page .ctr-ranking-row { grid-template-columns: 1.5rem minmax(0, 1fr) 4.5rem; }
@@ -68,7 +73,7 @@
     @endif
     @if(!$refreshStatus['pending'] && !$refreshStatus['failed'] && $snapshot['reason'])<div class="alert alert-warning" role="status">{{ $snapshot['reason'] }}</div>@endif
     @if($limitReason)<div class="alert alert-warning" role="status">{{ $limitReason }}</div>@endif
-    <form method="get" class="ctr-filters ratings-filters">
+    <form method="get" class="ctr-filters ratings-filters {{ $event ? 'ratings-filters-event' : '' }}">
         <div class="{{ $event ? 'col-md-4' : 'col-md-6' }}"><label for="cohort" class="form-label">{{ $event ? 'Division' : 'Exact age / gender / playing context' }}</label>
             <select name="cohort" id="cohort" class="form-select" style="min-height:44px">
                 <option value="">{{ $event ? 'All event divisions' : 'Choose a cohort' }}</option>
@@ -76,6 +81,12 @@
             </select>
         </div>
         @if($event)
+        <div><label for="group_by" class="form-label">Group by</label>
+            <select name="group_by" id="group_by" class="form-select" style="min-height:44px">
+                <option value="division" @selected($groupBy === 'division')>Division</option>
+                <option value="age" @selected($groupBy === 'age')>Player age</option>
+            </select>
+        </div>
         <div class="col-md-3"><label for="ball_type" class="form-label">Rating pool</label>
             <select name="ball_type" id="ball_type" class="form-select" style="min-height:44px">
                 <option value="">All event pools (separate lists)</option>
@@ -86,7 +97,7 @@
         </div>
         @endif
         <div class="col-12 {{ $event ? 'col-md-3' : 'col-md-4' }}"><label for="search" class="form-label">Player name</label><input type="search" name="search" id="search" maxlength="100" class="form-control" style="min-height:44px" value="{{ $search }}"></div>
-        <div class="col-12 col-md-2 d-flex align-items-end"><button class="btn btn-primary" type="submit">Show ratings</button></div>
+        <div class="col-12 col-md-2 d-flex align-items-end ratings-submit"><button class="btn btn-primary" type="submit">Show ratings</button></div>
     </form>
     @foreach($errors->all() as $error)<p class="text-danger">{{ $error }}</p>@endforeach
     @if(!$event && !$selected)
@@ -94,7 +105,10 @@
     @else
         <p class="small text-muted mb-3">{{ $players->total() }} player / cohort entries · ordered within separate comparison groups.</p>
         @if(!$event)<p class="small text-muted">Membership follows recorded categories and saved rating evidence. Legacy teams without a category are available in their event view as unresolved; they are not assigned an age group by guesswork.</p>@endif
-        @forelse($players->getCollection()->groupBy(fn ($row) => $row['cohort'].'|'.($row['ball_stage'] ?? 'unknown')) as $group => $members)
+        @if($groupBy === 'age')<p class="small text-muted">Age on {{ $ageReference }}{{ $ageReferenceFallback ? ' (today; event start date unavailable)' : ' (event start)' }}. Positions remain those of the original division and comparison group.</p>@endif
+        @forelse($players->getCollection()->groupBy(fn ($row) => $groupBy === 'age' ? ($row['player_age'] ?? 'unknown') : 'division') as $age => $ageMembers)
+            @if($groupBy === 'age')<h2 class="h4 mt-4" data-player-age-group="{{ $age }}">{{ $age === 'unknown' ? 'Unknown age' : 'Age '.$age }}</h2>@endif
+            @foreach($ageMembers->groupBy(fn ($row) => $row['cohort'].'|'.($row['ball_stage'] ?? 'unknown')) as $group => $members)
             <section class="ctr-results-section mb-4" aria-label="{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}"><h2 class="h5">{{ $members->first()['cohort'] }} · {{ $members->first()['ball_label'] }}</h2>
                 @foreach($members->groupBy('component') as $component => $comparisonMembers)
                 <h3 class="h6 mt-3">{{ $snapshot['reason'] ? 'Ratings unavailable' : ($comparisonMembers->first()['rating'] ? 'Comparison group: '.$component : 'Unrated players') }}</h3>
@@ -107,6 +121,7 @@
                             <div class="ctr-player">
                                 @if($member['player_id'])<a href="{{ route('backend.player-performance.show', [$member['player_id'], 'ball_type' => $member['ball_stage'] ?? 'standard']) }}">{{ $member['name'] }}</a>@else<span>{{ $member['name'] }}</span>@endif
                                 @if($event && $member['regions'])<p>({{ implode(', ', $member['regions']) }})</p>@endif
+                                @if($groupBy === 'age')<p class="small text-muted">{{ $member['player_age'] === null ? 'Unknown age' : 'Age '.$member['player_age'] }}</p>@endif
                             </div>
                             <div class="ctr-score">@if($displayRating)<x-ctr-badge :stage="$member['ball_stage']" size="inline" :score="$displayRating['score']" :local="($displayRating['comparable'] ?? true) === false" />@elseif($snapshot['reason'] && $member['player_id'])<span class="small text-muted">Rating unavailable</span>@else<span class="small text-muted">Unrated</span>@endif</div>
                         <div class="ctr-evidence">
@@ -126,6 +141,7 @@
                 </ul>
                 @endforeach
             </section>
+            @endforeach
         @empty<p>No matching players in this selection.</p>@endforelse
         {{ $players->links('pagination::bootstrap-5') }}
     @endif

@@ -44,9 +44,77 @@ class PlayerRatingLeaderboardTest extends TestCase
             ->assertSee('class="ctr-column-head"', false)->assertSee('ctr-ranking-row', false)
             ->assertSee('data-ctr-confidence', false)->assertSee('width:3rem;height:3rem', false)
             ->assertDontSee('width:7rem;height:7rem', false);
+        $ageGrouped = $this->get(route('backend.player-performance.event-ratings', [$event, 'group_by' => 'age']))->assertOk();
+        $this->assertSame(['orange', 'standard'], $ageGrouped->viewData('players')->getCollection()->pluck('ball_stage')->all());
+        $this->assertSame([1, 1], $ageGrouped->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame([90.0, 40.0], $ageGrouped->viewData('players')->getCollection()->map(fn ($row) => $row['rating']['score'])->all());
     }
 
     use RefreshDatabase;
+
+    public function test_event_player_age_grouping_uses_attained_age_at_event_start_without_changing_rating_groups(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6, 'start_date' => '2026-12-04']);
+        $field = $this->field($event, 'U13 Boys A');
+        $ratings = [];
+        foreach ([['Birthday', '2013-12-04', 90], ['Tomorrow', '2013-12-05', 70], ['Missing', null, 60], ['Future', '2027-01-01', 50]] as [$name, $birth, $score]) {
+            $player = Player::factory()->create(['name' => $name, 'surname' => 'Age', 'dateOfBirth' => $birth]);
+            $this->entry($field, $player);
+            $ratings[$player->id] = [$this->estimate($score)];
+        }
+        $team = Team::factory()->create(['category_event_id' => $field->id]);
+        NoProfileTeamPlayer::create(['team_id' => $team->id, 'name' => 'Imported', 'surname' => 'Age', 'rank' => 1, 'pay_status' => 0]);
+        $girl = Player::factory()->create(['name' => 'Girl', 'surname' => 'Age', 'dateOfBirth' => '2013-12-05']);
+        $this->entry($this->field($event, 'U13 Girls A'), $girl);
+        $ratings[$girl->id] = [$this->estimate(99, 'different')];
+        $foreign = Player::factory()->create(['name' => 'Foreign', 'surname' => 'Age', 'dateOfBirth' => '2013-12-05']);
+        $this->entry($this->field(Event::factory()->create(['eventType' => 6]), 'U13 Boys A'), $foreign);
+        $this->saved($ratings);
+        $url = route('backend.player-performance.event-ratings', $event);
+        $normal = $this->get($url.'?cohort=u13%20boys')->assertOk();
+        $grouped = $this->get($url.'?cohort=u13%20boys&group_by=age&ball_type=standard')->assertOk()
+            ->assertSee('Age on 4 Dec 2026 (event start)')->assertSee('Unknown age')->assertDontSee('Girl Age')->assertDontSee('Foreign Age')
+            ->assertSeeInOrder(['data-player-age-group="12"', 'Tomorrow Age', 'data-player-age-group="13"', 'Birthday Age', 'data-player-age-group="unknown"'], false);
+        $this->assertSame([12, 13, null, null, null], $grouped->viewData('players')->getCollection()->pluck('player_age')->all());
+        $this->assertSame([2, 1, 3, 4, null], $grouped->viewData('players')->getCollection()->pluck('position')->all());
+        $this->assertSame($normal->viewData('players')->getCollection()->keyBy('identity')->map(fn ($row) => [$row['rating'], $row['component'], $row['position']])->sortKeys()->all(),
+            $grouped->viewData('players')->getCollection()->keyBy('identity')->map(fn ($row) => [$row['rating'], $row['component'], $row['position']])->sortKeys()->all());
+        $all = $this->get($url.'?group_by=age')->assertOk()->assertSee('u13 boys')->assertSee('u13 girls')->assertSee('Comparison group: different');
+        $this->assertSame(6, $all->viewData('players')->total());
+        $this->getJson($url.'?group_by=invalid')->assertUnprocessable()->assertJsonValidationErrors('group_by');
+        if (getenv('CT_LEADERBOARD_QA_HTML') === '1') {
+            file_put_contents(storage_path('framework/testing/leaderboard-age-qa.html'), $all->getContent());
+        }
+    }
+
+    public function test_event_age_grouping_happens_before_pagination_and_preserves_filter_queries(): void
+    {
+        $this->admin();
+        $event = Event::factory()->create(['eventType' => 6, 'start_date' => '2026-12-04']);
+        $field = $this->field($event);
+        $ratings = [];
+        foreach (range(1, 27) as $i) {
+            $player = Player::factory()->create(['name' => 'Agepage', 'surname' => sprintf('%02d', $i), 'dateOfBirth' => $i === 1 ? '2013-01-01' : '2014-01-01']);
+            $this->entry($field, $player);
+            $ratings[$player->id] = [$this->estimate(100 - $i)];
+        }
+        $this->saved($ratings);
+        $response = $this->get(route('backend.player-performance.event-ratings', $event).'?group_by=age&cohort=u12%20boys&ball_type=standard&search=Agepage&page=2')->assertOk();
+        $this->assertSame([12, 13], $response->viewData('players')->getCollection()->pluck('player_age')->all());
+        $this->assertSame([27, 1], $response->viewData('players')->getCollection()->pluck('position')->all());
+        parse_str(parse_url($response->viewData('players')->url(1), PHP_URL_QUERY), $query);
+        $this->assertSame(['group_by' => 'age', 'cohort' => 'u12 boys', 'ball_type' => 'standard', 'search' => 'Agepage', 'page' => '1'], $query);
+    }
+
+    public function test_age_grouping_labels_the_current_date_fallback_when_event_start_is_unavailable(): void
+    {
+        $this->travelTo(\Carbon\CarbonImmutable::parse('2026-11-26 12:00', config('app.timezone')));
+        $data = app(PlayerRatingLeaderboardService::class)->groupByPlayerAge(['rows' => collect()], new Event);
+        $this->assertSame('26 Nov 2026', $data['ageReference']);
+        $this->assertTrue($data['ageReferenceFallback']);
+        $this->assertCount(0, $data['rows']);
+    }
 
     public function test_event_pool_filter_preserves_scores_positions_and_missing_ratings_without_cross_event_members(): void
     {

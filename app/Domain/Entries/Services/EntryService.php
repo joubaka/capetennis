@@ -422,7 +422,8 @@ class EntryService
      */
     public function withdrawEntryAsAdmin(
         CategoryEventRegistration $entry,
-        User $actingUser
+        User $actingUser,
+        bool $contactsCoveredByWorkflow = false
     ): void {
         $entry->categoryEvent?->event?->assertWithdrawalAllowedFor($actingUser);
         if ($entry->status === 'pending_checkout'
@@ -437,7 +438,7 @@ class EntryService
         $eventName    = optional($entry->categoryEvent?->event)->name ?? 'Event';
         $categoryName = optional($entry->categoryEvent?->category)->name ?? '';
 
-        DB::transaction(function () use ($entry, $actingUser, $player, $eventName, $categoryName) {
+        DB::transaction(function () use ($entry, $actingUser, $player, $eventName, $categoryName, $contactsCoveredByWorkflow) {
             FinanceMutationScope::run('refund_state_write', fn () => $entry->update([
                 'status'        => EntryStateMachine::STATE_WITHDRAWN,
                 'withdrawn_at'  => now(),
@@ -465,7 +466,7 @@ class EntryService
                 ])
                 ->log("Admin withdrew {$eventName} ({$categoryName})");
 
-            DB::afterCommit(fn () => event(new EntryWithdrawn($entry, $actingUser, 'admin')));
+            DB::afterCommit(fn () => event(new EntryWithdrawn($entry, $actingUser, 'admin', $contactsCoveredByWorkflow)));
         });
     }
 
@@ -728,6 +729,9 @@ class EntryService
 
     public function unlockCategory(CategoryEvent $categoryEvent, User $actingUser): void
     {
+        if ($categoryEvent->fresh()->isCancelled()) {
+            throw ValidationException::withMessages(['category' => 'A cancelled category cannot be reopened.']);
+        }
         $categoryEvent->update(['locked_at' => null]);
 
         Log::info('[EntryService] Category unlocked', [

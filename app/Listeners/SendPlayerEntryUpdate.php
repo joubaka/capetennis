@@ -9,6 +9,7 @@ class SendPlayerEntryUpdate
 {
     public function handle(EntryCreated|EntryWithdrawn $event): void
     {
+        if ($event instanceof EntryWithdrawn && $event->contactsCoveredByWorkflow) return;
         app(PlayerRegistrationUpdateService::class)->record($event->entry, $event instanceof EntryWithdrawn ? 'withdrawal' : 'registration');
     }
 }

@@ -1336,6 +1336,10 @@ Route::delete(
   // CATEGORY ENTRY MANAGEMENT
   // =========================
 
+  Route::get('event/{event}/category/{categoryEvent}/cancel', [\App\Http\Controllers\Backend\CategoryCancellationController::class, 'show'])->name('admin.category.cancel.show');
+  Route::post('event/{event}/category/{categoryEvent}/cancel/preview', [\App\Http\Controllers\Backend\CategoryCancellationController::class, 'preview'])->name('admin.category.cancel.preview');
+  Route::post('event/{event}/category/{categoryEvent}/cancel', [\App\Http\Controllers\Backend\CategoryCancellationController::class, 'store'])->name('admin.category.cancel.store');
+
   Route::post(
     'event/category/{categoryEvent}/lock',
     [EventEntryController::class, 'lock']

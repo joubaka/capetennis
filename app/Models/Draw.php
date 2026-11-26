@@ -34,6 +34,21 @@ class Draw extends Model
     ];
     protected $casts = ['team_scoring_rules' => 'array', 'team_format_snapshot' => 'array', 'team_draw_selection' => 'array'];
 
+    /** Serialize category admission with pre-draw cancellation, including stale draw builders. */
+    public function save(array $options = [])
+    {
+        if ($this->category_event_id && (!$this->exists || $this->isDirty('category_event_id'))) {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($options) {
+                $category = CategoryEvent::whereKey($this->category_event_id)->lockForUpdate()->first();
+                if ($category?->isCancelled()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['category' => 'A cancelled category cannot have a new draw.']);
+                }
+                return parent::save($options);
+            }, 3);
+        }
+        return parent::save($options);
+    }
+
     public function formatDisplayLabel(): string
     {
         if (($this->team_draw_selection['competition']['phase'] ?? null) === 'playoff') {

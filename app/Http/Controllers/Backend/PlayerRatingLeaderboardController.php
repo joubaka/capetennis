@@ -86,11 +86,15 @@ class PlayerRatingLeaderboardController extends Controller
         abort_unless($request->user()?->hasRole('super-user'), 403);
         $settings = $request->validate(['cohort' => ['nullable', 'string', 'max:150'], 'search' => ['nullable', 'string', 'max:100'], 'page' => ['nullable', 'integer', 'min:1']]);
         $pool = $event ? ($request->validate(['ball_type' => ['nullable', \Illuminate\Validation\Rule::in(['red', 'orange', 'standard'])]])['ball_type'] ?? '') : '';
+        $groupBy = $event ? ($request->validate(['group_by' => ['nullable', \Illuminate\Validation\Rule::in(['division', 'age'])]])['group_by'] ?? 'division') : 'division';
         $selected = $settings['cohort'] ?? '';
         $search = trim($settings['search'] ?? '');
         $data = $service->build($event, $selected, $search);
         if ($pool !== '') {
             $data['rows'] = $data['rows']->where('ball_stage', $pool)->values();
+        }
+        if ($groupBy === 'age') {
+            $data = $service->groupByPlayerAge($data, $event);
         }
         $refreshStatus = app(\App\Services\Performance\PlayerAbilityRefreshState::class)->status();
         if ($selected !== '' && !in_array($selected, $data['cohorts'], true)) {
@@ -98,7 +102,7 @@ class PlayerRatingLeaderboardController extends Controller
         }
         $players = new LengthAwarePaginator($data['rows']->forPage($request->integer('page', 1), 25)->values(), $data['rows']->count(), 25,
             $request->integer('page', 1), ['path' => $request->url(), 'query' => $request->query()]);
-        return response()->view('backend.player-performance.leaderboard', compact('event', 'selected', 'search', 'players', 'refreshStatus', 'pool') + $data)
+        return response()->view('backend.player-performance.leaderboard', compact('event', 'selected', 'search', 'players', 'refreshStatus', 'pool', 'groupBy') + $data)
             ->header('Cache-Control', 'no-store, private');
     }
 }

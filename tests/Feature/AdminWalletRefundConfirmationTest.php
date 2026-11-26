@@ -151,6 +151,40 @@ class AdminWalletRefundConfirmationTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    public function test_missing_event_admin_falls_back_to_reviewing_super_user_without_changing_payer(): void
+    {
+        [$entry, $event, $payer, $contact] = $this->scenario();
+        $event->admins()->detach($contact);
+        $preview = $this->preview($entry, $event);
+        $this->assertSame($payer->email, $preview['to']);
+        $this->assertSame([auth()->user()->email], $preview['cc']);
+        $this->assertSame([auth()->user()->email], $preview['reply_to']);
+        $this->refund($entry, $event, $preview)->assertRedirect();
+        $this->assertDatabaseCount('wallet_transactions', 1);
+        $this->assertEquals(285, $payer->fresh()->wallet->transactions()->sum('amount'));
+    }
+
+    public function test_another_super_user_cannot_apply_the_fallback_review(): void
+    {
+        [$entry, $event, , $contact] = $this->scenario();
+        $event->admins()->detach($contact);
+        $preview = $this->preview($entry, $event);
+        $this->actingAs(User::factory()->create()->assignRole('super-user'));
+        $this->refund($entry, $event, $preview)->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 0);
+    }
+
+    public function test_missing_admin_and_invalid_super_user_contact_blocks_fallback(): void
+    {
+        [$entry, $event, , $contact] = $this->scenario();
+        $event->admins()->detach($contact);
+        auth()->user()->update(['email' => 'invalid']);
+        $this->postJson(route('superadmin.finances.full-refund.registration.preview', [$event, $entry]), ['reason' => 'Cancelled'])
+            ->assertUnprocessable();
+        $this->assertDatabaseCount('wallet_transactions', 0);
+        Mail::assertNothingQueued();
+    }
+
     public function test_wallet_reservation_is_not_a_finalized_payment(): void
     {
         [$entry, $event, , , $order] = $this->scenario();

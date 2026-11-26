@@ -51,6 +51,9 @@ class DivisionCapacityService
     /** Caller must hold the category lock through creation of its entry/order item. */
     public function assertAvailable(CategoryEvent $category): void
     {
+        if ($category->isCancelled()) {
+            throw ValidationException::withMessages(['division' => 'This category has been cancelled.']);
+        }
         if ($category->entry_limit !== null && $this->occupied($category, true) >= (int) $category->entry_limit) {
             throw ValidationException::withMessages(['division' => ($category->category?->name ?? 'This division').' is full.']);
         }

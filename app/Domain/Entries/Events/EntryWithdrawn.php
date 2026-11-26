@@ -17,5 +17,6 @@ class EntryWithdrawn
         public readonly User $actingUser,
         /** 'admin' | 'player' */
         public readonly string $initiatedBy,
+        public readonly bool $contactsCoveredByWorkflow = false,
     ) {}
 }

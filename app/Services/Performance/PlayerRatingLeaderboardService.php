@@ -11,6 +11,29 @@ class PlayerRatingLeaderboardService
 {
     private const MEMBER_LIMIT = 10000;
 
+    /** Presentation only: membership, rating pools and comparison positions stay unchanged. */
+    public function groupByPlayerAge(array $data, Event $event): array
+    {
+        $reference = $event->start_date
+            ? \Carbon\CarbonImmutable::parse($event->start_date, config('app.timezone'))->startOfDay()
+            : \Carbon\CarbonImmutable::today(config('app.timezone'));
+        $birthDates = DB::table('players')->whereIn('id', $data['rows']->pluck('player_id')->filter()->unique())
+            ->pluck('dateOfBirth', 'id');
+        $data['rows'] = $data['rows']->map(function ($row) use ($birthDates, $reference) {
+            $birth = (string) ($birthDates[$row['player_id']] ?? '');
+            $date = null;
+            if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/D', $birth, $parts)
+                && (int) $parts[1] >= 1000 && checkdate((int) $parts[2], (int) $parts[3], (int) $parts[1])) {
+                $date = \Carbon\CarbonImmutable::createFromFormat('!Y-m-d', $birth, $reference->timezone);
+            }
+            $row['player_age'] = $date && $date->lessThanOrEqualTo($reference) ? (int) $date->diffInYears($reference) : null;
+            return $row;
+        })->sortBy(fn ($row) => $row['player_age'] ?? PHP_INT_MAX, SORT_NUMERIC)->values();
+        $data['ageReference'] = $reference->format('j M Y');
+        $data['ageReferenceFallback'] = !$event->start_date;
+        return $data;
+    }
+
     public function build(?Event $event, string $selected = '', string $search = ''): array
     {
         $snapshot = app(PlayerAbilitySnapshotStore::class)->current();

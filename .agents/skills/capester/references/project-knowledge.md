@@ -390,6 +390,19 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Ordinary individual category cancellation is a reviewed, atomic pre-draw
+  workflow for assigned event admins with the `admin` role and Super Users.
+  It closes admission, withdraws active entries, credits verified full original
+  funding to original payer wallets and saves managed mail jobs transactionally.
+  Preserve stale-review checks and idempotency. Cross-category baskets require
+  finance review because legacy sibling refund allocation may differ; do not
+  substitute equal splits for exact item entitlements. Existing single-entry
+  Super Admin wallet refund reviews use the acting Super User's valid email
+  when no valid event admin contact is assigned, without changing assignments
+  or payer receipt destinations. See `docs/category-cancellation.md`,
+  `CategoryCancellationTest` and `AdminWalletRefundConfirmationTest`; local
+  implementation does not establish deployment, refund execution or delivery.
+
 - Self-service registration requires explicit acceptance of registration and
   refund terms, including free-entry confirmation and existing-order payment.
   Preserve saved general terms; the legacy optional terms setting must not
