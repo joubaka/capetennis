@@ -1490,7 +1490,7 @@ class InterproDrawBuilder
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
       $fixture->refresh();
 
-      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+      if ($fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
         $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId);
         abort_unless($validation['valid'], 422, $validation['message']);
         $nextWinner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets, $decidingPointWinnerId);
@@ -1744,7 +1744,7 @@ class InterproDrawBuilder
       \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
       $fixture->refresh();
-      if ($fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
+      if ($fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
         $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets);
         abort_unless($validation['valid'], 422, $validation['message']);
         $nextWinner = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
@@ -1786,7 +1786,7 @@ class InterproDrawBuilder
       $fixture->winner_registration = app(IndividualMatchOutcomeService::class)->winnerFromSets($fixture, $sets);
 
       // A submitted, validated timed total is final even when the round-robin result is a draw.
-      $fixture->match_status = $fixture->draw?->settings?->score_format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED
+      $fixture->match_status = $fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === \App\Domain\Draws\Services\TennisScoreFormat::TIMED
         || $fixture->winner_registration ? 1 : 2;
       $fixture->save();
       app(MatchResultNotificationService::class)->record($fixture);

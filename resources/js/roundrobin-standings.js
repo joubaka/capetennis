@@ -43,7 +43,7 @@
       values.forEach(function (value, column) { html += '<' + (column === 1 ? 'th scope="row"' : 'td') + '>' + value + '</' + (column === 1 ? 'th' : 'td') + '>'; });
       html += '</tr>';
     });
-    html += '</tbody></table></div><p class="small text-muted mt-2">Played counts completed match outcomes. Points: win 2, draw 1, loss 0. W–L means won–lost. Percentages use the exact game and set totals. Scroll the table horizontally on smaller screens.</p>';
+    html += '</tbody></table></div><p class="small text-muted mt-2">Played counts completed match outcomes. Points: win 2, draw 1, loss 0. Two players tied on points: head-to-head first. Three or more: sets %, then games %. Percentages use all group matches and include starting games. W–L means won–lost. Scroll the table horizontally on smaller screens.</p>';
     rows.forEach(function (row) {
       var matches = row.match_details || [];
       if (!matches.length) return;

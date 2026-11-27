@@ -14,13 +14,14 @@
       return score < target ? target : null;
     }
     if (type === 'match_tiebreak') return score <= 8 ? 10 : (score === 9 ? 11 : null);
-    const target = type === 'full' ? 6 : (type === 'pro8' ? 8 : null);
-    return target === null ? null : (score <= target - 2 ? target : (score === target - 1 ? target + 1 : null));
+    if (type === 'full_start_2' && score < 2) return null;
+    const target = ['full', 'full_start_2'].includes(type) ? 6 : (type === 'pro8' ? 8 : null);
+    return target === null ? null : (score <= target - 2 ? target : (score <= target ? target + 1 : null));
   }
   function bind(root, options = {}) {
     const previous = bindings.get(root);
     if (previous) root.removeEventListener('input', previous.listener);
-    const state = {enabled: true, generated: new WeakMap()};
+    const state = {enabled: true, generated: new WeakMap(), options};
     state.listener = event => {
       const rows = [...root.querySelectorAll(options.rowSelector || '[data-score-row]')];
       const row = rows.find(row => [...row.querySelectorAll('input')].includes(event.target));
@@ -80,7 +81,22 @@
       sets.push(scores);
     });
     if (!sets.length) throw Error('Enter at least one completed set.');
+    const state = bindings.get(root);
+    if (state?.enabled) validateCompleted(sets, state.options.setTypes || []);
     return sets;
   }
-  return {populate, read, bind, setCompletionEnabled, opponentScore};
+  function validateCompleted(sets, setTypes) {
+    if (!setTypes.includes('full_start_2')) return;
+    const wins = [0, 0];
+    if (!sets.length || sets.length > 3) throw Error('Record two or three completed sets.');
+    sets.forEach(set => {
+      if (Math.max(...wins) === 2) throw Error('Remove sets entered after the match was already won.');
+      const scores = set.map(Number), high = Math.max(...scores), low = Math.min(...scores);
+      if (scores.some(score => !Number.isSafeInteger(score)) || low < 2 || !((high === 6 && low <= 4) || (high === 7 && [5, 6].includes(low))))
+        throw Error('Every set starts at 2–2. Enter final totals: 6–2 to 6–4, 7–5 or 7–6.');
+      wins[scores[0] > scores[1] ? 0 : 1]++;
+    });
+    if (Math.max(...wins) !== 2) throw Error('A player must win two sets. Enter the deciding set when sets are level.');
+  }
+  return {populate, read, bind, setCompletionEnabled, opponentScore, validateCompleted};
 });

@@ -14,7 +14,7 @@ final class IndividualMatchOutcomeService
         if ($fixture->isWalkover() || $fixture->isRetired()) return (int) $fixture->winner_registration;
         $sets = $fixture->fixtureResults->sortBy('set_nr')->unique('set_nr')
             ->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();
-        $decidingWinner = $fixture->draw?->settings?->score_format === TennisScoreFormat::TIMED
+        $decidingWinner = $fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === TennisScoreFormat::TIMED
             && $fixture->stage !== 'RR' && count($sets) === 1 && (int) $sets[0][0] === (int) $sets[0][1]
             ? $fixture->winner_registration : null;
         return $this->winnerFromSets($fixture, $sets, $decidingWinner);
@@ -33,7 +33,7 @@ final class IndividualMatchOutcomeService
     {
         if (!app(ScoreValidationService::class)->validate($fixture, $sets, $decidingPointWinnerId)['valid']) return null;
         $settings = $fixture->draw?->settings;
-        $format = (string) ($settings?->score_format ?? '');
+        $format = (string) ($settings?->scoreFormatForStage($fixture->stage) ?? '');
         if ($format === TennisScoreFormat::TIMED) {
             if ((int) $sets[0][0] === (int) $sets[0][1]) return $decidingPointWinnerId;
             return $sets[0][0] > $sets[0][1] ? $fixture->registration1_id : $fixture->registration2_id;

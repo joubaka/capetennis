@@ -94,6 +94,13 @@
       Object.values(AdminState.getFixtures()).some(function(rows) { match = rows.find(function(f) { return f.id == id; }); return !!match; });
     }
     if (match) { home = match.home || match.name1 || home; away = match.away || match.name2 || away; }
+    var context = (root.RR_SCORE_CONTEXTS || {})[match && match.stage && match.stage !== 'RR' ? 'PLAYOFF' : 'RR'];
+    if (context) {
+      root.RR_SCORE_FORMAT = context.key;
+      root.RR_SCORE_MAX_SETS = context.maxSets;
+      root.RR_SCORE_SET_TYPES = context.setTypes;
+      $('#rrm-score-guidance').text(context.guidance);
+    }
     currentMatch = match || null;
     $('#rrm-deciding-winner').html('<option value="">Choose the winner</option>' + (match ?
       '<option value="' + Number(match.r1_id || match.registration1_id) + '">' + _escape(home) + '</option>' +
@@ -163,6 +170,8 @@
     }
 
     if (err) return null;
+    try { if ((root.RR_SCORE_SET_TYPES || []).indexOf('full_start_2') !== -1) root.CTSetScoreGrid.validateCompleted(sets.map(function (set) { return set.split('-').map(Number); }), root.RR_SCORE_SET_TYPES); }
+    catch (failure) { AdminToast.error(failure.message); return null; }
     return sets;
   }
 

@@ -44,6 +44,9 @@
       const id    = $(this).data('id');
       const home  = $(this).data('home');
       const away  = $(this).data('away');
+      window.RR_SCORE_SET_TYPES = $(this).data('set-types') || [];
+      $('#rr-score-guidance').remove();
+      $('<p id="rr-score-guidance" class="small text-muted"></p>').text($(this).data('guidance') || '').insertAfter('#rr-match-label');
 
       $('#rr-fixture-id').val(id);
       $('#rr-fixture-id').data('score-revision', (window.RR_SCORE_REVISIONS || {})[id]);
@@ -99,7 +102,9 @@
           readSet('.rr-s2-p1', '.rr-s2-p2'),
           readSet('.rr-s3-p1', '.rr-s3-p2'),
         ].filter(Boolean);
+        window.CTSetScoreGrid.validateCompleted(sets.map(set => set.split('-').map(Number)), window.RR_SCORE_SET_TYPES || []);
       } catch (e) {
+        if (e.message) toastr.error(e.message);
         return;
       }
 

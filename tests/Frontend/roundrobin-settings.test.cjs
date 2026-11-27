@@ -24,7 +24,7 @@ function editor(counts = [4, 3], config = [{name: 'Main', slug: 'main', enabled:
     Swal: {fire: async () => ({isConfirmed: true})}, toastr: {success() {}, warning() {}}, APP_URL: '', DRAW_ID: 1});
   let source = fs.readFileSync('resources/views/backend/draw/roundrobin/setup-scripts.blade.php', 'utf8')
     .replace(/<\/?script>/g, '')
-    .replace(/@unless\(\$roundRobinOnly\)([\s\S]*?)@endunless/g, (_, body) => roundRobinOnly ? '' : body)
+    .replace(/@unless\(\$roundRobinOnly[^\n]*\)([\s\S]*?)@endunless/g, (_, body) => roundRobinOnly ? '' : body)
     .replace('@json($competitionRulesEditable)', 'true').replace('@json(csrf_token())', '"token"')
     .replace('@json($playoffConfig ?? [])', JSON.stringify(config))
     .replaceAll('{{ $currentBoxes ?? 4 }}', String(counts.length))

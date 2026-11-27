@@ -96,6 +96,23 @@ test('roster transfers stay private while declines save and publish automaticall
     await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('now private.'));
     assert.equal(await page.evaluate(() => window.rosterTransferFixture.lastPublication.publish), false);
     assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.publication.published), false);
+    // No response has its own saved, reversible exclusion and never becomes a decline.
+    await page.evaluate(() => { window.rosterTransferFixture.full(); window.rosterTransferFixture.allowPublication = false; });
+    await page.locator('[data-fixture-reload]').click();
+    await page.waitForFunction(() => document.querySelectorAll('[data-list="selected"] > li').length === 32);
+    await action('selected', 0, 'Mark no response');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('Publication was not confirmed.'));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.no_response.some(p => p.id === 1)), true);
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.declined.some(p => p.id === 1)), false);
+    await page.locator('[data-fixture-reload]').click();
+    await page.locator('[data-no_response-list]').getByRole('button', {name: 'Undo no response for Fictional Player 01'}).click();
+    await page.locator('[data-save]').click();
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent === 'Draft saved.');
+    assert.deepEqual(await page.evaluate(() => window.rosterTransferFixture.draft.no_response), []);
+    await page.evaluate(() => { window.rosterTransferFixture.allowPublication = true; });
+    await action('selected', 0, 'Mark no response');
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('selected players published'));
+    assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.publication.players.some(p => p.id === 2)), false);
     // Ordinary Save must use the response's fresh status map, just like a direct transfer.
     await page.evaluate(() => {
       window.rosterTransferFixture.draft.registration_statuses[33] = 'registered';

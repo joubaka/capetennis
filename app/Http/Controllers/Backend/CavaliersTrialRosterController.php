@@ -99,8 +99,9 @@ class CavaliersTrialRosterController extends Controller
         $selected = $draft ? json_decode($draft->selected, true) : [];
         $reserves = $draft ? json_decode($draft->reserves, true) : [];
         $declined = json_decode($draft?->declined ?? '[]', true);
+        $noResponse = json_decode($draft?->no_response ?? '[]', true);
         $players = Player::query()->select('id', 'name', 'surname')
-            ->whereIn('id', [...$selected, ...$reserves, ...$declined])->get()->keyBy('id');
+            ->whereIn('id', [...$selected, ...$reserves, ...$declined, ...$noResponse])->get()->keyBy('id');
         $names = fn (array $ids) => array_map(fn (int $id) => [
             'id' => $id,
             'name' => $players->get($id)?->full_name ?? 'Unavailable player #'.$id,
@@ -110,6 +111,7 @@ class CavaliersTrialRosterController extends Controller
             'selected' => $names($selected),
             'reserves' => $names($reserves),
             'declined' => $names($declined),
+            'no_response' => $names($noResponse),
         ];
     }
 
@@ -180,20 +182,24 @@ class CavaliersTrialRosterController extends Controller
             'reserves.*' => 'required|integer|min:1',
             'declined' => 'sometimes|array|list|max:256',
             'declined.*' => 'required|integer|min:1',
+            'no_response' => 'sometimes|array|list|max:256',
+            'no_response.*' => 'required|integer|min:1',
         ]);
         $selected = array_map('intval', $data['selected']);
         $reserves = array_map('intval', $data['reserves']);
         $draft = $this->draft($categoryEvent)->first();
         $previousDeclines = json_decode($draft?->declined ?? '[]', true);
         $declined = array_map('intval', $data['declined'] ?? $previousDeclines);
-        $ids = [...$selected, ...$reserves, ...$declined];
+        $previousNoResponse = json_decode($draft?->no_response ?? '[]', true);
+        $noResponse = array_map('intval', $data['no_response'] ?? $previousNoResponse);
+        $ids = [...$selected, ...$reserves, ...$declined, ...$noResponse];
         if (count($ids) !== count(array_unique($ids))) {
             throw ValidationException::withMessages(['selected' => 'A player can only hold one place in this division.']);
         }
 
         $conflict = 'This draft changed in another session. Reload it before editing again.';
         abort_unless($data['revision'] === $draft?->revision, 409, $conflict);
-        foreach (array_diff($declined, $previousDeclines) as $playerId) {
+        foreach (array_unique([...array_diff($declined, $previousDeclines), ...array_diff($noResponse, $previousNoResponse)]) as $playerId) {
             app(\App\Services\CavaliersNominationDecline::class)->assertNoParticipation($categoryEvent, $playerId);
         }
         $existing = $draft ? [...json_decode($draft->selected, true), ...json_decode($draft->reserves, true)] : [];
@@ -215,6 +221,7 @@ class CavaliersTrialRosterController extends Controller
             'selected' => json_encode($selected, JSON_THROW_ON_ERROR),
             'reserves' => json_encode($reserves, JSON_THROW_ON_ERROR),
             'declined' => json_encode($declined, JSON_THROW_ON_ERROR),
+            'no_response' => json_encode($noResponse, JSON_THROW_ON_ERROR),
         ];
         // Compare and swap on the private draft table, including simultaneous first saves.
         $written = $draft
@@ -275,8 +282,9 @@ class CavaliersTrialRosterController extends Controller
             $retained = $existing->whereIn('player_id', $selected)->keyBy('player_id');
             $remove = $existing->diff($retained);
             $declined = json_decode($draft->declined ?? '[]', true, flags: JSON_THROW_ON_ERROR);
+            $noResponse = json_decode($draft->no_response ?? '[]', true, flags: JSON_THROW_ON_ERROR);
             foreach ($remove as $nomination) {
-                if (in_array((int) $nomination->player_id, $declined, true)) {
+                if (in_array((int) $nomination->player_id, [...$declined, ...$noResponse], true)) {
                     app(\App\Services\CavaliersNominationDecline::class)->assertNoParticipation($division, (int) $nomination->player_id, true);
                 }
             }

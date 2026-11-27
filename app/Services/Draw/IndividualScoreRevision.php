@@ -14,9 +14,9 @@ final class IndividualScoreRevision
         return hash('sha256', json_encode([
             (int) $fixture->draw->event_id,
             $fixture->only(['id', 'draw_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration', 'match_status', 'draw_group_id', 'parent_fixture_id', 'loser_parent_fixture_id']),
-            $fixture->draw->settings?->only(['score_format', 'num_sets', 'match_duration_minutes', 'changeover_minutes', 'require_full_sets']),
+            $fixture->draw->settings?->only(['score_format', 'playoff_score_format', 'num_sets', 'match_duration_minutes', 'changeover_minutes', 'require_full_sets']),
             InterproRoundRobinFormat::selected($fixture->draw) ? $fixture->draw->settings?->playoff_config : null,
-            $fixture->draw->settings?->score_format === 'timed' ? (int) ($fixture->orderOfPlay?->duration_minutes ?: $fixture->draw->settings?->match_duration_minutes) : null,
+            $fixture->draw->settings?->scoreFormatForStage($fixture->stage) === 'timed' ? (int) ($fixture->orderOfPlay?->duration_minutes ?: $fixture->draw->settings?->match_duration_minutes) : null,
             $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => $set->only(['id', 'set_nr', 'registration1_score', 'registration2_score']))->values()->all(),
         ]));
     }

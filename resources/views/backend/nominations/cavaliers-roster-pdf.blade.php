@@ -29,7 +29,7 @@
         <p>{{ $preview['platteland_notice'] }}</p>
     @endif
 
-    @foreach (['selected' => 'Selected', 'reserves' => 'Reserves', 'declined' => 'Declined'] as $key => $label)
+    @foreach (['selected' => 'Selected', 'reserves' => 'Reserves', 'declined' => 'Declined', 'no_response' => 'No response'] as $key => $label)
         <h2>{{ $label }} ({{ count($roster[$key]) }})</h2>
         @if ($roster[$key])
             <table>

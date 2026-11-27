@@ -30,6 +30,12 @@ final class DrawReadinessService
             'venues' => ['ok' => $draw->venues->isNotEmpty(), 'label' => $draw->venues->isNotEmpty() ? 'Venues available' : 'Assign at least one venue before scheduling'],
             'scores' => ['ok' => true, 'label' => $scored . ' fixture' . ($scored === 1 ? '' : 's') . ' scored'],
         ];
+        if (!$isTeamDraw) {
+            $missing=[];
+            if (blank($draw->settings?->score_format)) $missing[]='round-robin scoring';
+            if ($draw->settings?->workflow === 'round_robin_playoffs' && blank($draw->settings?->playoff_score_format)) $missing[]='playoff scoring';
+            $checks['scoring']=['ok'=>$missing===[], 'label'=>$missing===[] ? 'Scoring choices saved' : 'Before play, choose '.implode(' and ',$missing).' in Setup'];
+        }
 
         return [
             // Draw visibility is independent of complete or published match times.

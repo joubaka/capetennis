@@ -70,7 +70,9 @@ final class DrawWorkflow
             }
         }
         $format = (bool) $draw->settings?->workflow;
-        $rulesReady = $flexible ? $format : ($format && filled($draw->settings?->score_format));
+        $needsPlayoffScoring = !$flexible && $draw->settings?->workflow === 'round_robin_playoffs';
+        $rulesReady = $flexible ? $format : ($format && filled($draw->settings?->score_format)
+            && (!$needsPlayoffScoring || filled($draw->settings?->playoff_score_format)));
         $scheduleReady = $generated && $scheduled === $playable->count();
         $publicationReady = $scheduleReady && $draw->published && $draw->oop_published && app(DrawSetupGuide::class)->snapshotCurrent($draw);
         $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
@@ -94,7 +96,9 @@ final class DrawWorkflow
         $publicationDetail = !$draw->published ? 'Draw is private.' : (!$draw->oop_published ? 'Draw is visible; match times are private.'
             : ($publicationReady ? 'Draw is visible and all saved generated match times are published and current.'
                 : 'Draw is visible; review partial or changed published times.'));
-        $setupDetail = $rulesReady ? 'Format and scoring configured.' : 'Confirm format and scoring; legacy scoring is not explicit setup.';
+        $setupDetail = $rulesReady ? 'Format and scoring configured.' : ($needsPlayoffScoring
+            ? 'Before play, choose round-robin scoring and playoff scoring separately in Setup.'
+            : 'Confirm format and scoring; legacy scoring is not explicit setup.');
         // Publication remains a separate, explicit review, including saved/public differences.
         $steps = [
             'setup' => ['label' => 'Setup', 'url' => $format ? $workspace.'#settings' : route('draw.setup.show', $draw), 'complete' => $rulesReady, 'detail' => $setupDetail],

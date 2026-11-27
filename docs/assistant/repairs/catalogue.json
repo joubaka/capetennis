@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-080",
+      "title": "Best-of-three starting at two-all accepts unfinished or impossible played scores",
+      "scope": "Separate individual RR/playoff scoring choices, opt-in best_of_3_full_start_2 scoring and decisive preset results in the selected Interpro feed-in; ordinary historical RR draw support is preserved.",
+      "symptoms": "A legacy maximum-set draw accepts partial full-set totals or an unfinished tied result, or scorers enter games played without the two starting games. Feed-in progression later cannot obtain a decisive original result.",
+      "cause": "Blank legacy scoring stores a maximum set count, not enforceable completed-set rules. Ordinary RR formats intentionally permit draws and cannot alone express a decisive start-at-two competition.",
+      "fix": "Review the exact allowlisted 2026_11_27_140000_add_playoff_score_format_to_draw_settings.php migration before release. Before results, choose RR and playoff formats separately through the authorized competition-settings save; both may use Best of 3 full sets - start at 2-2. Missing playoff choices preserve legacy fallback but show setup warnings. Fixture stage selects validation, outcome, timing and score-entry guidance. Record final totals including starting games; two completed set wins are required, with at least two games for both sides and no extra set after a win. Keep separate retirement and walkover result types. Never infer or convert the policy from event names, schedules or historic scores. See docs/draw-knowledge/interpro-round-robin-feed-in.md and the separate round-robin-ties.md policy guide.",
+      "verification": "The scoped PHP suite passed 107 tests and 1426 assertions locally: ScoreValidationServiceTest, DeploymentConfigTest, StartAtTwoScoringTest, TimedDrawScoringTest and InterproRoundRobinFormatTest. Seven relevant frontend test files passed 51 tests. Route registration, Blade compilation, PHP lint and diff checks passed. Actual copied-draw and browser rehearsals are reported separately; no production verification is implied.",
+      "limits": "Guide only; selecting this preset does not change existing or live draws automatically. Existing scored/confirmed draws retain rule-freeze and recovery safeguards. No deployment, live score correction, scheduling, publication or provider action is authorized by this record.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Domain/Draws/Services/TennisScoreFormat.php", "app/Domain/Draws/Services/ScoreValidationService.php", "app/Models/DrawSetting.php", "app/Domain/Draws/Services/DrawRulesService.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md", "docs/draw-knowledge/round-robin-ties.md"],
+      "tests": ["tests/Feature/Draw/StartAtTwoScoringTest.php", "tests/Unit/ScoreValidationServiceTest.php", "tests/Frontend/set-score-grid.test.cjs", "tests/Frontend/roundrobin-score-session.test.cjs"]
+    },
+    {
       "id": "RK-079",
       "title": "Account menu wallet shortcut fails or Plus profile links are unclear",
       "scope": "Shared account menu, nearby header controls and account-dashboard player shortcuts; read-only navigation only.",

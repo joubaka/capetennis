@@ -73,6 +73,7 @@ class ManageDrawController extends Controller
             'playoff_size' => 'nullable|integer',
             'num_sets' => ['nullable', 'integer', Rule::in([1, 2, 3, 5])],
             'score_format' => ['nullable', 'string', Rule::in(TennisScoreFormat::keys())],
+            'playoff_score_format' => ['nullable', 'string', Rule::in(TennisScoreFormat::keys())],
             'match_duration_minutes' => 'sometimes|integer|min:1|max:240',
             'changeover_minutes' => 'sometimes|integer|min:0|max:60',
             'move_to_group_id' => 'nullable|integer',
@@ -90,7 +91,8 @@ class ManageDrawController extends Controller
         ]);
 
         $effectiveFormat = $data['score_format'] ?? $draw->settings?->score_format;
-        if ($effectiveFormat === TennisScoreFormat::TIMED) {
+        $effectivePlayoffFormat = $data['playoff_score_format'] ?? $draw->settings?->playoff_score_format;
+        if ($effectiveFormat === TennisScoreFormat::TIMED || $effectivePlayoffFormat === TennisScoreFormat::TIMED) {
             abort_if($draw->isTeamDraw(), 422, 'Timed scoring is available for individual draws.');
             foreach (['match_duration_minutes', 'changeover_minutes'] as $field) {
                 if (! array_key_exists($field, $data) && $draw->settings?->{$field} === null) {
@@ -114,6 +116,7 @@ class ManageDrawController extends Controller
                 ? TennisScoreFormat::maxSets($data['score_format'])
                 : ($data['num_sets'] ?? null),
             'score_format' => $data['score_format'] ?? null,
+            'playoff_score_format' => $data['playoff_score_format'] ?? null,
             'match_duration_minutes' => $data['match_duration_minutes'] ?? null,
             'changeover_minutes' => $data['changeover_minutes'] ?? null,
         ], fn($v) => !is_null($v) && $v !== '');

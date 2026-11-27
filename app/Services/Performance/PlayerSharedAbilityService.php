@@ -215,7 +215,7 @@ class PlayerSharedAbilityService
             'eventtypes' => ['id', 'name', 'code', 'type'],
             'category_events' => ['id', 'event_id', 'category_id'],
             'categories' => ['id', 'name'],
-            'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'require_full_sets'],
+            'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'playoff_score_format', 'require_full_sets'],
             'fixtures' => ['id', 'draw_id', 'registration1_id', 'registration2_id'],
             'registrations' => ['id'],
             'category_event_registrations' => ['id', 'category_event_id', 'registration_id', 'status', 'withdrawn_at', 'deleted_at']] as $table => $columns) {

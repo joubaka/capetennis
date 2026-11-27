@@ -42,7 +42,7 @@ tr { page-break-inside: avoid; }
 @php($summary = app(\App\Services\CavaliersRosterReport::class)->sectionSummary($section))
 <section class="{{ $loop->first ? 'division-first' : 'division-next' }}">
 <h2>{{ $section['division'] }}</h2>
-<p class="summary">{{ $summary['selected'] }} selected / {{ $summary['reserves'] }} reserves / {{ $summary['declined'] }} recorded declines</p>
+<p class="summary">{{ $summary['selected'] }} selected / {{ $summary['reserves'] }} reserves / {{ $summary['declined'] }} recorded declines / {{ $summary['no_response'] }} no response</p>
 <p>{{ $summary['explained'] }} candidates explained below; {{ $summary['review_required'] }} require selection review. Counted singles evidence is unavailable for {{ $summary['missing_evidence'] }} of these candidates.</p>
 <div class="note">
 <p><strong>Evidence scope:</strong> {{ $section['preview']['source_division'] }}. Regions: {{ implode(', ', $section['preview']['candidate_regions']) ?: 'None' }}.</p>
@@ -61,8 +61,8 @@ tr { page-break-inside: avoid; }
 <div class="note muted">Review order follows the source band/results order, then the finalized Platteland additions. Selection credit is separate from played wins. Scores retain the source fixture's home-away order. Playing numbers come from match evidence; a roster place does not prove a match was played.</div>
 @foreach (['next_candidates' => 'Next five outside the nomination list', 'inter_districts' => 'Inter-Districts players outside the selected list'] as $group => $heading)
 <h3>{{ $heading }}</h3>
-@if ($group === 'inter_districts')<p class="muted">Additional eligible Inter-Districts candidates, including reserves and declines. Candidates explained above are not repeated.</p>
-@else<p class="muted">Next available candidates in review order, excluding selected players, saved reserves and declines.</p>@endif
+@if ($group === 'inter_districts')<p class="muted">Additional eligible Inter-Districts candidates, including reserves, declines and no-response players. Candidates explained above are not repeated.</p>
+@else<p class="muted">Next available candidates in review order, excluding selected players, saved reserves, declines and no-response players.</p>@endif
 @forelse ($section['explanations'][$group] as $row)
 @php($evidence = $row['evidence'])
 <div class="candidate-head"><strong>{{ $loop->iteration }}. {{ $row['name'] }}</strong><br><span class="muted">{{ $evidence['region'] ?? 'Region unavailable' }} / {{ $evidence['source'] ?? 'No candidate source' }} / Review order #{{ $row['source_order'] }}</span></div>

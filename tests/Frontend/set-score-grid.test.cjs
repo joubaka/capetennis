@@ -2,6 +2,19 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const grid = require('../../public/js/set-score-grid.js');
 
+test('two-all full sets enforce completed best-of-three results and preserve retirement input', () => {
+  const types=['full_start_2','full_start_2','full_start_2'];
+  assert.equal(grid.opponentScore('full_start_2','0'),null);
+  assert.equal(grid.opponentScore('full_start_2','2'),6);
+  for(const sets of [[[6,2],[6,3]],[[6,2],[3,6],[7,6]]]) assert.doesNotThrow(()=>grid.validateCompleted(sets,types));
+  for(const sets of [[[3,2],[3,2]],[[6,2]],[[6,2],[2,6]],[[2,2]],[[6,0],[6,3]],[[6,2],[6,3],[7,6]]]) assert.throws(()=>grid.validateCompleted(sets,types));
+  const root=fixture();
+  grid.populate(root,{names:['A','B'],maxSets:3,setTypes:types,scores:[[3,2]]});
+  assert.throws(()=>grid.read(root));
+  grid.setCompletionEnabled(root,false);
+  assert.deepEqual(grid.read(root),[[3,2]]);
+});
+
 function fixture() {
   const input = () => ({value: '', disabled: false});
   const rows = Array.from({length: 5}, () => ({hidden: false, inputs: [input(), input()], querySelectorAll() { return this.inputs; }}));
@@ -28,11 +41,11 @@ test('prefill handles best-of-one, three and five and clears stale hidden set sc
   assert.equal(root.rows.filter(row => !row.hidden).length, 1);
 });
 
-test('format completion only infers unambiguous losing scores', () => {
+test('format completion suggests a winning opponent and leaves unsupported scores manual', () => {
   for (const type of ['full', 'pro8', 'target3', 'target4', 'target5', 'target6', 'match_tiebreak']) {
     const target = type === 'full' ? 6 : type === 'pro8' ? 8 : type === 'match_tiebreak' ? 10 : Number(type.slice(6));
     assert.equal(grid.opponentScore(type, '0'), target);
-    assert.equal(grid.opponentScore(type, String(target)), null);
+    assert.equal(grid.opponentScore(type, String(target)), ['full', 'pro8'].includes(type) ? target + 1 : null);
   }
   assert.equal(grid.opponentScore('full', '4'), 6);
   assert.equal(grid.opponentScore('full', '5'), 7);
@@ -41,6 +54,23 @@ test('format completion only infers unambiguous losing scores', () => {
   assert.equal(grid.opponentScore('match_tiebreak', '9'), 11);
   for (const type of ['timed', 'custom', undefined]) assert.equal(grid.opponentScore(type, '3'), null);
   for (const value of ['', '-1', '1.5', '1e2', 'NaN']) assert.equal(grid.opponentScore('full', value), null);
+});
+
+test('full sets suggest 6 for 2 and 7 for 5 or 6 from either side without overwriting manual scores', () => {
+  for (const type of ['full', 'full_start_2']) {
+    for (const side of [0, 1]) {
+      const root = fixture();
+      grid.populate(root, {names: ['A', 'B'], maxSets: 1, setTypes: [type]});
+      for (const [score, opponent] of [['2', '6'], ['5', '7'], ['6', '7']]) {
+        root.type(0, side, score);
+        assert.equal(root.rows[0].inputs[1 - side].value, opponent);
+      }
+      root.type(0, 1 - side, '5');
+      root.type(0, side, '6');
+      assert.equal(root.rows[0].inputs[1 - side].value, '5');
+    }
+  }
+  assert.equal(grid.opponentScore('pro8', '8'), 9);
 });
 
 test('completion works from either side and preserves manual, loaded and manually cleared values', () => {

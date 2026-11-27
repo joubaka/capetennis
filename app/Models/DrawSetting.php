@@ -23,6 +23,7 @@ class DrawSetting extends Model
       'playoff_size',
       'num_sets',
       'score_format',
+      'playoff_score_format',
       'match_duration_minutes',
       'changeover_minutes',
       'require_full_sets',
@@ -45,6 +46,21 @@ class DrawSetting extends Model
     public function requiresFullSets(): bool
     {
       return $this->require_full_sets ?? true;
+    }
+
+    /** Legacy draws retain their original shared format until explicitly configured. */
+    public function scoreFormatForStage(?string $stage): ?string
+    {
+      return $stage !== null && strtoupper($stage) !== 'RR'
+        ? ($this->playoff_score_format ?: $this->score_format)
+        : $this->score_format;
+    }
+
+    public function numSetsForStage(?string $stage): int
+    {
+      $format=$this->scoreFormatForStage($stage);
+      return $format && in_array($format,\App\Domain\Draws\Services\TennisScoreFormat::keys(),true) ? \App\Domain\Draws\Services\TennisScoreFormat::maxSets($format)
+        : max(1,min(5,(int)($this->num_sets ?: 3)));
     }
 
     /**

@@ -63,7 +63,7 @@ function editor(asset) {
     AdminLoading:{button:button=>{const previous=button.text();button.prop('disabled',true).text('Saving…');return()=>button.prop('disabled',false).text(previous);}}
   };
   vm.runInNewContext(fs.readFileSync(asset,'utf8'),context);
-  return {window,values,properties,requests,messages,
+  return {window,values,properties,requests,messages,fixtures,
     open:id=>window.RRScores.open(id,'Home '+id,'Away '+id),
     enter:(a,b)=>{$('#set1-p1').val(a);$('#set1-p2').val(b);fire(form,'input');},
     scores:()=>[$('#set1-p1').val(),$('#set1-p2').val()],
@@ -80,6 +80,21 @@ function editor(asset) {
 }
 
 for (const asset of assets) {
+  test(asset+': modal switches scoring rules, set count and guidance for the selected stage',()=>{
+    const page=editor(asset);
+    page.fixtures[1].stage='MAIN';
+    page.window.RR_SCORE_CONTEXTS={RR:{key:'one_full_set',maxSets:1,setTypes:['full'],guidance:'Round-robin: one full set'},
+      PLAYOFF:{key:'best_of_3_full_start_2',maxSets:3,setTypes:['full_start_2','full_start_2','full_start_2'],guidance:'Playoffs: best of three, start at 2–2'}};
+    page.open(1);
+    assert.equal(page.window.RR_SCORE_FORMAT,'one_full_set');
+    assert.equal(page.window.RR_SCORE_MAX_SETS,1);
+    assert.equal(page.values.get('#rrm-score-guidance:text'),'Round-robin: one full set');
+    page.open(2);
+    assert.equal(page.window.RR_SCORE_FORMAT,'best_of_3_full_start_2');
+    assert.equal(page.window.RR_SCORE_MAX_SETS,3);
+    assert.equal(page.values.get('#rrm-score-guidance:text'),'Playoffs: best of three, start at 2–2');
+    assert.deepEqual(Array.from(page.window.RR_SCORE_SET_TYPES),['full_start_2','full_start_2','full_start_2']);
+  });
   test(asset+': inputs and submit wait for Bootstrap focus readiness and stay disabled during hide',()=>{
     const page=editor(asset);page.open(1);
     assert.equal(page.properties.get('#set1-p1:disabled'),true);

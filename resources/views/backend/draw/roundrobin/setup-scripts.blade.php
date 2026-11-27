@@ -8,14 +8,19 @@ $('#score-format').on('change', function() {
     const option = this.options[this.selectedIndex];
     $('#score-format-help').text(option.dataset.description || '');
 });
+$('#playoff-score-format').on('change', function() {
+    $('#playoff-score-format-help').text(this.options[this.selectedIndex].dataset.description || 'Choose playoff scoring.');
+});
 
 // Compare the editable draft against the saved setup; nothing is persisted until save.
 const savedScoreFormat = $('#score-format').val() || '';
 const savedScoreLabel = $('#score-format option:selected').text();
+const savedPlayoffScoreFormat = $('#playoff-score-format').val() || '';
+const savedPlayoffScoreLabel = $('#playoff-score-format option:selected').text();
 const savedMatchMinutes = $('#match-duration-minutes').val();
 const savedChangeoverMinutes = $('#changeover-minutes').val();
 function updateTimedSettings() {
-    const timed = $('#score-format').val() === 'timed';
+    const timed = $('#score-format').val() === 'timed' || $('#playoff-score-format').val() === 'timed';
     $('#timed-match-settings').prop('hidden', !timed);
     const play = Number($('#match-duration-minutes').val());
     const gap = Number($('#changeover-minutes').val());
@@ -45,7 +50,10 @@ function updateSettingsChanges() {
     if (($('#score-format').val() || '') !== savedScoreFormat) {
         changes.push('Match scoring: ' + savedScoreLabel + ' → ' + $('#score-format option:selected').text());
     }
-    if ($('#score-format').val() === 'timed' && ($('#match-duration-minutes').val() !== savedMatchMinutes || $('#changeover-minutes').val() !== savedChangeoverMinutes)) {
+    if (($('#playoff-score-format').val() || '') !== savedPlayoffScoreFormat) {
+        changes.push('Playoff scoring: ' + (savedPlayoffScoreLabel || 'Not selected') + ' → ' + $('#playoff-score-format option:selected').text());
+    }
+    if (($('#score-format').val() === 'timed' || $('#playoff-score-format').val() === 'timed') && ($('#match-duration-minutes').val() !== savedMatchMinutes || $('#changeover-minutes').val() !== savedChangeoverMinutes)) {
         changes.push('Match timing: ' + $('#match-duration-minutes').val() + ' minutes play + ' + $('#changeover-minutes').val() + ' minutes changeover');
     }
     const draft = draftPlayoffs();
@@ -63,6 +71,7 @@ function updateSettingsChanges() {
     $('#btn-save-settings').prop('disabled', isSavingSettings || !rulesEditable || !changes.length);
 }
 $('#score-format').on('change', updateSettingsChanges);
+$('#playoff-score-format').on('change', function() { updateTimedSettings(); updateSettingsChanges(); });
 $('#score-format').on('change', updateTimedSettings);
 $('#match-duration-minutes, #changeover-minutes').on('input change', function() { updateTimedSettings(); updateSettingsChanges(); });
 updateTimedSettings();
@@ -73,8 +82,14 @@ $('#drawSettingsForm').on('submit', function(event) {
 
     const payload = {_token: @json(csrf_token())};
     const score = $('#score-format').val() || '';
+    const playoffScore = $('#playoff-score-format').val() || '';
+    if ($('#playoff-score-format').length && (!score || !playoffScore)) {
+        $('#draw-settings-error').text('Choose both round-robin scoring and playoff scoring before saving.');
+        return;
+    }
     if (score !== savedScoreFormat) payload.score_format = score;
-    if (score === 'timed') {
+    if (playoffScore !== savedPlayoffScoreFormat) payload.playoff_score_format = playoffScore;
+    if (score === 'timed' || playoffScore === 'timed') {
         const minutes = Number($('#match-duration-minutes').val());
         const gap = Number($('#changeover-minutes').val());
         if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240 || !Number.isInteger(gap) || gap < 0 || gap > 60) {

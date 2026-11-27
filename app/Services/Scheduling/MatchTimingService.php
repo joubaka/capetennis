@@ -7,10 +7,10 @@ use App\Models\{Draw, Fixture};
 /** Resolve playing time separately from the court's changeover reservation. */
 final class MatchTimingService
 {
-    public function forDraw(Draw $draw, int $defaultDuration = 60, int $defaultGap = 5, bool $explicitBookingTiming = false): array
+    public function forDraw(Draw $draw, int $defaultDuration = 60, int $defaultGap = 5, bool $explicitBookingTiming = false, ?string $stage = 'RR'): array
     {
         $draw->loadMissing('settings');
-        if ($draw->settings?->score_format !== 'timed' || $draw->isTeamDraw()) {
+        if ($draw->settings?->scoreFormatForStage($stage) !== 'timed' || $draw->isTeamDraw()) {
             return ['duration_minutes' => $defaultDuration, 'court_gap_minutes' => $defaultGap];
         }
 
@@ -23,9 +23,9 @@ final class MatchTimingService
         return ['duration_minutes' => $duration, 'court_gap_minutes' => (int) $gap];
     }
 
-    public function forFixture(Fixture $fixture, int $defaultDuration = 60, int $defaultGap = 5): array
+    public function forFixture(Fixture $fixture, int $defaultDuration = 60, int $defaultGap = 5, bool $explicitBookingTiming = false): array
     {
-        return $this->forDraw($fixture->draw, $defaultDuration, $defaultGap);
+        return $this->forDraw($fixture->draw, $defaultDuration, $defaultGap, $explicitBookingTiming, $fixture->stage);
     }
 
     /** Private scoring uses the saved match booking; unscheduled matches use draw defaults. */
@@ -33,7 +33,7 @@ final class MatchTimingService
     {
         $fixture->loadMissing('draw.settings', 'orderOfPlay');
         $slot = $fixture->orderOfPlay;
-        if ($fixture->draw->settings?->score_format === 'timed' && $slot && (int) $slot->duration_minutes > 0) {
+        if ($fixture->draw->settings?->scoreFormatForStage($fixture->stage) === 'timed' && $slot && (int) $slot->duration_minutes > 0) {
             return ['duration_minutes' => (int) $slot->duration_minutes,
                 // Published projections carry their published duration, but older
                 // snapshots have no gap. Never fetch the private working booking.

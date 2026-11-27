@@ -23,6 +23,7 @@ final class TennisScoreFormat
     public const PRO_SET_8 = 'pro_set_8';
     public const MATCH_TIEBREAK_10 = 'match_tiebreak_10';
     public const BEST_OF_3_FULL = 'best_of_3_full';
+    public const BEST_OF_3_FULL_START_2 = 'best_of_3_full_start_2';
     public const BEST_OF_3_MATCH_TIEBREAK = 'best_of_3_match_tiebreak';
     public const BEST_OF_5_FULL = 'best_of_5_full';
     public const CUSTOM_1 = 'custom_1';
@@ -96,6 +97,13 @@ final class TennisScoreFormat
                 'wins_needed' => 2,
                 'set_types' => ['full', 'full', 'full'],
                 'rules' => 'Best of 3 full sets. A player must win 2 sets; play a tiebreak at 6-all in each set.',
+            ],
+            self::BEST_OF_3_FULL_START_2 => [
+                'label' => 'Best of 3 full sets · start at 2–2',
+                'description' => 'Every set starts at 2-all. Win 2 completed sets; tiebreak at 6-all.',
+                'max_sets' => 3, 'wins_needed' => 2,
+                'set_types' => ['full_start_2', 'full_start_2', 'full_start_2'],
+                'rules' => 'Best of 3 full sets, each starting at 2–2. Record final totals including the starting games (6–2, not 4–0). Win 2 sets; tiebreak at 6-all. No drawn or unfinished played results. Use retirement or walkover separately when applicable.',
             ],
             self::BEST_OF_3_TO_3 => [
                 'label' => 'Best of 3 sets · first to 3 games',

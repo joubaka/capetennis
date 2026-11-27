@@ -18,9 +18,10 @@ final class EventScheduleVisibilityController extends Controller
         Gate::authorize('event.manage', $event);
 
         $applyScoreFormat = $request->filled('score_format');
+        $applyPlayoffScoreFormat = $request->filled('playoff_score_format');
         $applyNumSets = $request->filled('num_sets') || $applyScoreFormat;
         $applyFullSetRule = $request->has('require_full_sets');
-        $applyScoringRules = $applyNumSets || $applyFullSetRule;
+        $applyScoringRules = $applyNumSets || $applyFullSetRule || $applyPlayoffScoreFormat;
         $data = $request->validate([
             'schedule_visibility' => ['required', Rule::in([
                 DrawSetting::SCHEDULE_VISIBILITY_FIRST_MATCH,
@@ -28,6 +29,7 @@ final class EventScheduleVisibilityController extends Controller
             ])],
             'num_sets' => ['sometimes', 'nullable', 'integer', Rule::in([1, 2, 3, 5])],
             'score_format' => ['sometimes', 'nullable', 'string', Rule::in(array_values(array_diff(TennisScoreFormat::keys(), [TennisScoreFormat::TIMED])))],
+            'playoff_score_format' => ['sometimes', 'nullable', 'string', Rule::in(array_values(array_diff(TennisScoreFormat::keys(), [TennisScoreFormat::TIMED])))],
             'require_full_sets' => ['sometimes', 'boolean'],
         ]);
 
@@ -42,7 +44,7 @@ final class EventScheduleVisibilityController extends Controller
             }
         }
 
-        DB::transaction(function () use ($event, $draws, $data, $applyScoreFormat, $applyNumSets, $applyFullSetRule, $applyScoringRules): void {
+        DB::transaction(function () use ($event, $draws, $data, $applyScoreFormat, $applyNumSets, $applyFullSetRule, $applyScoringRules, $applyPlayoffScoreFormat): void {
             if ($applyScoringRules) {
                 $lockedDraws = \App\Models\Draw::query()
                     ->whereIn('id', $draws->pluck('id'))
@@ -70,6 +72,9 @@ final class EventScheduleVisibilityController extends Controller
                 if ($applyFullSetRule) {
                     $settings['require_full_sets'] = $data['require_full_sets'];
                 }
+                if ($applyPlayoffScoreFormat && !$draw->isRoundRobinOnly()) {
+                    $settings['playoff_score_format'] = $data['playoff_score_format'];
+                }
 
                 $draw->settings()->updateOrCreate(
                     ['draw_id' => $draw->id],
@@ -90,6 +95,7 @@ final class EventScheduleVisibilityController extends Controller
                 ? ($applyScoreFormat ? TennisScoreFormat::maxSets($data['score_format']) : $data['num_sets'])
                 : null,
             'score_format' => $applyScoreFormat ? $data['score_format'] : null,
+            'playoff_score_format' => $applyPlayoffScoreFormat ? $data['playoff_score_format'] : null,
             'require_full_sets' => $applyFullSetRule ? $data['require_full_sets'] : null,
             'updated_draws' => $draws->count(),
         ]);

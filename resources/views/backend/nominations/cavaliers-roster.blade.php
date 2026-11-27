@@ -107,6 +107,9 @@
                             </h6>
                             <ul class="list-group" data-declined-list></ul>
                             <p class="text-muted small mb-0" data-declined-empty>No declines recorded.</p>
+                            <h6 class="mt-3">No response <span class="badge bg-label-secondary" data-no_response-count></span></h6>
+                            <ul class="list-group" data-no_response-list></ul>
+                            <p class="text-muted small mb-0" data-no_response-empty>No unanswered nominations recorded.</p>
                         @endif
                         @if ($key === 'reserves' && (int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                             <h6 class="mt-3 mb-2 rounded px-2 py-2 bg-label-warning">Next 10 in merit order</h6>

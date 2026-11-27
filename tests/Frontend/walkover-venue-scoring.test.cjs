@@ -8,6 +8,15 @@ const helpers = source.slice(source.indexOf('  function venueNeedsDecidingPoint(
 const scoring = vm.runInNewContext(helpers + '\n({venueScorePayload})');
 const match = {engine: 'standard', homeRegistration: '11', awayRegistration: '22'};
 
+test('empty retirement guidance uses the selected set starting score', () => {
+  const section=source.slice(source.indexOf('  function setsFromForm('),source.indexOf('  async function request('));
+  for(const [setTypes,expected] of [['["full_start_2"]','2–2'],['["full"]','0–0']]) {
+    const read=vm.runInNewContext(section+'\nsetsFromForm', {active:{setTypes},resultType:{value:'retired'},
+      modalElement:{querySelector:()=>({})}, CTSetScoreGrid:{read(){throw Error('Enter at least one completed set.');}}});
+    assert.throws(read,new RegExp('Use '+expected));
+  }
+});
+
 test('walkovers submit only a participant winner without stale sets or deciding points', () => {
   for (const engine of ['standard', 'flexible']) {
     const payload = scoring.venueScorePayload({...match, engine}, [[6, 4]], '11', '22');

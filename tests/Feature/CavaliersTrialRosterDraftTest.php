@@ -59,6 +59,37 @@ class CavaliersTrialRosterDraftTest extends TestCase
             ->assertJsonPath('registration_statuses.'.$ids[6], 'not_registered');
     }
 
+    public function test_no_response_is_distinct_reversible_and_kept_by_legacy_saves(): void
+    {
+        [$event, $division] = $this->division();
+        $this->actingAs($this->administrator($event));
+        [$player, $remaining] = Player::factory()->count(2)->create()->all();
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $revision = $this->putJson($url, ['revision' => null, 'selected' => [$remaining->id], 'reserves' => [], 'no_response' => [$player->id]])
+            ->assertOk()->json('revision');
+        $this->getJson($url)->assertJsonPath('no_response.0.id', $player->id)->assertJsonPath('declined', []);
+        $this->putJson($url, ['revision' => $revision, 'selected' => [$remaining->id], 'reserves' => []])->assertOk();
+        $revision = $this->getJson($url)->assertJsonPath('no_response.0.id', $player->id)->json('revision');
+        $this->putJson($url, ['revision' => $revision, 'selected' => [$remaining->id, $player->id], 'reserves' => [], 'no_response' => [$player->id]])->assertUnprocessable();
+        $this->putJson($url, ['revision' => $revision, 'selected' => [$remaining->id, $player->id], 'reserves' => [], 'no_response' => []])->assertOk();
+        $this->getJson($url)->assertJsonPath('no_response', [])->assertJsonPath('declined', []);
+        $this->assertDatabaseCount('cavaliers_trial_roster_drafts', 1);
+        $this->assertDatabaseCount('event_nominations', 0);
+    }
+
+    public function test_no_response_rejects_pending_checkout_and_stale_revision(): void
+    {
+        [$event, $division] = $this->division();
+        $this->actingAs($this->administrator($event));
+        $player = Player::factory()->create();
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $revision = $this->putJson($url, ['revision' => null, 'selected' => [$player->id], 'reserves' => []])->assertOk()->json('revision');
+        $this->putJson($url, ['revision' => null, 'selected' => [], 'reserves' => [], 'no_response' => [$player->id]])->assertConflict();
+        $this->pendingCheckout($event, $division, $player);
+        $this->putJson($url, ['revision' => $revision, 'selected' => [], 'reserves' => [], 'no_response' => [$player->id]])->assertUnprocessable()->assertJsonValidationErrors('nomination');
+        $this->getJson($url)->assertJsonPath('revision', $revision)->assertJsonPath('selected.0.id', $player->id)->assertJsonPath('no_response', []);
+    }
+
     public function test_admin_decline_requires_participation_review_before_saving(): void
     {
         [$event, $division] = $this->division();
@@ -71,6 +102,22 @@ class CavaliersTrialRosterDraftTest extends TestCase
         $this->putJson($url, ['revision' => $revision, 'selected' => [], 'reserves' => [], 'declined' => [$player->id]])
             ->assertUnprocessable()->assertJsonValidationErrors('nomination');
         $this->getJson($url)->assertJsonPath('revision', $revision)->assertJsonPath('selected.0.id', $player->id)->assertJsonPath('declined', []);
+    }
+
+    public function test_publication_rechecks_participation_after_no_response_was_saved(): void
+    {
+        [$event, $division] = $this->division();
+        $this->actingAs($this->administrator($event));
+        [$player, $remaining] = Player::factory()->count(2)->create()->all();
+        $nomination = EventNomination::create(['event_id' => $event->id, 'category_event_id' => $division->id, 'player_id' => $player->id]);
+        $division->update(['nominations_published' => true]);
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $revision = $this->putJson($url, ['revision' => null, 'selected' => [$remaining->id], 'reserves' => [], 'no_response' => [$player->id]])->assertOk()->json('revision');
+        $fingerprint = $this->getJson($url)->json('publication.fingerprint');
+        $this->pendingCheckout($event, $division, $player);
+        $this->postJson(route('backend.cavaliers-roster.nominations', [$event, $division]), ['publish' => true, 'revision' => $revision, 'fingerprint' => $fingerprint])->assertUnprocessable();
+        $this->assertDatabaseHas('event_nominations', ['id' => $nomination->id]);
+        $this->getJson($url)->assertJsonPath('no_response.0.id', $player->id)->assertJsonPath('declined', []);
     }
 
     public function test_publication_rechecks_participation_after_decline_was_saved(): void

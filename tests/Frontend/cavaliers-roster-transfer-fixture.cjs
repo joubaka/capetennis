@@ -7,9 +7,9 @@ function installFixture() {
   const candidates = Array.from({length: 50}, (_, i) => ({...player(i + 1), source: 'Inter-Districts', region: 'Fictional region', wins: 1, losses: 1, matches: []}));
   const publication = {published: true, fingerprint: 'a'.repeat(64), players: [player(70)]};
   const fixture = window.rosterTransferFixture = {mode: 'success', delay: 0, puts: [], publicationCalls: 0,
-    draft: {revision: nextRevision(), selected: [player(1), player(2)], reserves: [player(3)], declined: [player(4)], publication, registration_statuses}};
+    draft: {revision: nextRevision(), selected: [player(1), player(2)], reserves: [player(3)], declined: [player(4)], no_response: [], publication, registration_statuses}};
   const response = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
-  const save = body => { fixture.draft = {...fixture.draft, revision: nextRevision(), ...Object.fromEntries(['selected', 'reserves', 'declined'].map(key => [key, body[key].map(player)]))}; };
+  const save = body => { fixture.draft = {...fixture.draft, revision: nextRevision(), ...Object.fromEntries(['selected', 'reserves', 'declined', 'no_response'].map(key => [key, body[key].map(player)]))}; };
   window.fetch = async (input, options = {}) => {
     const url = new URL(input, location.href);
     if (options.method === 'PUT') {
@@ -20,7 +20,7 @@ function installFixture() {
       if (mode === 'reject422') return response({message: 'Fictional eligibility rejection.'}, 422);
       if (mode === 'conflict409') { fixture.draft.revision = nextRevision(); return response({message: 'Fictional draft changed in another session.'}, 409); }
       if (body.revision !== fixture.draft.revision) return response({message: 'Stale fixture revision.'}, 409);
-      const all = [...body.selected, ...body.reserves, ...body.declined];
+      const all = [...body.selected, ...body.reserves, ...body.declined, ...body.no_response];
       if (body.selected.length > 32 || body.reserves.length > 5 || new Set(all).size !== all.length) return response({message: 'Fixture roster limits or duplicate violation.'}, 422);
       save(body);
       if (mode === 'commit503') return response({message: 'Fictional server response failed after saving.'}, 503);

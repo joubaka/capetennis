@@ -219,7 +219,7 @@ final class TwoStageRoundRobinService
     public function positionsResolved(Draw $draw, array $rows, Collection $fixtures): bool
     {
         foreach (array_keys($rows) as $index) {
-            if (! app(StandingsService::class)->hasUniqueLeader($draw, array_slice($rows, $index), $fixtures)) return false;
+            if (! app(StandingsService::class)->hasUniqueLeader($draw, array_slice($rows, $index), $fixtures, $rows)) return false;
         }
         return $rows !== [];
     }

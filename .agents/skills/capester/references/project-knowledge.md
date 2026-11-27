@@ -218,8 +218,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   cannot remain indefinitely. A loading indicator is not evidence of performance.
 - Set-score completion uses the selected format's per-set types, including a
   deciding match tiebreak where configured. Preserve loaded and manually entered
-  scores; only generated suggestions may follow source edits. Ambiguous, timed,
-  custom and retirement scores stay manual. See `public/js/set-score-grid.js`,
+  scores; only generated suggestions may follow source edits. Full sets suggest
+  6 opposite 0–4 and 7 opposite 5 or 6 (start-at-2-all sets require at least 2);
+  pro sets likewise suggest 9 opposite 7 or 8. Other ambiguous, timed, custom
+  and retirement scores stay manual. See `public/js/set-score-grid.js`,
   `TennisScoreFormat` and `tests/Frontend/set-score-grid.test.cjs`. Legacy Flexible
   Monrad full best-of-three uses a third-set match tiebreak, as enforced by
   `FlexibleMonradScoreValidator`; do not infer three full sets from the set count.
@@ -371,14 +373,23 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 - Cavaliers nomination reports share saved private rosters rather than publish
   them. Explain the next five available candidates outside selected/reserves
-  (excluding declines), plus all eligible Inter-Districts candidates outside the
-  saved top 32 including reserves/declines, with no duplicate explanations. Match
+  (excluding declines and no-response players), plus all eligible Inter-Districts
+  candidates outside the saved top 32 including reserves/declines/no-response
+  players, with no duplicate explanations. Match
   playing numbers must come from per-match roster evidence, never merit rank.
   Result flags describe counted singles evidence and cannot establish an
   unrecorded selector decision; missing evidence stays unavailable. Preserve
   source-access checks and the reviewed email/PDF snapshot through managed mail.
   See `docs/architecture/event-type-template-parity.md`, `CavaliersRosterReport`
   and `CavaliersRosterReportTest`.
+- Private Cavaliers roster `no_response` is a reversible selector exclusion,
+  separate from `declined`. Candidate suggestions and private PDFs/reports
+  preserve the distinction. Marking no response follows the existing guarded
+  save/publication workflow without recording a player decline or sending mail.
+  A confirmed actual decline clears that player's no-response marker. Verify
+  `CavaliersTrialRosterDraftTest`, `CavaliersNominationWorkflowTest`,
+  `CavaliersRosterReportEvidenceTest` and
+  `tests/Frontend/cavaliers-roster-transfer.browser.cjs`.
 - Cavaliers252 registration remains payer-sponsored individual checkout for
   exact published nominees; decline requires an existing linked account or
   canonical event manager. Keep registration admission separate from candidate

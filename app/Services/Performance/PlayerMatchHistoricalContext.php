@@ -24,7 +24,7 @@ class PlayerMatchHistoricalContext
         'team_fixtures' => ['id', 'draw_id', 'team_tie_id', 'fixture_type', 'numSets', 'scheduled_at', 'venue_id', 'court_label', 'region1', 'region2', 'rubber_code', 'match_status', 'age'],
         'event_regions' => ['id', 'event_id', 'region_id'],
         'category_event_registrations' => ['id', 'category_event_id', 'registration_id', 'status', 'withdrawn_at', 'deleted_at'],
-        'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'require_full_sets'],
+        'draw_settings' => ['id', 'draw_id', 'workflow', 'num_sets', 'score_format', 'playoff_score_format', 'require_full_sets'],
         'categories' => ['id', 'name'], 'eventtypes' => ['id', 'name', 'code', 'type'], 'team_regions' => ['id', 'region_name'],
     ];
 

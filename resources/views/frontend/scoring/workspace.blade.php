@@ -380,7 +380,7 @@
         @php
           $isTeamFixture = $match instanceof \App\Models\TeamFixture;
           $draw = $match->draw;
-          $isTimed = !$isTeamFixture && $draw->settings?->score_format === 'timed';
+          $isTimed = !$isTeamFixture && $draw->settings?->scoreFormatForStage($match->stage) === 'timed';
           $isWalkover = !$isTeamFixture && $match->isWalkover();
           $isRetired = !$isTeamFixture && $match->isRetired();
           $hasScore = $match->fixtureResults->isNotEmpty() || $isWalkover;
@@ -807,7 +807,9 @@ document.addEventListener('DOMContentLoaded', function () {
           : active.engine === 'flexible' && active.requireFullSets === '0'
           ? 'Custom set scores allowed'
           : (active.scoreGuidance || 'Enter completed sets');
-      if (active.engine !== 'team' && String(active.stage).toUpperCase() === 'RR') {
+      if (active.requiresWinner === '1') {
+        scoreGuidance.textContent += ' Every played match requires a winner. Finish the deciding set when sets are level.';
+      } else if (active.engine !== 'team' && String(active.stage).toUpperCase() === 'RR') {
         scoreGuidance.textContent += ' Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0).';
       }
       document.getElementById('score-match-title').textContent = active.home + ' vs ' + active.away;
@@ -888,7 +890,8 @@ document.addEventListener('DOMContentLoaded', function () {
       return CTSetScoreGrid.read(modalElement.querySelector('[data-set-score-grid]'));
     } catch (failure) {
       if (resultType.value === 'retired' && failure.message === 'Enter at least one completed set.') {
-        throw new Error('Enter the score when play stopped. Use 0–0 if no games were completed.');
+        const startingScore = JSON.parse(active?.setTypes || '[]').includes('full_start_2') ? '2–2' : '0–0';
+        throw new Error('Enter the score when play stopped. Use ' + startingScore + ' if no games were completed.');
       }
       throw failure;
     }

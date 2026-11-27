@@ -14,10 +14,13 @@ for (const width of [390, 1440]) {
       await page.addStyleTag({path: 'public/css/set-score-grid.css'});
       await page.evaluate(() => CTSetScoreGrid.populate(document.querySelector('#grid'), {names: ['A', 'B'], maxSets: 3, setTypes: ['full', 'full', 'match_tiebreak']}));
       const home = page.getByLabel('Home 0'), away = page.getByLabel('Away 0');
-      await home.fill('4'); assert.equal(await away.inputValue(), '6');
+      await home.fill('2'); assert.equal(await away.inputValue(), '6');
       await home.fill('5'); assert.equal(await away.inputValue(), '7');
+      await home.fill('6'); assert.equal(await away.inputValue(), '7');
       await away.fill('6'); await home.fill('3'); assert.equal(await away.inputValue(), '6');
       await page.getByLabel('Away 1').fill('5'); assert.equal(await page.getByLabel('Home 1').inputValue(), '7');
+      await page.getByLabel('Away 1').fill('6'); assert.equal(await page.getByLabel('Home 1').inputValue(), '7');
+      await page.getByLabel('Away 1').fill('5');
       await page.getByLabel('Home 2').pressSequentially('20');
       assert.equal(await page.getByLabel('Away 2').inputValue(), '');
       await page.getByLabel('Away 2').fill('18');

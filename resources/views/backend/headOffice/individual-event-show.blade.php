@@ -391,10 +391,16 @@ $(document).ready(function () {
     ->map(fn ($draw) => $draw->settings?->score_format ?: 'legacy')
     ->unique();
   $eventSetFormat = $eventSetFormats->count() === 1 ? $eventSetFormats->first() : 'mixed';
+  $eventPlayoffFormats = $event->draws->filter(fn($draw)=>$draw->settings?->workflow === 'round_robin_playoffs')->map(fn($draw)=>$draw->settings?->playoff_score_format ?: 'missing')->unique();
+  $eventPlayoffFormat = $eventPlayoffFormats->count() === 1 ? $eventPlayoffFormats->first() : 'mixed';
+  $missingScoringChoices = $event->draws->contains(fn($draw)=>blank($draw->settings?->score_format) || ($draw->settings?->workflow === 'round_robin_playoffs' && blank($draw->settings?->playoff_score_format)));
   $supportedEventSetFormats = array_diff_key(\App\Domain\Draws\Services\TennisScoreFormat::catalog(), ['timed' => true]);
   $eventScoringSettingsLocked = $event->draws->contains(fn ($draw) => (bool) $draw->locked)
     || $event->hasRecordedResults();
 @endphp
+@if($missingScoringChoices && !$event->hasRecordedResults())
+<div class="alert alert-warning d-flex flex-wrap align-items-center gap-2" role="status"><span>Before play starts, review the round-robin and playoff scoring choices. Some draws have no explicit selection.</span><button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#drawSettingsModal">Choose scoring</button></div>
+@endif
 <div class="modal fade" id="drawSettingsModal" tabindex="-1" aria-labelledby="drawSettingsModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -411,13 +417,13 @@ $(document).ready(function () {
         <div class="modal-body">
           <fieldset class="mb-4">
             <legend class="h6 mb-1">Match scoring</legend>
-            <p class="text-muted small">Choose one enforceable scoring preset for every draw. Score entry, validation and printed format guidance use the same selection.</p>
+            <p class="text-muted small">Choose round-robin and playoff rules separately across the draws. Score entry and printed guidance use each match’s stage.</p>
             @if($eventScoringSettingsLocked)
               <div class="alert alert-warning py-2 small" role="status">Match format is locked because a draw is locked or the tournament already has a recorded result.</div>
             @elseif($event->draws->contains(fn ($draw) => (bool) $draw->published))
               <div class="alert alert-info py-2 small" role="status">This tournament is published, but match format can still be changed until the first result is recorded.</div>
             @endif
-            <label class="form-label fw-semibold" for="event-score-format">Match scoring format</label>
+            <label class="form-label fw-semibold" for="event-score-format">Round-robin scoring</label>
             <select class="form-select" id="event-score-format" name="score_format" @disabled($eventScoringSettingsLocked)>
               @if($eventSetFormat === 'mixed' || $eventSetFormat === 'legacy' || ! isset($supportedEventSetFormats[$eventSetFormat]))
                 <option value="" selected>Keep current per-draw formats</option>
@@ -431,6 +437,20 @@ $(document).ready(function () {
                 </optgroup>
               @endforeach
             </select>
+            @if($event->draws->contains(fn($draw)=>$draw->settings?->workflow === 'round_robin_playoffs'))
+            <label class="form-label fw-semibold mt-3" for="event-playoff-score-format">Playoff scoring</label>
+            <select class="form-select" id="event-playoff-score-format" name="playoff_score_format" @disabled($eventScoringSettingsLocked)>
+              <option value="" @selected($eventPlayoffFormat === 'mixed' || $eventPlayoffFormat === 'missing')>Keep current per-draw playoff choices</option>
+              @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
+                <optgroup label="{{ $groupLabel }}">
+                  @foreach($formats as $key => $format)
+                    @continue($key === 'timed')
+                    <option value="{{ $key }}" @selected($eventPlayoffFormat === $key)>{{ $format['label'] }}</option>
+                  @endforeach
+                </optgroup>
+              @endforeach
+            </select>
+            @endif
             <div class="form-text">This changes scoring across all {{ $event->draws->count() }} {{ Str::plural('draw', $event->draws->count()) }} for the day.</div>
             <div class="form-text mt-2">Use a Custom scoring preset when non-standard completed set scores must be accepted.</div>
             <div class="form-text">Configure timed matches in each draw's settings, where playing time and changeover are saved together.</div>

@@ -16,6 +16,20 @@ class CavaliersNominationWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_actual_decline_replaces_only_the_exact_no_response_marker(): void
+    {
+        [$event, $division, $player, $owner, $nomination, $other] = $this->scenario();
+        DB::table('cavaliers_trial_roster_drafts')->where('category_event_id', $division->id)->update([
+            'selected' => json_encode([]), 'no_response' => json_encode([$player->id, $other->id]),
+        ]);
+        $service = app(\App\Services\CavaliersNominationDecline::class);
+        $review = $service->preview($owner, $event, $division, $nomination->id);
+        $this->assertTrue($service->confirm($owner, $event, $division, $review));
+        $draft = DB::table('cavaliers_trial_roster_drafts')->where('category_event_id', $division->id)->first();
+        $this->assertSame([$other->id], json_decode($draft->no_response, true));
+        $this->assertSame([$player->id], json_decode($draft->declined, true));
+    }
+
     private function scenario(): array
     {
         Mail::fake(); Bus::fake();

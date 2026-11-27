@@ -166,14 +166,14 @@ class PlayerPerformanceHistoryService
             if ($first->count() !== ($discipline === 'singles' ? 1 : 2) || $second->count() !== $first->count() || $first->pluck('id')->merge($second->pluck('id'))->unique()->count() !== $first->count() + $second->count()) { $reason = 'Match participants are missing, duplicated or ambiguous'; }
             if ($field && ($memberships[$field->id]->count() > 256 || !$memberships[$field->id]->contains($fixture->registration1_id) || !$memberships[$field->id]->contains($fixture->registration2_id))) { $reason = 'Match registrations do not belong to this event category or its roster exceeds the validation limit'; }
             $sets = $fixture->fixtureResults;
-            $format = $fixture->draw->settings?->score_format;
+            $format = $fixture->draw->settings?->scoreFormatForStage($fixture->stage);
             $timed = $format === \App\Domain\Draws\Services\TennisScoreFormat::TIMED;
             $timedWinner = $timed ? app(\App\Services\IndividualMatchOutcomeService::class)->winner($fixture) : null;
             $winner = $timed ? ($timedWinner ? ((int) $timedWinner === (int) $fixture->registration1_id ? 1 : 2) : null)
                 : $this->completedWinner($sets, 'registration1_score', 'registration2_score');
             $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture,
                 $sets->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->all(), $timed && $fixture->stage !== 'RR' && $sets->count() === 1 && (int) $sets->first()->registration1_score === (int) $sets->first()->registration2_score ? $timedWinner : null);
-            $format = $fixture->draw->settings?->score_format;
+            $format = $fixture->draw->settings?->scoreFormatForStage($fixture->stage);
             $hasPreset = $format && in_array($format, \App\Domain\Draws\Services\TennisScoreFormat::keys(), true);
             $credibleLegacy = $sets->every(fn ($set) => $this->legacyTerminalSet((int) $set->registration1_score, (int) $set->registration2_score));
             $declared = (int) $fixture->winner_registration;

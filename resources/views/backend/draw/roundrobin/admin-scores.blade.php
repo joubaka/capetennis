@@ -65,6 +65,8 @@
     <td class="text-center">
         <button class="btn btn-sm btn-primary rr-open-modal"
                 data-id="{{ $fx->id }}"
+                data-set-types='@json(\App\Domain\Draws\Services\TennisScoreFormat::catalog()[$draw->settings?->scoreFormatForStage($fx->stage)]['set_types'] ?? [])'
+                data-guidance="{{ \App\Domain\Draws\Services\TennisScoreFormat::catalog()[$draw->settings?->scoreFormatForStage($fx->stage)]['rules'] ?? 'Enter scores within the configured set limit.' }}"
                 data-home="{{ $p1 }}"
                 data-away="{{ $p2 }}">
             Enter

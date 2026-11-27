@@ -18,7 +18,7 @@ final class ScoreValidationService
         $settings = $draw?->relationLoaded('settings')
             ? $draw->getRelation('settings')
             : ($draw?->exists ? $draw->settings : null);
-        $scoreFormat = (string) ($settings?->score_format ?? '');
+        $scoreFormat = (string) ($settings?->scoreFormatForStage($fixture->stage) ?? '');
         if ($scoreFormat === TennisScoreFormat::TIMED) {
             return $this->validateTimed($fixture, $sets, $decidingPointWinnerId);
         }
@@ -26,7 +26,11 @@ final class ScoreValidationService
             return $this->failure('A deciding-point winner is only allowed for tied timed playoffs.');
         }
         if ($scoreFormat !== '' && in_array($scoreFormat, TennisScoreFormat::keys(), true)) {
-            return $this->validatePreset($scoreFormat, $sets, $fixture->stage === 'RR');
+            // Ordinary historical RR competitions support draws. The selected
+            // Interpro feed-in requires decisive original results for its routes.
+            $allowDraw = $fixture->stage === 'RR'
+                && !($draw && \App\Services\Draw\InterproRoundRobinFormat::selected($draw));
+            return $this->validatePreset($scoreFormat, $sets, $allowDraw);
         }
 
         // Historical draws did not store a format, only a maximum set count.
@@ -72,6 +76,9 @@ final class ScoreValidationService
                 return $this->failure('Retirement scores must be whole numbers from 0 to 999.');
             }
             $type = $format['set_types'][$index] ?? end($format['set_types']);
+            if ($type === 'full_start_2' && min($home, $away) < 2) {
+                return $this->failure('Every set starts at 2–2. Include both starting games in the retirement score.');
+            }
             $complete = $type !== 'timed' && $type !== 'custom' && $this->setError($type, $home, $away) === null;
             if ($index < count($sets) - 1 && !$complete && !($type === 'custom' && $home !== $away)) {
                 return $this->failure('Only the final set may be unfinished when a player retires.');
@@ -99,7 +106,7 @@ final class ScoreValidationService
     private function retirementFormat(Fixture $fixture): array
     {
         $settings = $fixture->draw?->settings;
-        $key = (string) ($settings?->score_format ?? '');
+        $key = (string) ($settings?->scoreFormatForStage($fixture->stage) ?? '');
         if (in_array($key, TennisScoreFormat::keys(), true)) return TennisScoreFormat::get($key);
         $max = max(1, min(5, (int) ($settings?->num_sets ?: 3)));
         return ['max_sets' => $max, 'wins_needed' => (int) ceil($max / 2),
@@ -109,6 +116,7 @@ final class ScoreValidationService
     private function reachableRetirementScore(string $type, int $home, int $away): bool
     {
         [$high, $low] = [max($home, $away), min($home, $away)];
+        if ($type === 'full_start_2' && $low < 2) return false;
         if (in_array($type, ['timed', 'custom'], true)) return true;
         if (str_starts_with($type, 'target')) return $high <= (int) substr($type, 6) && $low < (int) substr($type, 6);
         if ($type === 'match_tiebreak') return $high <= 10 || $high - $low <= 2;
@@ -140,6 +148,9 @@ final class ScoreValidationService
     private function validatePreset(string $key, array $sets, bool $roundRobin = false): array
     {
         $format = TennisScoreFormat::get($key);
+        // This opt-in competition format always requires a match winner,
+        // including in a stand-alone round robin.
+        if ($key === TennisScoreFormat::BEST_OF_3_FULL_START_2) $roundRobin = false;
         if ($sets === [] || count($sets) > $format['max_sets']) {
             return $this->failure("{$format['label']} allows at most {$format['max_sets']} completed set(s).");
         }
@@ -192,6 +203,8 @@ final class ScoreValidationService
         }
 
         return match ($type) {
+            'full_start_2' => $low >= 2 && (($high === 6 && $low <= 4) || ($high === 7 && in_array($low, [5, 6], true)))
+                ? null : 'Every set starts at 2–2. Enter a completed full set: 6-2 to 6-4, 7-5 or 7-6.',
             'full' => (($high === 6 && $low <= 4) || ($high === 7 && in_array($low, [5, 6], true)))
                 ? null : 'Enter a completed full set: 6-0 to 6-4, 7-5 or 7-6.',
             'pro8' => (($high === 8 && $low <= 6) || ($high === 9 && in_array($low, [7, 8], true)))

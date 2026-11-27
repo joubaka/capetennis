@@ -103,6 +103,7 @@ final class CavaliersNominationDecline
                 'selected' => json_encode(array_values(array_diff($selected, [$playerId])), JSON_THROW_ON_ERROR),
                 'reserves' => json_encode(array_values(array_diff($reserves, [$playerId])), JSON_THROW_ON_ERROR),
                 'declined' => json_encode(array_values(array_unique([...$declined, $playerId])), JSON_THROW_ON_ERROR),
+                'no_response' => json_encode(array_values(array_diff(json_decode($draft->no_response ?? '[]', true, flags: JSON_THROW_ON_ERROR), [$playerId])), JSON_THROW_ON_ERROR),
             ]);
             abort_unless($written === 1, 409, 'The roster changed. Review the decision again.');
             activity('cavaliers-nomination')->performedOn($event)->causedBy($actor)

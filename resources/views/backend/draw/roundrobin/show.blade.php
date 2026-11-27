@@ -270,12 +270,20 @@
       @php
         $scoreFormats = \App\Domain\Draws\Services\TennisScoreFormat::catalog();
         $currentScoreFormat = $draw->settings?->score_format;
+        $hasSeparatePlayoffs = $draw->settings?->workflow === 'round_robin_playoffs';
+        $currentPlayoffScoreFormat = $draw->settings?->playoff_score_format;
         $legacySets = max(1, min(5, (int) ($draw->settings?->num_sets ?: 3)));
       @endphp
       <div class="card mb-3" id="saved-draw-settings">
         <div class="card-header"><h5 class="mb-0">Current setup</h5></div>
         <div class="card-body">
-          <p><strong>Groups:</strong> {{ $currentBoxes }} · <strong>Match scoring:</strong> {{ $scoreFormats[$currentScoreFormat]['label'] ?? "Legacy: maximum {$legacySets} sets" }}</p>
+          <p><strong>Groups:</strong> {{ $currentBoxes }} · <strong>{{ $hasSeparatePlayoffs ? 'Round-robin scoring' : 'Match scoring' }}:</strong> {{ $scoreFormats[$currentScoreFormat]['label'] ?? "Legacy: maximum {$legacySets} sets" }}</p>
+          @if($hasSeparatePlayoffs)
+            <p><strong>Playoff scoring:</strong> {{ $scoreFormats[$currentPlayoffScoreFormat]['label'] ?? 'Not selected separately (currently follows round-robin scoring)' }}</p>
+          @endif
+          @if(!$currentScoreFormat || ($hasSeparatePlayoffs && !$currentPlayoffScoreFormat))
+            <div class="alert alert-warning py-2" role="status">Before play starts, choose {{ $hasSeparatePlayoffs ? 'round-robin scoring and playoff scoring' : 'match scoring' }} below. Existing matches and times are retained.</div>
+          @endif
           @if($currentScoreFormat === 'timed')
             <p class="mb-2">Default: {{ $draw->settings->match_duration_minutes }} minutes playing time + {{ $draw->settings->changeover_minutes }} minutes changeover. Use each match’s saved schedule and scoring card for any timing set when scheduling the day.</p>
           @endif
@@ -326,7 +334,7 @@
                 $legacySets = max(1, min(5, (int) (optional($draw->settings)->num_sets ?: 3)));
               @endphp
               <div class="col-md-5">
-                <label class="form-label fw-bold" for="score-format">Match Scoring Format</label>
+                <label class="form-label fw-bold" for="score-format">{{ $hasSeparatePlayoffs ? 'Round-robin scoring' : 'Match Scoring Format' }}</label>
                 <select name="score_format" id="score-format" class="form-select">
                   @if(!$currentScoreFormat)
                     <option value="" selected>Legacy: maximum {{ $legacySets }} sets (keep current)</option>
@@ -345,6 +353,24 @@
                   {{ $currentScoreFormat ? $scoreFormats[$currentScoreFormat]['description'] : 'Choose a preset so score entry and validation use the same rules.' }}
                 </div>
               </div>
+
+              @if($hasSeparatePlayoffs)
+              <div class="col-md-5">
+                <label class="form-label fw-bold" for="playoff-score-format">Playoff scoring</label>
+                <select name="playoff_score_format" id="playoff-score-format" class="form-select" required>
+                  <option value="" @selected(!$currentPlayoffScoreFormat)>Choose playoff scoring</option>
+                  @foreach(\App\Domain\Draws\Services\TennisScoreFormat::groupedCatalog() as $groupLabel => $formats)
+                    <optgroup label="{{ $groupLabel }}">
+                      @foreach($formats as $key => $format)
+                        @continue($key === 'timed' && $draw->isTeamDraw())
+                        <option value="{{ $key }}" data-description="{{ $format['description'] }}" @selected($currentPlayoffScoreFormat === $key)>{{ $format['label'] }}</option>
+                      @endforeach
+                    </optgroup>
+                  @endforeach
+                </select>
+                <div class="form-text" id="playoff-score-format-help">{{ $scoreFormats[$currentPlayoffScoreFormat]['description'] ?? 'Choose the rules for playoff matches separately.' }}</div>
+              </div>
+              @endif
 
             </div>
             <fieldset class="border rounded p-3 mt-3" id="timed-match-settings" @if($currentScoreFormat !== 'timed') hidden @endif>
@@ -984,7 +1010,9 @@
           <thead><tr><th>Case</th><th>Status</th><th>Impact</th><th>Reason</th><th>When</th><th></th></tr></thead>
           <tbody>
           @foreach($recoveryCases as $case)
-            @php($impact = $case->impact ?? [])
+            @php
+              $impact = $case->impact ?? [];
+            @endphp
             <tr>
               <td>#{{ $case->id }}</td>
               <td><span class="badge {{ $case->status === 'applied' ? 'bg-label-warning' : 'bg-label-secondary' }}">{{ ucfirst($case->status) }}</span></td>
@@ -1031,11 +1059,15 @@
         <input type="hidden" id="rrm-fixture-id">
 
         <label class="form-label fw-bold mb-1">{{ $selectedScoreFormat === 'timed' ? 'Games at time' : 'Set Scores' }}</label>
-        <p class="small text-muted mb-3">
+        <p class="small text-muted mb-3" id="rrm-score-guidance">
           {{ optional($draw->settings)->score_format
             ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
             : 'Enter scores within the configured set limit.' }}
-          Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0). Playoffs require a winner.
+          @if($selectedScoreFormat === 'best_of_3_full_start_2' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+            Every played match requires a winner. Finish the deciding set when sets are level.
+          @else
+            Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0). Playoffs require a winner.
+          @endif
           @if($selectedScoreFormat === 'timed')
             Default: {{ $draw->settings->match_duration_minutes }} minutes playing time; {{ $draw->settings->changeover_minutes }} minutes changeover. A match’s saved schedule may specify different timing.
           @endif
@@ -1153,6 +1185,16 @@
     window.RR_SAVE_SCORE_URL   = "{{ route('backend.roundrobin.score.store', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_DELETE_SCORE_URL = "{{ route('backend.roundrobin.score.delete', ['fixture' => 'FIXTURE_ID']) }}";
     window.RR_SCORE_FORMAT = @json($draw->settings?->score_format);
+    @php
+    $stageScoreContexts = collect(['RR','PLAYOFF'])->mapWithKeys(function($stage) use ($draw) {
+      $key=$draw->settings?->scoreFormatForStage($stage);
+      $format=$key ? (\App\Domain\Draws\Services\TennisScoreFormat::catalog()[$key] ?? null) : null;
+      return [$stage => ['key'=>$key,'maxSets'=>$draw->settings?->numSetsForStage($stage) ?? 3,'setTypes'=>$format['set_types'] ?? [],
+        'guidance'=>($format['rules'] ?? 'Enter scores within the configured set limit.').
+          (($key === 'best_of_3_full_start_2' || $stage !== 'RR' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) ? ' Every played match requires a winner.' : ' Round-robin draws are allowed: win 2 points, draw 1, loss 0.')]];
+    });
+    @endphp
+    window.RR_SCORE_CONTEXTS = @json($stageScoreContexts);
     window.RR_SCORE_SET_TYPES = @json($draw->settings?->score_format ? \App\Domain\Draws\Services\TennisScoreFormat::get($draw->settings->score_format)['set_types'] : []);
     window.RR_MATCH_MINUTES = @json($draw->settings?->match_duration_minutes);
     window.RR_CHANGEOVER_MINUTES = @json($draw->settings?->changeover_minutes);

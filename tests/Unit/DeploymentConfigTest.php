@@ -6,6 +6,13 @@ use PHPUnit\Framework\TestCase;
 
 class DeploymentConfigTest extends TestCase
 {
+    public function test_playoff_scoring_migration_is_explicitly_allowlisted(): void
+    {
+        $config=(string)file_get_contents(dirname(__DIR__,2).'/deploy.config');
+        preg_match('/^MIGRATION_PATHS="([^"]*)"/ms',$config,$match);
+        $this->assertContains('database/migrations/2026_11_27_140000_add_playoff_score_format_to_draw_settings.php',preg_split('/\s+/',trim($match[1]??'')));
+    }
+
     public function test_category_cancellation_migration_is_explicitly_allowlisted(): void
     {
         $config = (string) file_get_contents(dirname(__DIR__, 2).'/deploy.config');

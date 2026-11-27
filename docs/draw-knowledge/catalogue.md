@@ -38,6 +38,23 @@ Direct unresolved playoff pairs from the same source group or the same pair of s
 
 **Solution:** `app/Services/IndividualMatchOutcomeService.php` resolves winners and draws; `app/Domain/Draws/Services/StandingsService.php` shares canonical points. Scoring and counters must use these semantics.
 
+The opt-in `best_of_3_full_start_2` preset is a decisive competition format:
+each set starts at 2–2, totals include those starting games, and a played result
+requires two completed set wins. It never accepts an unfinished tied score as
+a draw. The selected Interpro feed-in likewise requires decisive preset scores;
+ordinary historical RR draw formats retain their supported draw semantics.
+Retirements retain the actual stopped score (including 2–2) through their
+separate result type; walkovers have no invented set rows. See
+`StartAtTwoScoringTest`, `ScoreValidationServiceTest` and the Interpro guide.
+
+Two-stage draws select RR and playoff scoring separately. Fixture stage chooses
+the effective validation, outcome, timing and score-entry guidance. Missing
+playoff choices retain historical RR fallback while setup prompts before play;
+both explicit choices are required in the two-stage settings form. This requires
+the exact allowlisted `2026_11_27_140000_add_playoff_score_format_to_draw_settings.php`
+migration. See the [Interpro scoring guide](interpro-round-robin-feed-in.md) and
+[round-robin tie policy](round-robin-ties.md) for the separate standings decision.
+
 **Regression:** `tests/Feature/Draw/TimedDrawScoringTest.php` covers both score routes, all RR formats, idempotency, invalid partials, deciding points and downstream protection. `tests/Feature/Draw/RoundRobinProgressTest.php::test_timed_draw_review_includes_draws_in_played_and_canonical_points()` protects review totals.
 
 **History:** `01a190d0-4597-7241-88ec-2bf2a5b8f8b8` (drawn-score request); `01a19332-4f59-7502-a1b2-8d51dc32879d` (Check page match count); `01a1896b-2cd4-7a83-8924-9115c777af8d` (Audit draw settings). Counter fixes do not create or schedule additional playoff matches.

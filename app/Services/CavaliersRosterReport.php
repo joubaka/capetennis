@@ -20,8 +20,9 @@ final class CavaliersRosterReport
             'selected' => $rows->where('status', 'selected')->count(),
             'reserves' => $rows->where('status', 'reserves')->count(),
             'declined' => $rows->where('status', 'declined')->count(),
+            'no_response' => $rows->where('status', 'no_response')->count(),
             'explained' => $explanations->count(),
-            'review_required' => $explanations->filter(fn (array $row) => $row['badge'] !== 'Declined'
+            'review_required' => $explanations->filter(fn (array $row) => ! in_array($row['badge'], ['Declined', 'No response'], true)
                 && ($row['badge'] === 'Selector reason required' || str_contains($row['review_note'] ?? '', 'Selection review needed:')))->count(),
             'missing_evidence' => $explanations->filter(fn (array $row) => ! isset($row['evidence']['wins'], $row['evidence']['losses']))->count(),
         ];
@@ -32,21 +33,24 @@ final class CavaliersRosterReport
         $selected = $roster['selected'] ?? [];
         $reserves = $roster['reserves'] ?? [];
         $declined = $roster['declined'] ?? [];
+        $noResponse = $roster['no_response'] ?? [];
         $selectedIndexes = collect($candidates)->keys()->filter(fn ($index) => in_array($candidates[$index]['id'], $selected, true));
-        $rows = collect($candidates)->map(function (array $candidate, int $index) use ($selectedIndexes, $reserves, $declined) {
+        $rows = collect($candidates)->map(function (array $candidate, int $index) use ($selectedIndexes, $reserves, $declined, $noResponse) {
             $numbers = collect($candidate['matches'] ?? [])->pluck('playing_number')->filter(fn ($number) => is_int($number) && $number > 0)->unique()->sort()->values()->all();
             $badge = ($candidate['lost_all'] ?? false) ? 'Lost all matches'
                 : (($candidate['only_beat_winless'] ?? false) ? 'Only beat winless players' : 'Selector reason required');
             if (in_array($candidate['id'], $declined, true)) $badge = 'Declined';
+            if (in_array($candidate['id'], $noResponse, true)) $badge = 'No response';
             $reserve = array_search($candidate['id'], $reserves, true);
             $status = in_array($candidate['id'], $declined, true) ? 'Recorded as declined.' : ($reserve !== false ? 'Saved reserve #'.($reserve + 1).'.' : 'Outside the saved selected list.');
+            if (in_array($candidate['id'], $noResponse, true)) $status = 'Recorded as no response.';
             $laterSelected = $selectedIndexes->filter(fn ($selectedIndex) => $selectedIndex > $index)->count();
             $note = $laterSelected ? 'Selection review needed: ahead of '.$laterSelected.' saved selected player(s) in review order. Selector reason required.' : '';
             return ['id' => $candidate['id'], 'name' => $candidate['name'], 'evidence' => $candidate,
                 'playing_numbers' => $numbers, 'badge' => $badge, 'source_order' => $index + 1, 'selection_status' => $status,
-                'review_note' => in_array($candidate['id'], $declined, true) ? 'The saved decline explains absence from the selected list.' : $note];
+                'review_note' => in_array($candidate['id'], $declined, true) ? 'The saved decline explains absence from the selected list.' : (in_array($candidate['id'], $noResponse, true) ? 'No response recorded; this is not a player decline.' : $note)];
         });
-        $next = $rows->whereNotIn('id', [...$selected, ...$reserves, ...$declined])->take(5)->values();
+        $next = $rows->whereNotIn('id', [...$selected, ...$reserves, ...$declined, ...$noResponse])->take(5)->values();
         $interDistricts = $rows->filter(fn ($row) => ($row['evidence']['source'] ?? null) === 'Inter-Districts')
             ->whereNotIn('id', [...$selected, ...$next->pluck('id')->all()])->values();
         return ['next_candidates' => $next->all(), 'inter_districts' => $interDistricts->all()];
@@ -74,7 +78,7 @@ final class CavaliersRosterReport
             $preview = app(CavaliersTrialCandidates::class)->preview($event, $division, $actor);
             $candidates = collect($preview['candidates'])->keyBy('id');
             $roster = [];
-            foreach (['selected', 'reserves', 'declined'] as $key) $roster[$key] = array_map('intval', json_decode($draft->$key ?? '[]', true, flags: JSON_THROW_ON_ERROR));
+            foreach (['selected', 'reserves', 'declined', 'no_response'] as $key) $roster[$key] = array_map('intval', json_decode($draft->$key ?? '[]', true, flags: JSON_THROW_ON_ERROR));
             $names = Player::whereIn('id', array_merge(...array_values($roster)))->get(['id', 'name', 'surname'])->keyBy('id');
             $rows = [];
             foreach ($roster as $status => $ids) foreach ($ids as $index => $id) {

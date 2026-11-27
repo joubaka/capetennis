@@ -84,7 +84,7 @@
       const actions = document.createElement('div');
       actions.className = 'd-flex flex-wrap gap-1';
       if (chosen.has(player.id)) {
-        actions.textContent = draft.declined.some(({ id }) => id === player.id) ? 'Declined' : 'Already on this roster';
+        actions.textContent = draft.declined.some(({ id }) => id === player.id) ? 'Declined' : draft.no_response.some(({ id }) => id === player.id) ? 'No response' : 'Already on this roster';
       } else {
         for (const key of Object.keys(limits)) {
           const action = key === 'selected' ? 'Add to nominations' : 'Add reserve';
@@ -173,6 +173,7 @@
           item(`Move to ${opposite === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, opposite, key), draft[opposite].length >= limits[opposite]),
           item('Swap', () => showSwap(key, index, opposite), draft[opposite].length === 0),
           item('Mark declined', () => transferPlayer(player, 'declined', key)),
+          item('Mark no response', () => transferPlayer(player, 'no_response', key)),
           item(meritCandidates.some(({ id }) => id === player.id) ? 'Return to merit list' : `Remove from ${key === 'selected' ? 'nominations' : 'reserves'}`, () => transferPlayer(player, null, key))
         );
         menu.lastElementChild.classList.add('text-danger');
@@ -185,29 +186,31 @@
     }
     renderSearch();
     renderCandidates();
-    renderDeclined();
+    renderExclusions();
     renderMerit();
   }
 
   function rosterIds() {
-    return new Set([...draft.selected, ...draft.reserves, ...draft.declined].map((player) => player.id));
+    return new Set([...draft.selected, ...draft.reserves, ...draft.declined, ...draft.no_response].map((player) => player.id));
   }
 
-  function renderDeclined() {
-    element('[data-declined-count]').textContent = draft.declined.length;
-    element('[data-declined-empty]').hidden = draft.declined.length > 0;
-    element('[data-declined-list]').replaceChildren(...draft.declined.map((player, index) => {
-      const row = document.createElement('li');
-      row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-center justify-content-between px-2 py-1';
-      const undo = button('Undo decline', () => {
-        draft.declined.splice(index, 1);
-        skippedCandidates.add(player.id);
-        changed();
-      });
-      undo.setAttribute('aria-label', `Undo decline for ${player.name}`);
-      row.append(playerSummary(player, meritCandidates.find(({ id }) => id === player.id)), undo);
-      return row;
-    }));
+  function renderExclusions() {
+    for (const [key, action] of [['declined', 'decline'], ['no_response', 'no response']]) {
+      element(`[data-${key}-count]`).textContent = draft[key].length;
+      element(`[data-${key}-empty]`).hidden = draft[key].length > 0;
+      element(`[data-${key}-list]`).replaceChildren(...draft[key].map((player, index) => {
+        const row = document.createElement('li');
+        row.className = 'list-group-item d-flex flex-wrap gap-2 align-items-center justify-content-between px-2 py-1';
+        const undo = button(`Undo ${action}`, () => {
+          draft[key].splice(index, 1);
+          skippedCandidates.add(player.id);
+          changed();
+        });
+        undo.setAttribute('aria-label', `Undo ${action} for ${player.name}`);
+        row.append(playerSummary(player, meritCandidates.find(({ id }) => id === player.id)), undo);
+        return row;
+      }));
+    }
   }
 
   function playerSummary(player, evidence) {
@@ -336,6 +339,7 @@
     setPlaces(retained.selected, 'Selected', 0, ' · On draft');
     setPlaces(retained.reserves, 'Reserve', 0, ' · On draft');
     draft.declined.forEach(({ id }) => places.set(id, 'Declined'));
+    draft.no_response.forEach(({ id }) => places.set(id, 'No response'));
     setPlaces(selected, 'Selected', retained.selected.length);
     setPlaces(reserves, 'Reserve', retained.reserves.length);
     const existing = rosterIds();
@@ -393,7 +397,7 @@
 
     candidateList.replaceChildren();
     candidates.forEach((candidate) => {
-      const declined = draft.declined.some(({ id }) => id === candidate.id);
+      const excluded = [...draft.declined, ...draft.no_response].some(({ id }) => id === candidate.id);
       const wonAll = candidate.wins > 0 && candidate.losses === 0;
       const row = document.createElement('li');
       row.className = 'list-group-item';
@@ -405,8 +409,8 @@
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'form-check-input';
-      checkbox.checked = !declined && !skippedCandidates.has(candidate.id);
-      checkbox.disabled = declined || busy || stale;
+      checkbox.checked = !excluded && !skippedCandidates.has(candidate.id);
+      checkbox.disabled = excluded || busy || stale;
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) skippedCandidates.delete(candidate.id);
         else skippedCandidates.add(candidate.id);
@@ -590,10 +594,10 @@
   }
 
   async function transferPlayer(player, target, source = null) {
-    if (!draft || busy || stale || (target && !['selected', 'reserves', 'declined'].includes(target))) return;
-    if (target && draft[target].length >= (target === 'declined' ? 256 : limits[target])) return;
+    if (!draft || busy || stale || (target && !['selected', 'reserves', 'declined', 'no_response'].includes(target))) return;
+    if (target && draft[target].length >= (['declined', 'no_response'].includes(target) ? 256 : limits[target])) return;
     if (!source && rosterIds().has(player.id)) return;
-    const proposed = { ...draft, ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, draft[key].slice()])) };
+    const proposed = { ...draft, ...Object.fromEntries(['selected', 'reserves', 'declined', 'no_response'].map((key) => [key, draft[key].slice()])) };
     if (source) {
       const index = proposed[source].findIndex(({ id }) => id === player.id);
       if (index < 0 || source === target) return;
@@ -609,15 +613,15 @@
       const { revision, registration_statuses } = await request(division.selectedOptions[0].dataset.draftUrl, {
         method: 'PUT',
         body: JSON.stringify({ revision: proposed.revision,
-          ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, proposed[key].map(({ id }) => id)])),
+          ...Object.fromEntries(['selected', 'reserves', 'declined', 'no_response'].map((key) => [key, proposed[key].map(({ id }) => id)])),
         }),
       });
       if (typeof revision !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(revision)) throw new Error('The save could not be confirmed.');
       draft = { ...proposed, revision, registration_statuses: registration_statuses || proposed.registration_statuses };
       dirty = false;
-      if (target === 'declined') {
+      if (['declined', 'no_response'].includes(target)) {
         skippedCandidates.add(player.id);
-        await transferNominations(draft.selected.length > 0, `${player.name} marked declined. Draft saved. `);
+        await transferNominations(draft.selected.length > 0, `${player.name} marked ${target === 'declined' ? 'declined' : 'no response'}. Draft saved. `);
         return;
       }
       if (target) skippedCandidates.delete(player.id);
@@ -700,6 +704,7 @@
       limits.selected = Number(division.selectedOptions[0].dataset.selectedLimit || root.dataset.selectedLimit);
       draft = await request(division.selectedOptions[0].dataset.draftUrl);
       draft.declined ??= [];
+      draft.no_response ??= [];
       loadPreview();
       setStatus(draft.revision ? 'Saved draft loaded.' : 'New draft.');
     } catch (error) {
@@ -759,6 +764,7 @@
           selected: draft.selected.map((player) => player.id),
           reserves: draft.reserves.map((player) => player.id),
           declined: draft.declined.map((player) => player.id),
+          no_response: draft.no_response.map((player) => player.id),
         }),
       });
       draft.revision = revision;
@@ -782,7 +788,7 @@
     const changes = element('[data-publication-changes]');
     const intro = document.createElement('p');
     const name = division.selectedOptions[0].textContent.trim();
-    intro.textContent = `Publish ${draft.selected.length} selected players for ${name}. Reserves and declined players stay private.`;
+    intro.textContent = `Publish ${draft.selected.length} selected players for ${name}. Reserves, declined and no-response players stay private.`;
     changes.replaceChildren(intro);
     for (const [label, players] of [
       ['Add to public list', draft.selected.filter(({ id }) => !nominated.has(id))],

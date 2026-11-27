@@ -8,6 +8,20 @@ use Tests\TestCase;
 
 class CavaliersRosterReportEvidenceTest extends TestCase
 {
+    public function test_no_response_is_excluded_from_next_available_and_explained_separately(): void
+    {
+        $candidates = [
+            ['id' => 1, 'name' => 'No Reply', 'source' => 'Inter-Districts', 'wins' => 1, 'losses' => 1],
+            ['id' => 2, 'name' => 'Available', 'source' => 'Inter-Districts', 'wins' => 1, 'losses' => 1],
+        ];
+        $service = app(CavaliersRosterReport::class);
+        $groups = $service->explanationGroups($candidates, ['no_response' => [1]]);
+        $this->assertSame([2], array_column($groups['next_candidates'], 'id'));
+        $this->assertSame('No response', $groups['inter_districts'][0]['badge']);
+        $this->assertSame('Recorded as no response.', $groups['inter_districts'][0]['selection_status']);
+        $this->assertSame('No response recorded; this is not a player decline.', $groups['inter_districts'][0]['review_note']);
+    }
+
     public function test_summary_counts_unique_explanations_and_does_not_treat_zero_results_as_missing(): void
     {
         $service = app(CavaliersRosterReport::class);
@@ -22,7 +36,7 @@ class CavaliersRosterReportEvidenceTest extends TestCase
             ['status' => 'declined', 'position' => 1, 'name' => 'Declined Player'],
         ], 'explanations' => $service->explanationGroups($candidates, ['declined' => [3]]),
             'preview' => ['source_division' => 'Source Division', 'candidate_regions' => [], 'excluded_result_regions' => [], 'missing_regions' => [], 'platteland_notice' => null]];
-        $this->assertSame(['selected' => 1, 'reserves' => 1, 'declined' => 1, 'explained' => 3, 'review_required' => 2, 'missing_evidence' => 1], $service->sectionSummary($section));
+        $this->assertSame(['selected' => 1, 'reserves' => 1, 'declined' => 1, 'no_response' => 0, 'explained' => 3, 'review_required' => 2, 'missing_evidence' => 1], $service->sectionSummary($section));
         $report = ['event_name' => 'Fictional Review', 'unsaved_divisions' => ['Unprepared Division'], 'sections' => [$section]];
         $html = view('backend.nominations.cavaliers-report-pdf', compact('report'))->render();
         $this->assertStringContainsString('<td>0 / 0</td>', $html);

@@ -14,9 +14,9 @@ use Illuminate\Support\Collection;
  *
  * Tiebreak cascade (in order):
  *   1. Match points (win 2, draw 1, loss 0)
- *   2. Sets won %
- *   3. Games won %
- *   4. Head-to-head (2-player ties only)
+ *   2. Exactly two players tied on points: head-to-head, then percentages
+ *   3. Three or more tied on points: sets won %, then games won %
+ *   4. Head-to-head for a remaining two-player percentage tie only
  *   5. Equal (=)
  *
  * All logic is pure / read-only.  No DB mutations.
@@ -133,7 +133,7 @@ final class StandingsService
 
         // 3. Sort with tiebreak cascade
         $rows = array_values($rows);
-        usort($rows, $this->comparator($groupFixtures));
+        usort($rows, $this->comparator($groupFixtures, $rows));
 
         // 4. Tag tiebreak indicators
         $rows = $this->tagTiebreaks($rows, $groupFixtures);
@@ -171,23 +171,16 @@ final class StandingsService
     // ------------------------------------------------------------------
 
     /** Whether the first canonical standings row is separated by the configured tiebreaks. */
-    public function hasUniqueLeader(Draw $draw, array $rows, Collection $fixtures): bool
+    public function hasUniqueLeader(Draw $draw, array $rows, Collection $fixtures, ?array $allRows = null): bool
     {
         if (! $rows) return false;
-        $timed = $draw->settings?->score_format === TennisScoreFormat::TIMED;
-        $metric = 'points';
-        $top = $rows[0];
-        $equalWins = array_values(array_filter($rows, fn ($row) => ($row[$metric] ?? 0) === ($top[$metric] ?? 0)));
-        if (count($equalWins) === 1) return true;
-        $headToHead = $this->headToHeadResolver($fixtures);
-        // Timed standings use head-to-head first for a two-player points tie.
-        if ($timed && count($equalWins) === 2 && $headToHead($equalWins[0]['reg_id'], $equalWins[1]['reg_id'])) return true;
-        $ratio = fn ($row, $won, $lost) => ($total = ($row[$won] ?? 0) + ($row[$lost] ?? 0)) ? ($row[$won] ?? 0) / $total : 0;
-        $equals = array_values(array_filter($equalWins, fn ($row) => abs($ratio($row, 'sets_won', 'sets_lost') - $ratio($top, 'sets_won', 'sets_lost')) <= 0.0001
-            && abs($ratio($row, 'games_won', 'games_lost') - $ratio($top, 'games_won', 'games_lost')) <= 0.0001));
-        if (count($equals) === 1) return true;
-        if (count($equals) !== 2) return false;
-        return $headToHead($equals[0]['reg_id'], $equals[1]['reg_id']) !== null;
+        // Keep the original points cohort when checking subsequent positions.
+        // Slicing a three-way tie must not silently turn it into a new H2H-first tie.
+        $compare = $this->comparator($fixtures, $allRows ?? $rows);
+        foreach (array_slice($rows, 1) as $row) {
+            if ($compare($rows[0], $row) >= 0) return false;
+        }
+        return true;
     }
 
     /** Tally sets and games from a single fixture's results. */
@@ -210,28 +203,42 @@ final class StandingsService
     }
 
     /** Build a usort comparator closure with access to the fixture collection. */
-    private function comparator(Collection $fixtures): \Closure
+    private function comparator(Collection $fixtures, array $rows): \Closure
     {
         $headToHead = $this->headToHeadResolver($fixtures);
-        $setsPct    = fn($r) => ($t = $r['sets_won'] + $r['sets_lost'])  > 0 ? $r['sets_won']  / $t : 0.0;
-        $gamesPct   = fn($r) => ($t = $r['games_won'] + $r['games_lost']) > 0 ? $r['games_won'] / $t : 0.0;
-
-        return function ($a, $b) use ($headToHead, $setsPct, $gamesPct) {
-            if ($a['points'] !== $b['points']) {
-                return $b['points'] <=> $a['points'];
-            }
-
-            $aSP = $setsPct($a); $bSP = $setsPct($b);
-            if (abs($aSP - $bSP) > 0.0001) return $bSP <=> $aSP;
-
-            $aGP = $gamesPct($a); $bGP = $gamesPct($b);
-            if (abs($aGP - $bGP) > 0.0001) return $bGP <=> $aGP;
-
-            $hh = $headToHead($a['reg_id'], $b['reg_id']);
-            if ($hh) return $hh === $a['reg_id'] ? -1 : 1;
-
-            return 0;
+        return function ($a, $b) use ($headToHead, $rows) {
+            $points = ($b['points'] ?? 0) <=> ($a['points'] ?? 0);
+            return $points ?: $this->tieDecision($a, $b, $rows, $headToHead)[0];
         };
+    }
+
+    /** The same tie rule drives order, labels and qualification readiness. */
+    private function tieDecision(array $a, array $b, array $rows, \Closure $headToHead): array
+    {
+        $peers = array_values(array_filter($rows, fn ($row) => ($row['points'] ?? 0) === ($a['points'] ?? 0)));
+        $headToHeadDecision = static function () use ($a, $b, $headToHead): ?array {
+            $winner = $headToHead((int) $a['reg_id'], (int) $b['reg_id']);
+            return $winner ? [$winner === (int) $a['reg_id'] ? -1 : 1, 'H2H'] : null;
+        };
+        if (count($peers) === 2 && ($decision = $headToHeadDecision())) return $decision;
+
+        $setsPct = fn ($row) => $this->percentage($row, 'sets_won', 'sets_lost');
+        $gamesPct = fn ($row) => $this->percentage($row, 'games_won', 'games_lost');
+        if (abs($setsPct($a) - $setsPct($b)) > 0.0001) return [$setsPct($b) <=> $setsPct($a), 'Sets %'];
+        if (abs($gamesPct($a) - $gamesPct($b)) > 0.0001) return [$gamesPct($b) <=> $gamesPct($a), 'Games %'];
+
+        $equalPercentages = array_filter($peers, fn ($row) => abs($setsPct($row) - $setsPct($a)) <= 0.0001
+            && abs($gamesPct($row) - $gamesPct($a)) <= 0.0001);
+        if (count($equalPercentages) === 2 && ($decision = $headToHeadDecision())) return $decision;
+        // Pairwise head-to-head can form a cycle among three players. Equal
+        // percentages remain unresolved, regardless of presentation order.
+        return [0, '='];
+    }
+
+    private function percentage(array $row, string $won, string $lost): float
+    {
+        $total = ($row[$won] ?? 0) + ($row[$lost] ?? 0);
+        return $total > 0 ? ($row[$won] ?? 0) / $total : 0.0;
     }
 
     /** Returns a closure that resolves the head-to-head winner between two players. */
@@ -255,8 +262,6 @@ final class StandingsService
     private function tagTiebreaks(array $rows, Collection $fixtures): array
     {
         $headToHead = $this->headToHeadResolver($fixtures);
-        $setsPct    = fn($r) => ($t = $r['sets_won'] + $r['sets_lost'])  > 0 ? $r['sets_won']  / $t : 0.0;
-        $gamesPct   = fn($r) => ($t = $r['games_won'] + $r['games_lost']) > 0 ? $r['games_won'] / $t : 0.0;
 
         for ($i = 1; $i < count($rows); $i++) {
             $above = $rows[$i - 1];
@@ -264,26 +269,9 @@ final class StandingsService
 
             if ($above['points'] !== $curr['points']) continue;
 
-            if (abs($setsPct($above) - $setsPct($curr)) > 0.0001) {
-                $rows[$i]['tiebreak']       = 'Sets %';
-                if (empty($rows[$i - 1]['tiebreak'])) $rows[$i - 1]['tiebreak'] = 'Sets %';
-                continue;
-            }
-
-            if (abs($gamesPct($above) - $gamesPct($curr)) > 0.0001) {
-                $rows[$i]['tiebreak']       = 'Games %';
-                if (empty($rows[$i - 1]['tiebreak'])) $rows[$i - 1]['tiebreak'] = 'Games %';
-                continue;
-            }
-
-            $hh = $headToHead($above['reg_id'], $curr['reg_id']);
-            if ($hh) {
-                $rows[$i]['tiebreak']       = 'H2H';
-                if (empty($rows[$i - 1]['tiebreak'])) $rows[$i - 1]['tiebreak'] = 'H2H';
-            } else {
-                $rows[$i]['tiebreak']       = '=';
-                if (empty($rows[$i - 1]['tiebreak'])) $rows[$i - 1]['tiebreak'] = '=';
-            }
+            [, $label] = $this->tieDecision($above, $curr, $rows, $headToHead);
+            $rows[$i]['tiebreak'] = $label;
+            if (empty($rows[$i - 1]['tiebreak'])) $rows[$i - 1]['tiebreak'] = $label;
         }
 
         return $rows;

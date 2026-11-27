@@ -8,6 +8,47 @@ There must be four groups named A–D, each containing three or four players.
 Complete the full group programme and resolve tied finishing positions before
 reviewing and confirming all four groups. Fourth-place finishers have no playoffs.
 
+## Best of three starting at 2–2
+
+Choose **Best of 3 full sets · start at 2–2** separately in **Round-robin scoring**
+and **Playoff scoring** when both stages use those tournament rules. The selections
+may differ. This stores `best_of_3_full_start_2` in `score_format` and
+`playoff_score_format` through the authorized competition-settings save.
+The nullable playoff column requires the explicitly allowlisted migration
+`2026_11_27_140000_add_playoff_score_format_to_draw_settings.php`.
+Existing draws are not converted automatically. Save both explicit choices before
+the first result. Scored or confirmed sources retain their normal rule-freeze
+and recovery restrictions; never bypass them to convert an active draw.
+
+Record final totals including both starting games: `6–2, 6–3` or
+`6–2, 3–6, 7–6`. A player must win two completed sets. Partial or drawn sets,
+missing deciding sets, totals below two and sets after a straight-sets win are
+rejected. Normal full sets end 6–2 through 6–4, 7–5 or 7–6 in either orientation.
+This preset also remains decisive in an ordinary round robin. Other ordinary
+historical RR formats retain their documented draw support. Selected Interpro
+feed-in draws require decisive non-timed preset results because every original
+match must resolve before confirmation; legacy blank settings are not silently
+converted into this new scoring format.
+
+Use the separate retirement or walkover result when appropriate. A retirement
+may retain an unfinished 2–2, 3–2 or 6–6 score, but only its final set may be
+unfinished and a completed match cannot become a retirement. A walkover never
+creates set scores. Games percentages use recorded final totals, including the
+starting games. The [round-robin tie policy](round-robin-ties.md) is documented
+separately from score validation.
+
+Fixture stage determines validation, score-entry guidance, outcome and timing:
+RR uses `score_format`; other stages use `playoff_score_format`. A missing playoff
+choice falls back to the old format for historical compatibility, but setup warns
+before play and the two-stage settings form requires both choices. This warning
+does not automatically unpublish or block publication of existing legacy draws.
+Scoring-rule revisions include both fields, so a previously opened score form
+must reload after either changes. A playoff-only settings save preserves RR rules.
+
+Regression sources: `StartAtTwoScoringTest`, `ScoreValidationServiceTest`, and
+`tests/Frontend/set-score-grid.test.cjs`. Local opt-in and testing do not authorize
+deployment, changing live scoring settings, rescheduling or publication.
+
 ## Fixed routes
 
 - A1–D1 and B1–C1 are championship semifinals; their winners contest 1st/2nd.

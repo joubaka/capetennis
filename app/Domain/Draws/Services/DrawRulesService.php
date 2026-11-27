@@ -20,19 +20,29 @@ final class DrawRulesService
         };
         $add('general', 'General rules');
         $format = $settings?->score_format;
+        $separateStages = $settings?->workflow === 'round_robin_playoffs';
+        $playoffFormat = $settings?->scoreFormatForStage('MAIN');
         if ($format && isset(TennisScoreFormat::catalog()[$format])) {
-            $add('match_format', 'Configured match format', TennisScoreFormat::get($format)['label']."\n\n".TennisScoreFormat::rules($format));
+            $add('match_format', $separateStages ? 'Round-robin match format' : 'Configured match format', TennisScoreFormat::get($format)['label']."\n\n".TennisScoreFormat::rules($format));
+        }
+        if ($separateStages && $playoffFormat && isset(TennisScoreFormat::catalog()[$playoffFormat])) {
+            $add('playoff_match_format','Playoff match format',TennisScoreFormat::get($playoffFormat)['label']."\n\n".TennisScoreFormat::rules($playoffFormat));
         }
 
         $timed = $format === TennisScoreFormat::TIMED;
-        if ($timed) {
+        if ($timed || $playoffFormat === TennisScoreFormat::TIMED) {
             $add('timing', 'Match timing', 'Default playing time: '.(int) $settings->match_duration_minutes.' minutes. Default changeover: '.(int) $settings->changeover_minutes.' minutes between court bookings. A saved match booking may specify its own playing time and changeover; use that match’s schedule and scoring card.');
         }
         $flexible = $draw->usesFlexibleMonrad();
         $workflow = $settings?->workflow;
         $roundRobin = ! $flexible && ! in_array($workflow, ['playoffs', 'monrad', 'custom_monrad', 'feed_in_monrad'], true);
+        $tieRules = 'Rank match points first. When exactly two players have equal points, their decisive head-to-head winner ranks first; otherwise compare sets percentage, then games percentage. For three or more equal on points, compare sets percentage then games percentage; head-to-head can separate a remaining equal pair. An unresolved larger tie must be resolved before progression.';
         if ($roundRobin) {
-            $add('round_robin', 'Round Robin scoring rules', $timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. Standings award 2 points for a win, 1 for a draw and 0 for a loss. Existing head-to-head, sets percentage and games percentage tiebreaks apply within equal-points groups.' : 'Players play the other players in their group. Equal scores are allowed and share the match points. Standings award 2 points for a win, 1 for a draw and 0 for a loss, ordered by points, then percentage of sets won, then percentage of games won, then head-to-head. Players still tied remain equal until the tie is resolved.');
+            $add('round_robin', 'Round Robin scoring rules', ($timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. ' : 'Players play the other players in their group. Equal scores are allowed and share the match points. ').'Standings award 2 points for a win, 1 for a draw and 0 for a loss. '.$tieRules);
+        }
+        if ($roundRobin && ($format === TennisScoreFormat::BEST_OF_3_FULL_START_2 || (! $timed && \App\Services\Draw\InterproRoundRobinFormat::selected($draw)))) {
+            $last=array_key_last($sections);
+            $sections[$last]['rules']='Players play the other players in their group. Every played match requires a winner. Standings award 2 points for a win and 0 for a loss. '.$tieRules.' '.($format ? TennisScoreFormat::rules($format) : 'Select an explicit round-robin scoring format before play.');
         }
         if ($draw->hasHybridRoundRobin()) {
             $add('second_round_robin', 'Top-four playoffs and lower round robin', 'The top two from each first-stage group qualify for crossed semi-finals: A1 v B2 and B1 v A2. Winners play for positions 1–2; losers play for 3–4. Remaining players form one round robin for positions 5 onward. Only their mutual first-stage results carry forward, counted once; play only opponents they have not yet met. First-stage results and memberships remain frozen.');
@@ -50,7 +60,7 @@ final class DrawRulesService
                         $rules .= ' Group seed order: '.implode(', ', $bracket['group_order']).'.';
                     }
                     $dormant = app(\App\Services\Draw\PlayoffParticipationService::class)->isDormant($draw, $bracket);
-                    if ($timed) $rules .= ' Most games at the end of the timed match wins; equal games require one deciding point. Keep the game score unchanged and record the deciding-point winner separately.';
+                    if ($playoffFormat === TennisScoreFormat::TIMED) $rules .= ' Most games at the end of the timed match wins; equal games require one deciding point. Keep the game score unchanged and record the deciding-point winner separately.';
                     if ($dormant) $rules .= ' This preset stage awaits qualifying players and currently has no matches.';
                     $add('bracket_'.$bracket['slug'], ($bracket['name'] ?? 'Bracket').' rules', $rules, $dormant);
                 }

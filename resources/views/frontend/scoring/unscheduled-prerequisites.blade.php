@@ -3,7 +3,7 @@
         @php
           $prerequisiteDraw = $prerequisite->draw;
           [$prerequisiteHome, $prerequisiteAway] = $prerequisite->scoring_participant_labels;
-          $prerequisiteTimed = $prerequisiteDraw->settings?->score_format === 'timed';
+          $prerequisiteTimed = $prerequisiteDraw->settings?->scoreFormatForStage($prerequisite->stage) === 'timed';
           $prerequisiteTiming = null;
           try { $prerequisiteTiming = app(\App\Services\Scheduling\MatchTimingService::class)->forBookedFixture($prerequisite); }
           catch (\InvalidArgumentException $exception) { /* An unbooked timed match requires valid draw defaults. */ }

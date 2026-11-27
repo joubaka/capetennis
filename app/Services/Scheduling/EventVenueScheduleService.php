@@ -329,8 +329,10 @@ final class EventVenueScheduleService
                 continue;
             }
             foreach (($draw->isTeamDraw() ? app(UnifiedTeamScheduleService::class)->nodes($draw, $roundProgression, []) : $this->nodesForDraw($draw, $start, $waveMinutes, (bool) $programme || $dayBatch)) as $id => $node) {
-                $timing = app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap, $dayBatch);
-                $node['timed'] = ! $draw->isTeamDraw() && $draw->settings?->score_format === 'timed';
+                $timing = $node['fixture'] instanceof Fixture
+                    ? app(MatchTimingService::class)->forFixture($node['fixture'], $duration, $courtGap, $dayBatch)
+                    : app(MatchTimingService::class)->forDraw($draw, $duration, $courtGap, $dayBatch);
+                $node['timed'] = ! $draw->isTeamDraw() && $draw->settings?->scoreFormatForStage($node['fixture']->stage) === 'timed';
                 $node['duration'] = $timing['duration_minutes'];
                 $node['court_gap'] = $timing['court_gap_minutes'];
                 $node['draw_start'] = $drawStarts[$draw->id] ?? $start->copy();
