@@ -2,6 +2,21 @@
 
 Local implementation; this document is not deployment or certification authority.
 
+The guided workspace moves through Players, Groups, Scoring, Review/create and
+Schedule. Next waits for valid saved answers; Back retains the private plan.
+Show all steps provides an overview, and without JavaScript all sections and
+normal review POSTs remain available. New previews require saved scoring before
+server-side creation: a canonical `TennisScoreFormat` key, optional separate
+linked-finals key, match duration/estimate 1–240 minutes and changeover 0–60.
+Set counts are derived from the canonical format, never submitted independently.
+Timed duration is playing time; set-format duration is the scheduling estimate.
+Group edits may save before scoring is answered, with a not-ready receipt; clearing
+scoring makes a new plan not ready again. Historical saved plans without the new
+`scoring_required` marker retain their previous creation contract. Creation copies
+the saved scoring to every generated draw and its audit record. The final step
+links to the event court scheduler with the exact created draw IDs; venues, dates,
+private scheduling and schedule publication remain explicit separate decisions.
+
 The event Draws workspace links to a private CTR planner. Only a super-user can
 certify or revoke an individual event, with actor/time and platform audit history.
 Certification is separate metadata: it does not publish an event, change its type,
@@ -31,8 +46,21 @@ group or linked competition spanning those bands requires explicit acknowledgmen
 requires no acknowledgment. Invalid singles identity or unknown ball context
 remains a creation blocker.
 
-The preferred group size defaults to four and can be changed to 3–5. Groups must
-contain 3–5 players. Defaults: five stays one group; seven is 4+3; nine is 5+4;
+The preferred automatic group size defaults to four and can be changed to 3–5.
+After Plan all draws, each category offers exact group-size splits with match
+totals and matches per player. Sixteen players can use 4+4+4+4, 8+8, 4+12,
+4+4+8 or any other partition with 3–16 per group. Up to 100 unordered partitions
+are listed for categories of up to 64 players; exact custom sizes support larger
+categories and other group ordering. Every split must sum to the exact available
+category count. Applying a split resets only that category's placements in saved
+comparison-band order, preserves all other placements and exclusions, and clears
+that category's linked finals in favour of independent round robins. This uses
+the normal revision/source-checked review POST and waits for autosave to settle.
+It neither creates nor publishes draws. Groups above five show a court-time
+warning: eight players means 28 matches, seven per player. Manual placement can
+also produce uneven sizes such as 8+4, within the same 3–16 bounds.
+
+Automatic defaults remain unchanged: five stays one group; seven is 4+3; nine is 5+4;
 eleven is 4+4+3. Six is one competition with two groups of three and three
 straight-over finals: A1–B1 for the winner, A2–B2 for places 3–4, A3–B3 for
 places 5–6. This creates six RR matches plus three unqualified final placeholders
@@ -52,7 +80,7 @@ numerically ranked together: retain their bands and require explicit review for
 any linked competition crossing them. This rule runs only when preparing a new
 preview; later manual/AJAX placements are not automatically reseeded.
 
-Aim for three matches per player, with up to four: four-player RR gives three,
+Automatic grouping aims for three matches per player, with up to four: four-player RR gives three,
 five gives four, linked 3+3 gives three. An independent three-player RR gives
 only two and must be explicitly acknowledged as a below-target exception before
 creation, or rebalanced/excluded. No rematches are invented. Twenty default

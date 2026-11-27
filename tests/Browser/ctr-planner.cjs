@@ -18,6 +18,7 @@ const definitions = {
   six: { sizes: [3, 3], competitions: 1, matches: 9 },
   ten: { sizes: [4, 3, 3], competitions: 2, matches: 15 },
   twenty: { sizes: [4, 4, 4, 4, 4], competitions: 5, matches: 30 },
+  large: { sizes: [8], competitions: 1, matches: 28 },
 };
 function formFields(request) {
   const body = request.postData() || '';
@@ -89,7 +90,7 @@ async function main() {
   const exclusionOnly = process.env.CT_CTR_BROWSER_EXCLUSION_ONLY === '1';
   const ajaxOnly = process.env.CT_CTR_BROWSER_AJAX_ONLY === '1';
   const ajaxExtrasOnly = process.env.CT_CTR_BROWSER_AJAX_EXTRAS_ONLY === '1';
-  const states = ['initial', 'review', 'unrated', 'mixed', 'blocked', 'created', 'six', 'ten', 'twenty', 'shortfall', 'excluded', 'categories', 'sparse'];
+  const states = ['initial', 'review', 'unrated', 'mixed', 'blocked', 'created', 'six', 'ten', 'twenty', 'shortfall', 'excluded', 'categories', 'sparse', 'large', 'splits', 'scoring', 'scheduled-next'];
   for (const state of states) assert.ok(fs.existsSync(fixture(state)), `Missing fictional export ${state}.html`);
   const exclusionStates = ['exclusion-flow-initial', 'exclusion-flow-reviewed'];
   for (const state of exclusionStates) assert.ok(fs.existsSync(fixture(state)), `Missing exclusion workflow export ${state}.html`);
@@ -137,7 +138,8 @@ async function main() {
             }
             const content = [...fields].filter(([name]) => !['_token', 'revision'].includes(name)).sort(([a], [b]) => a.localeCompare(b));
             record.responseRevision = crypto.createHash('sha256').update(JSON.stringify(content)).digest('hex');
-            response = { ...reviewContract, saved: true, token, revision: record.responseRevision, ready: true,
+            response = { ...reviewContract, saved: true, token, event_id: Number(await page.locator('#ctr-placement-form').getAttribute('data-event-id')),
+              revision: record.responseRevision, ready: mode !== 'groups-only',
               excluded_category_ids: excluded.map(Number), totals: { competitions, matches, included_players: included, winner_prizes: competitions, sportsmanship_prizes: competitions } };
             accepted.set(token, record.responseRevision);
           }
@@ -162,13 +164,59 @@ async function main() {
       if (['stylesheet', 'script', 'font'].includes(request.resourceType())) missing.add(url.pathname);
       return route.abort();
     });
-    const open = async state => {
+    const open = async (state, all = true) => {
       await page.goto(`http://localhost/ctr-qa/${state}`, { waitUntil: 'networkidle' });
       const form = page.locator('#ctr-confirm-form');
       if (await form.count()) accepted.set(await form.locator('[name="token"]').inputValue(), await form.locator('[name="revision"]').inputValue());
+      if (all && await page.locator('[data-show-all-steps]').count()) await page.locator('[data-show-all-steps]').click();
     };
-    const saved = () => page.waitForFunction(() => document.querySelector('#ctr-board-status')?.dataset.saveState === 'saved' && !document.querySelector('#ctr-confirm')?.disabled);
+    const saved = async () => {
+      try {
+        await page.waitForFunction(() => document.querySelector('#ctr-board-status')?.dataset.saveState === 'saved' && !document.querySelector('#ctr-confirm')?.disabled);
+      } catch (error) {
+        console.error('Save diagnostics:', await page.locator('#ctr-board-status').textContent(),
+          await page.locator('#ctr-save-error').textContent(), await page.locator('#ctr-blocked').textContent(), { errors, reviews: reviews.length });
+        throw error;
+      }
+    };
     const entry = id => page.locator(`${playerSelector}[data-entry-id="${id}"]`);
+    for (const width of [360, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await open('scoring', false);
+      assert.equal(await page.locator('[data-step-panel="2"]').first().isVisible(), true);
+      assert.equal(await page.locator('[data-step-panel="3"]').isVisible(), false);
+      await page.locator('[data-step-next="3"]').click();
+      assert.equal(await page.locator('[data-step-panel="3"]').isVisible(), true);
+      assert.equal(await page.locator('#ctr-score-format').inputValue(), 'timed');
+      await page.locator('#ctr-match-duration').fill('0');
+      await page.locator('#ctr-match-duration').dispatchEvent('change');
+      await page.locator('[data-step-next="4"]').click();
+      assert.equal(await page.locator('[data-step-panel="4"]').isVisible(), false, 'Invalid timing blocks the next step');
+      assert.equal(await page.locator('#ctr-confirm').isDisabled(), true);
+      await page.locator('#ctr-match-duration').fill('15');
+      await page.locator('#ctr-match-duration').dispatchEvent('change');
+      await page.locator('#ctr-match-duration').blur();
+      await saved();
+      await page.locator('[data-step-next="4"]').click();
+      assert.equal(await page.locator('[data-step-panel="4"]').isVisible(), true);
+      assert.match(await page.locator('#ctr-scoring-summary').innerText(), /Timed match.*15 minutes.*3 minutes/);
+      await page.locator('[data-step-panel="4"] [data-step-target="3"]').click();
+      assert.equal(await page.locator('[data-step-panel="3"]').isVisible(), true, 'Back retains scoring answers');
+      await open('splits', false);
+      const before = await snapshot(page);
+      const category = await page.locator('[data-ctr-category]').first().getAttribute('data-category-id');
+      await page.locator('[data-layout-choice]').first().selectOption('4+4+8');
+      await page.locator('[data-custom-layout]').first().fill('4+12');
+      const prior = submitted.length;
+      await page.locator('[data-apply-layout]').first().click();
+      await until(() => submitted.length > prior, 'Layout submission captured');
+      const fields = new URLSearchParams(submitted.at(-1).body);
+      assert.equal(fields.get('regroup_category'), category);
+      assert.equal(fields.get(`category_layouts[${category}]`), '4+4+8');
+      assert.equal(fields.get(`custom_layouts[${category}]`), '4+12');
+      for (const player of before) assert.equal(fields.get(`placements[${player.id}]`), player.group, 'Every other player placement is retained in exact submission');
+      report.push({ state: 'stepper-scoring-and-category-split', width });
+    }
     for (const width of (process.env.CT_CTR_BROWSER_WIDTHS || '360,390,768,1440').split(',').map(Number)) {
       if (exclusionOnly || ajaxOnly || ajaxExtrasOnly) break;
       await page.setViewportSize({ width, height: 1000 });
@@ -181,6 +229,15 @@ async function main() {
           assert.equal(await page.locator('#ctr-target').inputValue(), '4');
           assert.equal(await page.locator('#ctr-plan-all').isEnabled(), true);
         }
+        if (state === 'large') {
+          assert.equal(await page.locator('[data-large-group-warning]').isVisible(), true);
+          assert.match(await page.locator('[data-group-games]').innerText(), /7/);
+        }
+        if (state === 'splits') {
+          const options = await page.locator('[data-layout-choice]').first().locator('option').allTextContents();
+          for (const split of ['4+4+4+4', '8+8', '4+12', '4+4+8', '16']) assert.ok(options.some(text => text.startsWith(split + ' ·')), `Offers ${split}`);
+          assert.equal(await page.locator('[data-apply-layout]').first().isEnabled(), true);
+        }
         if (definitions[state]) {
           const definition = definitions[state];
           assert.deepEqual(await counts(page), definition.sizes, `${state}: automatic group sizes`);
@@ -188,7 +245,7 @@ async function main() {
           assert.match(await page.locator('#ctr-prize-total').innerText(), new RegExp(`${definition.competitions} winner prizes.*${definition.competitions} sportsmanship prizes.*${definition.competitions * 2} prizes`, 's'));
           assert.match(await page.locator('#ctr-programme-total').innerText(), new RegExp(`${definition.competitions} competitions.*${definition.matches} matches`, 's'));
           assert.equal(await page.locator('#ctr-confirm').isEnabled(), true, `${state}: saved reviewed proposal can be confirmed`);
-          assert.equal(await page.locator('#ctr-review input[type=number]').count(), 0, 'Number editor replaced by group cards');
+          assert.equal(await page.locator('[data-group-board] input[type=number]').count(), 0, 'Group placement uses cards rather than numeric editors');
           assert.equal(await page.locator('[data-remove-group]:visible').count(), 0, 'Populated groups do not show empty-group removal');
           for (const selector of ['#ctr-confirm', '#ctr-review-changes', '[data-move-player]']) {
             const box = await page.locator(selector).first().boundingBox();
@@ -245,7 +302,7 @@ async function main() {
       const beforeInvalid = reviews.length;
       await entry(second.id).locator('[data-placement]').selectOption(target.group);
       assert.deepEqual(await counts(page), [2, 6, 3]);
-      assert.equal(await page.locator('#ctr-review-changes').isDisabled(), true, 'Groups outside three to five block review');
+      assert.equal(await page.locator('#ctr-review-changes').isDisabled(), true, 'Groups below three block review');
       await page.waitForTimeout(650);
       assert.equal(reviews.length, beforeInvalid, 'Invalid intermediate group sizes never autosave');
       await entry(second.id).locator('[data-placement]').selectOption(first.group);
@@ -292,6 +349,20 @@ async function main() {
       const confirmed = new URLSearchParams(submitted.at(-1).body);
       assert.ok(confirmed.get('token')); assert.ok(confirmed.get('revision'));
       assert.equal([...confirmed.keys()].some(key => key.startsWith('placements')), false, 'Confirm submits saved proposal identity only');
+    }
+    if (!ajaxExtrasOnly) {
+      reviewMode = 'groups-only';
+      await open('exclusion-flow-initial');
+      await page.locator('#ctr-score-format').selectOption('');
+      await page.locator('#ctr-match-duration').fill('');
+      await page.locator('#ctr-changeover').fill('');
+      await page.locator('[data-ctr-category][data-player-total="2"] [data-exclude-category]').check();
+      await page.waitForFunction(() => document.querySelector('#ctr-board-status')?.dataset.saveState === 'saved');
+      assert.equal(await page.locator('#ctr-confirm').isDisabled(), true, 'Saved groups cannot create before scoring');
+      assert.match(await page.locator('#ctr-blocked').innerText(), /Choose and save scoring/);
+      assert.doesNotMatch(await page.locator('#ctr-blocked').innerText(), /Not enough players|three to five|3–16/);
+      report.push({ interaction: 'saved-groups-await-scoring-without-stale-category-warning', passed: true });
+      reviewMode = 'success';
     }
     exclusionActive = true;
     for (const width of (process.env.CT_CTR_BROWSER_WIDTHS || '360,390,768,1440').split(',').map(Number)) {

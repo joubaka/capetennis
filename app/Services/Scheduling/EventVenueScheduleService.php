@@ -3,12 +3,13 @@
 namespace App\Services\Scheduling;
 
 use App\Domain\Draws\Services\ScheduleAvailability;
-use App\Models\{Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Venue};
+use App\Models\{CtrDrawPlan, Draw, DrawAuditLog, Event, Fixture, OrderOfPlay, TeamFixture, Venue};
 use App\Services\Draw\FlexibleMonradService;
 use App\Services\ScheduleEngine;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final class EventVenueScheduleService
 {
@@ -423,8 +424,9 @@ final class EventVenueScheduleService
         if ($dayBatch) foreach ($drawRounds as $row) foreach ($row['rounds'] as $round) {
             if (! isset($dayRoundCoverage[$row['draw_id'].'|'.$round])) throw new \InvalidArgumentException('Choose matches in every selected round for this day, or remove the empty round.');
         }
-        $this->configureRoundRobinGroupRotation($nodes, $dayBatch && $drawOrderMode === 'mixed');
-        if ($dayBatch && $drawOrderMode === 'sequential') $this->configureDayDrawOrder($nodes, $drawOrder);
+        $ctrCohorts = $this->ctrProgrammeCohorts($event, $draws);
+        $this->configureRoundRobinGroupRotation($nodes, $dayBatch && $drawOrderMode === 'mixed', $ctrCohorts);
+        if ($dayBatch && $drawOrderMode === 'sequential') $this->configureDayDrawOrder($nodes, $drawOrder, $ctrCohorts);
 
         app(ScheduleProgramme::class)->configureNodes($nodes, $programme);
         $rankChoices = $preferenceService->choices(collect($nodes)->filter(fn ($node) => ($node['fixture_kind'] ?? '') === 'team')
@@ -559,8 +561,9 @@ final class EventVenueScheduleService
             }
         }
 
-        if ($programme || ($dayBatch && $drawOrderMode === 'sequential')) {
+        if ($programme || ($dayBatch && $drawOrderMode === 'sequential') || $ctrCohorts) {
             foreach ($nodes as $node) {
+                if (! $programme && ! ($dayBatch && $drawOrderMode === 'sequential') && ! isset($ctrCohorts[$node['draw_id']])) continue;
                 if (! $node['fixed'] && ! $node['played']) continue;
                 $slot = $this->nodeSlot($node);
                 if (! $slot?->time) continue;
@@ -840,7 +843,7 @@ final class EventVenueScheduleService
                             }
                             if ($end && $at->copy()->addMinutes($matchDuration)->gt($end)) continue;
                         }
-                        if ($dayScope || $fullDay || ($node['fixture_kind'] ?? 'individual') === 'team') {
+                        if ($dayScope || $fullDay || ($node['fixture_kind'] ?? 'individual') === 'team' || isset($ctrCohorts[$node['draw_id']])) {
                             if (isset($externalPhaseDeadlines[$id]) && $at->copy()->addMinutes($matchDuration)->gt($externalPhaseDeadlines[$id])) {
                                 $blocked[$id] = 'A saved later discipline in this age group leaves insufficient time. Include it when replanning or keep this match before it.';
                                 continue;
@@ -1960,20 +1963,40 @@ final class EventVenueScheduleService
         return $normalized;
     }
 
-    private function configureRoundRobinGroupRotation(array &$nodes, bool $fillCourts = false): void
+    /** Independent CTR groups are separate draws, but rotate as one category programme. */
+    private function ctrProgrammeCohorts(Event $event, Collection $draws): array
+    {
+        if ($draws->isEmpty() || ! Schema::hasTable('ctr_draw_plans')) return [];
+        $plans = CtrDrawPlan::where('event_id', $event->id)->whereNotNull('applied_at')
+            ->where(function ($query) use ($draws) {
+                foreach ($draws as $draw) $query->orWhereJsonContains('draw_ids', (int) $draw->id);
+            })->orderBy('id')->get(['id', 'draw_ids']);
+        $cohorts = [];
+        foreach ($plans as $plan) foreach ($draws as $draw) {
+            if (! $draw->category_event_id || ! in_array((int) $draw->id, array_map('intval', $plan->draw_ids ?? []), true)) continue;
+            $cohorts[(int) $draw->id] = 'ctr:'.$plan->id.':category:'.$draw->category_event_id;
+        }
+        ksort($cohorts, SORT_NUMERIC);
+        return $cohorts;
+    }
+
+    private function configureRoundRobinGroupRotation(array &$nodes, bool $fillCourts = false, array $ctrCohorts = []): void
     {
         $waves = [];
         foreach ($nodes as $id => $node) {
             $fixture = $node['fixture'];
             if (($node['fixture_kind'] ?? 'individual') !== 'individual' || $node['stage'] !== 'RR'
-                || ! $fixture->draw_group_id || ! $node['selected_round'] || $node['automatic']
-                || $node['fixed'] || $node['played']) continue;
+                || ! $fixture->draw_group_id || ! $node['selected_round'] || $node['automatic']) continue;
+            // CTR's fixed/played matches remain wave prerequisites, never pending moves.
+            if (($node['fixed'] || $node['played']) && ! isset($ctrCohorts[$node['draw_id']])) continue;
             // Use the full group size, even when only some fixtures are selected for planning.
             $key = sprintf('%04d:%08d:%010d:', (int) $node['rr_group_phase'], $node['round'], PHP_INT_MAX - $node['rr_group_size'])
-                .str_pad((string) ($node['rr_group_name'] ?? $fixture->draw_group_id), 20, '0', STR_PAD_LEFT);
-            $waves[$node['draw_id']][$key][] = $id;
+                .str_pad((string) ($node['rr_group_name'] ?? $fixture->draw_group_id), 20, '0', STR_PAD_LEFT)
+                .sprintf(':%010d:%010d', $node['draw_id'], $fixture->draw_group_id);
+            $scope = $ctrCohorts[$node['draw_id']] ?? 'draw:'.$node['draw_id'];
+            $waves[$scope][$key][] = $id;
         }
-        foreach ($waves as $groups) {
+        foreach ($waves as $scope => $groups) {
             ksort($groups, SORT_NATURAL);
             $previous = [];
             $priority = 0;
@@ -1981,7 +2004,7 @@ final class EventVenueScheduleService
                 foreach ($ids as $id) {
                     $nodes[$id]['rr_rotation_priority'] = $priority;
                     // Mixed day batches prefer rotation, but use a free court when players are ready.
-                    if ($fillCourts) continue;
+                    if ($fillCourts && ! str_starts_with($scope, 'ctr:')) continue;
                     // Group turns wait for play to finish, without adding unrelated players' rest.
                     $nodes[$id]['day_finish_dependencies'] = array_values(array_unique(array_merge(
                         $nodes[$id]['day_finish_dependencies'] ?? [], array_diff($previous, $nodes[$id]['dependencies']))));
@@ -1993,12 +2016,18 @@ final class EventVenueScheduleService
         }
     }
 
-    private function configureDayDrawOrder(array &$nodes, array $drawOrder): void
+    private function configureDayDrawOrder(array &$nodes, array $drawOrder, array $ctrCohorts = []): void
     {
         $groups = [];
+        $cohortPriorities = [];
+        foreach ($drawOrder as $priority => $drawId) {
+            if (isset($ctrCohorts[$drawId])) $cohortPriorities[$ctrCohorts[$drawId]] ??= $priority;
+        }
         foreach ($nodes as $id => $node) {
             if (! $node['selected_round'] || $node['automatic']) continue;
-            $priority = array_search($node['draw_id'], $drawOrder, true);
+            // Keep a CTR category together; its larger-first group turns are already configured.
+            $priority = isset($ctrCohorts[$node['draw_id']]) ? $cohortPriorities[$ctrCohorts[$node['draw_id']]]
+                : array_search($node['draw_id'], $drawOrder, true);
             $groups[sprintf('%08d:%04d', $node['round'], $priority)][] = $id;
         }
         ksort($groups);
@@ -2073,6 +2102,7 @@ final class EventVenueScheduleService
             'team_results' => DB::table('team_fixture_results')->whereIn('team_fixture_id', $teamIds)->orderBy('id')->get()->all(),
             'team_ties' => DB::table('team_ties')->whereIn('draw_id', $drawIds)->orderBy('id')->get()->all(),
             'input' => $input,
+            'ctr_programme_cohorts' => $this->ctrProgrammeCohorts($event, $event->draws()->orderBy('id')->get(['id', 'category_event_id'])),
             'draws' => DB::table('draws')->whereIn('id', $drawIds)->orderBy('id')
                 ->get(['id', 'locked', 'published', 'gender', 'drawName', 'updated_at'])->all(),
             'venues' => DB::table('draw_venues')->whereIn('draw_id', $drawIds)->orderBy('draw_id')->orderBy('venue_id')->get()->all(),

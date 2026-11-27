@@ -20,6 +20,22 @@ Paths below are relative to the repository root. Test references are executable 
 
 **Solution:** `app/Services/Scheduling/EventVenueScheduleService.php::configureRoundRobinGroupRotation()` adds group-turn dependencies using phase, round, full group size and name. In a one-day **Mix draws · fill available courts** batch, those turns are ordering preferences instead: another ready round/group may use a free court without waiting for unrelated matches to finish. True player/rest and playoff feeder dependencies remain mandatory. Sequential and legacy planning retain group-turn barriers. Replanning is distinct from changing an already played schedule.
 
+CTR planner independent groups are separate draws. Applied `CtrDrawPlan` receipts group
+selected draws from the same event, plan and category into one rotation programme.
+These programmes retain round/group finish barriers in mixed day mode too: larger
+groups start each round first, smaller groups stop after their last round, and the
+longer group finishes last. Equal group names across independent draws use stable
+draw/group IDs. Sequential day draw priorities collapse the programme into one
+block to avoid contradictory draw-order barriers. Unrelated plans, categories,
+draft previews and other events do not share these dependencies. Fixed/played
+bookings remain preserved as turn prerequisites; contradictory saved turns fail
+with a review message rather than moving bookings. Unsaved prerequisite matches
+must fit before an already fixed later turn. Membership priority uses full groups even when planning
+only selected fixtures. Changes to applied programme lineage invalidate schedule
+previews. `CtrProgrammeSchedulingTest` covers 4+4+8 across three independent draws
+in normal, mixed, sequential and partial-selection planning, fixed/played turn
+prerequisites, conflicting saved turns and lineage isolation.
+
 The daily match cap is a saved event policy. An unchecked edited box does not override a saved cap in preview or manual requests. Save timing settings through the canonical endpoint first; the day planner rejects an unsaved toggle change or an effective server-policy mismatch before displaying a misleading preview. Failed timing saves must not synchronize saved-policy state.
 
 Preview callbacks compare the request generation returned by the canonical `post()` helper with the current generation. The helper increments that generation itself: capturing it before calling the helper discards every successful preview. The frontend regression executes the real helper and callback together to cover both successful rendering and rejection after a selection changes during the request.
@@ -549,3 +565,7 @@ automatically converted; local code does not establish deployment.
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.
+
+## DK-35 — Injury withdrawal voids a round-robin player's group results
+
+After a recorded retirement, explicitly confirm a group-scoped withdrawal. Preserve original scores and outcomes as void history, exclude the entrant and all their matches from standings and rating evidence, and preserve frozen progression/publication boundaries. See [round-robin withdrawal](round-robin-withdrawal.md), RoundRobinWithdrawalService, RoundRobinWithdrawalTest and VoidedRoundRobinProgressionTest. Local checks do not authorize deployment or live changes.

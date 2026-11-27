@@ -1,5 +1,29 @@
 (() => {
   'use strict';
+  const workspace = document.getElementById('ctr-planner');
+  if (!workspace) return;
+  let canNavigate = () => true;
+  function showStep(step) {
+    workspace.querySelectorAll('[data-step-panel]').forEach(panel => { panel.hidden = panel.dataset.stepPanel !== String(step); });
+    workspace.querySelectorAll('[data-step-target]').forEach(button => {
+      button.setAttribute('aria-current', button.dataset.stepTarget === String(step) ? 'step' : 'false');
+    });
+    workspace.dataset.activeStep = String(step);
+  }
+  workspace.addEventListener('click', event => {
+    const all = event.target.closest('[data-show-all-steps]');
+    if (all) { workspace.querySelectorAll('[data-step-panel]').forEach(panel => { panel.hidden = false; }); return; }
+    const button = event.target.closest('[data-step-target],[data-step-next]');
+    if (!button || button.disabled) return;
+    const step = Number(button.dataset.stepTarget || button.dataset.stepNext);
+    if (canNavigate(step)) {
+      showStep(step);
+      const heading = workspace.querySelector(`[data-step-panel="${step}"] h2`);
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+      workspace.scrollIntoView({ block: 'start' });
+    }
+  });
+  showStep(Number(workspace.dataset.initialStep));
   const placements = document.getElementById('ctr-placement-form');
   const confirm = document.getElementById('ctr-confirm');
   if (!placements || !confirm) return;
@@ -36,6 +60,16 @@
     confirm.disabled = true;
   };
   const straightGroups = category => (category.dataset.straightGroups || '').split(',').filter(Boolean).map(Number);
+  const hasPendingLayouts = () => categories().some(category => !category.querySelector('[data-exclude-category]').checked
+    && (category.querySelector('[data-custom-layout]').value.trim() || category.querySelector('[data-layout-choice]').selectedIndex > 0));
+  canNavigate = step => {
+    if (step < 3) return true;
+    if (dirty || inFlight || stopped || pauseAutomatic || hasPendingLayouts() || !refresh(false) || (step >= 4 && !savedReady)) {
+      announce('Apply any chosen group sizes, finish the current questions and wait for Saved before continuing.');
+      return false;
+    }
+    return true;
+  };
 
   function sortPlayers(group) {
     const members = players(group);
@@ -61,6 +95,24 @@
     let matches = 0;
     let includedPlayers = 0;
     const reasons = [];
+    const format = placements.querySelector('#ctr-score-format');
+    const duration = placements.querySelector('#ctr-match-duration');
+    const changeover = placements.querySelector('#ctr-changeover');
+    if (format.value && (!duration.value || !duration.checkValidity() || changeover.value === '' || !changeover.checkValidity())) {
+      valid = false; reasons.push('Enter match timing of 1–240 minutes and changeover of 0–60 minutes.');
+    }
+    document.getElementById('ctr-scoring-summary').textContent = format.value
+      ? `${format.options[format.selectedIndex].textContent} · ${duration.value || '?'} minutes + ${changeover.value || '0'} minutes changeover`
+      : 'Choose and save scoring and match timing before creating draws.';
+    const finalFormat = placements.querySelector('#ctr-playoff-score-format');
+    if (finalFormat.value && finalFormat.value !== format.value) document.getElementById('ctr-scoring-summary').textContent += ` · Linked finals: ${finalFormat.options[finalFormat.selectedIndex].textContent}`;
+    const groupSummary = workspace.querySelector('[data-review-group-summary]');
+    groupSummary.replaceChildren(...categories().filter(category => !category.querySelector('[data-exclude-category]').checked).map(category => {
+      const item = document.createElement('li');
+      const sizes = groups(category).map(group => players(group).length).filter(Boolean);
+      item.textContent = `${category.querySelector('h3').textContent.trim()} · ${sizes.join('+')} players · ${sizes.reduce((sum, size) => sum + size * (size - 1) / 2, 0) + (straightGroups(category).length ? 3 : 0)} matches${straightGroups(category).length ? ', including linked finals' : ''}`;
+      return item;
+    }));
     categories().forEach(category => {
       const excluded = category.querySelector('[data-exclude-category]').checked;
       const orderedGroups = groups(category);
@@ -70,6 +122,22 @@
       category.querySelector('[data-category-minimum]')?.toggleAttribute('hidden', excluded);
       category.classList.toggle('is-excluded', excluded);
       category.querySelector('[data-add-group]').disabled = excluded;
+      category.querySelector('[data-apply-layout]').disabled = excluded || dirty || inFlight || stopped || pauseAutomatic || placements.dataset.stale === '1';
+      category.querySelector('[data-layout-choice]').disabled = excluded;
+      category.querySelector('[data-custom-layout]').disabled = excluded;
+      const chosenLayout = category.querySelector('[data-custom-layout]').value.trim() || category.querySelector('[data-layout-choice]').value;
+      const changingLayout = category.querySelector('[data-custom-layout]').value.trim() || category.querySelector('[data-layout-choice]').selectedIndex > 0;
+      if (!excluded && changingLayout) {
+        const sizes = chosenLayout.split(/[,+ ]+/).map(Number);
+        if (sizes.includes(3)) shortage = true;
+        const orderedPlayers = [...category.querySelectorAll('[data-ctr-player]')].sort((a, b) => Number(a.dataset.order) - Number(b.dataset.order));
+        let offset = 0;
+        for (const size of sizes) {
+          if (!Number.isInteger(size) || size < 3 || size > 16) break;
+          if (new Set(orderedPlayers.slice(offset, offset + size).map(player => player.dataset.component).filter(Boolean)).size > 1) mixed = true;
+          offset += size;
+        }
+      }
       let usedStraightGroups = 0;
       const straightComponents = new Set();
       const categoryPlayers = [];
@@ -80,14 +148,15 @@
         const members = players(group);
         const count = members.length;
         const isStraight = straight.includes(Number(group.dataset.groupId));
-        const inRange = count === 0 || (isStraight ? count === 3 : count >= 3 && count <= 5);
+        const inRange = count === 0 || (isStraight ? count === 3 : count >= 3 && count <= 16);
         const shortGroup = !isStraight && count === 3;
+        group.querySelector('[data-large-group-warning]').hidden = excluded || count <= 5;
         group.querySelector('[data-group-count]').textContent = String(count);
         group.querySelector('[data-group-matches]').textContent = String(count * (count - 1) / 2);
         group.querySelector('[data-group-games]').textContent = String(Math.max(0, count - 1) + (isStraight && count ? 1 : 0));
         group.querySelector('[data-remove-group]').hidden = count > 0 || isStraight;
         const warning = group.querySelector('[data-group-warning]');
-        warning.textContent = shortGroup ? '2 matches per player — below the target of three. Review this exception.' : (isStraight ? 'This shared competition needs exactly three players in each group.' : 'Each included group needs 3–5 players.');
+        warning.textContent = shortGroup ? '2 matches per player — below the target of three. Review this exception.' : (isStraight ? 'This shared competition needs exactly three players in each group.' : 'Each included group needs 3–16 players.');
         warning.hidden = excluded || (inRange && !shortGroup);
         group.classList.toggle('is-invalid', !excluded && (!inRange || (shortGroup && !shortfallAck.checked)));
         members.forEach(player => {
@@ -114,7 +183,7 @@
             usedStraightGroups++;
             members.map(player => player.dataset.component).filter(Boolean).forEach(component => straightComponents.add(component));
           } else competitions++;
-          if (!inRange) { valid = false; reasons.push(`${category.querySelector('h3').textContent.trim()}, Group ${group.dataset.groupId}: ${isStraight ? 'exactly three players are needed for the linked finals.' : 'each included group needs three to five players.'}`); }
+          if (!inRange) { valid = false; reasons.push(`${category.querySelector('h3').textContent.trim()}, Group ${group.dataset.groupId}: ${isStraight ? 'exactly three players are needed for the linked finals.' : 'each included group needs 3–16 players.'}`); }
           if (shortGroup) shortage = true;
           const components = new Set(members.map(player => player.dataset.component).filter(Boolean));
           if (components.size > 1) mixed = true;
@@ -143,22 +212,24 @@
     review.textContent = inFlight ? 'Saving…' : (stopped ? 'Reload to continue' : (pauseAutomatic ? 'Retry save' : (dirty ? 'Save now' : 'Saved')));
     if (validation) {
       validation.hidden = valid && (dirty || savedReady);
-      validation.textContent = reasons.length ? [...new Set(reasons)].join(' ') : originalValidation;
+      validation.textContent = reasons.length ? [...new Set(reasons)].join(' ')
+        : (!savedReady && valid ? 'Choose and save scoring and match timing before creating draws.' : originalValidation);
     }
     saveErrorBox.hidden = !saveError;
     saveErrorBox.querySelector('[data-save-error-message]').textContent = saveError;
     let state = 'saved';
-    let message = 'Saved. Confirm and create all draws when you are happy with the plan.';
+    let message = savedReady ? 'Saved. Confirm and create all draws when you are happy with the plan.' : 'Groups saved. Choose and save scoring and match timing before creating draws.';
     if (stopped || pauseAutomatic) { state = 'error'; message = 'Changes not saved. '+saveError; }
     else if (inFlight) { state = 'saving'; message = activeGeneration === generation ? 'Saving changes…' : 'Saving earlier changes. Your latest edits are waiting to save.'; }
     else if (!valid) { state = 'invalid'; message = dirty ? 'Changes not saved. Check the highlighted included groups.' : 'Check the highlighted included groups before creating draws.'; }
     else if (dirty) { state = 'pending'; message = 'Changes will save automatically…'; }
+    else if (hasPendingLayouts()) { state = 'pending'; message = 'Apply your chosen group sizes before continuing. The saved groups are unchanged.'; }
     status.dataset.saveState = state;
     announce(message);
     const totals = !dirty && savedTotals ? savedTotals : { competitions, matches, included_players: includedPlayers, winner_prizes: competitions, sportsmanship_prizes: competitions };
     document.getElementById('ctr-prize-total').textContent = `${totals.winner_prizes} winner prizes + ${totals.sportsmanship_prizes} sportsmanship prizes = ${totals.winner_prizes + totals.sportsmanship_prizes} prizes`;
     document.getElementById('ctr-programme-total').textContent = `${totals.competitions} competitions · ${totals.matches} matches · ${totals.included_players} players included`;
-    confirm.disabled = dirty || inFlight || stopped || pauseAutomatic || !savedReady || !valid;
+    confirm.disabled = dirty || inFlight || stopped || pauseAutomatic || hasPendingLayouts() || !savedReady || !valid;
     confirm.textContent = inFlight ? 'Saving changes…' : (dirty ? 'Waiting for changes to save' : 'Confirm and create all draws');
     if (allowSchedule && valid && dirty && !inFlight && !stopped && !pauseAutomatic && timer === null) {
       timer = setTimeout(() => { timer = null; saveChanges(); }, 400);
@@ -169,7 +240,7 @@
 
   function validReceipt(data) {
     const keys = ['competitions', 'matches', 'included_players', 'winner_prizes', 'sportsmanship_prizes'];
-    return data && data.saved === true && data.ready === true && data.token === token && data.event_id === Number(placements.dataset.eventId)
+    return data && data.saved === true && typeof data.ready === 'boolean' && data.token === token && data.event_id === Number(placements.dataset.eventId)
       && typeof data.revision === 'string' && /^[a-f0-9]{64}$/.test(data.revision)
       && Array.isArray(data.excluded_category_ids) && data.excluded_category_ids.every(Number.isInteger)
       && data.totals && keys.every(key => Number.isInteger(data.totals[key]) && data.totals[key] >= 0)
@@ -264,8 +335,10 @@
     if (event.target.matches('[data-placement]')) {
       const category = event.target.closest('[data-ctr-category]');
       move(event.target.closest('[data-ctr-player]'), groups(category).find(group => group.dataset.groupId === event.target.value));
-    } else if (event.target.matches('[data-exclude-category],[data-manual-ack],[data-shortfall-ack]')) {
+    } else if (event.target.matches('[data-exclude-category],[data-manual-ack],[data-shortfall-ack],[data-scoring-input]')) {
       markDirty(); refresh();
+    } else if (event.target.matches('[data-layout-choice],[data-custom-layout]')) {
+      refresh(false);
     }
   });
   placements.addEventListener('click', event => {
@@ -332,11 +405,15 @@
     dragged = null;
   });
   placements.addEventListener('submit', event => {
+    if (event.submitter?.matches('[data-apply-layout]')) {
+      if (dirty || inFlight || stopped || pauseAutomatic || placements.dataset.stale === '1') event.preventDefault();
+      return;
+    }
     event.preventDefault();
     saveChanges();
   });
   confirmForm.addEventListener('submit', event => {
-    if (dirty || inFlight || stopped || pauseAutomatic || !savedReady || !refresh(false)) { event.preventDefault(); status.scrollIntoView({ block: 'center' }); }
+    if (dirty || inFlight || stopped || pauseAutomatic || hasPendingLayouts() || !savedReady || !refresh(false)) { event.preventDefault(); status.scrollIntoView({ block: 'center' }); }
   });
   refresh();
 })();

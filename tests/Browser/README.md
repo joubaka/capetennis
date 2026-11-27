@@ -25,15 +25,18 @@ Export fictional full-page states from `CtrDrawPlannerTest` with
 `ct_testing` or isolated SQLite `:memory:`),
 then run `node tests/Browser/ctr-planner.cjs` using Node 24 and Playwright on
 `NODE_PATH`. The harness reads `storage/app/testing/ctr-planner/` and serves only
-those exports and local static assets. The full exporter produces thirteen states:
+those exports and local static assets. The full exporter now includes these states:
 initial, preview, shortfall, unrated, mixed, blocked, excluded2, six, ten, twenty,
-categories, sparse and created. At 360, 390, 768 and 1440 pixels this gives 52
-state/width checks; four Move/native-drag/boundary/exact-POST sequences plus a
-cross-category rejection give 57 checks. Paired exclusion exports and a canonical
+categories, sparse, created, large, splits, scoring and scheduled-next. At 360,
+390, 768 and 1440 pixels the harness also walks the actual Next/Back steps,
+rejects invalid scoring timing, waits for a saved revision and captures exact
+category split/custom-size submissions while preserving all source players.
+Move/native-drag/boundary/exact-POST sequences and a cross-category rejection
+remain covered. Paired exclusion exports and a canonical
 JSON receipt add four in-place AJAX exclusion/save/confirm flows, two delayed-reply
 queue races and eight failure/recovery checks. Three additional checks cover
-401, 429 and timeout followed by a late acknowledgement: 74 distinct checks in
-total. Saves preserve the current page, focus and scroll; creation enables only
+401, 429 and timeout followed by a late acknowledgement. Report the current
+harness count separately from older baseline runs. Saves preserve the current page, focus and scroll; creation enables only
 after the latest valid board receives its saved revision. The backend tests verify
 real JSON review persistence, explicit creation and the normal form-redirect
 fallback; browser responses remain locally intercepted. The harness also verifies numeric group ordering,

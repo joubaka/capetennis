@@ -1,6 +1,10 @@
 #ctr-planner{max-width:1180px;margin:auto;color:#243e50;overflow-wrap:anywhere}
 #ctr-planner .btn,#ctr-planner .form-select{min-height:44px}
 #ctr-planner .card{min-width:0}
+.ctr-steps{display:flex;gap:.5rem;flex-wrap:wrap}
+.ctr-steps [aria-current="step"]{background:#004177;color:white}
+#ctr-planner [data-step-panel]{scroll-margin-top:6rem}
+@media(max-width:575px){.ctr-steps{display:grid;grid-template-columns:1fr}.ctr-steps .btn{text-align:left}#ctr-planner input.form-control{min-height:44px}}
 #ctr-planner [data-six-description]{color:#17495d;background:#e9f5fb;border-color:#b6d6e6}
 #ctr-planner [hidden]{display:none!important}
 .ctr-category-board{margin:1.5rem 0 2rem}
