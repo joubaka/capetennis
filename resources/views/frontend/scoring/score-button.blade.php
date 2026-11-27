@@ -16,7 +16,7 @@
                       data-revision="{{ $draw->flexibleMonrad?->revision ?? 0 }}"
                       data-score-format="{{ $effectiveScoreFormat ?? '' }}" data-stage="{{ $isTeamFixture ? '' : $match->stage }}"
                       data-set-types='@json($scoreSetTypes)'
-                      data-requires-winner="{{ !$isTeamFixture && ($effectiveScoreFormat === 'best_of_3_full_start_2' || $match->stage !== 'RR' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) ? '1' : '0' }}"
+                      data-requires-winner="{{ !$isTeamFixture && (in_array($effectiveScoreFormat,['best_of_3_full_start_2','best_of_3_start_2_match_tiebreak'],true) || $match->stage !== 'RR' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) ? '1' : '0' }}"
                       data-home-registration="{{ $isTeamFixture ? '' : $match->registration1_id }}" data-away-registration="{{ $isTeamFixture ? '' : $match->registration2_id }}"
                       data-deciding-winner="{{ $isTimed && $hasScore ? ($winnerRegistration ?? '') : '' }}"
                       data-walkover-winner="{{ $isWalkover ? $match->winner_registration : '' }}"

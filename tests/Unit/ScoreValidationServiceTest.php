@@ -11,6 +11,38 @@ use PHPUnit\Framework\TestCase;
 
 class ScoreValidationServiceTest extends TestCase
 {
+    public function test_start_at_two_with_deciding_tiebreak_requires_split_sets_and_terminal_points(): void
+    {
+        $validator=new ScoreValidationService();
+        $fixture=$this->fixtureFor(TennisScoreFormat::BEST_OF_3_START_2_MATCH_TIEBREAK);
+        $fixture->stage='RR';
+        foreach ([[10,0],[10,8],[12,10],[20,18],[999,997]] as $points) {
+            foreach ([$points,array_reverse($points)] as $third) $this->assertTrue($validator->validate($fixture,[[6,2],[3,6],$third])['valid']);
+        }
+        foreach ([[10,9],[11,8],[12,5],[20,10],[7,6],[1000,998],[9,7]] as $third)
+            $this->assertFalse($validator->validate($fixture,[[6,2],[3,6],$third])['valid']);
+        foreach ([[[6,2],[6,3],[10,8]],[[6,2],[3,6]],[[6,0],[6,2]],[[2,2],[6,3]]] as $sets)
+            $this->assertFalse($validator->validate($fixture,$sets)['valid']);
+        $this->assertTrue($validator->validate($fixture,[[6,2],[6,3]])['valid']);
+        $this->assertTrue($validator->validateRetirement($fixture,[[6,2],[3,6],[0,0]])['valid']);
+        $this->assertTrue($validator->validateRetirement($fixture,[[6,2],[3,6],[10,9]])['valid']);
+        $this->assertFalse($validator->validateRetirement($fixture,[[6,2],[3,6],[11,8]])['valid']);
+        $this->assertFalse($validator->validateRetirement($fixture,[[6,2],[3,6],[12,10]])['valid']);
+        $full=$this->fixtureFor(TennisScoreFormat::BEST_OF_3_FULL_START_2);
+        $this->assertFalse($validator->validate($full,[[6,2],[3,6],[12,10]])['valid']);
+        $normal=$this->fixtureFor(TennisScoreFormat::BEST_OF_3_MATCH_TIEBREAK); $normal->stage='MAIN';
+        $this->assertFalse($validator->validate($normal,[[6,0],[0,6],[11,8]])['valid']);
+        $this->assertTrue($validator->validate($normal,[[6,0],[0,6],[12,10]])['valid']);
+        $full->draw->settings->workflow='round_robin_playoffs';
+        $full->draw->settings->playoff_score_format=TennisScoreFormat::BEST_OF_3_START_2_MATCH_TIEBREAK;
+        foreach (['MAIN','PLATE','CONS','CHALLENGE'] as $stage) {
+            $full->stage=$stage;
+            $this->assertTrue($validator->validate($full,[[6,2],[3,6],[12,10]])['valid'],$stage);
+            $this->assertTrue($validator->validateRetirement($full,[[6,2],[3,6],[0,0]])['valid'],$stage);
+        }
+        $full->stage='RR';$this->assertFalse($validator->validate($full,[[6,2],[3,6],[12,10]])['valid']);
+    }
+
     public function test_retirement_keeps_zero_tied_and_partial_scores_but_rejects_impossible_or_finished_matches(): void
     {
         $validator = new ScoreValidationService();

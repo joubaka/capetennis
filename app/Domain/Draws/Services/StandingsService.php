@@ -187,11 +187,24 @@ final class StandingsService
     private function tallyFixture($fx): array
     {
         $homeSets = $awaySets = $homeGames = $awayGames = 0;
+        // This explicit format opts into the tournament's one-game decider rule.
+        // Existing formats retain their historical totals until deliberately changed.
+        $oneGameDecider = $fx->draw?->settings?->scoreFormatForStage($fx->stage)
+            === TennisScoreFormat::BEST_OF_3_START_2_MATCH_TIEBREAK;
         foreach ($fx->fixtureResults as $set) {
             $s1 = (int) $set->registration1_score;
             $s2 = (int) $set->registration2_score;
-            $homeGames += $s1;
-            $awayGames += $s2;
+            if ($oneGameDecider && (int) $set->set_nr === 3) {
+                // Unfinished retirement points are not completed games. Keep the
+                // original points in fixture_results for the displayed score.
+                if (app(ScoreValidationService::class)->retirementSetComplete($fx, 2, $s1, $s2, $fx->fixtureResults->count())) {
+                    $homeGames += (int) ($s1 > $s2);
+                    $awayGames += (int) ($s2 > $s1);
+                }
+            } else {
+                $homeGames += $s1;
+                $awayGames += $s2;
+            }
             if ($fx->isRetired() && !$set->winner_registration) continue;
             if ($s1 > $s2) {
                 $homeSets++;

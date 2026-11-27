@@ -56,6 +56,25 @@ publish times, and unsupported unresolved formats retain their existing guard.
 
 ## Best of three starting at 2–2
 
+For two full sets from 2–2 followed by a deciding match tiebreak, select
+**Two full sets from 2–2 · deciding 10-point tiebreak** separately for
+**Round-robin scoring** and **Playoff scoring**. The latter covers every
+championship, lower-bracket, placement and optional challenge fixture.
+The key is `best_of_3_start_2_match_tiebreak`. Enter actual third-set points:
+10–8, 11–9 or 12–10 are valid; 10–9 is unfinished. Extended tiebreaks must finish
+with exactly a two-point margin. The first two sets include their starting games.
+In round-robin standings the completed decider counts as one set and one game,
+while its actual points remain visible.
+
+Already-scored Interpro draws use the separate reviewed scoring-correction
+workflow, not an ordinary settings override. It checks every existing result,
+requires explicit actual deciding points where incompatible, retains the first
+two set rows, checks stale state and winner changes, and protects confirmed
+qualification, downstream play, bookings and publication. Never infer tiebreak
+points from a stored 7–6 full-set result. See
+`InterproMatchTiebreakCorrectionTest` and `RoundRobinMatchTiebreakStandingsTest`.
+This guide establishes local behavior, not deployment or live mutation authority.
+
 Choose **Best of 3 full sets · start at 2–2** separately in **Round-robin scoring**
 and **Playoff scoring** when both stages use those tournament rules. The selections
 may differ. This stores `best_of_3_full_start_2` in `score_format` and

@@ -316,6 +316,11 @@
       </div>
       @include('backend.draw.roundrobin.odd-tail-option')
       @include('backend.draw.roundrobin.interpro-challenge-settings')
+      @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+        @can('correctRoundRobinScoring',$draw)
+          <p><a href="{{ route('draw.interpro-scoring-correction.show',$draw) }}">Review two sets from 2–2 with a deciding 10-point tiebreak</a></p>
+        @endcan
+      @endif
       <form id="drawSettingsForm">
       @csrf
       {{-- BASIC SETTINGS --}}
@@ -1064,7 +1069,7 @@
           {{ optional($draw->settings)->score_format
             ? \App\Domain\Draws\Services\TennisScoreFormat::rules($draw->settings->score_format)
             : 'Enter scores within the configured set limit.' }}
-          @if($selectedScoreFormat === 'best_of_3_full_start_2' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+          @if(in_array($selectedScoreFormat,['best_of_3_full_start_2','best_of_3_start_2_match_tiebreak'],true) || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
             Every played match requires a winner. Finish the deciding set when sets are level.
           @else
             Round-robin draws such as 3–3 or 5–5 are allowed: 1 point each (win 2, loss 0). Playoffs require a winner.
@@ -1192,7 +1197,7 @@
       $format=$key ? (\App\Domain\Draws\Services\TennisScoreFormat::catalog()[$key] ?? null) : null;
       return [$stage => ['key'=>$key,'maxSets'=>$draw->settings?->numSetsForStage($stage) ?? 3,'setTypes'=>$format['set_types'] ?? [],
         'guidance'=>($format['rules'] ?? 'Enter scores within the configured set limit.').
-          (($key === 'best_of_3_full_start_2' || $stage !== 'RR' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) ? ' Every played match requires a winner.' : ' Round-robin draws are allowed: win 2 points, draw 1, loss 0.')]];
+          ((in_array($key,['best_of_3_full_start_2','best_of_3_start_2_match_tiebreak'],true) || $stage !== 'RR' || \App\Services\Draw\InterproRoundRobinFormat::selected($draw)) ? ' Every played match requires a winner.' : ' Round-robin draws are allowed: win 2 points, draw 1, loss 0.')]];
     });
     @endphp
     window.RR_SCORE_CONTEXTS = @json($stageScoreContexts);

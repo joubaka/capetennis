@@ -2,6 +2,22 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const grid = require('../../public/js/set-score-grid.js');
 
+test('extended deciding match tiebreaks suggest and validate both winners without a game-score cap',()=>{
+  const types=['full_start_2','full_start_2','match_tiebreak'];
+  for(const [loser,winner] of [[8,10],[10,12],[18,20],[997,999]]) {
+    assert.equal(grid.opponentScore('match_tiebreak',String(loser)),winner);
+    for(const third of [[winner,loser],[loser,winner]]) assert.doesNotThrow(()=>grid.validateCompleted([[6,2],[3,6],third],types));
+  }
+  assert.equal(grid.opponentScore('match_tiebreak','998'),null);
+  for(const third of [[10,9],[11,8],[7,6],[1000,998]]) assert.throws(()=>grid.validateCompleted([[6,2],[3,6],third],types));
+  assert.throws(()=>grid.validateCompleted([[6,2],[6,3],[12,10]],types));
+  assert.throws(()=>grid.validateCompleted([[6,2],[3,6]],types));
+  const root=fixture(); grid.populate(root,{names:['A','B'],maxSets:3,setTypes:types,scores:[[6,2],[3,6],[12,10]]});
+  assert.deepEqual(grid.read(root),[[6,2],[3,6],[12,10]]);
+  grid.populate(root,{names:['A','B'],maxSets:3,setTypes:types,scores:[[6,2],[3,6],[0,0]]});
+  grid.setCompletionEnabled(root,false); assert.deepEqual(grid.read(root),[[6,2],[3,6],[0,0]]);
+});
+
 test('two-all full sets enforce completed best-of-three results and preserve retirement input', () => {
   const types=['full_start_2','full_start_2','full_start_2'];
   assert.equal(grid.opponentScore('full_start_2','0'),null);
@@ -45,7 +61,7 @@ test('format completion suggests a winning opponent and leaves unsupported score
   for (const type of ['full', 'pro8', 'target3', 'target4', 'target5', 'target6', 'match_tiebreak']) {
     const target = type === 'full' ? 6 : type === 'pro8' ? 8 : type === 'match_tiebreak' ? 10 : Number(type.slice(6));
     assert.equal(grid.opponentScore(type, '0'), target);
-    assert.equal(grid.opponentScore(type, String(target)), ['full', 'pro8'].includes(type) ? target + 1 : null);
+    assert.equal(grid.opponentScore(type, String(target)), type === 'match_tiebreak' ? 12 : (['full', 'pro8'].includes(type) ? target + 1 : null));
   }
   assert.equal(grid.opponentScore('full', '4'), 6);
   assert.equal(grid.opponentScore('full', '5'), 7);
@@ -87,8 +103,8 @@ test('completion works from either side and preserves manual, loaded and manuall
   assert.equal(root.rows[1].inputs[0].value, '6');
   root.type(2, 0, '2');
   assert.equal(root.rows[2].inputs[1].value, '10');
-  root.type(2, 0, '20'); // multi-digit input must remove stale suggestion
-  assert.equal(root.rows[2].inputs[1].value, '');
+  root.type(2, 0, '20'); // extended losing points update the winning suggestion
+  assert.equal(root.rows[2].inputs[1].value, '22');
   root.type(2, 0, '');
   assert.equal(root.rows[2].inputs[1].value, '');
 });

@@ -15,6 +15,13 @@ all matches in the group, not only a mini-league between the tied players. Score
 starting at two-all include those starting games. Keep the existing 0.0001 ratio
 tolerance; displayed rounded percentages are not used for comparison.
 
+For the explicitly selected `best_of_3_start_2_match_tiebreak` preset, a completed
+third-set match tiebreak counts as one won set and one game (1–0), regardless of
+the actual points. Keep those actual points displayed and stored. An unfinished
+retirement tiebreak contributes no games or completed set. This is the user's
+explicit Interpro decision; other historical presets retain their existing
+game totals. Regression: `RoundRobinMatchTiebreakStandingsTest`.
+
 If exactly two players remain equal on both percentages within a larger points
 cohort, their decisive head-to-head can separate them. A completely equal group
 of three or more remains unresolved. Never apply pairwise head-to-head around a

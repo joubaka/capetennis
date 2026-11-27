@@ -170,7 +170,7 @@
     }
 
     if (err) return null;
-    try { if ((root.RR_SCORE_SET_TYPES || []).indexOf('full_start_2') !== -1) root.CTSetScoreGrid.validateCompleted(sets.map(function (set) { return set.split('-').map(Number); }), root.RR_SCORE_SET_TYPES); }
+    try { if ((root.RR_SCORE_SET_TYPES || []).some(function (type) { return type === 'full_start_2' || type === 'match_tiebreak'; })) root.CTSetScoreGrid.validateCompleted(sets.map(function (set) { return set.split('-').map(Number); }), root.RR_SCORE_SET_TYPES); }
     catch (failure) { AdminToast.error(failure.message); return null; }
     return sets;
   }

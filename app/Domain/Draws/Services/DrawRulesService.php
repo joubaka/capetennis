@@ -40,7 +40,7 @@ final class DrawRulesService
         if ($roundRobin) {
             $add('round_robin', 'Round Robin scoring rules', ($timed ? 'Players play the other players in their group for the saved match duration. Most games wins; equal games are a draw. ' : 'Players play the other players in their group. Equal scores are allowed and share the match points. ').'Standings award 2 points for a win, 1 for a draw and 0 for a loss. '.$tieRules);
         }
-        if ($roundRobin && ($format === TennisScoreFormat::BEST_OF_3_FULL_START_2 || (! $timed && \App\Services\Draw\InterproRoundRobinFormat::selected($draw)))) {
+        if ($roundRobin && (in_array($format,[TennisScoreFormat::BEST_OF_3_FULL_START_2,TennisScoreFormat::BEST_OF_3_START_2_MATCH_TIEBREAK],true) || (! $timed && \App\Services\Draw\InterproRoundRobinFormat::selected($draw)))) {
             $last=array_key_last($sections);
             $sections[$last]['rules']='Players play the other players in their group. Every played match requires a winner. Standings award 2 points for a win and 0 for a loss. '.$tieRules.' '.($format ? TennisScoreFormat::rules($format) : 'Select an explicit round-robin scoring format before play.');
         }

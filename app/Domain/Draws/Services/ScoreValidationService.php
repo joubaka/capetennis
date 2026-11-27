@@ -150,7 +150,7 @@ final class ScoreValidationService
         $format = TennisScoreFormat::get($key);
         // This opt-in competition format always requires a match winner,
         // including in a stand-alone round robin.
-        if ($key === TennisScoreFormat::BEST_OF_3_FULL_START_2) $roundRobin = false;
+        if (in_array($key,[TennisScoreFormat::BEST_OF_3_FULL_START_2,TennisScoreFormat::BEST_OF_3_START_2_MATCH_TIEBREAK],true)) $roundRobin = false;
         if ($sets === [] || count($sets) > $format['max_sets']) {
             return $this->failure("{$format['label']} allows at most {$format['max_sets']} completed set(s).");
         }
@@ -209,8 +209,8 @@ final class ScoreValidationService
                 ? null : 'Enter a completed full set: 6-0 to 6-4, 7-5 or 7-6.',
             'pro8' => (($high === 8 && $low <= 6) || ($high === 9 && in_array($low, [7, 8], true)))
                 ? null : 'Enter a completed pro set: 8-0 to 8-6, 9-7 or 9-8.',
-            'match_tiebreak' => $high >= 10 && $high - $low >= 2
-                ? null : 'A match tiebreak must reach 10 points and be won by 2.',
+            'match_tiebreak' => $high <= 999 && (($high === 10 && $low <= 8) || ($high > 10 && $high - $low === 2))
+                ? null : 'A match tiebreak finishes at 10–0 through 10–8, or by exactly 2 points after 10 (12–10, etc.). Maximum 999 points.',
             'custom' => $high <= 999 ? null : 'Custom scores cannot exceed 999.',
             default => 'The selected scoring format is not supported.',
         };

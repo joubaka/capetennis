@@ -24,6 +24,7 @@ final class TennisScoreFormat
     public const MATCH_TIEBREAK_10 = 'match_tiebreak_10';
     public const BEST_OF_3_FULL = 'best_of_3_full';
     public const BEST_OF_3_FULL_START_2 = 'best_of_3_full_start_2';
+    public const BEST_OF_3_START_2_MATCH_TIEBREAK = 'best_of_3_start_2_match_tiebreak';
     public const BEST_OF_3_MATCH_TIEBREAK = 'best_of_3_match_tiebreak';
     public const BEST_OF_5_FULL = 'best_of_5_full';
     public const CUSTOM_1 = 'custom_1';
@@ -104,6 +105,13 @@ final class TennisScoreFormat
                 'max_sets' => 3, 'wins_needed' => 2,
                 'set_types' => ['full_start_2', 'full_start_2', 'full_start_2'],
                 'rules' => 'Best of 3 full sets, each starting at 2–2. Record final totals including the starting games (6–2, not 4–0). Win 2 sets; tiebreak at 6-all. No drawn or unfinished played results. Use retirement or walkover separately when applicable.',
+            ],
+            self::BEST_OF_3_START_2_MATCH_TIEBREAK => [
+                'label' => 'Two full sets from 2–2 · deciding 10-point tiebreak',
+                'description' => 'First two sets start at 2-all; at one set all play a 10-point match tiebreak from 0–0, win by 2.',
+                'max_sets' => 3, 'wins_needed' => 2,
+                'set_types' => ['full_start_2', 'full_start_2', 'match_tiebreak'],
+                'rules' => 'Play two full sets starting at 2–2; record final game totals including those starting games. At one set all, play a 10-point match tiebreak starting at 0–0, won by 2 (10–8, 12–10, etc.; enter points, not 7–6). Stop at two set wins; no deciding tiebreak after a straight-sets win. For standings the deciding tiebreak counts as one set and one game; actual points are retained. Use retirement or walkover separately.',
             ],
             self::BEST_OF_3_TO_3 => [
                 'label' => 'Best of 3 sets · first to 3 games',
