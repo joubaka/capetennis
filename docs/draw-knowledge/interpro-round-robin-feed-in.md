@@ -250,8 +250,14 @@ Use the actual Flexible Monrad HTML/CSS and shared `TennisBracketLayout` layout
 and DOM factories, not a separately styled SVG imitation. Both renderers use
 220-pixel matches, 260-pixel columns, 32-pixel slots and 64-pixel line spacing.
 Player slots are 13px, match labels 10px and schedule labels 9px. Known players
-use content-sized identity chips with source details only in the slot tooltip;
-unknown winner/loser entries use the actual 9px feeder chip. The shared surface
+use content-sized identity chips with source details only in the slot tooltip.
+An LL suffix appears as ` (LL)` inside the same name chip and stays visible when
+a long name is shortened. Scheduled matches reserve a centred 30px metadata lane:
+10px for the match number and two 10px schedule rows, keeping the native 32px
+slots and 64px line gap. The first row retains date/time, visibility status and
+court; the venue occupies the second row with ellipsis for long names. The full
+original date, venue and court remain in the schedule title and aria-label.
+Unknown winner/loser entries use the actual 9px feeder chip. The shared surface
 explicitly retains normal line height when embedded in another layout.
 Carried set columns come only from the validated
 original result, reversed into the target slot orientation; invalid references

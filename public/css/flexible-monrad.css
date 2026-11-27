@@ -283,21 +283,55 @@
 }
 :where(.fm-surface) .fm-match-schedule {
   position: absolute;
-  top: calc(50% + 7px);
+  top: calc(50% - 5px);
+  left: 6px;
   right: 6px;
   z-index: 3;
   max-width: calc(100% - 12px);
-  padding-left: 4px;
+  height: 20px;
   overflow: hidden;
   color: #176448;
   background: #fff;
   font-size: 9px;
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 10px;
   pointer-events: auto;
   text-align: right;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+}
+:where(.fm-surface) .fm-match-has-schedule .fm-match-head {
+  top: calc(50% - 15px);
+  transform: none;
+  padding: 0;
+  height: 10px;
+  line-height: 10px;
+}
+:where(.fm-surface) .fm-schedule-line {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  height: 10px;
+  line-height: 10px;
+}
+:where(.fm-surface) .fm-schedule-when,
+:where(.fm-surface) .fm-schedule-venue {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 10px;
+}
+:where(.fm-surface) .fm-schedule-court {
+  flex: 0 0 auto;
+}
+:where(.fm-surface) .fm-player-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:where(.fm-surface) .fm-player-ll {
+  flex: 0 0 auto;
+  white-space: pre;
 }
 :where(.fm-surface) .fm-slot {
   position: absolute;

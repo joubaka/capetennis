@@ -392,7 +392,8 @@
     const parts = scheduleParts(schedule);
     if (!parts.date) return '';
     const preview = schedule.preview === true ? ' (Preview)' : '';
-    return [(parts.time ? `${parts.date} ${parts.time}` : parts.date) + preview, includeVenue ? schedule.venue : null, !config.readOnly && schedule.court ? `Court ${schedule.court}` : null]
+    const court = String(schedule.court || '').trim();
+    return [(parts.time ? `${parts.date} ${parts.time}` : parts.date) + preview, includeVenue ? schedule.venue : null, !config.readOnly && court ? (/^court\b/i.test(court) ? court : `Court ${court}`) : null]
       .filter(Boolean).join(' · ');
   }
   function matchParticipantLabel(match, slot) {
@@ -474,9 +475,11 @@
             card.append(line);
           });
           if (match.schedule?.time) {
-            const schedule = el('div', 'fm-match-schedule', scheduleLabel(match.schedule, true));
-            schedule.title = scheduleLabel(match.schedule, true);
-            schedule.setAttribute('aria-label', `Scheduled ${scheduleLabel(match.schedule, true)}`);
+            const parts = scheduleParts(match.schedule);
+            const schedule = bracketLayout.createSchedule({ label: `Scheduled ${scheduleLabel(match.schedule, true)}`,
+              when: [parts.date.replace(/\s\d{4}\b/, ''), parts.time, match.schedule.preview === true ? '(Preview)' : ''].filter(Boolean).join(' '),
+              venue: match.schedule.venue, court: !config.readOnly ? match.schedule.court : null });
+            card.classList.add('fm-match-has-schedule');
             card.append(schedule);
           }
           if (match.displayOnly) {

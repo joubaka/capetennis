@@ -22,6 +22,27 @@
     slot.style.top = top + 'px';
     return slot;
   }
+  function createSchedule({ label, when, venue, court, className = '' }, doc = root.document) {
+    const schedule = doc.createElement('div');
+    schedule.className = 'fm-match-schedule' + (className ? ' ' + className : '');
+    schedule.title = label;
+    schedule.setAttribute('aria-label', label);
+    const line = doc.createElement('div'), date = doc.createElement('span'), place = doc.createElement('span');
+    line.className = 'fm-schedule-line';
+    date.className = 'fm-schedule-when';
+    date.textContent = when;
+    line.append(date);
+    if (court) {
+      const courtName = doc.createElement('span');
+      courtName.className = 'fm-schedule-court';
+      courtName.textContent = /^court\b/i.test(String(court)) ? String(court) : 'Court ' + court;
+      line.append(courtName);
+    }
+    place.className = 'fm-schedule-venue';
+    place.textContent = venue || '';
+    schedule.append(line, place);
+    return schedule;
+  }
   function createLinks(positions, lines, width, height, doc = root.document) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = doc.createElementNS(ns, 'svg');
@@ -235,7 +256,7 @@
   // Keep crispEdges at exactly one device pixel, including fractional browser zoom.
   // A 1 CSS-pixel stroke at e.g. 125% can otherwise rasterise into two columns.
   const strokeWidth = ratio => 1 / (Number.isFinite(ratio) && ratio > 0 ? ratio : 1);
-  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes, withFeedInByes, createMatch, createSlot, createLinks, createEndpoint };
+  const api = { dimensions, layout, linePath, terminalWinnerKeys, strokeWidth, withMainDrawByes, withFeedInByes, createMatch, createSlot, createSchedule, createLinks, createEndpoint };
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.TennisBracketLayout = api;
 })(typeof window === 'undefined' ? globalThis : window);

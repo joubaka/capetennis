@@ -14,6 +14,71 @@ function localFile(url) {
   const asset = path.resolve(publicRoot, '.' + assetPath);
   return asset.startsWith(publicRoot + path.sep) && fs.existsSync(asset) && fs.statSync(asset).isFile() ? asset : null;
 }
+async function checkIdentityAndScheduleGeometry(page) {
+  const fixturePath=path.join(output,'labels.html');
+  const currentStyles=fs.readFileSync(path.join(root,'resources/views/backend/draw/roundrobin/interpro-feed-in.blade.php'),'utf8').match(/<style>([\s\S]*?)<\/style>/)[1];
+  const template=fs.readFileSync(path.join(output,'carry.html'),'utf8').replace('</head>','<style>'+currentStyles+'</style></head>');
+  const payload=JSON.parse(template.match(/<script[^>]*data-interpro-payload[^>]*>([\s\S]*?)<\/script>/)[1]);
+  for(const [index,match] of Object.values(payload.matches).entries()) {
+    match.players=[0,1].map(slot=>({id:match.number*10+slot,name:'Fictional Exceptionally Long Double-Surname Player '+slot}));
+    if(match.number===3002 || match.number===2003) Object.assign(match.players[1],{name:'Fictional Exceptionally Long Double-Surname Player (LL)',lucky_loser:true});
+    match.winner=match.players[1].id;
+    match.sets=[[6,2],[3,6],[8,10]];
+    match.can_lucky_loser=true;
+    match.fixture_id=match.number+100000;
+    match.schedule={time:'2026-11-28 08:00:00',venue:'Fictional Hoër Meisieskool Tennis Campus and Extended Northern Practice Grounds',court:index%2?'Court 10':'3',preview:index%2===0};
+  }
+  fs.writeFileSync(fixturePath,template.replace(/(<script[^>]*data-interpro-payload[^>]*>)[\s\S]*?(<\/script>)/,(_,start,end)=>start+JSON.stringify(payload)+end));
+  const report=[];
+  for(const surface of ['backend','public','print']) for(const width of [360,390,1280,1440]) {
+    await page.emulateMedia({media:surface==='print'?'print':'screen'});
+    await page.setViewportSize({width,height:1000});
+    await page.goto('http://localhost/labels.html',{waitUntil:'networkidle'});
+    await page.waitForSelector('ct-interpro-bracket[data-rendered="true"]');
+    if(surface==='public') {
+      await page.locator('link[href$="draw-workspace.css"]').evaluateAll(links=>links.forEach(link=>link.remove()));
+      await page.addStyleTag({content:fs.readFileSync(path.join(publicRoot,'css/public-draw.css'),'utf8')});
+    }
+    for(const zoom of [0.8,1,1.15,1.4]) {
+      await page.locator('ct-interpro-bracket').evaluate((host,zoom)=>{host.style.zoom=zoom;},zoom);
+      const errors=await page.locator('.fm-match').evaluateAll(cards=>{
+        const failures=[];
+        const overlaps=(a,b)=>a.left<b.right-.05 && b.left<a.right-.05 && a.top<b.bottom-.05 && b.top<a.bottom-.05;
+        for(const card of cards) {
+          const head=card.querySelector('.fm-match-head'), schedule=card.querySelector('.fm-match-schedule');
+          const rows=[...card.querySelectorAll('.fm-slot')];
+          for(const row of rows) {
+            for(const metadata of [head,schedule]) if(overlaps(metadata.getBoundingClientRect(),row.getBoundingClientRect())) failures.push(card.dataset.match+': metadata overlaps player row');
+            const name=row.querySelector('.fm-slot-name'),score=row.querySelector('strong');
+            if(name && score && overlaps(name.getBoundingClientRect(),score.getBoundingClientRect())) failures.push(card.dataset.match+': name overlaps scores');
+            const suffix=row.querySelector('.fm-player-ll');
+            if(suffix && !name.contains(suffix)) failures.push(card.dataset.match+': LL suffix outside identity');
+            if(suffix && suffix.getBoundingClientRect().right>name.getBoundingClientRect().right+.1) failures.push(card.dataset.match+': LL suffix clipped');
+          }
+          if(overlaps(head.getBoundingClientRect(),schedule.getBoundingClientRect())) failures.push(card.dataset.match+': heading overlaps schedule');
+          const court=schedule.querySelector('.fm-schedule-court');
+          if(court.textContent.includes('Court Court')) failures.push(card.dataset.match+': repeated Court prefix');
+          if(court.getBoundingClientRect().right>schedule.getBoundingClientRect().right+.1) failures.push(card.dataset.match+': court clipped');
+          if(schedule.title!==schedule.getAttribute('aria-label') || !schedule.title.includes('2026')) failures.push(card.dataset.match+': missing full accessible schedule');
+          if(getComputedStyle(schedule).lineHeight!=='10px') failures.push(card.dataset.match+': unexpected schedule line height');
+          if(schedule.classList.contains('is-preview') && getComputedStyle(schedule).color!=='rgb(180, 83, 9)') failures.push(card.dataset.match+': preview colour changed');
+          if(schedule.classList.contains('is-published') && getComputedStyle(schedule).color!=='rgb(23, 100, 72)') failures.push(card.dataset.match+': published colour changed');
+        }
+        return failures;
+      });
+      assert.deepEqual(errors,[],`${surface}/${width}/${zoom}: metadata stays clear of all names and scores`);
+      const identity=page.locator('[data-match="3002"] .fm-slot-name').nth(1);
+      assert.equal(await identity.textContent(),'Fictional Exceptionally Long Double-Surname Player (LL)');
+      assert.equal(await page.locator('[data-match="3002"] .fm-slot .badge').count(),0);
+      assert.equal(await identity.getAttribute('role'),'button');
+      assert.equal(await identity.getAttribute('data-ll-registration'),String(3002*10+1));
+      report.push({surface,width,zoom,matches:18,clear:true});
+    }
+    if(width===390 || width===1280) await page.screenshot({path:path.join(output,`labels-${surface}-${width}.png`),fullPage:true});
+  }
+  fs.writeFileSync(path.join(output,'label-geometry-checks.json'),JSON.stringify(report,null,2));
+  console.log(JSON.stringify({labelGeometryChecks:report.length,fixture:fixturePath}));
+}
 if (process.argv.includes('--serve')) {
   require('node:http').createServer((req, res) => {
     if (req.method !== 'GET') { res.writeHead(405); return res.end(); }
@@ -65,7 +130,7 @@ if (process.argv.includes('--serve')) {
       }
     }
     const { chromium } = require('playwright');
-    const browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const browser = await chromium.launch({ ...(process.env.CT_BROWSER_EXECUTABLE ? {executablePath:process.env.CT_BROWSER_EXECUTABLE} : {channel:'msedge'}), headless: true });
     const report = [];
     let interproMetrics;
     const typography = () => {
@@ -86,6 +151,7 @@ if (process.argv.includes('--serve')) {
         if (!file && ['stylesheet', 'script', 'font'].includes(request.resourceType())) missingAssets.add(url.pathname);
         return file ? route.fulfill({ path: file, contentType: mime(file) }) : route.abort();
       });
+      if(process.argv.includes('--labels-only')) { await checkIdentityAndScheduleGeometry(page); return; }
       for (const width of [360, 390, 1200, 1440]) {
         await page.setViewportSize({ width, height: 1000 });
         for (const stage of ['setup', 'round-robin', 'carry', 'final', 'blank']) {

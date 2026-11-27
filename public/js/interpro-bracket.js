@@ -8,6 +8,15 @@
     if (text !== undefined) node.textContent = text;
     return node;
   };
+  const playerIdentity = (player, className) => {
+    const label = create('span', className, player.name);
+    if (player.lucky_loser) {
+      const name = player.name.replace(/(\s*\(LL\))+$/, '');
+      label.replaceChildren(create('span', 'fm-player-name-text', name), create('span', 'fm-player-ll', ' (LL)'));
+    }
+    label.title = label.textContent;
+    return label;
+  };
   class InterproBracket extends HTMLElement {
     connectedCallback() {
       queueMicrotask(() => {
@@ -68,23 +77,17 @@
             const outcome = player && match.winner ? (Number(player.id) === Number(match.winner) ? 'winner' : 'loser') : '';
             const row = engine.createSlot(slot ? position.bottom - position.top : 0, outcome);
             const label = player
-              ? create('span', 'fm-slot-name fm-player-identity', player.name)
+              ? playerIdentity(player, 'fm-slot-name fm-player-identity')
               : create('span', 'fm-slot-name fm-source-name' + (['winner', 'loser'].includes(match.sources[slot].type) ? ' fm-feeder-name' : ''), match.sources[slot].label);
             row.title = label.textContent + ' · ' + match.sources[slot].label;
-            label.title = player?.name || match.sources[slot].label;
+            label.title = label.textContent;
             if (player && match.can_lucky_loser && match.fixture_id) {
               label.setAttribute('role', 'button'); label.setAttribute('tabindex', '0');
               label.setAttribute('aria-haspopup', 'menu'); label.setAttribute('aria-expanded', 'false');
-              Object.assign(label.dataset, {llFixture: String(match.fixture_id), llSlot: String(slot + 1), llRegistration: String(player.id), llName: player.name});
+              Object.assign(label.dataset, {llFixture: String(match.fixture_id), llSlot: String(slot + 1), llRegistration: String(player.id), llName: label.textContent});
               label.style.cursor = 'pointer';
             }
             row.append(label);
-            if (player?.lucky_loser) {
-              label.textContent = player.name.replace(/ \(LL\)$/, '');
-              const badge = create('span', 'badge bg-label-warning', 'LL');
-              badge.setAttribute('aria-label', 'Lucky loser');
-              row.append(badge);
-            }
             if (match.sets.length) {
               const score = create('strong', '', match.sets.map(set => set[slot]).join(' '));
               score.dataset.slot = String(slot);
@@ -96,10 +99,13 @@
             const date = new Date(match.schedule.time.replace(' ', 'T'));
             const time = new Intl.DateTimeFormat('en-ZA', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(date).replace(',', '');
             const preview = match.schedule.preview === true;
-            const label = [preview ? 'Preview only' : 'Published', time, match.schedule.venue, match.schedule.court ? 'Court ' + match.schedule.court : null].filter(Boolean).join(' · ');
-            const schedule = create('div', 'fm-match-schedule ' + (preview ? 'is-preview' : 'is-published'), label);
-            schedule.title = label;
-            schedule.setAttribute('aria-label', label);
+            const court = String(match.schedule.court || '').trim();
+            const courtLabel = court ? (/^court\b/i.test(court) ? court : 'Court ' + court) : null;
+            const label = [preview ? 'Preview only' : 'Published', time, match.schedule.venue, courtLabel].filter(Boolean).join(' · ');
+            const compactTime = new Intl.DateTimeFormat('en-ZA', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(date).replace(',', '');
+            const schedule = engine.createSchedule({ label, when: [preview ? 'Preview only' : 'Published', compactTime].join(' · '),
+              venue: match.schedule.venue, court: match.schedule.court, className: preview ? 'is-preview' : 'is-published' });
+            card.classList.add('fm-match-has-schedule');
             card.append(schedule);
           }
           if (match.note) card.append(create('div', 'fm-match-note', match.note));
@@ -120,8 +126,7 @@
           const name = endpoint.querySelector('.fm-winner-name');
           const champion = match.players.find(player => player && Number(player.id) === Number(match.winner));
           if (champion) {
-            const identity = create('span', 'fm-player-identity fm-player-identity-winner', champion.name);
-            identity.title = champion.name;
+            const identity = playerIdentity(champion, 'fm-player-identity fm-player-identity-winner');
             name.append(identity);
           }
           else name.append(create('span', 'fm-pending-result', 'Awaiting result'));
