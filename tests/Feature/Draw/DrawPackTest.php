@@ -322,7 +322,9 @@ class DrawPackTest extends TestCase
             ->get(route('headoffice.drawPack', ['event' => $this->event, 'draw_ids' => [$draw->id]]))
             ->assertOk()->assertSee('Check in at the clubhouse.')
             ->assertSee('The set ends when a player reaches 4 games.')
-            ->assertSee('percentage of sets won')
+            ->assertSee('Rank match points first.')
+            ->assertSee('When exactly two players have equal points, their decisive head-to-head winner ranks first')
+            ->assertSee('sets percentage, then games percentage')
             ->assertDontSee('Obsolete playoff note');
     }
 
@@ -341,7 +343,8 @@ class DrawPackTest extends TestCase
         $this->assertSame('Keep for future playoffs', $draw->fresh()->settings->notes['bracket_main']);
         $expected = app(\App\Domain\Draws\Services\DrawRulesService::class)->printable($draw->fresh());
         $this->assertSame($expected, $response->json('printable_rules'));
-        $this->assertStringContainsString('percentage of sets won', $expected['Round Robin scoring rules']);
+        $this->assertStringContainsString('Rank match points first.', $expected['Round Robin scoring rules']);
+        $this->assertStringContainsString('sets percentage, then games percentage', $expected['Round Robin scoring rules']);
         $this->assertStringNotContainsString('Do not print this note', implode('', $expected));
     }
 
