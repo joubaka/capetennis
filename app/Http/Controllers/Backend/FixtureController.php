@@ -629,6 +629,7 @@ class FixtureController extends Controller
     if (! $fixture) {
       return response()->json(['message' => 'Fixture not found.'], 404);
     }
+    abort_if($fixture->isRoundRobinVoided(), 409, 'This match is void. Preserve its original result history.');
 
       $draw = \App\Models\Draw::find($fixture->draw_id);
       if ($draw) {

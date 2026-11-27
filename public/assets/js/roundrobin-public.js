@@ -111,7 +111,7 @@
    * MATRIX
    * =============================== */
   function formatScoreCell(fx, rowPlayerId) {
-    if (!fx || !fx.all_sets || fx.all_sets.length === 0) return '';
+    if (!fx || !fx.all_sets || fx.all_sets.length === 0) return fx && fx.retired ? 'RET' : '';
 
     let display = [];
 
@@ -199,7 +199,7 @@
 
           const schedule = formatScheduleParts(fx);
           const venue = fx.venue_name || fx.venue_title || fx.venue || '';
-          const cellContent = score
+          const cellContent = fx.voided ? `<s style="text-decoration-color:#b91c1c;text-decoration-thickness:2px">${escapeHtml(score || '—')}</s><strong class="d-block text-danger">Void</strong>` : score
             ? escapeHtml(score)
             : (time && fx.schedule_hidden !== true
               ? `<span class="rr-public-match-time">${escapeHtml(schedule.date)} <strong>${escapeHtml(schedule.time)}</strong></span>${venue ? `<span class="rr-public-match-venue">${escapeHtml(venue)}</span>` : ''}`
@@ -228,7 +228,7 @@
 
         html += `<div class="rr-mobile-match" role="group" aria-label="${escapeHtml(home)} versus ${escapeHtml(away)}">
           <span class="rr-mobile-players"><span class="${homeClass}">${escapeHtml(home)}${window.CTPlayerRatings?.marker({registrationId:fx.r1_id}) || ''}${outcomeLabel(homeClass)}</span><span class="rr-mobile-versus">vs</span><span class="${awayClass}">${escapeHtml(away)}${window.CTPlayerRatings?.marker({registrationId:fx.r2_id}) || ''}${outcomeLabel(awayClass)}</span></span>
-          <span class="rr-mobile-status">${escapeHtml(status)}</span>
+          <span class="rr-mobile-status">${fx.voided ? `<s style="text-decoration-color:#b91c1c;text-decoration-thickness:2px">${escapeHtml(score || '—')}</s><strong class="d-block text-danger">Void</strong>` : escapeHtml(status)}</span>
         </div>`;
       });
 
@@ -289,7 +289,7 @@
           <td data-label="Date" class="text-center">${escapeHtml(schedule.date || '—')}</td>
           <td data-label="Time" class="text-center">${escapeHtml(scheduleHidden ? followedBy : schedule.time || '—')}</td>
           <td data-label="Venue">${escapeHtml(fx.venue_name || fx.venue_title || fx.venue || '—')}</td>
-          <td data-label="Score" class="text-center fw-bold">${escapeHtml(fx.score || '—')}</td>
+          <td data-label="Score" class="text-center fw-bold">${fx.voided ? `<s style="text-decoration-color:#b91c1c;text-decoration-thickness:2px">${escapeHtml(fx.score || '—')}</s><strong class="d-block text-danger">Void</strong>` : escapeHtml(fx.score || '—')}</td>
         </tr>`;
     });
 

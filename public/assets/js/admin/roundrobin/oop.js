@@ -50,7 +50,7 @@
         esc(f.venue_name) +
         (f.court ? ' · Court ' + esc(f.court) : '') +
         '</small></td><td>' +
-        esc(f.score) +
+        (f.voided ? '<s style="text-decoration-color:#b91c1c;text-decoration-thickness:2px">' + esc(f.score || '—') + '</s><strong class="d-block text-danger">Void</strong>' : esc(f.score)) +
         '</td><td><div class="d-flex gap-1">';
       if (root.RR_CAN_SCHEDULE)
         html +=
@@ -73,7 +73,7 @@
         '" aria-label="Score match ' +
         esc(f.match_nr || f.id) +
         '"' +
-        (!root.RR_CAN_SCORE ? ' disabled' : '') +
+        (!root.RR_CAN_SCORE || f.voided ? ' disabled' : '') +
         '>Score</button></div></td></tr>';
     });
     body.html(

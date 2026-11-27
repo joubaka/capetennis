@@ -13,7 +13,7 @@ final class IndividualScoreRevision
         $fixture->loadMissing('draw.settings', 'fixtureResults', 'orderOfPlay');
         return hash('sha256', json_encode([
             (int) $fixture->draw->event_id,
-            $fixture->only(['id', 'draw_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration', 'match_status', 'draw_group_id', 'parent_fixture_id', 'loser_parent_fixture_id']),
+            $fixture->only(['id', 'draw_id', 'stage', 'registration1_id', 'registration2_id', 'winner_registration', 'match_status', 'round_robin_voided_registration_id', 'draw_group_id', 'parent_fixture_id', 'loser_parent_fixture_id']),
             $fixture->draw->settings?->only(['score_format', 'playoff_score_format', 'num_sets', 'match_duration_minutes', 'changeover_minutes', 'require_full_sets']),
             InterproRoundRobinFormat::selected($fixture->draw) ? $fixture->draw->settings?->playoff_config : null,
             $fixture->draw->settings?->scoreFormatForStage($fixture->stage) === 'timed' ? (int) ($fixture->orderOfPlay?->duration_minutes ?: $fixture->draw->settings?->match_duration_minutes) : null,

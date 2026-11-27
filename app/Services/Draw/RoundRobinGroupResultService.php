@@ -38,8 +38,9 @@ final class RoundRobinGroupResultService
 
         foreach ($draw->groups as $group) {
             $rows = array_values($standings[$group->id] ?? []);
-            $ids = $group->groupRegistrations->pluck('registration_id')->map(fn ($id) => (int) $id)->sort()->values();
-            $fixtures = $draw->drawFixtures->filter(fn ($fixture) => $fixture->stage === 'RR' && (int) $fixture->draw_group_id === (int) $group->id);
+            $withdrawn = RoundRobinWithdrawalService::withdrawnIds($draw->drawFixtures, (int) $group->id);
+            $ids = $group->groupRegistrations->pluck('registration_id')->map(fn ($id) => (int) $id)->diff($withdrawn)->sort()->values();
+            $fixtures = $draw->drawFixtures->filter(fn ($fixture) => $fixture->stage === 'RR' && (int) $fixture->draw_group_id === (int) $group->id && !$fixture->isRoundRobinVoided());
             $pairs = [];
             $complete = $ids->count() >= 2 && $fixtures->count() === $ids->count() * ($ids->count() - 1) / 2;
             foreach ($fixtures as $fixture) {

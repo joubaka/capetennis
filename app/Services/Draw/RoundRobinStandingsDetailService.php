@@ -14,7 +14,8 @@ final class RoundRobinStandingsDetailService
         $fixtures = HybridRoundRobinService::effectiveFixtures($draw);
         $outcomes = app(IndividualMatchOutcomeService::class);
         foreach ($draw->groups as $group) {
-            $members = $group->groupRegistrations->keyBy('registration_id');
+            $withdrawn = RoundRobinWithdrawalService::withdrawnIds($fixtures, (int) $group->id);
+            $members = $group->groupRegistrations->reject(fn ($member) => $withdrawn->contains((int) $member->registration_id))->keyBy('registration_id');
             $groupFixtures = $fixtures->filter(fn ($fixture) => $fixture->stage === 'RR'
                 && (int) $fixture->draw_id === (int) $draw->id && (int) $fixture->draw_group_id === (int) $group->id
                 && $members->has($fixture->registration1_id) && $members->has($fixture->registration2_id))

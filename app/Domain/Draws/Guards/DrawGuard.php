@@ -61,6 +61,7 @@ final class DrawGuard
      */
     public static function requireScoreable(Fixture $fixture): void
     {
+        if ($fixture->isRoundRobinVoided()) throw new DrawMutationException('This round-robin match is void. Its original score is retained as history.');
         \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
         \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
         $draw = $fixture->draw ?? Draw::find($fixture->draw_id);

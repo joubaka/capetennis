@@ -208,6 +208,7 @@ class InterproDrawBuilder
     foreach ($draw->groups as $group) {
       Log::info("  ➤ Init Group {$group->name} ({$group->id})");
       foreach ($group->registrations as $reg) {
+        if (\App\Services\Draw\RoundRobinWithdrawalService::withdrawnIds($draw->drawFixtures, (int) $group->id)->contains((int) $reg->id)) continue;
         $standings[$group->id][$reg->id] = [
           'reg_id' => $reg->id,
           'player' => $reg->display_name,
@@ -380,6 +381,7 @@ class InterproDrawBuilder
       Log::info("  ➤ Init Group {$group->name} ({$group->id})");
 
       foreach ($group->registrations as $reg) {
+        if (\App\Services\Draw\RoundRobinWithdrawalService::withdrawnIds($draw->drawFixtures, (int) $group->id)->contains((int) $reg->id)) continue;
         $standings[$group->id][$reg->id] = [
           'reg_id' => $reg->id,
           'player' => $reg->display_name,
@@ -395,7 +397,7 @@ class InterproDrawBuilder
     Log::info("🧮 [PlateSeeds] Step 2 — Fill standings from fixtures");
 
     foreach ($draw->drawFixtures as $fx) {
-      if ($fx->stage !== 'RR') {
+      if ($fx->stage !== 'RR' || $fx->isRoundRobinVoided()) {
         continue;
       }
 
@@ -867,6 +869,7 @@ class InterproDrawBuilder
       Log::info("📘 [RR HUB] Init standings for group {$group->name}");
 
       foreach ($group->groupRegistrations as $gr) {
+        if (\App\Services\Draw\RoundRobinWithdrawalService::withdrawnIds($draw->drawFixtures, (int) $group->id)->contains((int) $gr->registration_id)) continue;
         $reg = $gr->registration;
 
         if (!$reg)
@@ -894,7 +897,7 @@ class InterproDrawBuilder
     foreach (\App\Services\Draw\HybridRoundRobinService::effectiveFixtures($draw) as $fx) {
 
       // ❗ Skip ALL Main / Plate / Consolation fixtures
-      if ($fx->stage !== 'RR') {
+      if ($fx->stage !== 'RR' || $fx->isRoundRobinVoided()) {
         continue;
       }
 

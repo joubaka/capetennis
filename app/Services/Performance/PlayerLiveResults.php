@@ -16,6 +16,7 @@ class PlayerLiveResults
         $since = now()->subDays(7);
         $publishedEvent = fn ($query) => $query->visibleTo($user)->where('published', true);
         $individual = Fixture::query()
+            ->whereNull('round_robin_voided_registration_id')
             ->with(['draw.event', 'draw.settings', 'fixtureResults', 'registration1.players',
                 'registration2.players', 'registration1.categoryEvents', 'registration2.categoryEvents'])
             ->whereHas('draw', fn ($query) => $query->where('published', true)->whereHas('event', $publishedEvent))

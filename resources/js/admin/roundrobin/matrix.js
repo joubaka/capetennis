@@ -46,7 +46,7 @@
 
   // ─── Score cell formatter ─────────────────────────────────────────
   function formatScoreCell(fx, rowPlayerId) {
-    if (!fx || !fx.all_sets || !fx.all_sets.length) return '';
+    if (!fx || !fx.all_sets || !fx.all_sets.length) return fx && fx.retired ? 'RET' : '';
 
     var display = fx.all_sets.map(function (setStr) {
       var p = setStr.split('-').map(Number);
@@ -92,6 +92,7 @@
   function scoreButton(fx, rowPlayer, columnPlayer, mobile) {
     if (!fx.r1_id || !fx.r2_id) return pendingMatch(fx);
     var scoreHtml = formatScoreCell(fx, rowPlayer.id);
+    if (fx.voided) return '<span class="rr-void-score" style="text-decoration:line-through;text-decoration-color:#b91c1c;text-decoration-thickness:2px">' + scoreHtml + '</span><strong class="d-block text-danger">Void</strong>';
     if (fx.carried) return '<span class="rr-cell-score">' + scoreHtml + '</span><span class="rr-cell-hint">Carried result</span>';
     var resultText = (fx.all_sets || []).join(', ');
     var content;

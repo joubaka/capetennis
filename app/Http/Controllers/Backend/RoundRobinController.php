@@ -337,6 +337,16 @@ class RoundRobinController extends Controller
   // ============================================================
   // SAVE ORDER OF PLAY
   // ============================================================
+  public function voidRetiredPlayer(Request $request, Draw $draw, Fixture $fixture)
+  {
+    $this->authorize('voidRoundRobin', $draw);
+    abort_unless((int) $fixture->draw_id === (int) $draw->id, 422, 'Fixture does not belong to this draw.');
+    $input = $request->validate(['confirm_void' => 'required|accepted', 'revision' => 'required|string|size:64']);
+    $count = app(\App\Services\Draw\RoundRobinWithdrawalService::class)->withdraw($draw, $fixture, $input['revision']);
+    if ($request->expectsJson()) return response()->json(['success' => true, 'voided' => $count]);
+    return back()->with('success', 'Player withdrawn from this round-robin group. Their matches are void and excluded from standings.');
+  }
+
   public function savePlayOrder(Request $request, Draw $draw)
   {
     $this->authorize('modifySchedule', $draw);
@@ -540,6 +550,7 @@ class RoundRobinController extends Controller
   private function deleteScoreLocked(Request $request, $id)
   {
     $fixture = Fixture::with(['fixtureResults'])->findOrFail($id);
+    abort_if($fixture->isRoundRobinVoided(), 409, 'This match is void. Preserve its original result history.');
 
     $draw = \App\Models\Draw::findOrFail($fixture->draw_id);
 

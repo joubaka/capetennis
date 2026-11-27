@@ -64,6 +64,7 @@ final class ScoreValidationService
     /** A retirement retains completed sets and the score in the final, unfinished set. */
     public function validateRetirement(Fixture $fixture, array $sets): array
     {
+        if ($sets === [] && $fixture->stage === 'RR') return ['valid' => true, 'message' => null];
         $format = $this->retirementFormat($fixture);
         if ($sets === [] || !array_is_list($sets) || count($sets) > $format['max_sets']) {
             return $this->failure('Enter the score reached before retirement, within the configured set count.');

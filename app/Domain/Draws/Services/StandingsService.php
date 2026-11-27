@@ -67,10 +67,12 @@ final class StandingsService
         }
         $group->loadMissing('groupRegistrations.registration');
 
+        $withdrawn = \App\Services\Draw\RoundRobinWithdrawalService::withdrawnIds($allFixtures, (int) $group->id);
         // 1. Initialise a row per registered player
         $rows = [];
         foreach ($group->groupRegistrations as $gr) {
             $regId = $gr->registration_id;
+            if ($withdrawn->contains((int) $regId)) continue;
             $rows[$regId] = [
                 'reg_id'     => $regId,
                 'player'     => optional($gr->registration)->display_name ?? "Player #{$regId}",
@@ -88,7 +90,7 @@ final class StandingsService
 
         // 2. Tally results from completed RR fixtures in this group
         $groupFixtures = $allFixtures->filter(
-            fn($fx) => $fx->stage === 'RR' && $fx->draw_group_id === $group->id
+            fn($fx) => $fx->stage === 'RR' && $fx->draw_group_id === $group->id && !$fx->isRoundRobinVoided()
         );
         (new \Illuminate\Database\Eloquent\Collection($groupFixtures->all()))->loadMissing('draw.settings');
 

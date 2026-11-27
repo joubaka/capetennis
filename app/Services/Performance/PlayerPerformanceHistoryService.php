@@ -129,6 +129,7 @@ class PlayerPerformanceHistoryService
             }
         }
         $query = Fixture::query()->with(['draw.categoryEvent.category', 'draw.settings', 'registration1.players', 'registration2.players', 'fixtureResults', 'oop'])
+            ->whereNull('round_robin_voided_registration_id')
             ->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id)->where('published', true))
             ->when(!$player, fn ($query) => $query->whereIn('match_status', $sharedNetwork ? [0,1,2,3] : [1,2,3])->whereHas('fixtureResults'))
             ->when($player, fn ($query) => $query->where(fn ($query) => $query->whereHas('registration1.players', fn ($players) => $players->whereKey($player->id))->orWhereHas('registration2.players', fn ($players) => $players->whereKey($player->id))));

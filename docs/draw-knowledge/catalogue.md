@@ -565,3 +565,7 @@ automatically converted; local code does not establish deployment.
 ## Recommendations that remain separate from established rules
 
 The broad workflow audit in the drawn-score chat proposed explicit scoring readiness before publication, combined public-calendar clash checks for selective publication, read-only scheduling previews after explicit playoff preparation, and stronger timing-override preservation. These are investigation candidates, not assertions that all paths already enforce them. Recheck current services and add a failing behavioural example before implementation.
+
+## DK-35 — Injury withdrawal voids a round-robin player's group results
+
+After a recorded retirement, explicitly confirm a group-scoped withdrawal. Preserve original scores and outcomes as void history, exclude the entrant and all their matches from standings and rating evidence, and preserve frozen progression/publication boundaries. See [round-robin withdrawal](round-robin-withdrawal.md), RoundRobinWithdrawalService, RoundRobinWithdrawalTest and VoidedRoundRobinProgressionTest. Local checks do not authorize deployment or live changes.

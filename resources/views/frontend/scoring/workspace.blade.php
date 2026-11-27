@@ -424,7 +424,8 @@
             $engine = $isFlexible ? 'flexible' : 'standard';
           }
           $flexibleUrl = $isFlexible ? route('flexible-monrad.score', ['draw' => $match->draw_id, 'fixture' => $match->id]) : null;
-          $canWrite = $canWrite && !$match->scoring_venue_changed;
+          $isVoided = !$isTeamFixture && $match->isRoundRobinVoided();
+          $canWrite = $canWrite && !$match->scoring_venue_changed && !$isVoided;
           $scheduledMoment = $scheduleTime ? \Carbon\Carbon::parse($scheduleTime) : null;
           $timing = $scheduledMoment && !$hasScore && !$isPlaying
             ? ($scheduledMoment->isFuture() ? 'upcoming' : 'past')
@@ -476,9 +477,10 @@
                   <div class="match-player{{ $winnerSide ? ($winnerSide === 'away' ? ' is-winner' : ' is-loser') : '' }}">{{ $away }}@if($winnerSide)<span class="visually-hidden"> ({{ $winnerSide === 'away' ? 'Winner' : 'Loser' }})</span>@endif</div>
                 </div>
               </div>
-              <div class="match-score {{ $hasScore ? '' : 'is-empty' }}">
-                {{ $isWalkover ? 'W/O' : ($hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ').($isRetired ? ' RET' : '') : 'Not scored') }}
+              <div class="match-score {{ $hasScore ? '' : 'is-empty' }}" @if($isVoided) style="text-decoration:line-through;text-decoration-color:#b91c1c;text-decoration-thickness:2px" @endif>
+                {{ $isWalkover ? 'W/O' : ($hasScore ? $sets->map(fn($set) => $set[0].'–'.$set[1])->implode('  ').($isRetired ? ' RET' : '') : ($isRetired ? 'RET' : 'Not scored')) }}
               </div>
+              @if($isVoided)<strong class="text-danger">Void · withdrawn from group</strong>@endif
               @if($canWrite && $hasPlayers)
               <div class="match-actions">
                 @unless($hasScore)
@@ -669,7 +671,7 @@ document.addEventListener('DOMContentLoaded', function () {
       row.querySelectorAll('input').forEach(input => { input.disabled = walkover || row.hidden; });
     });
     saveButton.textContent = walkover ? 'Save walkover' : (retired ? 'Save retired result' : 'Save score');
-    scoreGuidance.textContent = retired ? 'Enter the score when play stopped' : (walkover ? 'Choose the walkover winner' : scoreGuidance.dataset.played);
+    scoreGuidance.textContent = retired ? (String(active?.stage).toUpperCase() === 'RR' ? 'Leave scores empty if no points were played; otherwise enter the score when play stopped.' : 'Enter the score when play stopped') : (walkover ? 'Choose the walkover winner' : scoreGuidance.dataset.played);
     syncTimedDecision();
     if (walkover || retired) {
       decidingPanel.hidden = true;
@@ -837,7 +839,7 @@ document.addEventListener('DOMContentLoaded', function () {
       syncResultType();
       syncTimedDecision();
       if (!decidingPanel.hidden && resultType.value === 'played') decidingWinner.value = active.decidingWinner || '';
-      clearButton.classList.toggle('d-none', scores.length === 0 && !active.walkoverWinner);
+      clearButton.classList.toggle('d-none', scores.length === 0 && !active.walkoverWinner && !active.retiredRegistration);
       modal.show();
       return;
     }
@@ -879,6 +881,12 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   function setsFromForm() {
+    if (resultType.value === 'retired' && String(active?.stage).toUpperCase() === 'RR') {
+      const scoreInputs = active?.scoreFormat === 'timed'
+        ? modalElement.querySelector('[data-score-row]').querySelectorAll('input')
+        : modalElement.querySelector('[data-set-score-grid]').querySelectorAll('input');
+      if (Array.from(scoreInputs).every(input => input.value.trim() === '')) return [];
+    }
     if (active?.scoreFormat === 'timed') {
       const values = Array.from(modalElement.querySelector('[data-score-row]').querySelectorAll('input')).map(input => input.value.trim());
       if (!values.every(value => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)))) {

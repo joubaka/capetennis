@@ -106,6 +106,7 @@ class DrawService
       // FIX: Correct assignment (remove “[]= [] =”)
       $rrFixtures[$gid][] = [
         'carried' => $fx->isDirty('draw_group_id'),
+        'voided' => $fx->isRoundRobinVoided(),
         'id' => $fx->id,
         'match_nr' => $fx->match_nr,
         'group_id' => $gid,
@@ -116,7 +117,8 @@ class DrawService
         'name2' => ($fx->registration2?->display_name ?? app(\App\Services\Scoring\FixtureParticipantLabels::class)->groupPositionLabel($fx, 2)) ?? 'TBD',
 
         'all_sets' => $allSets,
-        'score' => implode(', ', $allSets),
+        'score' => $fx->isRetired() ? trim(implode(', ', $allSets).' RET') : implode(', ', $allSets),
+        'retired' => $fx->isRetired(),
 
         'home_score' => $home_score,
         'away_score' => $away_score,
@@ -181,6 +183,7 @@ class DrawService
           'match_nr' => $fx->match_nr,
           'play_order' => $fx->play_order,
           'group_id' => $fx->draw_group_id,
+          'voided' => $fx->isRoundRobinVoided(),
           'group_name' => $fx->drawGroup?->presentationName(),
           'round_robin_phase' => (int) ($fx->drawGroup?->round_robin_phase ?? 1),
           'stage_label' => $fx->stage === 'RR' && $fx->draw?->isTwoStageRoundRobin()
@@ -196,7 +199,7 @@ class DrawService
           'venue_name' => optional(optional($fx->orderOfPlay)->venue)->name,
           'court' => optional($fx->orderOfPlay)->court,
 
-          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? $sets,
+          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? ($fx->isRetired() ? trim($sets.' RET') : $sets),
           'winner' => $winner,
 
           'winner_feeders' => $wFeed,
@@ -1148,6 +1151,8 @@ class DrawService
       $validator = app(\App\Domain\Draws\Services\ScoreValidationService::class);
       $validation = $validator->validateRetirement($fixture, $sets);
       abort_unless($validation['valid'], 422, $validation['message']);
+      abort_if($sets === [] && $fixture->fixtureResults->isNotEmpty(), 422,
+        'Keep the score already recorded when retiring this player.');
       $sets = array_map(fn ($set) => array_map('intval', $set), $sets);
       $winner = $retiredRegistrationId === (int) $fixture->registration1_id ? (int) $fixture->registration2_id : (int) $fixture->registration1_id;
       $before = ['winner' => $fixture->winner_registration, 'walkover' => $fixture->isWalkover(), 'retired_registration_id' => $fixture->retiredRegistrationId(),
@@ -1235,6 +1240,7 @@ class DrawService
         ->with(['draw', 'fixtureResults'])
         ->lockForUpdate()
         ->findOrFail($fixture->id);
+      abort_if($fixture->isRoundRobinVoided(), 409, 'This match is void. Preserve its original result history.');
       \App\Services\Draw\InterproRoundRobinFormat::assertScoreMutable($fixture);
 
       if ($fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
@@ -1370,7 +1376,7 @@ class DrawService
           'r2_id' => $fx->registration2_id,
 
           'time' => optional($fx->orderOfPlay)->time ?? '',
-          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? $sets,
+          'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? ($fx->isRetired() ? trim($sets.' RET') : $sets),
           'winner' => app(IndividualMatchOutcomeService::class)->winner($fx),
         ];
       })
@@ -1625,6 +1631,7 @@ class DrawService
       \App\Services\Draw\TwoStageRoundRobinService::assertScoreMutable($fixture);
       Fixture::whereKey($fixture->id)->lockForUpdate()->firstOrFail();
       $fixture->refresh();
+      abort_if($fixture->isRoundRobinVoided(), 409, 'This match is void. Preserve its original result history.');
       if ($fixture->draw?->settings?->scoreFormatForStage($fixture->stage) === \App\Domain\Draws\Services\TennisScoreFormat::TIMED) {
         $validation = app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($fixture, $sets);
         abort_unless($validation['valid'], 422, $validation['message']);

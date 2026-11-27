@@ -164,6 +164,7 @@ class PlayerAbilityValidationService
         foreach (['Individual match' => \App\Models\Fixture::class, 'Team match' => \App\Models\TeamFixture::class] as $source => $model) {
             $query = $model::query()->withoutEagerLoads()->whereHas('draw', fn ($draw) => $draw->where('event_id', $event->id));
             $counts[$source]['all_event_fixtures'] = $query->count();
+            if ($source === 'Individual match') $query->whereNull('round_robin_voided_registration_id');
             $query->whereHas('draw', fn ($draw) => $draw->where('published', true));
             $counts[$source]['published_draw'] = $query->count();
             if ($source === 'Team match') {

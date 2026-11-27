@@ -21,7 +21,7 @@ final class PublicDrawResultsRevision
         // are visible. Working court and time fields are deliberately omitted.
         $columns = $team
             ? ['id', 'team_tie_id', 'round_nr', 'tie_nr', 'match_nr', 'region1', 'region2', 'match_status', 'fixture_type', 'numSets', 'rubber_sequence', 'rubber_code', 'rubber_name', 'rank_nr', 'home_rank_nr', 'away_rank_nr']
-            : ['id', 'round', 'match_nr', 'stage', 'draw_group_id', 'registration1_id', 'registration2_id', 'match_status', 'winner_registration'];
+            : ['id', 'round', 'match_nr', 'stage', 'draw_group_id', 'registration1_id', 'registration2_id', 'match_status', 'winner_registration', 'round_robin_voided_registration_id'];
         $rows = $fixtures->orderBy('id')->get($columns);
         $ids = $rows->pluck('id');
 

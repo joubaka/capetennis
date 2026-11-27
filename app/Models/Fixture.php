@@ -33,6 +33,7 @@ class Fixture extends Model
     'round',
     'bracket_id',
     'match_status',
+    'round_robin_voided_registration_id',
     'draw_id',
     'draw_group_id',
 
@@ -70,6 +71,12 @@ class Fixture extends Model
       ->where('match_status', 3)->where('registration1_id', '>', 0)->where('registration2_id', '>', 0)
       ->whereColumn('registration1_id', '!=', 'registration2_id')
       ->where(fn ($winner) => $winner->whereColumn('winner_registration', 'registration1_id')->orWhereColumn('winner_registration', 'registration2_id'))));
+  }
+
+  /** Voiding retains the original outcome and scores solely as history. */
+  public function isRoundRobinVoided(): bool
+  {
+    return $this->stage === 'RR' && (int) $this->round_robin_voided_registration_id > 0;
   }
 
   /** Retirement is terminal, independently of the retained score leader. */
@@ -179,7 +186,7 @@ class Fixture extends Model
   {
     if ($this->isWalkover()) return 'W/O';
     if ($this->fixtureResults->isEmpty()) {
-      return null;
+      return $this->isRetired() ? 'RET' : null;
     }
 
     return $this->fixtureResults
@@ -190,7 +197,7 @@ class Fixture extends Model
 
   public function getWinnerIdAttribute()
   {
-    if ($this->fixtureResults->isEmpty() && !$this->isWalkover()) {
+    if ($this->fixtureResults->isEmpty() && !$this->isWalkover() && !$this->isRetired()) {
       return null;
     }
 

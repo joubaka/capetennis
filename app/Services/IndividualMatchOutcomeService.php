@@ -9,6 +9,7 @@ final class IndividualMatchOutcomeService
 {
     public function winner(Fixture $fixture): ?int
     {
+        if ($fixture->isRoundRobinVoided()) return null;
         if ($source = \App\Services\Draw\InterproRoundRobinFormat::source($fixture)) return $this->winner($source);
         if ($winner = \App\Services\Draw\InterproRoundRobinFormat::automaticWinner($fixture)) return $winner;
         if ($fixture->isWalkover() || $fixture->isRetired()) return (int) $fixture->winner_registration;
@@ -22,6 +23,7 @@ final class IndividualMatchOutcomeService
 
     public function isDraw(Fixture $fixture): bool
     {
+        if ($fixture->isRoundRobinVoided()) return false;
         if ($fixture->stage !== 'RR' || $fixture->isWalkover() || $fixture->isRetired()) return false;
         $sets = $fixture->fixtureResults->sortBy('set_nr')->map(fn ($set) => [(int) $set->registration1_score, (int) $set->registration2_score])->values()->all();
         $homeWins = count(array_filter($sets, fn ($set) => $set[0] > $set[1]));

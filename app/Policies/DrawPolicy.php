@@ -7,6 +7,11 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    public function voidRoundRobin(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && ! $draw->isTeamDraw() && $this->canManage($user, $draw, false);
+    }
+
     public function appendInterproChallenges(User $user, Draw $draw): bool
     {
         return ! $draw->locked && ! $draw->isTeamDraw() && $this->canManage($user,$draw,false);

@@ -8,7 +8,20 @@ const helpers = source.slice(source.indexOf('  function venueNeedsDecidingPoint(
 const scoring = vm.runInNewContext(helpers + '\n({venueScorePayload})');
 const match = {engine: 'standard', homeRegistration: '11', awayRegistration: '22'};
 
-test('empty retirement guidance uses the selected set starting score', () => {
+test('round robin retirement leaves unplayed scores empty and rejects partially entered scores', () => {
+  const section=source.slice(source.indexOf('  function setsFromForm('),source.indexOf('  async function request('));
+  for (const scoreFormat of ['one_set_to_6', 'timed']) {
+    const inputs = [{value: ''}, {value: ''}];
+    const read=vm.runInNewContext(section+'\nsetsFromForm', {active:{stage:'RR',scoreFormat},resultType:{value:'retired'},
+      modalElement:{querySelector:()=>({querySelectorAll:()=>inputs})},
+      CTSetScoreGrid:{read(){throw Error('Complete both scores for set 1.');}}});
+    assert.deepEqual(JSON.parse(JSON.stringify(read())), []);
+    inputs[0].value = '3';
+    assert.throws(read, /both/);
+  }
+});
+
+test('non round robin empty retirement guidance uses the selected set starting score', () => {
   const section=source.slice(source.indexOf('  function setsFromForm('),source.indexOf('  async function request('));
   for(const [setTypes,expected] of [['["full_start_2"]','2–2'],['["full"]','0–0']]) {
     const read=vm.runInNewContext(section+'\nsetsFromForm', {active:{setTypes},resultType:{value:'retired'},

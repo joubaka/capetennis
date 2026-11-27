@@ -22,7 +22,7 @@ final class RoundRobinProgressReadiness
         $total = $fixtures->count();
         $completed = $fixtures->filter(function ($fixture) use ($draw, $outcomes) {
             $fixture->setRelation('draw', $draw);
-            return $fixture->registration1_id && $fixture->registration2_id
+            return $fixture->isRoundRobinVoided() || $fixture->registration1_id && $fixture->registration2_id
                 && ($outcomes->winner($fixture) !== null || $outcomes->isDraw($fixture));
         })->count();
         $remaining = $total - $completed;

@@ -105,7 +105,7 @@ class DrawApiController extends Controller
         }
 
         $validated = $request->validate([
-            'sets'   => 'required|array|min:1',
+            'sets'   => $fixture->stage === 'RR' && $request->filled('retired_registration_id') ? 'sometimes|array' : 'required|array|min:1',
             'sets.*' => ['required', 'string', 'regex:/^\d+-\d+$/'],
             'retired_registration_id' => 'nullable|integer|min:1',
         ]);
@@ -113,7 +113,7 @@ class DrawApiController extends Controller
         $validSets = array_map(function ($set) {
             [$a, $b] = array_map('intval', explode('-', $set));
             return [$a, $b];
-        }, $validated['sets']);
+        }, $validated['sets'] ?? []);
         if (isset($validated['retired_registration_id'])) {
             $request->validate(['deciding_point_winner_id' => 'prohibited', 'walkover_winner_id' => 'prohibited']);
             $this->service->saveRetirement($fixture, $validSets, (int) $validated['retired_registration_id']);
@@ -180,6 +180,7 @@ class DrawApiController extends Controller
 
     private function deleteScoreLocked(Request $request, Draw $draw, Fixture $fixture)
     {
+        abort_if($fixture->isRoundRobinVoided(), 409, 'This match is void. Preserve its original result history.');
         // Guard before authorize so JSON body is preserved for locked/published draws
         if ($draw->locked) {
             return response()->json(['success' => false, 'message' => 'Draw is locked.'], 403);

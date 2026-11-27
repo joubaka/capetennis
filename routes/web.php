@@ -1620,6 +1620,8 @@ Route::delete(
   Route::post('draw/{draw}/flexible-monrad/withdrawals', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'reconcileWithdrawals'])->name('flexible-monrad.withdrawals');
   Route::put('draw/{draw}/flexible-monrad/score/{fixture}', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'score'])->name('flexible-monrad.score');
 
+  Route::post('draw/{draw}/roundrobin/{fixture}/void-retired-player', [RoundRobinController::class, 'voidRetiredPlayer'])->name('backend.roundrobin.void-retired-player');
+
   // Store score for round-robin fixture
   Route::post('roundrobin/score/{fixture}', [RoundRobinController::class, 'saveScore'])
     ->name('backend.roundrobin.score.store');

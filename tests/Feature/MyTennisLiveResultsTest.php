@@ -52,6 +52,11 @@ class MyTennisLiveResultsTest extends TestCase
         $second->update(['registration1_score' => 4]);
         $this->get($url)->assertOk()->assertSee('6-2 6-4')->assertDontSee('6-2 6-3');
 
+        $fixture->update(['round_robin_voided_registration_id' => $registrations[0]->id]);
+        $this->get($url)->assertOk()->assertDontSee('VisibleOpponent');
+        $this->assertSame(2, $fixture->fixtureResults()->count());
+        $fixture->update(['round_robin_voided_registration_id' => null]);
+
         $draw->update(['published' => false]);
         $this->get($url)->assertOk()->assertDontSee('VisibleOpponent');
         $draw->update(['published' => true]);

@@ -30,6 +30,9 @@
 
 @include('backend.draw.partials.workspace-header', ['workspaceSurface' => 'roundrobin'])
 @include('backend.draw.roundrobin.progression-status')
+@foreach($draw->drawFixtures as $fixture)
+  @include('backend.draw.roundrobin.withdraw-retired-player', ['fixture' => $fixture])
+@endforeach
 
 @if(!$draw->isTeamDraw() && in_array($draw->settings?->workflow, ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true) && app(\App\Services\Draw\GroupAssignmentService::class)->fixturesNeedRegeneration($draw))
   <div class="alert alert-warning" role="alert">

@@ -16,6 +16,7 @@ final class ResultPresentation
             $outcome = app(TeamRubberResultService::class)->outcome($fixture);
             return self::sideClasses($outcome['complete'] ? $outcome['winner'] : null);
         }
+        if ($fixture->isRoundRobinVoided()) return ['', ''];
         $winner = $fixture->fixtureResults->isNotEmpty() ? $fixture->winner_id : $fixture->winner_registration;
         return self::registrationClasses($winner, $fixture->registration1_id, $fixture->registration2_id);
     }

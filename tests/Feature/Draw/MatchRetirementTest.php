@@ -34,6 +34,34 @@ class MatchRetirementTest extends TestCase
         return [$draw, $fixture, route('api.draws.fixtures.score.store', [$draw, $fixture])];
     }
 
+    public function test_round_robin_retirement_before_play_accepts_empty_or_missing_sets_without_inventing_scores(): void
+    {
+        foreach (['best_of_3_full', 'best_of_3_full_start_2', 'timed'] as $format) {
+            foreach ([[], ['sets' => []]] as $scores) {
+                [$draw, $fixture, $url] = $this->match('RR', $format);
+                $payload = $scores + ['retired_registration_id' => $fixture->registration1_id,
+                    'score_revision' => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh())];
+                $this->postJson($url, $payload)->assertOk();
+                $this->assertTrue($fixture->fresh()->isRetired());
+                $this->assertSame((int) $fixture->registration1_id, $fixture->fresh()->retiredRegistrationId());
+                $this->assertSame(0, $fixture->fixtureResults()->count());
+                $this->assertSame('RET', trim($fixture->fresh()->score));
+            }
+        }
+    }
+
+    public function test_empty_retirement_cannot_erase_saved_scores_or_accept_half_entered_sets(): void
+    {
+        [$draw, $fixture, $url] = $this->match('RR');
+        $payload = ['retired_registration_id' => $fixture->registration1_id];
+        $revision = fn () => app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($fixture->fresh());
+        $this->postJson($url, $payload + ['sets' => ['3-'], 'score_revision' => $revision()])->assertUnprocessable();
+        $this->postJson($url, $payload + ['sets' => ['3-2'], 'score_revision' => $revision()])->assertOk();
+        $this->postJson($url, $payload + ['sets' => [], 'score_revision' => $revision()])->assertUnprocessable();
+        $this->assertSame(1, $fixture->fixtureResults()->count());
+        $this->assertSame('3-2 RET', $fixture->fresh()->score);
+    }
+
     public function test_retirement_keeps_partial_scores_and_advances_opponent_even_when_retired_player_leads(): void
     {
         foreach (['legacy', 'canonical'] as $mode) {

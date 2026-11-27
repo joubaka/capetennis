@@ -8,6 +8,7 @@
             ? ['full', 'full', 'match_tiebreak'] : array_fill(0, (int) ($draw->settings?->num_sets ?: 3), 'full');
     }
 @endphp
+@unless(!$isTeamFixture && $match->isRoundRobinVoided())
 <button type="button" class="btn btn-sm btn-primary score-action js-open-score"
                       data-fixture="{{ $match->id }}" data-draw-id="{{ $draw->id }}" data-has-result="{{ $hasScore ? '1' : '0' }}" data-home="{{ $home }}" data-away="{{ $away }}"
                       data-score-revision="{{ $engine === 'team' ? app(\App\Services\TeamFixtureScoreService::class)->revision($match) : ($engine === 'standard' ? app(\App\Services\Draw\IndividualScoreRevision::class)->forFixture($match) : '') }}" data-engine="{{ $engine }}" data-participant-revision="{{ $engine === 'team' ? app(\App\Services\TeamParticipantHistoryService::class)->revision($match) : '' }}"
@@ -31,3 +32,7 @@
                       data-scores='@json($sets)'>
                   {{ $hasScore ? 'Correct score' : 'Enter score' }}
                 </button>
+@endunless
+@unless($isTeamFixture)
+  @include('backend.draw.roundrobin.withdraw-retired-player', ['fixture' => $match])
+@endunless

@@ -16,6 +16,8 @@ final class PendingHybridRoundRobinService
         abort_unless($draw->hasHybridRoundRobin() && !$draw->isTeamDraw() && !$draw->event?->isInterprovincialTrials()
             && $groups->count() === 2 && $groups->every(fn ($group) => $group->groupRegistrations->count() >= 3),
             422, 'The hybrid format needs two first-stage groups with at least three players each.');
+        abort_unless($groups->every(fn ($group) => TwoStageRoundRobinService::activeCount($draw, $group) >= 2),
+            422, 'The hybrid format needs at least two active players in each first-stage group.');
         $ids = $groups->flatMap->groupRegistrations->pluck('registration_id');
         abort_unless($ids->count() === $ids->unique()->count(), 422, 'A player may appear only once in the first stage.');
         $eligible = app(GroupAssignmentService::class)->eligible($draw)->pluck('registration_id');
@@ -35,12 +37,16 @@ final class PendingHybridRoundRobinService
     }
 
     /** Rotate the full lower field; only cross-group pairs need new fixtures. */
-    private function crossPairs(Collection $groups): array
+    private function crossPairs(Collection $groups, ?Draw $draw = null, ?int $restoredRegistrationId = null): array
     {
         $slots = [];
-        foreach ($groups as $group) foreach (range(3, $group->groupRegistrations->count()) as $position) {
-            $slots[] = ['group_id' => $group->id, 'position' => $position];
+        foreach ($groups as $group) {
+            $size = $draw ? TwoStageRoundRobinService::activeCount($draw, $group, $restoredRegistrationId) : $group->groupRegistrations->count();
+            for ($position = 3; $position <= $size; $position++) {
+                $slots[] = ['group_id' => $group->id, 'position' => $position];
+            }
         }
+        if (count($slots) < 2) return [];
         if (count($slots) % 2) $slots[] = null;
         $fixed = array_shift($slots); $pairs = [];
         for ($round = 1; $round <= count($slots); $round++) {
@@ -71,13 +77,13 @@ final class PendingHybridRoundRobinService
             abort_if($draw->drawFixtures->contains(fn ($fixture) => $fixture->stage !== 'RR'
                 || !$groups->contains('id', $fixture->draw_group_id)), 409,
                 'Existing later-stage matches cannot be replaced by hybrid preparation.');
-            $lowerCount = $groups->sum(fn ($group) => $group->groupRegistrations->count() - 2);
+            $lowerCount = $groups->sum(fn ($group) => TwoStageRoundRobinService::activeCount($draw, $group) - 2);
             $lower = $draw->groups()->create(['name' => 'Stage 2 · Positions 5–'.(4 + $lowerCount),
                 'round_robin_phase' => 2, 'qualifying_position' => 3]);
             $number = (int) $draw->drawFixtures->max('match_nr');
             $offset = (int) $draw->drawFixtures->max('round');
             $created = collect(); $lowerIds = [];
-            foreach ($this->crossPairs($groups) as $pair) {
+            foreach ($this->crossPairs($groups, $draw) as $pair) {
                 $fixture = Fixture::create(['draw_id' => $draw->id, 'draw_group_id' => $lower->id,
                     'stage' => 'RR', 'round' => $offset + $pair['round'], 'match_nr' => ++$number, 'match_status' => 0,
                     'registration1_source_group_id' => $pair['one']['group_id'], 'registration1_source_position' => $pair['one']['position'],
@@ -100,7 +106,7 @@ final class PendingHybridRoundRobinService
             $created->push($final, $bronze);
             $config = $draw->settings->playoff_config ?? [];
             $config['_second_round_robin'] = ['state' => 'prepared', 'format' => HybridRoundRobinService::FORMAT,
-                'source_group_ids' => $groups->pluck('id')->all(), 'source_group_sizes' => $groups->map(fn ($group) => $group->groupRegistrations->count())->all(),
+                'source_group_ids' => $groups->pluck('id')->all(), 'source_group_sizes' => $groups->map(fn ($group) => TwoStageRoundRobinService::activeCount($draw, $group))->all(),
                 'lower_group_id' => $lower->id, 'lower_fixture_ids' => $lowerIds, 'semi_fixture_ids' => array_map(fn ($fixture) => $fixture->id, $semis),
                 'final_fixture_id' => $final->id, 'bronze_fixture_id' => $bronze->id,
                 'prepared_fixture_ids' => $created->pluck('id')->all(), 'carried_fixture_ids' => []];
@@ -110,7 +116,7 @@ final class PendingHybridRoundRobinService
         });
     }
 
-    private function assertPrepared(Draw $draw, Collection $groups): void
+    private function assertPrepared(Draw $draw, Collection $groups, ?int $restoredRegistrationId = null): void
     {
         $config = $draw->settings->playoff_config['_second_round_robin'];
         $championship = collect($draw->settings->playoff_config)->first(fn ($entry) => is_array($entry) && strtoupper($entry['slug'] ?? '') === 'MAIN');
@@ -120,21 +126,26 @@ final class PendingHybridRoundRobinService
         abort_unless($lower->count() === 1 && (int) $lower->first()->id === (int) ($config['lower_group_id'] ?? 0)
             && $lower->first()->groupRegistrations->isEmpty()
             && $groups->pluck('id')->all() === ($config['source_group_ids'] ?? [])
-            && $groups->map(fn ($group) => $group->groupRegistrations->count())->all() === ($config['source_group_sizes'] ?? []),
+            && $groups->map(fn ($group) => TwoStageRoundRobinService::activeCount($draw, $group, $restoredRegistrationId))->all() === ($config['source_group_sizes'] ?? []),
             409, 'Review the prepared hybrid groups and source membership.');
         $later = $draw->drawFixtures->reject(fn ($fixture) => $groups->contains('id', $fixture->draw_group_id));
         $actualIds = $later->modelKeys(); $expectedIds = $config['prepared_fixture_ids'] ?? []; sort($actualIds); sort($expectedIds);
         abort_unless($actualIds === $expectedIds && $later->every(fn ($fixture) => !$fixture->registration1_id && !$fixture->registration2_id
             && !$fixture->winner_registration && (int) $fixture->match_status === 0 && $fixture->fixtureResults->isEmpty()),
             409, 'Review the prepared hybrid fixtures; occupied or played matches cannot be replaced.');
-        $crossPairs = $this->crossPairs($groups);
+        $crossPairs = $this->crossPairs($groups, $draw, $restoredRegistrationId);
         abort_unless(count($config['lower_fixture_ids'] ?? []) === count($crossPairs), 409, 'Review the complete hybrid cross-group programme.');
-        foreach ($crossPairs as $index => $pair) {
-            $fixture = $later->firstWhere('id', $config['lower_fixture_ids'][$index]);
-            abort_unless($fixture && $fixture->stage === 'RR' && (int) $fixture->draw_group_id === (int) $lower->first()->id
-                && [(int) $fixture->registration1_source_group_id, (int) $fixture->registration1_source_position,
+        $lowerFixtures = $later->whereIn('id', $config['lower_fixture_ids']);
+        foreach ($crossPairs as $pair) {
+            $fixture = $lowerFixtures->first(fn ($fixture) =>
+                [(int) $fixture->registration1_source_group_id, (int) $fixture->registration1_source_position,
                     (int) $fixture->registration2_source_group_id, (int) $fixture->registration2_source_position]
-                === [(int) $pair['one']['group_id'], $pair['one']['position'], (int) $pair['two']['group_id'], $pair['two']['position']],
+                === [(int) $pair['one']['group_id'], $pair['one']['position'], (int) $pair['two']['group_id'], $pair['two']['position']]
+                || [(int) $fixture->registration2_source_group_id, (int) $fixture->registration2_source_position,
+                    (int) $fixture->registration1_source_group_id, (int) $fixture->registration1_source_position]
+                === [(int) $pair['one']['group_id'], $pair['one']['position'], (int) $pair['two']['group_id'], $pair['two']['position']]);
+            abort_unless($fixture && $fixture->stage === 'RR' && (int) $fixture->draw_group_id === (int) $lower->first()->id
+                ,
                 409, 'Review the hybrid cross-group qualification sources.');
         }
         foreach ([0, 1] as $index) {
@@ -155,6 +166,28 @@ final class PendingHybridRoundRobinService
         }
         abort_if(Fixture::where('draw_id', '!=', $draw->id)->where(fn ($query) => $query->whereIn('parent_fixture_id', $expectedIds)
             ->orWhereIn('loser_parent_fixture_id', $expectedIds))->exists(), 409, 'A hybrid fixture has an external dependency.');
+    }
+
+    public function reconcileVoidedSources(Draw $draw, int $voidedRegistrationId): void
+    {
+        $groups = $this->sourceGroups($draw);
+        $this->assertPrepared($draw, $groups, $voidedRegistrationId);
+        $config = $draw->settings->playoff_config;
+        $state = $config['_second_round_robin'];
+        $counts = $groups->mapWithKeys(fn ($group) => [$group->id => TwoStageRoundRobinService::activeCount($draw, $group)]);
+        $removed = $draw->drawFixtures->whereIn('id', $state['lower_fixture_ids'])->filter(fn ($fixture) =>
+            (int) $fixture->registration1_source_position > ($counts[$fixture->registration1_source_group_id] ?? 0)
+            || (int) $fixture->registration2_source_position > ($counts[$fixture->registration2_source_group_id] ?? 0));
+        TwoStageRoundRobinService::pruneUnusedPlaceholders($draw, $removed);
+        $state['source_group_sizes'] = $counts->values()->all();
+        $state['lower_fixture_ids'] = array_values(array_diff($state['lower_fixture_ids'], $removed->modelKeys()));
+        $state['prepared_fixture_ids'] = array_values(array_diff($state['prepared_fixture_ids'], $removed->modelKeys()));
+        $config['_second_round_robin'] = $state;
+        $draw->settings->update(['playoff_config' => $config]);
+        $lowerCount = $counts->sum() - 4;
+        $draw->groups()->whereKey($state['lower_group_id'])->update(['name' => $lowerCount ? 'Stage 2 · Positions 5–'.(4 + $lowerCount) : 'Stage 2 · No remaining players']);
+        $draw->load('settings', 'groups.groupRegistrations', 'drawFixtures.fixtureResults');
+        $this->assertPrepared($draw, $groups);
     }
 
     public function preparedStructureIsValid(Draw $draw): bool

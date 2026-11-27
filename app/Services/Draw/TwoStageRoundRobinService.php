@@ -36,7 +36,7 @@ final class TwoStageRoundRobinService
                 ])->all()];
         }
         $evidence = $draw->drawFixtures->whereIn('draw_group_id', $groups->pluck('id'))->map(fn ($fixture) => [
-            $fixture->id, $fixture->registration1_id, $fixture->registration2_id,
+            $fixture->id, $fixture->registration1_id, $fixture->registration2_id, $fixture->round_robin_voided_registration_id,
             $fixture->fixtureResults->map(fn ($set) => [$set->set_nr, $set->registration1_score, $set->registration2_score])->all(),
         ])->all();
 
@@ -99,7 +99,7 @@ final class TwoStageRoundRobinService
         if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->prepare($draw);
         return DB::transaction(function () use ($draw) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
-            $draw->load('settings', 'groups.groupRegistrations');
+            $draw->load('settings', 'groups.groupRegistrations', 'drawFixtures');
             if ($draw->groups->contains('round_robin_phase', 2)) return collect();
             abort_if($draw->locked, 409, 'Unlock the draw before preparing its second stage.');
             $groups = $draw->groups->where('round_robin_phase', 1)->sortBy('id')->values();
@@ -122,8 +122,8 @@ final class TwoStageRoundRobinService
             $nextMatch = 1 + (int) $draw->drawFixtures()->max('match_nr');
             $offset = (int) $draw->drawFixtures()->max('round');
             $created = collect();
-            for ($position = 1; $position <= $groups->max(fn ($group) => $group->groupRegistrations->count()); $position++) {
-                $sources = $groups->filter(fn ($group) => $group->groupRegistrations->count() >= $position)->pluck('id')->all();
+            for ($position = 1; $position <= $groups->max(fn ($group) => self::activeCount($draw, $group)); $position++) {
+                $sources = $groups->filter(fn ($group) => self::activeCount($draw, $group) >= $position)->pluck('id')->all();
                 $group = $draw->groups()->create(['name' => 'Stage 2 · Group '.$position,
                     'round_robin_phase' => 2, 'qualifying_position' => $position]);
                 if (count($sources) < 2) continue;
@@ -186,7 +186,7 @@ final class TwoStageRoundRobinService
         if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->preparedStructureIsValid($draw);
         $draw->load('groups.groupRegistrations', 'drawFixtures');
         $sources = $draw->groups->where('round_robin_phase', 1)->map(fn ($group) => [
-            'id' => $group->id, 'standings' => array_fill(0, $group->groupRegistrations->count(), null),
+            'id' => $group->id, 'standings' => array_fill(0, self::activeCount($draw, $group), null),
         ]);
         try {
             $this->assertPreparedStructure($draw, $sources);
@@ -209,11 +209,69 @@ final class TwoStageRoundRobinService
             $fixture->setRelation('draw', $draw);
             $outcomes = app(\App\Services\IndividualMatchOutcomeService::class);
             if ($pair[0] === $pair[1] || ! $ids->contains($pair[0]) || ! $ids->contains($pair[1]) || isset($pairs[$key])
-                || ($outcomes->winner($fixture) === null && !$outcomes->isDraw($fixture))
-                || (!$fixture->isWalkover() && !$fixture->isRetired() && ! app(ScoreValidationService::class)->validate($fixture, $sets)['valid'])) return false;
+                || (!$fixture->isRoundRobinVoided() && (($outcomes->winner($fixture) === null && !$outcomes->isDraw($fixture))
+                || (!$fixture->isWalkover() && !$fixture->isRetired() && ! app(ScoreValidationService::class)->validate($fixture, $sets)['valid'])))) return false;
             $pairs[$key] = true;
         }
         return true;
+    }
+
+    public static function activeCount(Draw $draw, $group, ?int $restoredRegistrationId = null): int
+    {
+        $voided = $draw->drawFixtures->where('stage', 'RR')->where('draw_group_id', $group->id)
+            ->pluck('round_robin_voided_registration_id')->filter()->unique()->map(fn ($id) => (int) $id)
+            ->reject(fn ($id) => $id === $restoredRegistrationId);
+        return $group->groupRegistrations->pluck('registration_id')->map(fn ($id) => (int) $id)->diff($voided)->count();
+    }
+
+    /** Called inside the void transaction; never rewrites occupied or published fixtures. */
+    public function reconcileVoidedSources(Draw $draw, int $voidedRegistrationId): void
+    {
+        $draw->load('settings', 'groups.groupRegistrations', 'drawFixtures.fixtureResults');
+        if (!$draw->isTwoStageRoundRobin() || $draw->hasConfirmedSecondRoundRobin()
+            || !$draw->groups->contains('round_robin_phase', 2)) return;
+        if ($draw->hasHybridRoundRobin()) {
+            app(PendingHybridRoundRobinService::class)->reconcileVoidedSources($draw, $voidedRegistrationId);
+            return;
+        }
+        $sources = $draw->groups->where('round_robin_phase', 1);
+        $previous = $sources->map(fn ($group) => ['id' => $group->id,
+            'standings' => array_fill(0, self::activeCount($draw, $group, $voidedRegistrationId), null)]);
+        $this->assertPreparedStructure($draw, $previous);
+        $counts = $sources->mapWithKeys(fn ($group) => [$group->id => self::activeCount($draw, $group)]);
+        $later = $draw->drawFixtures->whereIn('draw_group_id', $draw->groups->where('round_robin_phase', 2)->pluck('id'));
+        $removed = $later->filter(fn ($fixture) => (int) $fixture->registration1_source_position > ($counts[$fixture->registration1_source_group_id] ?? 0)
+            || (int) $fixture->registration2_source_position > ($counts[$fixture->registration2_source_group_id] ?? 0));
+        self::pruneUnusedPlaceholders($draw, $removed);
+        foreach ($draw->groups->where('round_robin_phase', 2) as $group) {
+            if ((int) $group->qualifying_position > (int) $counts->max()) {
+                abort_if($group->groupRegistrations->isNotEmpty(), 409, 'Review occupied second-stage groups before voiding matches.');
+                $group->delete();
+            }
+        }
+        $draw->load('groups.groupRegistrations', 'drawFixtures');
+        $this->assertPreparedStructure($draw, $sources->map(fn ($group) => ['id' => $group->id,
+            'standings' => array_fill(0, self::activeCount($draw, $group), null)]));
+    }
+
+    public static function pruneUnusedPlaceholders(Draw $draw, Collection $fixtures): void
+    {
+        if ($fixtures->isEmpty()) return;
+        $ids = $fixtures->modelKeys();
+        abort_unless($fixtures->every(fn ($fixture) => !$fixture->registration1_id && !$fixture->registration2_id
+            && !$fixture->winner_registration && (int) $fixture->match_status === 0 && $fixture->fixtureResults->isEmpty()),
+            409, 'Review occupied or played later-stage matches before voiding this player.');
+        abort_if(DB::table('published_schedule_assignments')->where('fixture_kind', 'individual')->whereIn('fixture_id', $ids)->exists(),
+            409, 'Unpublish the affected later-stage schedule before voiding this player.');
+        abort_if(Fixture::where(fn ($query) => $query->whereIn('parent_fixture_id', $ids)->orWhereIn('loser_parent_fixture_id', $ids))->exists(),
+            409, 'Review later-stage fixture dependencies before voiding this player.');
+        $bookings = DB::table('order_of_plays')->where('draw_id', $draw->id)->whereIn('fixture_id', $ids)->get()->all();
+        $legacy = DB::table('schedules')->whereIn('fixture_id', $ids)->get()->all();
+        DB::table('order_of_plays')->where('draw_id', $draw->id)->whereIn('fixture_id', $ids)->delete();
+        DB::table('schedules')->whereIn('fixture_id', $ids)->delete();
+        $draw->drawFixtures()->whereIn('id', $ids)->delete();
+        DrawAuditLog::record($draw->id, 'voided_round_robin_sources_pruned', null,
+            ['fixture_ids' => $ids, 'bookings' => $bookings, 'legacy_schedules' => $legacy]);
     }
 
     public function positionsResolved(Draw $draw, array $rows, Collection $fixtures): bool
