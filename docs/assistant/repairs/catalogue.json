@@ -2,17 +2,30 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-084",
+      "title": "Interpro round-robin meetings block a playoff lucky loser or carry into playoffs",
+      "scope": "Individual Interpro fixed feed-in playoff progression, repeated playoff pairings and explicit lucky-loser replacement.",
+      "symptoms": "A replacement is rejected because the incoming player already met the opponent in the round robin, or the playoff pairing resolves using a group result instead of being played.",
+      "cause": "First-result-stands searches included RR fixtures and carry validation accepted RR sources. Legacy skipped-challenge markers also trusted RR-only meetings. The replacement commitment query additionally assumed optional legacy hint columns existed.",
+      "fix": "Restrict first-result lookup, challenge skipping and replacement rematch guards to this draw's playoff fixtures. Validate carries against an earlier canonical playoff source and physical player identities. Reject stored RR carry references and RR-only skipped challenges for review without clearing history. Query optional fixture hint columns only when present; always retain actual participant, active-route, event, authorization, revision and schedule protections. See docs/draw-knowledge/interpro-round-robin-feed-in.md and docs/draw-knowledge/playoff-lucky-losers.md.",
+      "verification": "Focused regressions cover full playoff progression with 42 original set records, playoff-source score orientation and protection, RR-only replacement admission, prior-playoff rejection, and fail-closed stored RR carries/skipped challenges. Run InterproRoundRobinFormatTest and PlayoffLuckyLoserTest against isolated ct_testing before release.",
+      "limits": "Guide only. Existing incompatible carry or skipped-challenge history requires separate reviewed recovery. This procedure does not authorize deployment, live player replacement, moving playoff slots, publication, financial changes or rewriting round-robin results.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Draw/InterproRoundRobinFormat.php", "app/Services/Draw/PlayoffLuckyLoserService.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md", "docs/draw-knowledge/playoff-lucky-losers.md"],
+      "tests": ["tests/Feature/Draw/InterproRoundRobinFormatTest.php", "tests/Feature/Draw/PlayoffLuckyLoserTest.php"]
+    },
+    {
       "id": "RK-082",
       "title": "Interpro championship and lower playoff branches falsely conflict",
       "scope": "Canonical individual Interpro feed-in schedule previews, saved-booking checks and save-time revalidation.",
       "symptoms": "Championship semifinals fit a wave but lower-bracket winners and consolation matches remain unscheduled despite sufficient courts and rest; the same player cannot actually occupy both mutually exclusive bracket roles.",
       "cause": "Legacy scheduling unions possible group entrants through winner and loser paths. Direct qualifier rank checks cannot prove the disjoint later paths, so sibling playoff branches incorrectly reserve each other's possible players.",
-      "fix": "Use InterproParticipantGroups consistently for new playoff nodes, existing bookings and apply revalidation. Claim a same-draw group only after proving the exact canonical topology, all winner/loser links, group qualifier sources, complete unique profile memberships and either zero or twelve distinct qualifiers. Keep RR fixtures outside the exemption and preserve court occupancy, cross-draw identity conflicts and prerequisite completion plus player rest. See docs/draw-knowledge/interpro-round-robin-feed-in.md.",
+      "fix": "Use InterproParticipantGroups consistently for new playoff nodes, existing bookings and apply revalidation. Claim a same-draw group only after proving the exact canonical topology, all winner/loser links, group qualifier sources, complete unique profile memberships and either zero or twelve distinct qualifiers. Keep RR fixtures outside the exemption and preserve court occupancy, cross-draw identity conflicts and prerequisite completion plus player rest. Select resolved opening roots by match_nr with whereIn; Eloquent collection only() selects model primary keys even after keyBy and can falsely reject a fully qualified graph. See docs/draw-knowledge/interpro-round-robin-feed-in.md.",
       "verification": "The combined Interpro daily-limit, ScheduleDailyLimit, CrossGroupFinalsScheduling and DailyMatchLimit unit suite passed locally: 32 tests, 585 assertions. Coverage includes separately saving championship matches before their same-time lower siblings, rejecting insufficient rest, cross-draw conflicts and malformed proofs. A full isolated copied-draw weekend scheduling rehearsal passed and rolled back without changing published assignments.",
       "limits": "Guide only. Never exempt a draw solely by preset name or turn off participant checks. Local verification does not authorize release, live bookings, rescheduling or publication.",
       "assistant_action": "guide_only",
       "sources": ["app/Services/Scheduling/InterproParticipantGroups.php", "app/Domain/Draws/Services/ScheduleAvailability.php", "app/Services/Scheduling/EventVenueScheduleService.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md"],
-      "tests": ["tests/Feature/Draw/InterproDailyMatchLimitTest.php", "tests/Feature/Draw/ScheduleDailyLimitTest.php", "tests/Feature/Draw/CrossGroupFinalsSchedulingTest.php", "tests/Unit/DailyMatchLimitTest.php"]
+      "tests": ["tests/Feature/Draw/InterproDailyMatchLimitTest.php", "tests/Feature/Draw/ScheduleDailyLimitTest.php", "tests/Feature/Draw/CrossGroupFinalsSchedulingTest.php", "tests/Unit/DailyMatchLimitTest.php", "tests/Feature/Draw/InterproOneOffPlayoffCorrectionTest.php"]
     },
     {
       "id": "RK-081",

@@ -67,10 +67,55 @@ class InterproRoundRobinFormatTest extends TestCase
         app(DrawService::class)->saveBracketScore($this->fixture($draw, $number), $slot === 1 ? [[6, 2]] : [[2, 6]]);
     }
 
-    private function reachCarries(Draw $draw): void
+    private function reachFeedIn(Draw $draw): void
     {
         $this->progress($draw);
-        foreach ([2001 => 1, 2002 => 2, 3001 => 1, 3002 => 1, 3003 => 1, 3004 => 1, 3005 => 2, 3006 => 2] as $nr => $slot) $this->score($draw, $nr, $slot);
+        foreach ([2001 => 1, 2002 => 2, 3001 => 1, 3002 => 1, 3003 => 1, 3004 => 1, 3005 => 2, 3006 => 2, 3007 => 1, 3008 => 1] as $nr => $slot) $this->score($draw, $nr, $slot);
+    }
+
+    private function playoffCarry(): array
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->progress($draw);
+        $source = $this->fixture($draw, 2001);
+        $this->score($draw, 2001);
+        $target = $this->fixture($draw, 3007);
+        $target->update(['registration1_id' => $source->registration1_id, 'registration2_id' => $source->registration2_id]);
+        $config = $draw->fresh()->settings->playoff_config;
+        $config[0]['trials_carries'][$target->id] = ['source' => $source->id,
+            'fingerprint' => (new \ReflectionMethod(InterproRoundRobinFormat::class, 'fingerprint'))->invoke(null, $source->fresh())];
+        $draw->settings()->update(['playoff_config' => $config]);
+        return [$draw->fresh(), $target->fresh(), $source->fresh()];
+    }
+
+    public function test_stored_round_robin_carry_and_skipped_challenge_fail_closed(): void
+    {
+        [$draw, $target, $source] = $this->playoffCarry();
+        $rr = $draw->drawFixtures()->where('stage', 'RR')->where('registration1_id', $source->registration1_id)->firstOrFail();
+        $target->update(['registration1_id' => $rr->registration1_id, 'registration2_id' => $rr->registration2_id]);
+        $config = $draw->fresh()->settings->playoff_config;
+        $config[0]['trials_carries'][$target->id] = ['source' => $rr->id,
+            'fingerprint' => (new \ReflectionMethod(InterproRoundRobinFormat::class, 'fingerprint'))->invoke(null, $rr->fresh())];
+        $draw->settings()->update(['playoff_config' => $config]);
+        $this->assertNull(InterproRoundRobinFormat::source($target->fresh()));
+        $this->assertNull(app(IndividualMatchOutcomeService::class)->winner($target->fresh()));
+        try { app(InterproRoundRobinFormat::class)->resolve($draw->fresh()); $this->fail('Stored RR carry must require review.'); }
+        catch (HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
+        unset($config[0]['trials_carries'][$target->id]);
+        $config['challenge_playoffs'] = true;
+        $config['challenge_pairs'] = [2];
+        $challenge = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'CHALLENGE', 'match_nr' => 5002,
+            'registration1_id' => $rr->registration1_id, 'registration2_id' => $rr->registration2_id, 'winner_registration' => $rr->registration1_id]);
+        $config[0]['trials_skipped_challenges'][$challenge->id] = $rr->registration1_id;
+        $config[0]['trials_advances'][$challenge->id] = $rr->registration1_id;
+        $draw->settings()->update(['playoff_config' => $config]);
+        $this->assertNull(InterproRoundRobinFormat::automaticWinner($challenge->fresh()));
+        $this->assertStringContainsString('review required', InterproRoundRobinFormat::score($challenge->fresh()));
+        $this->assertTrue(InterproRoundRobinFormat::noMatchRequired($challenge->fresh()));
+        try { app(InterproRoundRobinFormat::class)->resolve($draw->fresh()); $this->fail('Stored RR skipped challenge must require review.'); }
+        catch (HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
+        $this->assertEquals($config, $draw->fresh()->settings->playoff_config);
     }
 
     private function renderedPlayerScores(string $html, int $number): array
@@ -98,7 +143,7 @@ class InterproRoundRobinFormatTest extends TestCase
             $this->assertContains($baseId, $nodes[$challengeId]['dependencies']);
             $this->assertContains($baseId, $feeders[$challengeId]);
         }
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         $this->assertNull($this->fixture($draw, 5002)->registration1_id);
         foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009] as $nr) $this->score($draw, $nr);
         $this->assertNull($this->fixture($draw, 5002)->registration1_id);
@@ -192,7 +237,7 @@ class InterproRoundRobinFormatTest extends TestCase
             + ['challenge_playoffs' => true, 'challenge_pairs' => [2, 4, 6, 8]]]);
         $draw = $draw->fresh();
         app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009, 3011] as $nr) $this->score($draw, $nr);
         $programme = app(\App\Services\InterprovincialTrials\TrialProgrammeService::class);
         $this->assertNull($programme->refresh($draw->event));
@@ -205,8 +250,11 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertSame(app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->pluck('registration_id')->all(),
             array_column($run->positions, 'registration_id'));
         $source = $this->fixture($draw, 3007);
-        $original = InterproRoundRobinFormat::source($source);
-        $original->fixtureResults()->first()->update(['registration2_score' => 3]);
+        $source->fixtureResults()->delete();
+        $source->update(['match_status' => 0, 'winner_registration' => null]);
+        $config = $draw->fresh()->settings->playoff_config;
+        $config[0]['trials_carries'][$source->id] = ['source' => 0, 'fingerprint' => 'unavailable'];
+        $draw->settings()->update(['playoff_config' => $config]);
         $this->assertNull($programme->refresh($draw->event));
     }
 
@@ -294,10 +342,7 @@ class InterproRoundRobinFormatTest extends TestCase
 
     public function test_unified_bracket_bounds_and_escapes_long_names_and_preserves_carried_outcomes(): void
     {
-        $draw = $this->context();
-        app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
-        $fixture = $this->fixture($draw, 3007);
+        [$draw, $fixture] = $this->playoffCarry();
         $fixture->registration1->players->first()->update(['name' => 'Fictional <script>alert(1)</script>',
             'surname' => 'Exceptionally Long Participant Surname']);
         $fullName = $fixture->registration1->players->first()->fresh()->full_name;
@@ -317,7 +362,7 @@ class InterproRoundRobinFormatTest extends TestCase
     {
         $draw = $this->context();
         app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         $draw->event->update(['published' => true]);
         $draw->update(['published' => true]);
         $venue = Venue::forceCreate(['name' => 'Published bracket venue']);
@@ -346,16 +391,15 @@ class InterproRoundRobinFormatTest extends TestCase
 
     public function test_carried_walkover_still_displays_its_result_type_without_invented_set_scores(): void
     {
-        $draw = $this->context();
-        $group = $draw->groups()->where('name', 'B')->firstOrFail();
-        $source = $draw->drawFixtures()->where('draw_group_id', $group->id)->orderBy('match_nr')->firstOrFail();
+        [$draw, $target, $source] = $this->playoffCarry();
         $source->fixtureResults()->delete();
         $source->update(['match_status' => 3]);
-        app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
+        $config = $draw->fresh()->settings->playoff_config;
+        $config[0]['trials_carries'][$target->id]['fingerprint'] = (new \ReflectionMethod(InterproRoundRobinFormat::class, 'fingerprint'))->invoke(null, $source->fresh());
+        $draw->settings()->update(['playoff_config' => $config]);
         $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('W/O')->assertSee('First result stands');
         $this->assertSame([], $this->renderedPlayerScores($page->getContent(), 3007));
-        $this->assertSame(0, $this->fixture($draw, 3007)->fixtureResults()->count());
+        $this->assertSame(0, $target->fixtureResults()->count());
     }
 
     public function test_first_results_cascade_without_duplicate_evidence_and_determine_all_twelve_positions(): void
@@ -382,24 +426,22 @@ class InterproRoundRobinFormatTest extends TestCase
         }
         app(InterproRoundRobinFormat::class)->prepare($draw);
         $preview?->roundRobin($draw->fresh());
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         if ($preview) $preview->stage('carry.html', '3 · Feed-in with first results carried',
             $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->getContent());
         foreach ([3007, 3008] as $nr) {
             $fixture = $this->fixture($draw, $nr);
             $source = InterproRoundRobinFormat::source($fixture);
-            $this->assertNotNull($source);
-            $this->assertSame('RR', $source->stage);
-            $this->assertSame(0, $fixture->match_status);
-            $this->assertFalse($fixture->isWalkover());
-            $this->assertSame(0, $fixture->fixtureResults()->count());
-            $this->assertSame((int) $source->winner_registration, app(IndividualMatchOutcomeService::class)->winner($fixture));
+            $this->assertNull($source);
+            $this->assertSame(1, $fixture->match_status);
+            $this->assertSame(1, $fixture->fixtureResults()->count());
+            $this->assertFalse(InterproRoundRobinFormat::noMatchRequired($fixture));
         }
         foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009, 3011] as $nr) $this->score($draw, $nr);
         $positions = app(DrawFinalPlacementService::class)->forDraw($draw->fresh());
         $this->assertCount(12, $positions);
         $this->assertCount(12, $positions->pluck('registration_id')->unique());
-        $this->assertSame(40, DB::table('fixture_results')->count());
+        $this->assertSame(42, DB::table('fixture_results')->count());
         $before = $draw->drawFixtures()->get()->toJson();
         $this->progress($draw);
         $this->assertSame($before, $draw->drawFixtures()->get()->toJson());
@@ -445,17 +487,12 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertStringNotContainsString('6-2', strip_tags($publicBlank->getContent()));
     }
 
-    public function test_carry_releases_its_booking_and_schedule_preview_excludes_it(): void
+    public function test_playoff_carry_rejects_booking_and_schedule_preview_excludes_it(): void
     {
-        $draw = $this->context();
-        app(InterproRoundRobinFormat::class)->prepare($draw);
+        [$draw, $target] = $this->playoffCarry();
         $venue = Venue::forceCreate(['name' => 'Fictional trial courts']);
         $draw->event->venues()->attach($venue->id, ['num_courts' => 4]);
         $draw->venues()->attach($venue->id, ['num_courts' => 4]);
-        $target = $this->fixture($draw, 3007);
-        OrderOfPlay::create(['fixture_id' => $target->id, 'draw_id' => $draw->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => '2026-11-28 09:00']);
-        $this->reachCarries($draw);
-        $this->assertDatabaseMissing('order_of_plays', ['fixture_id' => $target->id]);
         try { app(\App\Services\ScheduleEngine::class)->saveFixture($draw, $target->id, '2026-11-28 09:00', $venue->id, '1', 30); $this->fail('Carried match must not be booked.'); }
         catch (HttpException $exception) { $this->assertSame(409, $exception->getStatusCode()); }
         $preview = app(EventVenueScheduleService::class)->preview($draw->event, ['draw_ids' => [$draw->id], 'venue_ids' => [$venue->id],
@@ -472,10 +509,7 @@ class InterproRoundRobinFormatTest extends TestCase
 
     public function test_carried_target_and_original_results_cannot_be_overwritten_or_deleted(): void
     {
-        $draw = $this->context();
-        app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
-        $target = $this->fixture($draw, 3007);
+        [$draw, $target] = $this->playoffCarry();
         $source = InterproRoundRobinFormat::source($target);
         $count = DB::table('fixture_results')->count();
         foreach ([$target, $source] as $fixture) {
@@ -515,17 +549,17 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->postJson(route('draw.setup.store', $draw), ['workflow' => InterproRoundRobinFormat::PRESET])->assertUnprocessable();
     }
 
-    public function test_withdrawal_preserves_a_carried_result_and_resolves_future_unplayed_matches(): void
+    public function test_withdrawal_preserves_a_played_playoff_result_and_resolves_future_unplayed_matches(): void
     {
         $draw = $this->context();
         app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         $carry = $this->fixture($draw, 3007);
         $entry = CategoryEventRegistration::where('category_event_id', $draw->category_event_id)->where('registration_id', $carry->winner_registration)->firstOrFail();
         $entry->update(['status' => 'withdrawn', 'withdrawn_at' => now()]);
         app(\App\Services\InterprovincialTrials\TrialWithdrawalProgressionService::class)->resolve($entry);
-        $this->assertSame(0, $carry->fresh()->match_status);
-        $this->assertNotNull(InterproRoundRobinFormat::source($carry->fresh()));
+        $this->assertSame(1, $carry->fresh()->match_status);
+        $this->assertNull(InterproRoundRobinFormat::source($carry->fresh()));
         $future = $this->fixture($draw, 3009);
         $this->assertSame(3, $future->match_status);
         $this->assertNotSame((int) $entry->registration_id, (int) $future->winner_registration);
@@ -560,7 +594,7 @@ class InterproRoundRobinFormatTest extends TestCase
     {
         $draw = $this->context();
         app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
+        $this->reachFeedIn($draw);
         $fixtures = $draw->drawFixtures()->get()->toJson();
         $this->postJson(route('backend.draw.generate-second-third-bracket', $draw))->assertConflict();
         $this->assertSame($fixtures, $draw->drawFixtures()->get()->toJson());
@@ -575,10 +609,7 @@ class InterproRoundRobinFormatTest extends TestCase
 
     public function test_carried_score_orients_the_original_and_rejects_foreign_or_stale_sources(): void
     {
-        $draw = $this->context();
-        app(InterproRoundRobinFormat::class)->prepare($draw);
-        $this->reachCarries($draw);
-        $target = $this->fixture($draw, 3007);
+        [$draw, $target] = $this->playoffCarry();
         $reverse = clone $target;
         $reverse->registration1_id = $target->registration2_id;
         $reverse->registration2_id = $target->registration1_id;

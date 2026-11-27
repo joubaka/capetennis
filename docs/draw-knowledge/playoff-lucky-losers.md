@@ -34,12 +34,20 @@ same applied selection returns the existing alias without another audit.
 
 Exact fixture-slot overrides are stored in the draw's `team_draw_selection`
 metadata. Both normal round-robin playoff resolution and Interpro resolution
-honor the override while validating its original source. New winner/loser feeds
+honor the override while validating its original source. Persist this metadata
+through direct attribute assignment and `save()`; `Draw` intentionally excludes
+`team_draw_selection` from mass assignment. New winner/loser feeds
 then carry the alias normally. Interpro repeated-pair detection compares physical
-player identities so a new alias cannot bypass first-result-stands. Original
+player identities so a new alias cannot bypass playoff-only first-result-stands. Original
 source winners and score orientation are mapped to current fixture identities;
 carried results do not create new played set records. An immediate replacement
-pairing with a recorded previous meeting requires separate review and is rejected.
+pairing with a recorded previous playoff meeting requires separate review and is rejected.
+Round-robin meetings do not block replacement and never carry into this playoff.
+
+There is no general playoff-position swap control. Read-only resolution of one
+separately reviewed correction composes the original qualifying source, its LL
+alias, then the exact paired place overrides; the original LL history stays at
+its original source. Invalid or copied correction metadata requires review.
 
 Live player results validate the alias against its active same-event source.
 Saved rating/history admission keeps its existing exact-category roster check;

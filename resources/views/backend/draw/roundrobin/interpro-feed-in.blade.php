@@ -82,7 +82,7 @@
 </style>
 <section class="interpro-feed-in">
   <h4>Interpro trials — fixed feed-in</h4>
-  <p>Four groups A–D. Fourth place finishes after the round robin. Group winners play for the title; second and third places cross over and feed into positions 3–12. <strong>First result stands:</strong> players who meet again use their original result without replaying.</p>
+  <p>Four groups A–D. Fourth place finishes after the round robin. Group winners play for the title; second and third places cross over and feed into positions 3–12. <strong>First result stands:</strong> players who meet again in the playoff bracket use their first playoff result without replaying. Round-robin results do not carry into playoffs.</p>
   <p class="text-muted interpro-screen-hint">The four group winners play at the top. In the lower bracket, the championship semifinal losers flip into Round 3. Scroll across to later rounds.</p>
   <ct-interpro-bracket class="interpro-board-host"><script type="application/json" data-interpro-payload>{!! json_encode($trialProjection, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!}</script><p data-bracket-loading>Loading playoff bracket…</p></ct-interpro-bracket>
   <details class="interpro-route-details"><summary>Match sources and results</summary>

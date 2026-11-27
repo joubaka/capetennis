@@ -58,7 +58,7 @@
         <ul>
           @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
             <li>A1–D1 and B1–C1 contest the title. A2–D3, B2–C3, C2–B3 and D2–A3 cross over. The two surviving crossover players meet the losing championship semifinalists to decide positions 3–6; the other branches decide 7–12.</li>
-            <li>Fourth place finishes after the group stage. First result stands: repeat pairings carry their original result and require no court booking. Confirmed group results and completed playoff results are protected against direct changes.</li>
+            <li>Fourth place finishes after the group stage. First result stands: repeat playoff pairings carry their first playoff result and require no court booking. Round-robin results do not carry into playoffs. Confirmed group results and completed playoff results are protected against direct changes.</li>
           @else
           @forelse(collect($draw->settings->playoff_config ?? [])->filter(fn ($config) => is_array($config) && ($config['enabled'] ?? false)) as $progressConfig)
             <li><strong>{{ is_string($progressConfig['name'] ?? null) ? $progressConfig['name'] : 'Playoffs' }}:</strong> {{ is_array($progressConfig['positions'] ?? null) ? 'positions '.implode(', ', array_filter($progressConfig['positions'], 'is_numeric')).' from each group' : 'qualifying positions must be configured' }}.</li>

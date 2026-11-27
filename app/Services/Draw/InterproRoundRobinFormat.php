@@ -7,7 +7,7 @@ use App\Services\IndividualMatchOutcomeService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
-/** Fixed four-group trials playoff. Repeated pairings reference the first result. */
+/** Fixed four-group trials playoff. Repeated playoff pairings reference the first playoff result. */
 final class InterproRoundRobinFormat
 {
     public const PRESET = 'interpro_rr_feed_in';
@@ -110,11 +110,14 @@ final class InterproRoundRobinFormat
             abort_unless($byNumber->count() === count(self::template($draw)), 409, 'Prepare the complete Interpro playoff before progressing.');
             foreach ($byNumber as $fixture) abort_if(self::hasReference($fixture) && !self::source($fixture), 409,
                 'A carried trial result changed or is unavailable. Review its original result before progressing.');
+            foreach ($byNumber as $fixture) abort_if(isset($config[0]['trials_skipped_challenges'][$fixture->id]) && !self::validSkippedChallenge($fixture), 409,
+                'A skipped trial challenge has no valid earlier playoff meeting. Review the original result before progressing.');
             $standings ??= app(\App\Domain\Draws\Services\StandingsService::class)->forDraw($draw);
             if ($confirm) $this->assertGroupsReady($draw, $standings);
             $groups = $draw->groups()->get()->keyBy('name');
             $changed = 0;
-            $earlier = $fixtures->where('stage', 'RR')->values();
+            // Group results determine qualification only; carries start in the playoff bracket.
+            $earlier = collect();
             $outcomes = app(IndividualMatchOutcomeService::class);
             foreach (self::template($draw) as $number => $definition) {
                 $fixture = $byNumber[$number];
@@ -155,7 +158,7 @@ final class InterproRoundRobinFormat
                 if ($fixture->registration1_id && $fixture->registration2_id && $fixture->fixtureResults->isEmpty()) {
                     $pair = self::pair($fixture);
                     $prior = $earlier->filter(fn ($candidate) => self::pair($candidate) === $pair)
-                        ->sortBy(fn ($candidate) => $candidate->stage === 'RR' ? 0 : array_search((int) $candidate->match_nr, array_keys(self::template($draw)), true) + 1)->first();
+                        ->first();
                     if ($prior && $fixture->stage === 'CHALLENGE') {
                         $config[0]['trials_skipped_challenges'][$fixture->id] = (int) $fixture->registration1_id;
                         $config[0]['trials_advances'][$fixture->id] = (int) $fixture->registration1_id;
@@ -207,12 +210,13 @@ final class InterproRoundRobinFormat
         $reference = $draw->settings->playoff_config[0]['trials_carries'][$fixture->id] ?? null;
         if (!$reference) return null;
         $source = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings', 'registration1.players', 'registration2.players'])->find($reference['source']);
-        if (!$source || (int) $source->id === (int) $fixture->id || self::pair($source) !== self::pair($fixture)
+        if (!$source || $source->stage === 'RR' || $fixture->stage === 'RR'
+            || (int) $source->id === (int) $fixture->id || self::pair($source) !== self::pair($fixture)
             || $source->fixtureResults->isEmpty() && !$source->isWalkover() && !$source->isRetired()
             || !hash_equals($reference['fingerprint'], self::fingerprint($source))) return null;
         $order = array_flip(array_keys(self::template($draw)));
-        if (!isset($order[(int) $fixture->match_nr]) || ($source->stage !== 'RR'
-            && (!isset($order[(int) $source->match_nr]) || $order[(int) $source->match_nr] >= $order[(int) $fixture->match_nr]))) return null;
+        if (!isset($order[(int) $fixture->match_nr]) || !isset($order[(int) $source->match_nr])
+            || $order[(int) $source->match_nr] >= $order[(int) $fixture->match_nr]) return null;
         return $source;
     }
 
@@ -232,10 +236,30 @@ final class InterproRoundRobinFormat
     public static function automaticWinner(Fixture $fixture): ?int
     {
         if (!$fixture->draw || !self::selected($fixture->draw)) return null;
+        if (isset($fixture->draw->settings->playoff_config[0]['trials_skipped_challenges'][$fixture->id])
+            && !self::validSkippedChallenge($fixture)) return null;
         $winner = (int) ($fixture->draw->settings->playoff_config[0]['trials_advances'][$fixture->id] ?? 0);
         return $winner && !$fixture->fixtureResults->count() && (!$fixture->registration1_id || !$fixture->registration2_id
                 || isset($fixture->draw->settings->playoff_config[0]['trials_skipped_challenges'][$fixture->id]))
             && in_array($winner, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true) ? $winner : null;
+    }
+
+    private static function validSkippedChallenge(Fixture $fixture): bool
+    {
+        $draw = $fixture->draw;
+        $config = $draw->settings->playoff_config[0] ?? [];
+        $order = array_flip(array_keys(self::template($draw)));
+        if ($fixture->stage !== 'CHALLENGE' || !isset($order[(int) $fixture->match_nr])
+            || !$fixture->registration1_id || !$fixture->registration2_id
+            || (int) ($config['trials_skipped_challenges'][$fixture->id] ?? 0) !== (int) $fixture->registration1_id
+            || (int) ($config['trials_advances'][$fixture->id] ?? 0) !== (int) $fixture->registration1_id) return false;
+        $prior = $draw->drawFixtures()->where('stage', '!=', 'RR')->whereKeyNot($fixture->id)
+            ->with(['fixtureResults', 'draw.settings', 'registration1.players', 'registration2.players'])->get()
+            ->filter(fn ($prior) => isset($order[(int) $prior->match_nr])
+                && $order[(int) $prior->match_nr] < $order[(int) $fixture->match_nr]
+                && self::pair($prior) === self::pair($fixture))
+            ->sortBy(fn ($prior) => $order[(int) $prior->match_nr])->first();
+        return $prior && app(IndividualMatchOutcomeService::class)->winner($prior) !== null;
     }
 
     public static function pair(Fixture $fixture): string
@@ -295,7 +319,8 @@ final class InterproRoundRobinFormat
     {
         $source = self::source($fixture);
         if (isset($fixture->draw?->settings?->playoff_config[0]['trials_skipped_challenges'][$fixture->id])) {
-            return 'Challenge skipped · already played · base positions retained';
+            return self::validSkippedChallenge($fixture) ? 'Challenge skipped · already played · base positions retained'
+                : 'Original playoff result unavailable · review required';
         }
         if (!$source) return self::hasReference($fixture) ? 'Original result changed · review required'
             : (self::automaticWinner($fixture) ? 'No match required · opponent withdrawn' : null);
@@ -321,7 +346,7 @@ final class InterproRoundRobinFormat
                 && $service->positionsResolved($draw, array_values($standings[$group->id] ?? []), $fixtures),
                 422, 'Complete the full trial group programme and resolve tied finishing positions before progressing.');
             abort_if($fixtures->contains(fn ($fixture) => !$fixture->isRoundRobinVoided() && app(IndividualMatchOutcomeService::class)->winner($fixture) === null),
-                422, 'First result stands requires a decisive original result for every group match. Resolve drawn matches before confirming trial progression.');
+                422, 'Trial progression requires a decisive result for every group match. Resolve drawn matches before confirming trial progression.');
         }
     }
 }

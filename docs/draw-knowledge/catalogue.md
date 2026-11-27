@@ -547,7 +547,7 @@ explicitly isolated local database. See `docs/draw-workflow.md` and RK-055.
 
 The explicit Interpro RR feed-in preset retains fixed A–D qualifying routes,
 eliminates fourth-place group finishers and resolves positions 1–12. Repeated
-pairings reference their original decisive result without copied sets, a second
+playoff pairings reference their first decisive playoff result without copied sets, a second
 played match or a court booking. Stable playoff identities survive scheduling
 and reviewed qualification. See [the format and current correction boundary](interpro-round-robin-feed-in.md).
 
@@ -574,7 +574,9 @@ After a recorded retirement, explicitly confirm a group-scoped withdrawal. Prese
 
 Use a separate playoff-only alias and exact source override, preserving all
 round-robin results and financial entries. Candidates are active entrants from
-any division in the same event; block another active playoff place. Click the
+any division in the same event; block another active playoff place. Round-robin
+meetings do not block replacement or carry into Interpro playoffs; a prior
+playoff meeting of the replacement pair still requires review. Click the
 player's name for the replacement menu and confirmation modal. See
 [playoff lucky losers](playoff-lucky-losers.md), `PlayoffLuckyLoserService` and
 `PlayoffLuckyLoserTest`. The pre-first-point alternate workflow is separate.

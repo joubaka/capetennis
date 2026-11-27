@@ -293,7 +293,7 @@
           @unless($roundRobinOnly)
             <div id="rr-saved-playoff-summary">
             @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
-              <p class="mb-0"><strong>Interpro trials — fixed feed-in.</strong> Four groups A–D of three or four players. Fourth place finishes. Group winners contest positions 1–2; crossovers and feed-ins decide 3–12. First result stands when players meet again.</p>
+              <p class="mb-0"><strong>Interpro trials — fixed feed-in.</strong> Four groups A–D of three or four players. Fourth place finishes. Group winners contest positions 1–2; crossovers and feed-ins decide 3–12. First playoff result stands when players meet again in the bracket; round-robin results do not carry.</p>
             @else
             @php
               $playoffConfig = collect($playoffConfig)->filter(fn ($playoff) => is_array($playoff) && isset($playoff['slug']))->values()->all();

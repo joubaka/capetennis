@@ -179,6 +179,27 @@ class PlayoffLuckyLoserTest extends TestCase
         $this->assertNull($pending->fresh()->registration1_id);
     }
 
+    public function test_interpro_round_robin_rematch_allows_lucky_loser_but_playoff_rematch_rejects_it(): void
+    {
+        [$draw, $fixture, $entry, $rr] = $this->context();
+        $draw->settings()->update(['preset_key' => InterproRoundRobinFormat::PRESET,
+            'playoff_config' => InterproRoundRobinFormat::configuration()]);
+        $prior = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR',
+            'registration1_id' => $fixture->registration2_id, 'registration2_id' => $entry->registration_id,
+            'winner_registration' => $fixture->registration2_id, 'match_status' => 1]);
+        $prior->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2,
+            'winner_registration' => $fixture->registration2_id, 'loser_registration' => $entry->registration_id]);
+        $url = route('draw.playoff-lucky-loser.store', $draw);
+        $prior->update(['stage' => 'PLATE']);
+        $this->postJson($url, $this->payload($draw->fresh(), $fixture, $entry))->assertConflict();
+        $this->assertSame($rr->registration1_id, $fixture->fresh()->registration1_id);
+        $prior->update(['stage' => 'RR']);
+        $savedResults = $prior->fresh()->fixtureResults->toJson();
+        $this->postJson($url, $this->payload($draw->fresh(), $fixture, $entry))->assertOk();
+        $this->assertSame($savedResults, $prior->fresh()->fixtureResults->toJson());
+        $this->assertDatabaseCount('draw_audit_logs', 1);
+    }
+
     public function test_interpro_override_survives_resolve_and_alias_carry_keeps_original_identity_and_score_orientation(): void
     {
         [$draw, $fixture, $entry, $rr] = $this->context();
@@ -189,7 +210,10 @@ class PlayoffLuckyLoserTest extends TestCase
         $groups = ['A' => $rr->draw_group_id];
         foreach (['B', 'C', 'D'] as $name) $groups[$name] = $draw->groups()->create(['name' => $name])->id;
         $standings = [];
-        foreach ($groups as $id) $standings[$id] = [['reg_id' => $rr->registration1_id], ['reg_id' => $rr->registration2_id], ['reg_id' => null]];
+        foreach ($groups as $id) {
+            $standings[$id] = array_map(fn () => ['reg_id' => Registration::factory()->create()->id], range(1, 3));
+        }
+        $standings[$groups['A']][0]['reg_id'] = $rr->registration1_id;
         $standings[$groups['D']][0]['reg_id'] = $rr->registration2_id;
         foreach (InterproRoundRobinFormat::template($draw->fresh()) as $number => [$stage, $round]) {
             if ($number === 2001) continue;
@@ -201,7 +225,8 @@ class PlayoffLuckyLoserTest extends TestCase
         app(InterproRoundRobinFormat::class)->resolve($draw->fresh(), $standings);
         $this->assertSame($incoming->id, $fixture->fresh()->registration1_id);
         // A later meeting must recognize the physical player, despite the new competition ID.
-        $original = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR', 'draw_group_id' => $rr->draw_group_id,
+        $original = $draw->drawFixtures()->where('match_nr', 3001)->firstOrFail();
+        $original->update([
             'registration1_id' => $entry->registration_id, 'registration2_id' => $rr->registration2_id, 'match_status' => 1,
             'winner_registration' => $entry->registration_id]);
         $original->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 3,

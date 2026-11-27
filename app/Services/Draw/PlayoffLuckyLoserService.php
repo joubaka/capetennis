@@ -6,6 +6,7 @@ use App\Models\{CategoryEventRegistration, Draw, DrawAuditLog, Fixture, Registra
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Schema;
 
 /** Explicit playoff identities; never substitutes round-robin history or paid entries. */
 final class PlayoffLuckyLoserService
@@ -35,6 +36,12 @@ final class PlayoffLuckyLoserService
     /** Validate durable overrides against their exact original source and target draw. */
     public static function sourceOverride(Draw $draw, Fixture $fixture, int $slot, ?int $source): ?int
     {
+        return InterproOneOffPlayoffCorrection::sourceOverride($draw, $fixture, $slot,
+            self::luckyLoserSourceOverride($draw, $fixture, $slot, $source));
+    }
+
+    public static function luckyLoserSourceOverride(Draw $draw, Fixture $fixture, int $slot, ?int $source): ?int
+    {
         $override = $draw->team_draw_selection['playoff_lucky_losers'][$fixture->id.':'.$slot] ?? null;
         if (!$override) return $source;
         $incoming = Registration::find($override['incoming_registration_id'] ?? null);
@@ -54,6 +61,7 @@ final class PlayoffLuckyLoserService
                 && $draw->drawFixtures()->where('stage', 'RR')->exists(), 422, 'Choose a resolved playoff place after the round robin.');
             $key = $fixture->id.':'.$slot;
             $history = $draw->team_draw_selection ?? [];
+            abort_if(isset($history['interpro_one_off_1654_places'][$key]), 409, 'This playoff place has been swapped. Review its existing position change before replacing a player.');
             $prior = $history['playoff_lucky_losers'][$key] ?? null;
             if ($prior && (int) $prior['source_entry_id'] === $entryId && (int) $prior['outgoing_registration_id'] === $outgoing
                 && (int) $fixture->getAttribute("registration{$slot}_id") === (int) $prior['incoming_registration_id']) {
@@ -87,15 +95,18 @@ final class PlayoffLuckyLoserService
                 $opponent = (int) $fixture->getAttribute('registration'.($slot === 1 ? 2 : 1).'_id');
                 $opponentIds = $opponent ? DB::table('player_registrations')->whereIn('player_id', DB::table('player_registrations')
                     ->where('registration_id', $opponent)->select('player_id'))->pluck('registration_id') : collect();
-                abort_if($draw->drawFixtures()->whereKeyNot($fixture->id)->where(function ($query) use ($aliases, $opponentIds) {
+                abort_if($draw->drawFixtures()->where('stage', '!=', 'RR')->whereKeyNot($fixture->id)->where(function ($query) use ($aliases, $opponentIds) {
                     $query->where(fn ($pair) => $pair->whereIn('registration1_id', $aliases)->whereIn('registration2_id', $opponentIds))
                         ->orWhere(fn ($pair) => $pair->whereIn('registration2_id', $aliases)->whereIn('registration1_id', $opponentIds));
                 })->where(fn ($query) => $query->whereHas('fixtureResults')->orWhereNotNull('winner_registration'))->exists(), 409,
-                    'These players have already met in this trial. Review the first-result-stands path before replacing this place.');
+                    'These players have already met in this playoff. Review the first-result-stands path before replacing this place.');
             }
+            $hintColumns = array_filter(['hint_registration1_id', 'hint_registration2_id'], fn ($column) => Schema::hasColumn('fixtures', $column));
             $commitments = Fixture::whereHas('draw', fn ($query) => $query->where('event_id', $draw->event_id))
-                ->where('stage', '!=', 'RR')->where(fn ($query) => $query->whereIn('registration1_id', $aliases)->orWhereIn('registration2_id', $aliases)
-                    ->orWhereIn('hint_registration1_id', $aliases)->orWhereIn('hint_registration2_id', $aliases))
+                ->where('stage', '!=', 'RR')->where(function ($query) use ($aliases, $hintColumns) {
+                    $query->whereIn('registration1_id', $aliases)->orWhereIn('registration2_id', $aliases);
+                    foreach ($hintColumns as $column) $query->orWhereIn($column, $aliases);
+                })
                 ->with(['fixtureResults', 'draw.settings'])->lockForUpdate()->get();
             abort_if($commitments->contains(fn ($match) => $this->hasRemainingRoute($match, $aliases))
                 || $this->hasUnresolvedQualificationPlace($draw, $aliases), 422, 'This player already has an active playoff place in this event.');

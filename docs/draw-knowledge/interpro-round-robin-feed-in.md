@@ -50,6 +50,10 @@ branches share the group; RR appearances, physical court occupancy, cross-draw
 player collisions and prerequisite completion plus rest remain enforced. Apply
 the same proof to new nodes, saved bookings and save-time revalidation.
 
+Select resolved opening qualifier models by their `match_nr` field. Eloquent
+collection `only()` selects model primary keys even after `keyBy('match_nr')`,
+so it cannot identify the twelve opening places by their match numbers.
+
 Regression: `tests/Feature/Draw/InterproDailyMatchLimitTest.php` and the existing
 `DailyMatchLimitTest` unit cases. This validation does not create bookings or
 publish times, and unsupported unresolved formats retain their existing guard.
@@ -145,8 +149,8 @@ higher base position. All eighteen base matches must resolve before challenge
 participants qualify, and scheduling uses the same full-base dependency barrier.
 Pairs use the fixed base positions, never positions changed by another challenge.
 The winner takes the higher position. A pairing already played in this exact
-draw skips its challenge and retains both base positions, without copied scores,
-a synthetic played match or new rating evidence. Skipped fixtures cannot be
+playoff bracket skips its challenge and retains both base positions, without
+copied scores, a synthetic played match or new rating evidence. Skipped fixtures cannot be
 scored, booked or converted into withdrawal walkovers. Working bookings are
 released with audit history; immutable published snapshots remain intact.
 
@@ -159,9 +163,12 @@ scheduling exclusions and preserved withdrawal history.
 
 ## First result stands
 
-The first decisive meeting in this exact draw determines a repeated pairing.
-The RR source takes precedence; otherwise the earlier playoff topology source
-takes precedence. A drawn first meeting cannot silently become a win.
+The first decisive playoff meeting in this exact draw determines a repeated
+playoff pairing. Round-robin results never carry into the playoff bracket and
+do not block a lucky-loser replacement. The earlier playoff topology source
+takes precedence. Existing stored round-robin carry references and RR-only
+skipped challenges require review; they are rejected without rewriting history.
+A drawn first playoff meeting cannot silently become a win.
 
 A carry is a progression reference to a genuine original result, never a second
 played match, copied set rows or synthetic walkover. Store the source ID and
@@ -172,7 +179,7 @@ the original match. A changed or unavailable source requires review.
 
 Confirming progression requires a decisive result in every RR match, including
 when timed scoring is selected. Resolve drawn original matches during the group
-stage before confirmation; a first draw cannot decide a later knockout winner.
+stage before confirmation so group qualification remains decisive.
 
 Resolve both winner and loser paths in template order, independent of the order
 in which scores arrive. Carried pairings cannot be scored again or booked on a

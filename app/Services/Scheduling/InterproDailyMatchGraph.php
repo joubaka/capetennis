@@ -57,6 +57,21 @@ final class InterproDailyMatchGraph
                         throw new \InvalidArgumentException('Review Interpro qualifier sources before using the daily player limit.');
                     }
                     $participant = $fixture->{'registration'.($slot + 1).'_id'};
+                    $key = $fixture->id.':'.($slot + 1);
+                    if (isset($draw->team_draw_selection['playoff_lucky_losers'][$key])
+                        || isset($draw->team_draw_selection['interpro_one_off_1654_places'][$key])) {
+                        try {
+                            $original = \App\Services\Draw\InterproOneOffPlayoffCorrection::rootSource($draw, $fixture, $slot + 1);
+                            $effective = \App\Services\Draw\PlayoffLuckyLoserService::sourceOverride($draw, $fixture, $slot + 1, $original);
+                        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $exception) {
+                            throw new \InvalidArgumentException('Review the original Interpro playoff replacement or position change.', previous: $exception);
+                        }
+                        if ((int) $participant !== $effective) {
+                            throw new \InvalidArgumentException('Review the effective Interpro playoff participant.');
+                        }
+                        $mapped[] = ['type' => 'player', 'id' => $effective];
+                        continue;
+                    }
                     if ($participant && ! $group->groupRegistrations->contains('registration_id', $participant)) {
                         throw new \InvalidArgumentException('Review Interpro qualifier membership before using the daily player limit.');
                     }
@@ -66,9 +81,9 @@ final class InterproDailyMatchGraph
             $fixture->setRelation('draw', $draw);
             $entrants = [];
             foreach ($mapped as $slot => $source) {
-                $prior = $matches[$source['match']];
-                $candidates = $possible[$source['match']];
-                if ($prior['winner']) {
+                $prior = $source['type'] === 'player' ? null : $matches[$source['match']];
+                $candidates = $source['type'] === 'player' ? [$source['id']] : $possible[$source['match']];
+                if ($prior && $prior['winner']) {
                     $candidates = $source['type'] === 'winner' ? [$prior['winner']] : array_values(array_diff($candidates, [$prior['winner']]));
                 }
                 $participant = $fixture->{'registration'.($slot + 1).'_id'};
