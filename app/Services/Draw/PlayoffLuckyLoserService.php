@@ -117,6 +117,13 @@ final class PlayoffLuckyLoserService
             $draw->registrations()->attach($incoming->id);
             $fixture->update(["registration{$slot}_id" => $incoming->id]);
             if ((int) $fixture->getAttribute("hint_registration{$slot}_id") === $outgoing) $fixture->update(["hint_registration{$slot}_id" => $incoming->id]);
+            $record = ['fixture_id' => $fixture->id, 'slot' => $slot, 'outgoing_registration_id' => $outgoing, 'playoff_withdrawal' => true,
+                'incoming_registration_id' => $incoming->id, 'source_entry_id' => $entry->id, 'source_registration_id' => $entry->registration_id];
+            $history['playoff_lucky_losers'][$key] = $record;
+            // Schedule validation reloads the draw; its graph must see the alias's original source.
+            // The enclosing transaction rolls this metadata back with the alias on any conflict.
+            $draw->team_draw_selection = $history;
+            $draw->save();
             if ($fixture->orderOfPlay?->time) {
                 $booking = $fixture->orderOfPlay;
                 $conflict = app(\App\Domain\Draws\Services\ScheduleConflictService::class)->conflict($draw, $fixture,
@@ -124,11 +131,6 @@ final class PlayoffLuckyLoserService
                     (int) ($booking->duration_minutes ?: 75), null, (int) ($booking->gap_minutes ?? 0));
                 abort_if($conflict, 409, 'The lucky loser conflicts with the saved match schedule. Review scheduling before replacing the player.');
             }
-            $record = ['fixture_id' => $fixture->id, 'slot' => $slot, 'outgoing_registration_id' => $outgoing, 'playoff_withdrawal' => true,
-                'incoming_registration_id' => $incoming->id, 'source_entry_id' => $entry->id, 'source_registration_id' => $entry->registration_id];
-            $history['playoff_lucky_losers'][$key] = $record;
-            $draw->team_draw_selection = $history;
-            $draw->save();
             DrawAuditLog::record($draw->id, 'playoff_lucky_loser_replaced', $fixture->id, $record);
             return $incoming;
         });

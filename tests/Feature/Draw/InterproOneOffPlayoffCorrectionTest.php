@@ -14,7 +14,7 @@ class InterproOneOffPlayoffCorrectionTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function context(): array
+    private function context(bool $booked = false, bool $conflict = false): array
     {
         $type = DB::table('eventtypes')->insertGetId(['name' => 'Fictional Interpro', 'type' => EventType::INDIVIDUAL, 'code' => EventType::INTERPROVINCIAL_TRIALS_CODE]);
         $event = Event::factory()->create(['id' => 253, 'eventType' => $type, 'start_date' => '2026-11-28', 'end_date' => '2026-11-29']);
@@ -54,10 +54,52 @@ class InterproOneOffPlayoffCorrectionTest extends TestCase
             'standings_snapshot' => $review['snapshot']])->assertOk();
         $first = $draw->drawFixtures()->where('match_nr', 3002)->firstOrFail();
         $second = $draw->drawFixtures()->where('match_nr', 3004)->firstOrFail();
+        if ($booked) {
+            $venue = Venue::forceCreate(['name' => 'Fictional booked courts']);
+            $draw->event->venues()->attach($venue->id, ['num_courts' => 8]);
+            $draw->venues()->attach($venue->id, ['num_courts' => 8]);
+            OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $second->id, 'venue_id' => $venue->id,
+                'court' => '1', 'time' => '2026-11-28 10:00', 'duration_minutes' => 60, 'gap_minutes' => 5]);
+            DB::table('event_venue_schedule_drafts')->insert(['event_id' => $draw->event_id,
+                'options' => json_encode(['limit_daily_matches' => true]), 'created_at' => now(), 'updated_at' => now()]);
+            if ($conflict) {
+                $other = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+                $match = Fixture::factory()->create(['draw_id' => $other->id, 'registration1_id' => $entries['D'][3]->registration_id]);
+                OrderOfPlay::create(['draw_id' => $other->id, 'fixture_id' => $match->id, 'venue_id' => $venue->id,
+                    'court' => '2', 'time' => '2026-11-28 10:00', 'duration_minutes' => 60, 'gap_minutes' => 5]);
+            }
+        }
+        $original = $second->registration2_id;
+        $registrations = Registration::count();
+        $pivots = DB::table('draw_registrations')->count();
+        $metadata = $draw->fresh()->team_draw_selection;
         $response = $this->postJson(route('draw.playoff-lucky-loser.store', $draw), ['target' => $second->id.':2:'.$second->registration2_id,
             'source_entry_id' => $entries['D'][3]->id, 'confirm_withdrawal' => 1,
-            'revision' => app(PlayoffLuckyLoserService::class)->revision($draw->fresh())])->assertOk();
+            'revision' => app(PlayoffLuckyLoserService::class)->revision($draw->fresh())]);
+        if ($conflict) {
+            $response->assertConflict();
+            $this->assertSame($original, $second->fresh()->registration2_id);
+            $this->assertSame($registrations, Registration::count());
+            $this->assertSame($pivots, DB::table('draw_registrations')->count());
+            $this->assertEquals($metadata, $draw->fresh()->team_draw_selection);
+            $this->assertSame(0, DrawAuditLog::where('action', 'playoff_lucky_loser_replaced')->count());
+        } else $response->assertOk();
         return [$draw->fresh(), $first->fresh(), $second->fresh(), $response->json('registration_id')];
+    }
+
+    public function test_lucky_loser_with_existing_booking_and_daily_cap_persists_source_before_validation(): void
+    {
+        [$draw, , $second, $alias] = $this->context(true);
+        $this->assertSame($alias, $second->registration2_id);
+        $this->assertSame($alias, $draw->team_draw_selection['playoff_lucky_losers'][$second->id.':2']['incoming_registration_id']);
+        $this->assertSame('2026-11-28 10:00:00', (string) $second->orderOfPlay->time);
+        $graph = InterproDailyMatchGraph::build($draw, $draw->drawFixtures()->with('fixtureResults')->get());
+        $this->assertSame(['type' => 'player', 'id' => $alias], $graph[3004]['sources'][1]);
+    }
+
+    public function test_scheduled_lucky_loser_conflict_rolls_back_early_metadata_alias_and_audit(): void
+    {
+        $this->context(true, true);
     }
 
     private function corrected(): array

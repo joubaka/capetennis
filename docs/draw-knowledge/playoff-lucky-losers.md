@@ -44,6 +44,11 @@ carried results do not create new played set records. An immediate replacement
 pairing with a recorded previous playoff meeting requires separate review and is rejected.
 Round-robin meetings do not block replacement and never carry into this playoff.
 
+For an already booked match, save the LL source override inside the same locked
+transaction before schedule and daily-limit validation reload the draw. Record
+the successful audit only after validation. A conflict rolls back the alias,
+draw membership, fixture participant and early metadata together.
+
 There is no general playoff-position swap control. Read-only resolution of one
 separately reviewed correction composes the original qualifying source, its LL
 alias, then the exact paired place overrides; the original LL history stays at
