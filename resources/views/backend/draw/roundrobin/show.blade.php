@@ -1154,6 +1154,7 @@
 {{-- Schedule Modal --}}
 <input type="hidden" id="drawId" value="{{ $draw->id }}">
 @include('backend.headOffice.modals.scheduleModal')
+@include('backend.draw.partials.playoff-lucky-loser-modal')
 
 </div>
 @endsection

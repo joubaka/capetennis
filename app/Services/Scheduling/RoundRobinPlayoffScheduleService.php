@@ -117,6 +117,7 @@ final class RoundRobinPlayoffScheduleService
                 $registrationId = $this->groupIsComplete($draw, $groupId)
                     ? $this->registrationAt($standings[$groupId] ?? [], $position)
                     : null;
+                $registrationId = \App\Services\Draw\PlayoffLuckyLoserService::sourceOverride($draw, $fixture, $slot, $registrationId);
 
                 if ($preserveOccupiedSlots && $registrationId === null) {
                     throw new \InvalidArgumentException('A playoff group-position source could not be resolved from this draw\'s completed standings. Review the playoff sources.');

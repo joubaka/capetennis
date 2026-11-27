@@ -13,6 +13,45 @@ class MyTennisLiveResultsTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_lucky_loser_results_require_audited_same_event_source_without_creating_an_entry(): void
+    {
+        $user = User::factory()->create();
+        $player = Player::factory()->create(['userId' => $user->id]);
+        $opponent = Player::factory()->create();
+        $event = Event::factory()->create(['published' => true]);
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $otherDivision = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'published' => true]);
+        $draw->settings()->create(['score_format' => 'one_set_to_6', 'num_sets' => 1]);
+        $source = Registration::factory()->create();
+        $source->players()->attach($player);
+        $entry = \App\Models\CategoryEventRegistration::factory()->create(['registration_id' => $source->id,
+            'category_event_id' => $otherDivision->id, 'payment_status_id' => 1, 'withdrawn_at' => null, 'status' => 'confirmed']);
+        $alias = Registration::factory()->create(['competition_replacement' => ['draw_id' => $draw->id,
+            'source_entry_id' => $entry->id, 'source_registration_id' => $source->id, 'show_lucky_loser' => true]]);
+        $alias->players()->attach($player);
+        $other = Registration::factory()->create();
+        $other->players()->attach($opponent);
+        $other->categoryEvents()->attach($category);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN',
+            'registration1_id' => $alias->id, 'registration2_id' => $other->id,
+            'match_status' => FixtureState::STATUS_COMPLETED, 'winner_registration' => $alias->id]);
+        $fixture->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2]);
+        $record = ['incoming_registration_id' => $alias->id, 'source_entry_id' => $entry->id, 'source_registration_id' => $source->id];
+        $service = app(\App\Services\Performance\PlayerLiveResults::class);
+        $this->assertCount(0, $service->forPlayer($user, $player));
+        $draw->team_draw_selection = ['playoff_lucky_losers' => [$fixture->id.':1' => $record]];
+        $draw->save();
+        $this->assertCount(1, $service->forPlayer($user, $player));
+        $this->assertSame(0, $alias->categoryEvents()->count());
+        $foreign = CategoryEvent::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $entry->update(['category_event_id' => $foreign->id]);
+        $this->assertCount(0, $service->forPlayer($user, $player));
+        $entry->update(['category_event_id' => $otherDivision->id]);
+        $entry->delete();
+        $this->assertCount(0, $service->forPlayer($user, $player));
+    }
+
     public function test_completed_scores_appear_on_the_next_read_and_corrections_replace_them(): void
     {
         $user = User::factory()->create();

@@ -72,7 +72,19 @@
               : create('span', 'fm-slot-name fm-source-name' + (['winner', 'loser'].includes(match.sources[slot].type) ? ' fm-feeder-name' : ''), match.sources[slot].label);
             row.title = label.textContent + ' · ' + match.sources[slot].label;
             label.title = player?.name || match.sources[slot].label;
+            if (player && match.can_lucky_loser && match.fixture_id) {
+              label.setAttribute('role', 'button'); label.setAttribute('tabindex', '0');
+              label.setAttribute('aria-haspopup', 'menu'); label.setAttribute('aria-expanded', 'false');
+              Object.assign(label.dataset, {llFixture: String(match.fixture_id), llSlot: String(slot + 1), llRegistration: String(player.id), llName: player.name});
+              label.style.cursor = 'pointer';
+            }
             row.append(label);
+            if (player?.lucky_loser) {
+              label.textContent = player.name.replace(/ \(LL\)$/, '');
+              const badge = create('span', 'badge bg-label-warning', 'LL');
+              badge.setAttribute('aria-label', 'Lucky loser');
+              row.append(badge);
+            }
             if (match.sets.length) {
               const score = create('strong', '', match.sets.map(set => set[slot]).join(' '));
               score.dataset.slot = String(slot);

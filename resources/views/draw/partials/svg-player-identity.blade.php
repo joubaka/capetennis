@@ -50,5 +50,5 @@
         rx="5"
         class="player-identity-bg {{ $isWinner ? 'winner' : ($isLoser ? 'loser' : '') }}"
     />
-    <text x="{{ $textX }}" y="{{ $baselineY }}" @if($badgeCount) textLength="{{ max(30, $maxWidth - 14) }}" lengthAdjust="spacingAndGlyphs" @endif class="player-name player-identity-text {{ $isWinner ? 'winner' : ($isLoser ? 'loser' : '') }}"><title>{{ $display }}</title>{{ $badgeDisplay }}@if($registration)@foreach($registration->players as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw ?? ($fixture ?? null)?->draw ?? null" :svg="true" />@endforeach@endif</text>
+    <text x="{{ $textX }}" y="{{ $baselineY }}" @include('draw.partials.playoff-lucky-loser-attributes') @if($badgeCount) textLength="{{ max(30, $maxWidth - 14) }}" lengthAdjust="spacingAndGlyphs" @endif class="player-name player-identity-text {{ $isWinner ? 'winner' : ($isLoser ? 'loser' : '') }}"><title>{{ $display }}</title>{{ $badgeDisplay }}@if($registration)@foreach($registration->players as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw ?? ($fixture ?? null)?->draw ?? null" :svg="true" />@endforeach@endif</text>
 @endif

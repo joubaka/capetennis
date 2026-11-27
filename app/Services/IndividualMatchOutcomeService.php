@@ -10,7 +10,10 @@ final class IndividualMatchOutcomeService
     public function winner(Fixture $fixture): ?int
     {
         if ($fixture->isRoundRobinVoided()) return null;
-        if ($source = \App\Services\Draw\InterproRoundRobinFormat::source($fixture)) return $this->winner($source);
+        if ($source = \App\Services\Draw\InterproRoundRobinFormat::source($fixture)) {
+            $winner = $this->winner($source);
+            return $winner ? \App\Services\Draw\InterproRoundRobinFormat::winnerForFixture($fixture, $winner) : null;
+        }
         if ($winner = \App\Services\Draw\InterproRoundRobinFormat::automaticWinner($fixture)) return $winner;
         if ($fixture->isWalkover() || $fixture->isRetired()) return (int) $fixture->winner_registration;
         $sets = $fixture->fixtureResults->sortBy('set_nr')->unique('set_nr')

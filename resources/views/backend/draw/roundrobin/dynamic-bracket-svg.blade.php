@@ -197,8 +197,9 @@
                         <rect x="{{ $x + 1 }}" y="{{ $topLineY - 20 }}" width="{{ $identityWidth1 }}" height="17" rx="6" class="player-identity-bg{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}" />
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}"
+                        @include('draw.partials.playoff-lucky-loser-attributes', ['fixture' => $fx, 'slot' => 1])
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit($p1, 18) }}</text>
+                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit(preg_replace('/ \(LL\)$/', '', $p1), 18) }}@if(!$isEmpty && !$isFeeder1 && ($fx?->registration1?->competition_replacement['show_lucky_loser'] ?? false))<tspan fill="#b45309" font-size="10" font-weight="700"> LL</tspan>@endif</text>
                     <text x="{{ $x + 5 }}" y="{{ $topLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $rightX - 25; @endphp
@@ -217,8 +218,9 @@
                         <rect x="{{ $x + 1 }}" y="{{ $bottomLineY - 20 }}" width="{{ $identityWidth2 }}" height="17" rx="6" class="player-identity-bg{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}" />
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}"
+                        @include('draw.partials.playoff-lucky-loser-attributes', ['fixture' => $fx, 'slot' => 2])
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit($p2, 18) }}</text>
+                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit(preg_replace('/ \(LL\)$/', '', $p2), 18) }}@if(!$isEmpty && !$isFeeder2 && ($fx?->registration2?->competition_replacement['show_lucky_loser'] ?? false))<tspan fill="#b45309" font-size="10" font-weight="700"> LL</tspan>@endif</text>
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $rightX - 25; @endphp
@@ -280,7 +282,7 @@
 
                         {{-- Clickable hit area for score entry --}}
                         @if($canEnterScore && $isAdmin)
-                            <rect x="{{ $x }}" y="{{ $topLineY - 18 }}" width="{{ $w }}" height="{{ $h + 36 }}"
+                            <rect x="{{ $x }}" y="{{ (auth()->user()?->can('replacePlayoffLuckyLoser', $draw) ?? false) ? $topLineY + 1 : $topLineY - 18 }}" width="{{ $w }}" height="{{ (auth()->user()?->can('replacePlayoffLuckyLoser', $draw) ?? false) ? max(1, $h - 2) : $h + 36 }}"
                                   class="match-hit bracket-score-btn"
                                   data-fixture-id="{{ $fx->id }}"
                                   data-home="{{ Str::limit($p1, 30) }}"
@@ -398,8 +400,9 @@
                         <rect x="{{ $x + 1 }}" y="{{ $topLineY - 20 }}" width="{{ $identityWidth1 }}" height="17" rx="6" class="player-identity-bg{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}" />
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $topLineY - 5 }}" class="player-name{{ $identity1 ? ' player-identity-text' : '' }}{{ $winner1 ? ' winner' : ($loser1 ? ' loser' : '') }}"
+                        @include('draw.partials.playoff-lucky-loser-attributes', ['fixture' => $fx, 'slot' => 1])
                         @if($isBye1 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit($p1, 18) }}</text>
+                        @endif>{{ $isEmpty || $isFeeder1 ? $p1 : Str::limit(preg_replace('/ \(LL\)$/', '', $p1), 18) }}@if(!$isEmpty && !$isFeeder1 && ($fx?->registration1?->competition_replacement['show_lucky_loser'] ?? false))<tspan fill="#b45309" font-size="10" font-weight="700"> LL</tspan>@endif</text>
                     <text x="{{ $x + 5 }}" y="{{ $topLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration1?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin1 && $isAdmin)
                         @php $badgeX1 = $rightX - 25; @endphp
@@ -418,8 +421,9 @@
                         <rect x="{{ $x + 1 }}" y="{{ $bottomLineY - 20 }}" width="{{ $identityWidth2 }}" height="17" rx="6" class="player-identity-bg{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}" />
                     @endif
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY - 5 }}" class="player-name{{ $identity2 ? ' player-identity-text' : '' }}{{ $winner2 ? ' winner' : ($loser2 ? ' loser' : '') }}"
+                        @include('draw.partials.playoff-lucky-loser-attributes', ['fixture' => $fx, 'slot' => 2])
                         @if($isBye2 && !$isEmpty) style="fill: #94a3b8; font-style: italic;"
-                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit($p2, 18) }}</text>
+                        @endif>{{ $isEmpty || $isFeeder2 ? $p2 : Str::limit(preg_replace('/ \(LL\)$/', '', $p2), 18) }}@if(!$isEmpty && !$isFeeder2 && ($fx?->registration2?->competition_replacement['show_lucky_loser'] ?? false))<tspan fill="#b45309" font-size="10" font-weight="700"> LL</tspan>@endif</text>
                     <text x="{{ $x + 5 }}" y="{{ $bottomLineY + 12 }}" class="player-rating-line">@foreach($fx?->registration2?->players ?? [] as $ratedPlayer)<x-player-rating :player-id="$ratedPlayer->id" :context="$draw" :svg="true" />@endforeach</text>
                     @if($origin2 && $isAdmin)
                         @php $badgeX2 = $rightX - 25; @endphp
@@ -475,7 +479,7 @@
 
                         {{-- Clickable hit area for score entry --}}
                         @if($canEnterScore && $isAdmin)
-                            <rect x="{{ $x }}" y="{{ $topLineY - 18 }}" width="{{ $w }}" height="{{ $h + 36 }}"
+                            <rect x="{{ $x }}" y="{{ (auth()->user()?->can('replacePlayoffLuckyLoser', $draw) ?? false) ? $topLineY + 1 : $topLineY - 18 }}" width="{{ $w }}" height="{{ (auth()->user()?->can('replacePlayoffLuckyLoser', $draw) ?? false) ? max(1, $h - 2) : $h + 36 }}"
                                   class="match-hit bracket-score-btn"
                                   data-fixture-id="{{ $fx->id }}"
                                   data-home="{{ Str::limit($p1, 30) }}"

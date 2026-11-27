@@ -105,7 +105,7 @@ final class InterproRoundRobinFormat
             if (!self::selected($draw) || $draw->locked) return 0;
             $config = $draw->settings->playoff_config;
             if (!$confirm && empty($config[0]['trials_confirmed'])) return 0;
-            $fixtures = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings'])->lockForUpdate()->get();
+            $fixtures = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings', 'registration1.players', 'registration2.players'])->lockForUpdate()->get();
             $byNumber = $fixtures->where('stage', '!=', 'RR')->keyBy('match_nr');
             abort_unless($byNumber->count() === count(self::template($draw)), 409, 'Prepare the complete Interpro playoff before progressing.');
             foreach ($byNumber as $fixture) abort_if(self::hasReference($fixture) && !self::source($fixture), 409,
@@ -133,10 +133,15 @@ final class InterproRoundRobinFormat
                             : ((int) $previous->registration1_id === $winner ? $previous->registration2_id : $previous->registration1_id));
                         if ((int) $previous->match_status === 5 || ($winner && !$registration)) $absent[] = $slot;
                     }
+                    $registration = PlayoffLuckyLoserService::sourceOverride($draw, $fixture, $slot + 1, $registration === null ? null : (int) $registration);
                     $column = 'registration'.($slot + 1).'_id';
                     abort_if($fixture->$column && (int) $fixture->$column !== (int) $registration, 409,
-                        'A confirmed trial source changed. Review the original result through draw recovery.');
-                    if ($registration && !$fixture->$column) { $fixture->$column = $registration; $changed++; }
+                        'A confirmed trial source changed in match '.$number.', place '.($slot + 1).'. Review the original result through draw recovery.');
+                    if ($registration && !$fixture->$column) {
+                        $fixture->$column = $registration;
+                        $fixture->unsetRelation('registration'.($slot + 1));
+                        $changed++;
+                    }
                 }
                 if ($absent && $fixture->fixtureResults->isEmpty() && ($fixture->registration1_id || in_array(0, $absent, true))
                     && ($fixture->registration2_id || in_array(1, $absent, true))) {
@@ -168,6 +173,7 @@ final class InterproRoundRobinFormat
                     } elseif ($prior) {
                         $winner = $outcomes->winner($prior);
                         abort_unless($winner, 409, 'The first meeting has no decisive result. Resolve it before continuing this trial branch.');
+                        $winner = self::winnerForFixture($fixture, $winner);
                         $original = self::source($prior) ?? $prior;
                         $config[0]['trials_carries'][$fixture->id] = ['source' => $original->id, 'fingerprint' => self::fingerprint($original)];
                         $bookings = $fixture->orderOfPlay()->get();
@@ -200,7 +206,7 @@ final class InterproRoundRobinFormat
         if (!$draw || !self::selected($draw)) return null;
         $reference = $draw->settings->playoff_config[0]['trials_carries'][$fixture->id] ?? null;
         if (!$reference) return null;
-        $source = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings'])->find($reference['source']);
+        $source = $draw->drawFixtures()->with(['fixtureResults', 'draw.settings', 'registration1.players', 'registration2.players'])->find($reference['source']);
         if (!$source || (int) $source->id === (int) $fixture->id || self::pair($source) !== self::pair($fixture)
             || $source->fixtureResults->isEmpty() && !$source->isWalkover() && !$source->isRetired()
             || !hash_equals($reference['fingerprint'], self::fingerprint($source))) return null;
@@ -234,8 +240,32 @@ final class InterproRoundRobinFormat
 
     public static function pair(Fixture $fixture): string
     {
-        $ids = [(int) $fixture->registration1_id, (int) $fixture->registration2_id]; sort($ids);
+        $ids = [self::slotKey($fixture, 1), self::slotKey($fixture, 2)]; sort($ids);
         return implode(':', $ids);
+    }
+
+    private static function slotKey(Fixture $fixture, int $slot): string
+    {
+        $registration = $fixture->{'registration'.$slot};
+        $players = $registration?->players ?? collect();
+        return $players->count() === 1 ? 'p'.$players->first()->id : 'r'.(int) $fixture->getAttribute('registration'.$slot.'_id');
+    }
+
+    private static function participantKey(int $registration): string
+    {
+        $players = \Illuminate\Support\Facades\DB::table('player_registrations')->where('registration_id', $registration)->pluck('player_id');
+        return $players->count() === 1 ? 'p'.$players->first() : 'r'.$registration;
+    }
+
+    public static function winnerForFixture(Fixture $fixture, int $winner): int
+    {
+        if (in_array($winner, [(int) $fixture->registration1_id, (int) $fixture->registration2_id], true)) return $winner;
+        $key = self::participantKey($winner);
+        foreach ([1, 2] as $slot) {
+            $id = (int) $fixture->getAttribute('registration'.$slot.'_id');
+            if ($id && self::slotKey($fixture, $slot) === $key) return $id;
+        }
+        return $winner;
     }
 
     private static function fingerprint(Fixture $fixture): string
@@ -269,7 +299,7 @@ final class InterproRoundRobinFormat
         }
         if (!$source) return self::hasReference($fixture) ? 'Original result changed · review required'
             : (self::automaticWinner($fixture) ? 'No match required · opponent withdrawn' : null);
-        $reverse = (int) $source->registration1_id !== (int) $fixture->registration1_id;
+        $reverse = self::slotKey($source, 1) !== self::slotKey($fixture, 1);
         $score = $source->isWalkover() ? 'W/O' : $source->fixtureResults->sortBy('set_nr')->map(fn ($set) => $reverse
             ? $set->registration2_score.'-'.$set->registration1_score : $set->registration1_score.'-'.$set->registration2_score)->implode(', ');
         return $score.' · First result stands (match '.$source->match_nr.')';

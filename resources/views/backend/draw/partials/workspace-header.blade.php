@@ -13,6 +13,11 @@
     <span class="small text-muted" role="status" data-share-status></span>
   </x-slot:meta>
   <x-slot:actions>
+    @can('replacePlayoffLuckyLoser', $draw)
+      @if($draw->drawFixtures()->where('stage', 'RR')->exists())
+        <a class="btn btn-sm btn-outline-warning" href="{{ route('draw.playoff-lucky-loser.show', $draw) }}">Playoff lucky loser</a>
+      @endif
+    @endcan
       @can('event.manage', $draw->event)
         <a class="btn btn-sm btn-primary" data-draw-next-schedule @if(!$draw->isTeamDraw() && !$draw->drawFixtures()->exists()) hidden @endif href="{{ route('backend.event-venue-schedule.index', ['event' => $draw->event_id, 'draw_ids' => [$draw->id]]) }}">Schedule matches</a>
       @endcan

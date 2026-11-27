@@ -17,10 +17,10 @@ class Registration extends Model
   public function getPlayersAttribute()
   {
     $players = $this->relationLoaded('players') ? $this->getRelation('players') : $this->getRelationshipFromMethod('players');
-    if (!($this->competition_replacement['show_alternate'] ?? false)) return $players;
+    if (!($this->competition_replacement['show_alternate'] ?? false) && !($this->competition_replacement['show_lucky_loser'] ?? false)) return $players;
     return $players->map(function ($player) {
       $copy = clone $player;
-      $copy->surname = $player->surname.' (alternate)';
+      $copy->surname = $player->surname.(($this->competition_replacement['show_lucky_loser'] ?? false) ? ' (LL)' : ' (alternate)');
       return $copy;
     });
   }

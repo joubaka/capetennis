@@ -569,3 +569,12 @@ The broad workflow audit in the drawn-score chat proposed explicit scoring readi
 ## DK-35 — Injury withdrawal voids a round-robin player's group results
 
 After a recorded retirement, explicitly confirm a group-scoped withdrawal. Preserve original scores and outcomes as void history, exclude the entrant and all their matches from standings and rating evidence, and preserve frozen progression/publication boundaries. See [round-robin withdrawal](round-robin-withdrawal.md), RoundRobinWithdrawalService, RoundRobinWithdrawalTest and VoidedRoundRobinProgressionTest. Local checks do not authorize deployment or live changes.
+
+## DK-36 — Withdraw an unstarted playoff place and insert a lucky loser
+
+Use a separate playoff-only alias and exact source override, preserving all
+round-robin results and financial entries. Candidates are active entrants from
+any division in the same event; block another active playoff place. Click the
+player's name for the replacement menu and confirmation modal. See
+[playoff lucky losers](playoff-lucky-losers.md), `PlayoffLuckyLoserService` and
+`PlayoffLuckyLoserTest`. The pre-first-point alternate workflow is separate.

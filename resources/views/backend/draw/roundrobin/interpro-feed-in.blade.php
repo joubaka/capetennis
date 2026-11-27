@@ -15,7 +15,7 @@
     $original = $fixture ? \App\Services\Draw\InterproRoundRobinFormat::source($fixture) : null;
     $hasCarry = $fixture && \App\Services\Draw\InterproRoundRobinFormat::hasReference($fixture);
     $scoreFixture = $hasCarry ? $original : $fixture;
-    $reverse = $original && (int) $original->registration1_id !== (int) $fixture->registration1_id;
+    $reverse = $original && \App\Services\Draw\InterproRoundRobinFormat::winnerForFixture($fixture, (int) $original->registration1_id) !== (int) $fixture->registration1_id;
     $sets = $scoreFixture?->fixtureResults->sortBy('set_nr')->values() ?? collect();
     $note = $original ? ($original->isWalkover() ? 'W/O · ' : ($original->isRetired() ? 'RET · ' : '')).substr($score, (int) strpos($score, ' · ') + strlen(' · '))
       : ($hasCarry || $sets->isEmpty() ? $score : ($fixture?->isRetired() ? 'RET' : ''));
@@ -26,9 +26,13 @@
         ? ['type' => $parts[1] === 'W' ? 'winner' : 'loser', 'match' => $parts[2], 'label' => ($parts[1] === 'W' ? 'Winner' : 'Loser').' of Match '.$parts[2]]
         : ['type' => 'group', 'label' => $trialSourceLabel($source)];
     }
-    $trialMatches[$number] = ['number' => $number, 'stage' => $definition[0], 'round' => $definition[1], 'position' => $definition[3] ?? null, 'sources' => $sources,
+    $trialMatches[$number] = ['number' => $number, 'fixture_id' => $fixture?->id,
+      'can_lucky_loser' => $fixture && request()->routeIs('backend.*') && (auth()->user()?->can('replacePlayoffLuckyLoser', $draw) ?? false)
+        && !$fixture->winner_registration && (int) $fixture->match_status === 0 && !\App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture),
+      'stage' => $definition[0], 'round' => $definition[1], 'position' => $definition[3] ?? null, 'sources' => $sources,
       'players' => collect([$fixture?->registration1, $fixture?->registration2])->map(fn ($registration) => $registration
-        ? ['id' => (int) $registration->id, 'name' => $registration->display_name] : null)->all(),
+        ? ['id' => (int) $registration->id, 'name' => $registration->display_name,
+            'lucky_loser' => (bool) ($registration->competition_replacement['show_lucky_loser'] ?? false)] : null)->all(),
       'winner' => $fixture ? $trialOutcomes->winner($fixture) : null,
       'sets' => $sets->map(fn ($set) => $reverse ? [$set->registration2_score, $set->registration1_score] : [$set->registration1_score, $set->registration2_score])->all(),
       'note' => $note, 'schedule' => $schedule];

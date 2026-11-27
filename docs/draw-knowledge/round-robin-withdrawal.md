@@ -45,3 +45,8 @@ Regressions: `RoundRobinWithdrawalTest`, `VoidedRoundRobinProgressionTest`,
 `DeploymentConfigTest`. Migration:
 `database/migrations/2026_11_27_160000_add_round_robin_void_marker_to_fixtures.php`.
 Local tests and compiled views do not establish deployment or browser visual QA.
+
+For competition-only withdrawal from an already resolved, unstarted playoff
+place, use the separate [lucky-loser replacement](playoff-lucky-losers.md).
+That action preserves historical round-robin results and does not require or
+perform registration withdrawal or group-wide voiding.

@@ -1599,6 +1599,8 @@ Route::delete(
   Route::post('events/{event}/draws/{draw}/continue/category', [\App\Http\Controllers\Backend\DrawSetupGuideController::class, 'category'])->name('draw.guide.category');
   Route::post('events/{event}/draws/{draw}/continue/generate-team', [\App\Http\Controllers\Backend\DrawSetupGuideController::class, 'generateTeam'])->name('draw.guide.generate-team');
   Route::get('draw/{draw}/alternate', [\App\Http\Controllers\Backend\DrawAlternateController::class, 'show'])->name('draw.alternate.show');
+  Route::get('draw/{draw}/playoff-lucky-loser', [\App\Http\Controllers\Backend\PlayoffLuckyLoserController::class, 'show'])->name('draw.playoff-lucky-loser.show');
+  Route::post('draw/{draw}/playoff-lucky-loser', [\App\Http\Controllers\Backend\PlayoffLuckyLoserController::class, 'store'])->name('draw.playoff-lucky-loser.store');
   Route::post('draw/{draw}/alternate', [\App\Http\Controllers\Backend\DrawAlternateController::class, 'store'])->name('draw.alternate.store');
   Route::get('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'show'])->name('draw.setup.show');
   Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
