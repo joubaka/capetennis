@@ -54,7 +54,15 @@ separately reviewed correction composes the original qualifying source, its LL
 alias, then the exact paired place overrides; the original LL history stays at
 its original source. Invalid or copied correction metadata requires review.
 
-Live player results validate the alias against its active same-event source.
+Live player results and saved schedule reviews share
+`Registration::isAuditedPlayoffLuckyLoserFor()` to validate the alias against its
+recorded replacement, exact draw, active same-event source entry and matching
+singles player. Schedule reviews accept this identity only for playoff fixtures;
+they must not require a duplicate target-category entry. The current fixture may
+differ from the original replacement fixture after reviewed movement or progression.
+`ScheduledMatchesByDrawTest` covers valid cross-division labels and rejection of
+foreign, inactive, missing, copied or mismatched sources without changing entries,
+schedule revisions or draw metadata.
 Saved rating/history admission keeps its existing exact-category roster check;
 this feature does not invent target-category membership or broaden CTR evidence
 confidence. Such alias evidence remains unavailable there pending a separately

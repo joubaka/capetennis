@@ -34,6 +34,64 @@ class ScheduledMatchesByDrawTest extends TestCase
             'venue_id' => $venue->id, 'court_label' => '2', 'duration_min' => 60]);
     }
 
+    public function test_audited_same_event_lucky_loser_keeps_its_label_without_a_target_entry_and_foreign_or_inactive_sources_stay_blocked(): void
+    {
+        [$event, $venue] = $this->setupEvent();
+        $category = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $sourceCategory = CategoryEvent::factory()->create(['event_id' => $event->id]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'category_event_id' => $category->id, 'drawName' => 'Fictional playoff']);
+        $player = Player::factory()->create(['name' => 'Fictional Calendar', 'surname' => 'Entrant']);
+        $source = Registration::factory()->create();
+        $source->players()->attach($player);
+        $entry = CategoryEventRegistration::factory()->create(['registration_id' => $source->id, 'category_event_id' => $sourceCategory->id,
+            'payment_status_id' => 1, 'status' => 'confirmed', 'withdrawn_at' => null]);
+        $meta = ['draw_id' => $draw->id, 'category_event_id' => $category->id, 'source_entry_id' => $entry->id,
+            'source_registration_id' => $source->id, 'show_lucky_loser' => true];
+        $alias = Registration::factory()->create(['competition_replacement' => $meta]);
+        $alias->players()->attach($player);
+        $opponent = Registration::factory()->create();
+        $opponent->players()->attach(Player::factory()->create(['name' => 'Local', 'surname' => 'Opponent']));
+        $opponent->categoryEvents()->attach($category);
+        $origin = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN']);
+        $fixture = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'MAIN', 'registration1_id' => $alias->id, 'registration2_id' => $opponent->id]);
+        $record = ['fixture_id' => $origin->id, 'slot' => 2, 'incoming_registration_id' => $alias->id,
+            'source_entry_id' => $entry->id, 'source_registration_id' => $source->id];
+        $history = ['playoff_lucky_losers' => [$origin->id.':2' => $record]];
+        $draw->team_draw_selection = $history;
+        $draw->save();
+        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id,
+            'court' => '1', 'time' => '2026-11-28 08:00:00', 'duration_minutes' => 60]);
+        $calendar = route('backend.event-venue-schedule.calendar', ['event' => $event->id, 'draw_id' => $draw->id, 'date' => 'all']);
+        $revision = app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event);
+        foreach ([$this->url($event, ['draw_id' => $draw->id]), $calendar] as $url) {
+            $this->get($url)->assertOk()->assertSee('Fictional Calendar Entrant (LL)')->assertDontSee('Assigned registration is outside this event');
+        }
+        $this->assertSame(0, $alias->categoryEvents()->count());
+        $this->assertSame($revision, app(\App\Services\Scheduling\SchedulePublicationService::class)->revision($event));
+        $this->assertEquals($history, $draw->fresh()->team_draw_selection);
+        $foreign = CategoryEvent::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $entry->update(['category_event_id' => $foreign->id]);
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event')->assertDontSee('Fictional Calendar Entrant (LL)');
+        $entry->update(['category_event_id' => $sourceCategory->id, 'withdrawn_at' => now()]);
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event');
+        $entry->update(['withdrawn_at' => null]);
+        $draw->team_draw_selection = [];
+        $draw->save();
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event');
+        $draw->team_draw_selection = $history;
+        $draw->save();
+        $wrongDrawMeta = $meta;
+        $wrongDrawMeta['draw_id'] = Draw::factory()->create(['event_id' => $event->id])->id;
+        $alias->update(['competition_replacement' => $wrongDrawMeta]);
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event');
+        $alias->update(['competition_replacement' => $meta]);
+        $alias->players()->sync([Player::factory()->create()->id]);
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event');
+        $alias->players()->sync([$player->id]);
+        $entry->delete();
+        $this->get($calendar)->assertOk()->assertSee('Assigned registration is outside this event');
+    }
+
     public function test_private_review_shows_actual_pairs_imports_metadata_counts_and_all_days(): void
     {
         [$event, $venue] = $this->setupEvent();

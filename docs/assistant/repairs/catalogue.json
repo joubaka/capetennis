@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-085",
+      "title": "Saved schedule rejects a valid playoff lucky-loser identity",
+      "scope": "Read-only individual playoff calendar and grouped schedule review labels.",
+      "symptoms": "A valid draw-only lucky loser shows Assigned registration is outside this event instead of the player name.",
+      "cause": "Schedule review treated ordinary category entry membership as the only event proof, although lucky-loser aliases intentionally have no new entry.",
+      "fix": "Reuse Registration::isAuditedPlayoffLuckyLoserFor for non-RR/non-FM fixtures in the requested event. Require matching draw replacement metadata, exact active same-event source entry and registration, and matching singles player. Preserve the original replacement record when the alias progresses or occupies a separately reviewed moved place. Do not manufacture a duplicate entry or weaken ordinary cross-event validation.",
+      "verification": "ScheduledMatchesByDrawTest covers calendar and grouped labels, no target entry or timing/history changes, and rejection of foreign, withdrawn, deleted, unaudited, wrong-draw and mismatched-player sources. Run SchedulePublicationTest and MyTennisLiveResultsTest alongside it.",
+      "limits": "Guide only. Display validation does not authorize live replacement, payment changes, schedule edits, publication or deployment.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Models/Registration.php", "app/Services/Scheduling/ScheduleDrawReviewService.php", "app/Services/Performance/PlayerLiveResults.php", "docs/draw-knowledge/playoff-lucky-losers.md"],
+      "tests": ["tests/Feature/Draw/ScheduledMatchesByDrawTest.php", "tests/Feature/Draw/SchedulePublicationTest.php", "tests/Feature/MyTennisLiveResultsTest.php"]
+    },
+    {
       "id": "RK-084",
       "title": "Interpro round-robin meetings block a playoff lucky loser or carry into playoffs",
       "scope": "Individual Interpro fixed feed-in playoff progression, repeated playoff pairings and explicit lucky-loser replacement.",

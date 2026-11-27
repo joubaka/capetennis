@@ -88,19 +88,7 @@ class PlayerLiveResults
 
     private function validLuckyLoser(Draw $draw, ?Registration $registration): bool
     {
-        $meta = $registration?->competition_replacement ?? [];
-        if (!$registration || !($meta['show_lucky_loser'] ?? false) || (int) ($meta['draw_id'] ?? 0) !== (int) $draw->id
-            || $registration->players->count() !== 1) return false;
-        $recorded = collect($draw->team_draw_selection['playoff_lucky_losers'] ?? [])
-            ->contains(fn ($record) => (int) ($record['incoming_registration_id'] ?? 0) === (int) $registration->id
-                && (int) ($record['source_entry_id'] ?? 0) === (int) ($meta['source_entry_id'] ?? 0)
-                && (int) ($record['source_registration_id'] ?? 0) === (int) ($meta['source_registration_id'] ?? 0));
-        if (!$recorded) return false;
-        $entry = app(\App\Services\Draw\PlayoffLuckyLoserService::class)->candidates($draw)
-            ->whereKey($meta['source_entry_id'] ?? 0)->where('registration_id', $meta['source_registration_id'] ?? 0)
-            ->with('registration.players')->first();
-        return $entry && $entry->registration->players->count() === 1
-            && (int) $entry->registration->players->first()->id === (int) $registration->players->first()->id;
+        return $registration?->isAuditedPlayoffLuckyLoserFor($draw) ?? false;
     }
 
     private function teamResult(TeamFixture $fixture): ?array

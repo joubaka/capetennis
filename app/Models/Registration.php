@@ -13,6 +13,24 @@ class Registration extends Model
 
   protected $casts = ['competition_replacement' => 'array'];
 
+  /** A draw-only LL identity is backed by its exact active same-event source, not a new entry. */
+  public function isAuditedPlayoffLuckyLoserFor(Draw $draw): bool
+  {
+    $meta = $this->competition_replacement ?? [];
+    if (!($meta['show_lucky_loser'] ?? false) || (int) ($meta['draw_id'] ?? 0) !== (int) $draw->id
+        || $this->players->count() !== 1) return false;
+    $recorded = collect($draw->team_draw_selection['playoff_lucky_losers'] ?? [])
+        ->contains(fn ($record) => (int) ($record['incoming_registration_id'] ?? 0) === (int) $this->id
+            && (int) ($record['source_entry_id'] ?? 0) === (int) ($meta['source_entry_id'] ?? 0)
+            && (int) ($record['source_registration_id'] ?? 0) === (int) ($meta['source_registration_id'] ?? 0));
+    if (!$recorded) return false;
+    $entry = app(\App\Services\Draw\PlayoffLuckyLoserService::class)->candidates($draw)
+        ->whereKey($meta['source_entry_id'] ?? 0)->where('registration_id', $meta['source_registration_id'] ?? 0)
+        ->with('registration.players')->first();
+    return $entry && $entry->registration->players->count() === 1
+        && (int) $entry->registration->players->first()->id === (int) $this->players->first()->id;
+  }
+
   /** Annotate only this draw-only competition identity, never the shared player profile. */
   public function getPlayersAttribute()
   {

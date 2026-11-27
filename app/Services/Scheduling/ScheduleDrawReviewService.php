@@ -32,8 +32,10 @@ class ScheduleDrawReviewService
         $teams = TeamFixture::whereIn('draw_id', $draws->pluck('id'))
             ->whereIn('id', $pageRows->where('fixture_kind', 'team')->pluck('fixture_id'))->get()->keyBy('id');
         if ($teams->isNotEmpty()) app(TeamFixtureLineupPresenter::class)->prepare($teams, publicDraw: true);
-        $individuals = Fixture::with(['registration1.categoryEvents', 'registration2.categoryEvents'])->whereIn('draw_id', $draws->pluck('id'))
+        $individuals = Fixture::with(['registration1.categoryEvents', 'registration1.players', 'registration2.categoryEvents', 'registration2.players'])->whereIn('draw_id', $draws->pluck('id'))
             ->whereIn('id', $pageRows->where('fixture_kind', 'individual')->pluck('fixture_id'))->get()->keyBy('id');
+        $drawsById = $draws->keyBy('id');
+        foreach ($individuals as $fixture) $fixture->setRelation('draw', $drawsById->get($fixture->draw_id));
         return $pageRows->map(function ($row) use ($teams, $individuals, $event) {
             $fixture = $row['fixture_kind'] === 'team' ? $teams->get($row['fixture_id']) : $individuals->get($row['fixture_id']);
             if ($fixture instanceof TeamFixture) {
@@ -47,7 +49,9 @@ class ScheduleDrawReviewService
             }
             foreach ([1, 2] as $side) {
                 $registration = $fixture?->{'registration'.$side};
-                if ($registration && !$registration->categoryEvents->contains(fn ($category) => (int) $category->event_id === (int) $event->id)) {
+                $auditedAlias = $registration && $fixture->draw && (int) $fixture->draw->event_id === (int) $event->id
+                    && !in_array($fixture->stage, ['RR', 'FM'], true) && $registration->isAuditedPlayoffLuckyLoserFor($fixture->draw);
+                if ($registration && !$registration->categoryEvents->contains(fn ($category) => (int) $category->event_id === (int) $event->id) && !$auditedAlias) {
                     $row['participants'][$side - 1] = 'Assigned registration is outside this event';
                 }
             }
