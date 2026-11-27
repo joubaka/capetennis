@@ -31,6 +31,10 @@ test('roster transfers stay private while declines save and publish automaticall
       await row.getByRole('button', {name: `${label} — Fictional Player ${String((await row.locator('.fw-semibold').innerText()).match(/\d+/)[0]).padStart(2,'0')}`, exact: true}).click();
     };
     await page.locator('[data-player-id="5"][data-transfer-target="selected"]').waitFor();
+    assert.deepEqual(await names('selected'), ['Fictional Player 01', 'Fictional Player 02']);
+    assert.equal(await page.locator('[data-list="selected"] [data-registration-status="registered"]').innerText(), 'Registered');
+    assert.equal(await page.locator('[data-list="selected"] > li.bg-label-warning [data-registration-status]').innerText(), 'Not registered');
+    assert.equal(await page.locator('[data-list="reserves"] [data-registration-status="pending"]').innerText(), 'Registration pending');
     await add(5, 'selected'); await saved(1);
     assert.deepEqual(await names('selected'), ['Fictional Player 01','Fictional Player 02','Fictional Player 05']);
     assert.equal((await merit())[0], 'Fictional Player 06'); assert.equal((await merit()).length, 10);
@@ -92,6 +96,14 @@ test('roster transfers stay private while declines save and publish automaticall
     await page.waitForFunction(() => document.querySelector('[data-status]').textContent.includes('now private.'));
     assert.equal(await page.evaluate(() => window.rosterTransferFixture.lastPublication.publish), false);
     assert.equal(await page.evaluate(() => window.rosterTransferFixture.draft.publication.published), false);
+    // Ordinary Save must use the response's fresh status map, just like a direct transfer.
+    await page.evaluate(() => {
+      window.rosterTransferFixture.draft.registration_statuses[33] = 'registered';
+    });
+    await page.locator('[data-list="reserves"] > li').nth(1).getByRole('button', {name: /^Up —/}).click();
+    await page.locator('[data-save]').click();
+    await page.waitForFunction(() => document.querySelector('[data-status]').textContent === 'Draft saved.');
+    assert.equal(await page.locator('[data-list="reserves"] > li').filter({hasText: 'Fictional Player 33'}).locator('[data-registration-status]').innerText(), 'Registered');
     assert.deepEqual(errors, []);
     for (const width of [480,768,1280]) { await page.setViewportSize({width,height:900}); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false); }
   } finally { await browser.close(); }

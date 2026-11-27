@@ -197,6 +197,8 @@ class SendBulkEmailJob implements ShouldQueue
         $payload = $log->payload ?? [];
 
         switch ($log->mail_type) {
+            case 'private_registration_invitation':
+                return app(\App\Services\PrivateRegistrationInvitationService::class)->authorizedMailable($log);
             case 'team_withdrawal_notification':
                 return app(\App\Services\TeamWithdrawalNotificationService::class)->authorizedMailable($log);
             case 'player_plus_activation':

@@ -52,6 +52,10 @@ class EnsureAgreementAccepted
                     ], 403);
                 }
 
+                if ($request->routeIs('registration.private.*')) {
+                    session()->put('url.intended', $request->fullUrl());
+                }
+
                 return redirect()->route('agreements.show')
                     ->with('error', 'You must accept the Code of Conduct before continuing.');
             }

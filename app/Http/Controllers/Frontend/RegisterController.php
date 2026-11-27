@@ -1364,6 +1364,14 @@ class RegisterController extends Controller
     }
 
     $authUser = Auth::user();
+    $privateLinks = app(\App\Domain\Entries\Services\PrivateRegistrationLinkService::class);
+    $request->validate(['private_registration_link_id' => 'sometimes|required|integer|min:1']);
+    $privateLink = $request->has('private_registration_link_id') ? $privateLinks->resolveById((int) $request->input('private_registration_link_id')) : null;
+    if ($privateLink) {
+      $privateLinks->assertLinkedAccount($privateLink, $authUser);
+      $privateLinks->assertCart($privateLink, $playerIds, $categoryIds);
+      if ($response = $privateLinks->resume($privateLink, $authUser)) return $response;
+    }
     $cart = array_map(fn ($category, $player) => (int) $category.':'.(int) $player, $categoryIds, $playerIds);
     if (count($cart) !== count(array_unique($cart))) {
       return back()->withErrors(['msg' => 'A player can only be entered once in each category.']);
@@ -1392,7 +1400,7 @@ class RegisterController extends Controller
         continue;
       }
 
-      if ($message = $this->genericRegistrationGateMessage($categoryEvent->event)) {
+      if (!$privateLink && ($message = $this->genericRegistrationGateMessage($categoryEvent->event))) {
         $duplicateErrors[] = $message;
         continue;
       }
@@ -1431,10 +1439,20 @@ class RegisterController extends Controller
     // Create order + registrations inside a single transaction
     // ----------------------------
     $campEventIds = CategoryEvent::whereIn('id', $categoryIds)->pluck('event_id')->unique()->all();
-    $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart, $campEventIds) {
+    $regorder = DB::transaction(function () use ($authUser, $playerIds, $categoryIds, $cart, $campEventIds, $privateLink, $privateLinks, $request) {
 
       app(\App\Services\Camps\CampAdmission::class)->lockEvents($campEventIds);
       $lockedDivisions = CategoryEvent::whereIn('id', $categoryIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+
+      if ($privateLink) {
+        $privateLink = $privateLinks->resolveById((int) $request->input('private_registration_link_id'), true);
+        $privateLinks->assertLinkedAccount($privateLink, $authUser, true);
+        $privateLinks->assertCart($privateLink, $playerIds, $categoryIds);
+        if ($response = $privateLinks->resume($privateLink, $authUser)) throw new \Illuminate\Http\Exceptions\HttpResponseException($response);
+        $privateLinks->assertNoPendingCheckout($privateLink);
+        try { app(\App\Domain\Entries\Services\EntryEligibilityService::class)->assertCanRegister($lockedDivisions->get($privateLink->category_event_id), $privateLink->player_id); }
+        catch (\RuntimeException $exception) { throw \Illuminate\Validation\ValidationException::withMessages(['msg' => $exception->getMessage()]); }
+      }
 
       // A decline/publication change may commit while the preflight waits for this
       // same division lock. Recheck scoped nomination admission before any writes.
@@ -1521,6 +1539,12 @@ class RegisterController extends Controller
         ]);
 
         $totalFee += $orderItem->item_price;
+      }
+
+      if ($privateLink) {
+        $privateLink->update(['order_id' => $regorder->id]);
+        activity('registration')->performedOn($privateLink)->causedBy($authUser)
+          ->withProperties(['order_id' => $regorder->id])->log('Private registration link claimed');
       }
 
       $regorder->total_fee = $totalFee;

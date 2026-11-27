@@ -47,6 +47,7 @@
                     data-bs-toggle="modal">Email event nominees</button>
             </div>
             <p class="small text-muted" data-publication-status></p>
+            <p class="small text-muted">Registration labels refer to this division. Unregistered players are flagged in amber; pending checkouts still need review before declining. Player order is unchanged.</p>
             @if ((int) $event->id === CavaliersTrialCandidates::TRIALS_EVENT)
                 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
                     <span class="fw-semibold">Step 1 · Inter-Districts</span>

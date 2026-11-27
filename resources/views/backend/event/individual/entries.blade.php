@@ -387,6 +387,9 @@
 
   @unless($isMasters)<div class="dropdown"><button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Category access</button><div class="dropdown-menu dropdown-menu-end">
   {{-- LOCK / UNLOCK --}}
+  @if($event->isIndividual() && !$event->isCamp() && !$event->isInterprovincialTrials() && !$categoryEvent->isLocked())
+    <a class="dropdown-item" href="{{ route('admin.category.private-link.create', [$event, $categoryEvent]) }}">Enable private registration</a>
+  @endif
   @if(!$isMasters && $categoryEvent->isLocked() && !$categoryEvent->isCancelled())
     <button type="button"
             class="dropdown-item category-lock-btn"

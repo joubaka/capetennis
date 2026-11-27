@@ -127,6 +127,7 @@
       draft[key].forEach((player, index) => {
         const row = document.createElement('li');
         row.className = 'list-group-item d-flex gap-2 align-items-baseline px-2 py-1';
+        if (draft.registration_statuses?.[player.id] === 'not_registered') row.classList.add('bg-label-warning');
         const content = document.createElement('div');
         content.className = 'd-flex flex-grow-1 flex-wrap gap-1 align-items-center justify-content-between';
         const name = playerSummary(player, meritCandidates.find(({ id }) => id === player.id));
@@ -216,6 +217,15 @@
     name.className = 'fw-semibold';
     name.textContent = player.name;
     summary.append(name);
+    const registration = draft.registration_statuses?.[player.id];
+    if (registration) {
+      const badge = document.createElement('small');
+      badge.dataset.registrationStatus = registration;
+      badge.className = `badge rounded-pill text-wrap bg-label-${registration === 'registered' ? 'success' : 'warning'}`;
+      badge.textContent = registration === 'registered' ? 'Registered'
+        : registration === 'pending' ? 'Registration pending' : 'Not registered';
+      summary.append(badge);
+    }
     if (!evidence || !playerInfo) return summary;
 
     const source = document.createElement('small');
@@ -596,14 +606,14 @@
     render();
     setStatus(dirty ? 'Saving transfer and current draft edits…' : 'Saving transfer…');
     try {
-      const { revision } = await request(division.selectedOptions[0].dataset.draftUrl, {
+      const { revision, registration_statuses } = await request(division.selectedOptions[0].dataset.draftUrl, {
         method: 'PUT',
         body: JSON.stringify({ revision: proposed.revision,
           ...Object.fromEntries(['selected', 'reserves', 'declined'].map((key) => [key, proposed[key].map(({ id }) => id)])),
         }),
       });
       if (typeof revision !== 'string' || !/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(revision)) throw new Error('The save could not be confirmed.');
-      draft = { ...proposed, revision };
+      draft = { ...proposed, revision, registration_statuses: registration_statuses || proposed.registration_statuses };
       dirty = false;
       if (target === 'declined') {
         skippedCandidates.add(player.id);
@@ -742,7 +752,7 @@
     render();
     setStatus('Saving draft…');
     try {
-      const { revision } = await request(division.selectedOptions[0].dataset.draftUrl, {
+      const { revision, registration_statuses } = await request(division.selectedOptions[0].dataset.draftUrl, {
         method: 'PUT',
         body: JSON.stringify({
           revision: draft.revision,
@@ -752,6 +762,7 @@
         }),
       });
       draft.revision = revision;
+      draft.registration_statuses = registration_statuses || draft.registration_statuses;
       dirty = false;
       setStatus('Draft saved.');
     } catch (error) {

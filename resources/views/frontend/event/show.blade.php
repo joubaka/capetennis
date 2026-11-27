@@ -378,6 +378,18 @@
 
 @include('frontend.event.partials.team-payment-recovery')
 
+@if(($privateRegistrationLinks ?? collect())->isNotEmpty())
+<div class="card mb-3"><div class="card-body">
+  <h2 class="h5">Registration available for your player</h2>
+  @foreach($privateRegistrationLinks as $privateRegistrationLink)
+    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-between mb-2">
+      <span>{{ $privateRegistrationLink->player->name }} {{ $privateRegistrationLink->player->surname }} · {{ $privateRegistrationLink->categoryEvent->category->name }}</span>
+      <a class="btn btn-success" href="{{ route('registration.private.show', $privateRegistrationLink->id) }}">{{ $privateRegistrationLink->order_id ? 'Continue payment' : 'Register and pay' }}</a>
+    </div>
+  @endforeach
+</div></div>
+@endif
+
 {{-- ================= NAVBAR ================= --}}
 <div class="row">
   <div class="col-12">

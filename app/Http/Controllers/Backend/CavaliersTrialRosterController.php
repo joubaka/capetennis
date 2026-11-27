@@ -39,11 +39,43 @@ class CavaliersTrialRosterController extends Controller
         $this->authorizeDivision($request, $event, $categoryEvent);
 
         $draft = $this->draft($categoryEvent)->first();
+        $roster = $this->rosterPlayers($draft);
         return response()->json([
             'revision' => $draft?->revision,
-            ...$this->rosterPlayers($draft),
+            ...$roster,
+            'registration_statuses' => $this->registrationStatuses($categoryEvent, collect($roster)->collapse()->pluck('id')->all()),
             'publication' => $this->publication($categoryEvent),
         ])->header('Cache-Control', 'private, no-store');
+    }
+
+    private function registrationStatuses(CategoryEvent $division, array $playerIds): object
+    {
+        $statuses = array_fill_keys($playerIds, 'not_registered');
+        $entries = \App\Models\CategoryEventRegistration::query()
+            ->where('category_event_id', $division->id)
+            ->whereNull('withdrawn_at')
+            ->whereNotIn('status', ['withdrawn', 'withdrawn_pending_refund', 'withdrawn_refunded', 'cancelled'])
+            ->whereHas('registration.players', fn ($query) => $query->whereIn('players.id', $playerIds))
+            ->with('registration.players:id')->get();
+        foreach ($entries as $entry) {
+            foreach ($entry->registration->players as $player) {
+                if (! array_key_exists($player->id, $statuses)) continue;
+                $confirmed = (int) $entry->payment_status_id === 1 && $entry->status !== 'pending_checkout';
+                if ($confirmed || $statuses[$player->id] !== 'registered') {
+                    $statuses[$player->id] = $confirmed ? 'registered' : 'pending';
+                }
+            }
+        }
+        // Checkouts can hold a place before an entry exists; do not imply they are safe to decline.
+        $pending = \App\Models\RegistrationOrderItems::query()
+            ->where('category_event_id', $division->id)->whereIn('player_id', $playerIds)
+            ->whereHas('order', fn ($query) => $query->where('status', 'pending')->where('pay_status', false))
+            ->pluck('player_id');
+        foreach ($pending as $playerId) {
+            if ($statuses[$playerId] !== 'registered') $statuses[$playerId] = 'pending';
+        }
+
+        return (object) $statuses;
     }
 
     public function exportPdf(Request $request, Event $event, CategoryEvent $categoryEvent, CavaliersTrialCandidates $candidates): \Illuminate\Http\Response
@@ -193,7 +225,7 @@ class CavaliersTrialRosterController extends Controller
             ]);
         abort_unless($written === 1, 409, $conflict);
 
-        return response()->json(['revision' => $revision]);
+        return response()->json(['revision' => $revision, 'registration_statuses' => $this->registrationStatuses($categoryEvent, $ids)]);
     }
 
     public function transferNominations(Request $request, Event $event, CategoryEvent $categoryEvent, PlayerEligibilityService $eligibility): JsonResponse

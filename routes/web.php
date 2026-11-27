@@ -234,6 +234,7 @@ Route::get('/auth/register-basic', $controller_path . '\authentications\Register
 Route::get('/home/get_events', [HomeController::class, 'get_events'])->name('home.events.get');
 
 //register
+Route::get('registration/private/{link}', [\App\Http\Controllers\PrivateRegistrationLinkController::class, 'show'])->whereNumber('link')->middleware(['auth', 'agreement', 'profile.updated', 'throttle:30,1'])->name('registration.private.show');
 Route::get('register/register/{id}', [RegisterController::class, 'register'])->middleware(['auth', 'agreement', 'profile.updated'])->name('register.register');
 Route::middleware(['auth', 'throttle:15,1'])->prefix('cavaliers/events/{event}/categories/{categoryEvent}/nominations/{nomination}')->name('cavaliers.nominations.')->group(function () {
   Route::get('/decline', [\App\Http\Controllers\Frontend\CavaliersNominationController::class, 'decline'])->whereNumber('nomination')->name('decline');
@@ -994,6 +995,10 @@ Route::prefix('backend')->middleware('auth')->group(function () {
  |--------------------------------------------------------------------------
  */
   Route::prefix('event')->group(function () {
+
+    Route::get('{event}/categories/{categoryEvent}/private-registration-link', [\App\Http\Controllers\PrivateRegistrationLinkController::class, 'create'])->name('admin.category.private-link.create');
+    Route::post('{event}/categories/{categoryEvent}/private-registration-link', [\App\Http\Controllers\PrivateRegistrationLinkController::class, 'store'])->middleware('throttle:10,1')->name('admin.category.private-link.store');
+    Route::get('{event}/categories/{categoryEvent}/private-registration-link/players/{player}', [\App\Http\Controllers\PrivateRegistrationLinkController::class, 'recipient'])->middleware('throttle:30,1')->name('admin.category.private-link.recipient');
 
     Route::controller(\App\Http\Controllers\Backend\CavaliersRosterReportController::class)
       ->prefix('{event}/cavaliers-report')->name('backend.cavaliers-report.')->middleware('throttle:20,1')->group(function () {

@@ -390,6 +390,24 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
 
 ## Operational evidence
 
+- Ordinary individual events can issue expiring private registration links for
+  one exact player/category while public registration stays closed. The user's
+  private-invitation decision requires an existing account link to that player;
+  only that player's linked accounts see the private registration option.
+  Normal public registration remains payer-sponsored. The first payer claims
+  one checkout; private admission never creates player ownership or grants
+  another payer's checkout access. Keep issuer authority, publication,
+  global shutdown, category availability, eligibility, capacity and event-start
+  checks, original withdrawal history and canonical payment finalization.
+  Enabling admission creates a managed invitation for the player's primary
+  email and notification-only copies for additional contacts; ordinary retries
+  must not duplicate them. Only the primary invitation contains a registration
+  link. Email links never bypass the existing account link or claimed checkout
+  ownership. See
+  `docs/private-registration-links.md`,
+  `PrivateRegistrationLinkService` and `PrivateRegistrationLinkTest`. Local
+  implementation and tests do not establish deployment or live link issuance.
+
 - Ordinary individual category cancellation is a reviewed, atomic pre-draw
   workflow for assigned event admins with the `admin` role and Super Users.
   It closes admission, withdraws active entries, credits verified full original

@@ -502,7 +502,10 @@ class EventController extends Controller
       app(\App\Services\PlusMorningDigestService::class)->markEventSeen($user, $event);
     }
 
+    $privateRegistrationLinks = app(\App\Domain\Entries\Services\PrivateRegistrationLinkService::class)->forEvent($event, $user);
+
 return view('frontend.event.show', compact(
+      'privateRegistrationLinks',
       'matchProgress',
       'fixturesPerVenueGrouped',
       'fixturesByDay',

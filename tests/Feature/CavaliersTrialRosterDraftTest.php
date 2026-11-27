@@ -28,6 +28,37 @@ class CavaliersTrialRosterDraftTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_roster_registration_flags_are_division_scoped_and_preserve_merit_order(): void
+    {
+        [$event, $division] = $this->division();
+        [, $otherDivision] = $this->division();
+        $this->actingAs($this->administrator($event));
+        $players = Player::factory()->count(7)->create();
+        $ids = $players->modelKeys();
+        $url = route('backend.cavaliers-roster.update', [$event, $division]);
+        $this->putJson($url, ['revision' => null, 'selected' => $ids, 'reserves' => []])->assertOk();
+        foreach ([0, 1, 2, 3, 4] as $index) {
+            $registration = \App\Models\Registration::create([]);
+            $registration->players()->attach($ids[$index]);
+            $entry = \App\Models\CategoryEventRegistration::create([
+                'category_event_id' => $index === 3 ? $otherDivision->id : $division->id,
+                'registration_id' => $registration->id, 'payment_status_id' => 1,
+                'status' => $index === 1 ? 'pending_checkout' : ($index === 2 ? 'withdrawn' : 'active'),
+                'withdrawn_at' => $index === 2 ? now() : null,
+            ]);
+            if ($index === 4) $entry->delete();
+        }
+        $this->pendingCheckout($event, $division, $players[5]);
+        $this->getJson($url)->assertOk()->assertJsonPath('selected', $players->map(fn ($p) => ['id' => $p->id, 'name' => $p->full_name])->all())
+            ->assertJsonPath('registration_statuses.'.$ids[0], 'registered')
+            ->assertJsonPath('registration_statuses.'.$ids[1], 'pending')
+            ->assertJsonPath('registration_statuses.'.$ids[2], 'not_registered')
+            ->assertJsonPath('registration_statuses.'.$ids[3], 'not_registered')
+            ->assertJsonPath('registration_statuses.'.$ids[4], 'not_registered')
+            ->assertJsonPath('registration_statuses.'.$ids[5], 'pending')
+            ->assertJsonPath('registration_statuses.'.$ids[6], 'not_registered');
+    }
+
     public function test_admin_decline_requires_participation_review_before_saving(): void
     {
         [$event, $division] = $this->division();

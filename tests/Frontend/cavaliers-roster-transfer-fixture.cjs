@@ -1,12 +1,13 @@
 // Fictional browser fixture only. All fetches stay in memory; no app endpoint is contacted.
 function installFixture() {
   const player = id => ({id, name: `Fictional Player ${String(id).padStart(2, '0')}`});
+  const registration_statuses = Object.fromEntries(Array.from({length: 70}, (_, i) => [i + 1, i === 0 ? 'registered' : i === 2 ? 'pending' : 'not_registered']));
   let revision = 1;
   const nextRevision = () => `00000000-0000-4000-8000-${String(revision++).padStart(12, '0')}`;
   const candidates = Array.from({length: 50}, (_, i) => ({...player(i + 1), source: 'Inter-Districts', region: 'Fictional region', wins: 1, losses: 1, matches: []}));
   const publication = {published: true, fingerprint: 'a'.repeat(64), players: [player(70)]};
   const fixture = window.rosterTransferFixture = {mode: 'success', delay: 0, puts: [], publicationCalls: 0,
-    draft: {revision: nextRevision(), selected: [player(1), player(2)], reserves: [player(3)], declined: [player(4)], publication}};
+    draft: {revision: nextRevision(), selected: [player(1), player(2)], reserves: [player(3)], declined: [player(4)], publication, registration_statuses}};
   const response = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {'Content-Type': 'application/json'}});
   const save = body => { fixture.draft = {...fixture.draft, revision: nextRevision(), ...Object.fromEntries(['selected', 'reserves', 'declined'].map(key => [key, body[key].map(player)]))}; };
   window.fetch = async (input, options = {}) => {
@@ -25,7 +26,7 @@ function installFixture() {
       if (mode === 'commit503') return response({message: 'Fictional server response failed after saving.'}, 503);
       if (mode === 'network') throw new TypeError('Fictional connection lost after saving.');
       if (mode === 'invalid200') return response({});
-      return response({revision: fixture.draft.revision});
+      return response({revision: fixture.draft.revision, registration_statuses});
     }
     if (options.method && options.method !== 'GET') {
       fixture.publicationCalls++;

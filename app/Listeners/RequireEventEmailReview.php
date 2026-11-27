@@ -19,6 +19,20 @@ class RequireEventEmailReview
 
     public function handle(MessageSending $mail): ?bool
     {
+        if (isset($mail->data['private_registration_invitation_log_id'])) {
+            $log = \App\Models\BulkEmailLog::find($mail->data['private_registration_invitation_log_id']);
+            $message = $log ? app(\App\Services\PrivateRegistrationInvitationService::class)->authorizedMailable($log) : null;
+            $allowed = $message && $log->status === 'sending'
+                && count($mail->message->getTo()) === 1 && $mail->message->getTo()[0]->getAddress() === $log->recipient_email
+                && !$mail->message->getCc() && !$mail->message->getBcc() && !$mail->message->getAttachments()
+                && $mail->message->getTextBody() === null && $mail->message->getSubject() === $message->subjectLine
+                && $mail->message->getHtmlBody() === $this->previewHtml($message->body)
+                && count($mail->message->getFrom()) === 1 && $mail->message->getFrom()[0]->getAddress() === $message->fromAddress
+                && $mail->message->getFrom()[0]->getName() === $message->fromName
+                && count($mail->message->getReplyTo()) === 1 && $mail->message->getReplyTo()[0]->getAddress() === $message->replyToAddress;
+            abort_unless($allowed, 409, 'Private registration invitation is no longer authorized.');
+            return null;
+        }
         if (($mail->data['eventUpdateDelivery'] ?? null) instanceof \App\Models\PlusEventUpdateDelivery) {
             $delivery = $mail->data['eventUpdateDelivery']->fresh();
             $service = app(\App\Services\PlusEventUpdateService::class);
