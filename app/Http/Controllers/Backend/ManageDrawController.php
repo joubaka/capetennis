@@ -17,6 +17,22 @@ use Illuminate\Validation\Rule;
 
 class ManageDrawController extends Controller
 {
+  public function rename(Request $request, Draw $draw)
+  {
+    $this->authorize('rename', $draw);
+    $data = $request->validate(['name' => ['required', 'string', 'max:255']]);
+    \Illuminate\Support\Facades\DB::transaction(function () use ($draw, $data) {
+      $lockedDraw = Draw::query()->lockForUpdate()->findOrFail($draw->id);
+      $this->authorize('rename', $lockedDraw);
+      abort_if($lockedDraw->locked, 403, 'Unlock the draw before changing its name.');
+      $previous = $lockedDraw->drawName;
+      if ($previous === $data['name']) return;
+      $lockedDraw->update(['drawName' => $data['name']]);
+      DrawAuditLog::record($lockedDraw->id, 'renamed', null, ['previous_name' => $previous, 'name' => $data['name']]);
+    });
+    return back()->with('success', 'Draw name saved.');
+  }
+
   public function index($id)
   {
     $draw = Draw::with([
@@ -145,8 +161,8 @@ class ManageDrawController extends Controller
                 'The selected Interpro format has fixed qualification and feed-in routes. Choose a different format in Setup before changing playoff structure.');
             abort_if(($updateData['preset_key'] ?? null) === \App\Services\Draw\InterproRoundRobinFormat::PRESET, 422,
                 'Choose the Interpro trials format through Setup.');
-            abort_if(isset($updateData['playoff_config']) && $lockedDraw->hasHybridRoundRobin(), 422,
-                'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
+            abort_if(isset($updateData['playoff_config']) && ($lockedDraw->hasHybridRoundRobin() || $lockedDraw->hasTopBottomRoundRobin()), 422,
+                'Qualification and structure are managed by the selected second-stage format, not generic playoff settings.');
             if (isset($updateData['playoff_config'])) app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $updateData['playoff_config']);
             abort_if($lockedDraw->locked, 403, 'Unlock the draw before changing its settings.');
             abort_if(
@@ -205,9 +221,9 @@ class ManageDrawController extends Controller
 
   private function resizeGroups(Draw $draw, int $count, ?int $moveTo = null)
   {
-    if ($draw->hasHybridRoundRobin() && $count !== 2) {
+    if (($draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin()) && $count !== 2) {
       throw \Illuminate\Validation\ValidationException::withMessages([
-        'boxes' => 'The top-four playoffs and lower round robin format requires exactly two groups.',
+        'boxes' => 'The selected second-stage format requires exactly two groups.',
       ]);
     }
     if ($draw->isTwoStageRoundRobin() && $count < 2) {
@@ -278,8 +294,8 @@ class ManageDrawController extends Controller
       abort_if(\App\Services\Draw\InterproRoundRobinFormat::selected($lockedDraw)
           || ($validated['preset_key'] ?? null) === \App\Services\Draw\InterproRoundRobinFormat::PRESET, 422,
           'The selected Interpro format has fixed qualification and feed-in routes. Use Setup to choose this format.');
-      abort_if($lockedDraw->hasHybridRoundRobin(), 422,
-          'Hybrid qualification and playoff structure are managed by the selected second-stage format, not generic playoff settings.');
+      abort_if($lockedDraw->hasHybridRoundRobin() || $lockedDraw->hasTopBottomRoundRobin(), 422,
+          'Qualification and structure are managed by the selected second-stage format, not generic playoff settings.');
       app(\App\Services\Draw\OddPlayerPlayoffService::class)->assertRetainedOption($lockedDraw, $validated['playoff_config']);
       abort_if(
         $lockedDraw->locked || $lockedDraw->event?->hasRecordedResults(),

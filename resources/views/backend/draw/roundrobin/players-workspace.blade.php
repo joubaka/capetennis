@@ -10,7 +10,7 @@
       <legend class="h6">How should these groups compete?</legend>
       <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_playoffs" @checked(!$draw->isRoundRobinOnly() && !$draw->isTwoStageRoundRobin())><span class="form-check-label">One category competition — groups feed shared playoffs for one overall winner.</span></label>
       <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin" @checked($draw->settings?->workflow === 'round_robin')><span class="form-check-label">Separate group competitions — each group has its own winner in this category, with no cross-group playoffs.</span></label>
-      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_round_robin" @checked($draw->isTwoStageRoundRobin())><span class="form-check-label">@if($draw->hasHybridRoundRobin())Round robin → top-four playoffs &amp; lower round robin — top two from each group enter semifinals; the remaining players enter one round robin with carried results.@else Round robin → round robin — equal finishing positions enter new groups for final positions.@endif</span></label>
+      <label class="form-check mb-2"><input class="form-check-input" type="radio" name="workflow" value="round_robin_round_robin" @checked($draw->isTwoStageRoundRobin())><span class="form-check-label">@if($draw->hasTopBottomRoundRobin())Round robin → championship and consolation round robins — top two and bottom two from each group qualify together. Their mutual first-stage results carry forward once; play only the two new opponents.@elseif($draw->hasHybridRoundRobin())Round robin → top-four playoffs &amp; lower round robin — top two from each group enter semifinals; the remaining players enter one round robin with carried results.@else Round robin → round robin — equal finishing positions enter new groups for final positions.@endif</span></label>
       <p class="small text-muted">These options keep the same event, category and entries. Complete the group matches and resolve tied qualifying positions before progressing.</p>
       <button class="btn btn-sm btn-outline-primary" type="submit">Save competition option</button>
     </fieldset>
@@ -28,7 +28,7 @@
       <label for="groups-tab-boxes" class="mb-0">Number of groups</label>
       <div class="d-flex gap-2">
       <select id="groups-tab-boxes" class="form-select" aria-label="Number of groups">
-        @foreach($draw->hasHybridRoundRobin() ? [2] : range($draw->isTwoStageRoundRobin() ? 2 : 1, max(8, $groups->count())) as $n)
+        @foreach(($draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin()) ? [2] : range($draw->isTwoStageRoundRobin() ? 2 : 1, max(8, $groups->count())) as $n)
           <option value="{{ $n }}" @selected($n === $currentBoxes)>{{ $n }}</option>
         @endforeach
       </select>

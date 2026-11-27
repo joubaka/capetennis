@@ -126,6 +126,16 @@
 
     {{-- SETTINGS TAB --}}
     <div class="tab-pane fade" id="settings-pane" role="tabpanel">
+      @can('rename', $draw)
+        <form method="POST" action="{{ route('backend.draw.rename', $draw) }}" class="card card-body mb-3">
+          @csrf
+          <label for="round-robin-draw-name" class="form-label">Draw name</label>
+          <div class="d-flex flex-wrap gap-2">
+            <input id="round-robin-draw-name" name="name" class="form-control" style="max-width:420px" value="{{ $draw->drawName }}" required maxlength="255">
+            <button type="submit" class="btn btn-primary">Save name</button>
+          </div>
+        </form>
+      @endcan
       @if($competitionRulesEditable && !$draw->isTeamDraw())
         <section class="alert alert-primary border border-primary mb-3" aria-labelledby="draw-setup-review-heading">
           <h5 id="draw-setup-review-heading" class="alert-heading">Required setup after choosing a draw format</h5>
@@ -391,10 +401,12 @@
               <p class="small text-muted mt-2 mb-0" id="timed-slot-summary" aria-live="polite"></p>
               <p class="small mb-0 mt-2">Most games wins when time expires. Group ties are draws (win 2 points, draw 1, loss 0). A tied playoff is decided by one deciding point. Scheduling uses playing time plus the changeover gap; player rest remains separate.</p>
             </fieldset>
-          @if($draw->hasHybridRoundRobin())
+          @if($draw->hasTopBottomRoundRobin())
+            <p class="alert alert-info mt-3">Top two from each group enter the championship round robin for positions 1–4. Bottom two enter the consolation round robin for positions 5–8. Their mutual first-stage results carry forward once; each player plays only the two new opponents from the other starting group.</p>
+          @elseif($draw->hasHybridRoundRobin())
             <p class="alert alert-info mt-3">Hybrid qualification and playoff structure are fixed by the selected second-stage format. Review first-stage results to qualify players; generic playoff editing cannot replace these fixtures.</p>
           @endif
-          @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+          @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
           <hr class="my-4">
 
       {{-- PLAYOFF CONFIGURATION --}}
@@ -495,7 +507,7 @@
         </div>
       </div>
       </form>
-      @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
+      @unless($roundRobinOnly || $draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin() || \App\Services\Draw\InterproRoundRobinFormat::selected($draw))
       <details class="mb-3"><summary class="p-3">View full setup</summary>
       {{-- PLAYER ACCOUNTING --}}
       <div class="card mb-3 border-info">

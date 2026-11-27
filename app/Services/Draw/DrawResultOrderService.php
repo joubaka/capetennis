@@ -81,8 +81,9 @@ final class DrawResultOrderService
             $placements = $this->placements->forDraw($draw);
             // A plain ordered list has no position gaps. Do not promote a
             // completed lower group into the still-undecided top positions.
-            if ($placements->isEmpty() || $placements->contains(fn ($row) => $row['status'] !== 'resolved')) return collect();
-            return $placements->sortBy('position')->pluck('registration_id')->values();
+            if ($placements->isEmpty() || $placements->contains(fn ($row) => $row['status'] !== 'resolved'
+                && !($draw->hasTopBottomRoundRobin() && $row['status'] === 'bye'))) return collect();
+            return $placements->where('status', 'resolved')->sortBy('position')->pluck('registration_id')->values();
         }
         if ($draw->flexibleMonrad?->graph) {
             $state = $this->flexibleMonrad->state($draw);

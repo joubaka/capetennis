@@ -17,7 +17,7 @@ final class GroupAssignmentService
     public function fixturesNeedRegeneration(Draw $draw, ?\Illuminate\Support\Collection $fixtures = null, ?\Illuminate\Support\Collection $groups = null): bool
     {
         $fixtures ??= $draw->drawFixtures()->where('stage', 'RR')->get();
-        if ($draw->hasHybridRoundRobin()) {
+        if ($draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin()) {
             $draw->loadMissing('groups.groupRegistrations');
             $fixtures = HybridRoundRobinService::effectiveFixtures($draw, $fixtures);
         }

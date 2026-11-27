@@ -28,13 +28,19 @@ final class DrawFinalPlacementService
                 $rows = $rows->values();
             }
             foreach ($draw->groups->where('round_robin_phase', 2)->sortBy('qualifying_position') as $group) {
+                if ($draw->hasTopBottomRoundRobin()) $offset = (int) $group->qualifying_position === 1 ? 0 : 4;
                 $fixtures = HybridRoundRobinService::effectiveFixtures($draw)->where('draw_group_id', $group->id)->where('stage', 'RR');
                 $groupRows = collect($standings[$group->id] ?? []);
                 $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures)
                     && app(TwoStageRoundRobinService::class)->positionsResolved($draw, $groupRows->all(), $fixtures);
-                foreach ($groupRows as $index => $standing) {
+                $positionRows = $draw->hasTopBottomRoundRobin() ? collect(range(0, 3))->map(fn ($index) => $groupRows->get($index)) : $groupRows;
+                foreach ($positionRows as $index => $standing) {
                     $position = $offset + $index + 1;
-                    $registration = $group->groupRegistrations->firstWhere('registration_id', $standing['reg_id'])?->registration;
+                    $registration = $standing ? $group->groupRegistrations->firstWhere('registration_id', $standing['reg_id'])?->registration : null;
+                    if ($draw->hasTopBottomRoundRobin() && $draw->hasConfirmedSecondRoundRobin() && !$standing) {
+                        $rows->push($this->bye($position));
+                        continue;
+                    }
                     $rows->push($complete && $registration ? $this->resolved($position, $registration) : $this->awaiting($position));
                 }
                 $offset += $groupRows->count();

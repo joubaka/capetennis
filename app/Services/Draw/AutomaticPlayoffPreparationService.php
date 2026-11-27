@@ -14,7 +14,7 @@ final class AutomaticPlayoffPreparationService
     public function replaceUnbookedPlaceholders(Draw $draw, array $configuration): bool
     {
         $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
-        abort_if($draw->hasHybridRoundRobin(), 422, 'Hybrid stage fixtures cannot be replaced through generic playoff configuration.');
+        abort_if($draw->hasHybridRoundRobin() || $draw->hasTopBottomRoundRobin(), 422, 'Selected second-stage fixtures cannot be replaced through generic playoff configuration.');
         app(OddPlayerPlayoffService::class)->assertRetainedOption($draw, $configuration);
         $previous = $draw->settings?->playoff_config ?? [];
         $structure = fn (array $config) => collect($config)->map(fn ($entry) => [

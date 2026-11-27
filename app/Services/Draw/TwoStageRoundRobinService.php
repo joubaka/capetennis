@@ -42,12 +42,14 @@ final class TwoStageRoundRobinService
 
         $result = ['groups' => $review, 'destination' => $draw->hasHybridRoundRobin() ? 'top-four playoffs and the lower round robin' : 'second round robin',
             'pending' => !$draw->hasConfirmedSecondRoundRobin(),
-            'snapshot' => hash('sha256', json_encode([$review, $evidence]))];
+            'snapshot' => hash('sha256', json_encode([$review, $evidence,
+                $draw->hasTopBottomRoundRobin() ? app(TopBottomRoundRobinService::class)->reviewEvidence($draw) : null]))];
         return $draw->hasHybridRoundRobin() ? app(PendingHybridRoundRobinService::class)->decorateReview($draw, $result) : $result;
     }
 
     public function progress(Draw $draw, array $input): array
     {
+        if ($draw->hasTopBottomRoundRobin()) return app(TopBottomRoundRobinService::class)->progress($draw, $input);
         if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->progress($draw, $input);
         return DB::transaction(function () use ($draw, $input) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -96,6 +98,7 @@ final class TwoStageRoundRobinService
     public function prepare(Draw $draw): Collection
     {
         if (! $draw->isTwoStageRoundRobin()) return collect();
+        if ($draw->hasTopBottomRoundRobin()) return app(TopBottomRoundRobinService::class)->prepare($draw);
         if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->prepare($draw);
         return DB::transaction(function () use ($draw) {
             $draw = Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
@@ -183,6 +186,7 @@ final class TwoStageRoundRobinService
 
     public function preparedStructureIsValid(Draw $draw): bool
     {
+        if ($draw->hasTopBottomRoundRobin()) return app(TopBottomRoundRobinService::class)->preparedStructureIsValid($draw);
         if ($draw->hasHybridRoundRobin()) return app(PendingHybridRoundRobinService::class)->preparedStructureIsValid($draw);
         $draw->load('groups.groupRegistrations', 'drawFixtures');
         $sources = $draw->groups->where('round_robin_phase', 1)->map(fn ($group) => [
@@ -230,6 +234,10 @@ final class TwoStageRoundRobinService
         $draw->load('settings', 'groups.groupRegistrations', 'drawFixtures.fixtureResults');
         if (!$draw->isTwoStageRoundRobin() || $draw->hasConfirmedSecondRoundRobin()
             || !$draw->groups->contains('round_robin_phase', 2)) return;
+        if ($draw->hasTopBottomRoundRobin()) {
+            app(TopBottomRoundRobinService::class)->reconcileVoidedSources($draw, $voidedRegistrationId);
+            return;
+        }
         if ($draw->hasHybridRoundRobin()) {
             app(PendingHybridRoundRobinService::class)->reconcileVoidedSources($draw, $voidedRegistrationId);
             return;

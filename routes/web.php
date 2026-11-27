@@ -1980,6 +1980,9 @@ Route::delete(
   )->name('backend.draw.toggle-lock');
 
   // Draw settings update (used by settings tab)
+  Route::post('draw/{draw}/name', [\App\Http\Controllers\Backend\ManageDrawController::class, 'rename'])
+    ->name('backend.draw.rename');
+
   Route::post('draw/{draw}/settings', [\App\Http\Controllers\Backend\ManageDrawController::class, 'updateSettings'])
     ->name('backend.draw.update-settings');
 

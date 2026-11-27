@@ -20,13 +20,14 @@ final class RoundRobinGroupResultService
                 $complete = app(TwoStageRoundRobinService::class)->complete($draw, $group, $fixtures);
                 $tied = ! app(TwoStageRoundRobinService::class)->positionsResolved($draw, $rows, $fixtures);
                 $second = (int) $group->round_robin_phase === 2;
+                if ($second && $draw->hasTopBottomRoundRobin()) $offset = (int) $group->qualifying_position === 1 ? 0 : 4;
                 foreach ($rows as $index => &$row) {
                     $row['group_result_status'] = ! $complete ? 'incomplete' : ($tied ? 'tied' : 'complete');
                     $row['group_winner'] = $second && $complete && ! $tied && $index === 0;
                     $row['display_position'] = $second ? ($complete && ! $tied ? $offset + $index + 1 : '—') : $index + 1;
                     $row['group_result_message'] = $second
                         ? ($complete && ! $tied ? 'Stage 2 — final positions.' : 'Stage 2 — final positions pending complete results and resolved ties.')
-                        : ($draw->hasHybridRoundRobin() ? 'Stage 1 — top two qualify for positions 1–4; remaining players carry mutual results into positions 5 onward.' : 'Stage 1 — equal finishing positions qualify together for stage 2.');
+                        : ($draw->hasTopBottomRoundRobin() ? 'Stage 1 — top two qualify for the championship round robin (positions 1–4); bottom two qualify for the consolation round robin (positions 5–8). Their mutual results carry forward once; only new opponents are played.' : ($draw->hasHybridRoundRobin() ? 'Stage 1 — top two qualify for positions 1–4; remaining players carry mutual results into positions 5 onward.' : 'Stage 1 — equal finishing positions qualify together for stage 2.'));
                 }
                 unset($row);
                 $standings[$group->id] = $rows;

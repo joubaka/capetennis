@@ -15,7 +15,9 @@
         <button type="button" class="btn btn-primary align-self-start progress-draw" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled($draw->locked || !$completion['ready'])>Review &amp; progress to {{ $completion['destination'] }}</button>
       @endcan
     @endif
-    @if($draw->hasHybridRoundRobin())
+    @if($draw->hasTopBottomRoundRobin())
+      <details class="mt-3"><summary>Qualification and progression rules</summary><p class="small mt-2 mb-0">The top two from each first-stage group enter the championship round robin for positions 1–4. The bottom two enter the consolation round robin for positions 5–8. Their mutual first-stage results carry forward once and remain frozen in the original matches. Each player plays only the two new opponents from the other starting group. Confirm every first-stage group to fill the prepared fixtures without changing saved times or courts.</p></details>
+    @elseif($draw->hasHybridRoundRobin())
       <p class="small mt-3 mb-0">A1 plays B2 and B1 plays A2 in the semi-finals. Winners play for 1st–2nd; losers play for 3rd–4th. The remaining players form one round-robin group for positions 5 onward. Their mutual first-stage results carry forward once; only opponents they have not yet played require new matches. Carried results remain frozen in their original matches.</p>
     @else
       <details class="mt-3"><summary>Qualification and progression rules</summary><p class="small mt-2 mb-0">All first-place finishers enter Stage 2 Group 1, all second-place finishers Group 2, and so on. Each group starts with fresh scores. Group 1 determines the highest final positions, followed by Group 2 and the remaining groups. Second-stage qualification placeholders can be scheduled before results. Confirmed progression fills in the players without changing saved times or courts.</p></details>

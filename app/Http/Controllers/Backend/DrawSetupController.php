@@ -15,7 +15,7 @@ class DrawSetupController extends Controller
         'round_robin' => ['Round robin only', 'Everyone plays within their group. Final standings decide the result; there are no playoffs.'],
         'round_robin_playoffs' => ['Round robin → playoffs', 'Build groups first, then choose how players advance to playoffs.'],
         'interpro_rr_feed_in' => ['Interpro trials — round robin → feed-in', 'Four groups of three or four. Fourth place finishes; group winners contest the title. Crossovers and feed-ins decide positions 3–12. First result stands when players meet again.'],
-        'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then choose equal-position groups or top-four playoffs with one lower round robin.'],
+        'round_robin_round_robin' => ['Round robin → round robin', 'Play in groups, then choose equal-position groups, top-four and lower-four round robins, or top-four playoffs with one lower round robin.'],
         'playoffs' => ['Knockout — Playoffs only', 'Winners advance; losing players are eliminated. No placement matches.'],
         'monrad' => ['Play for every position — Monrad only', 'Winners and losers continue for finishing positions. With eight players, play out positions 1–8.'],
         'feed_in_monrad' => ['Feed-in Monrad', 'Start everyone in the opening round. Earlier-round losers play through a feed-in draw against later-round losers, with matches for every finishing position.'],
@@ -59,7 +59,7 @@ class DrawSetupController extends Controller
             'category_event_id' => ['nullable', 'integer', Rule::exists('category_events', 'id')->where('event_id', $draw->event_id)],
             'reset_existing' => ['nullable', 'boolean'],
             'groups' => ['nullable', 'integer', 'min:1', 'max:26'],
-            'second_stage_format' => ['sometimes', Rule::in(['equal_positions', \App\Services\Draw\HybridRoundRobinService::FORMAT])],
+            'second_stage_format' => ['sometimes', Rule::in(['equal_positions', \App\Services\Draw\HybridRoundRobinService::FORMAT, \App\Services\Draw\TopBottomRoundRobinService::FORMAT])],
             'challenge_playoffs' => ['sometimes', 'boolean'],
             'challenge_pairs' => [Rule::requiredIf(fn () => in_array($request->input('workflow'), ['feed_in_monrad', \App\Services\Draw\InterproRoundRobinFormat::PRESET], true) && $request->boolean('challenge_playoffs')), 'nullable', 'array', 'min:1', 'max:31'],
             'challenge_pairs.*' => ['integer', 'distinct', Rule::in(range(2, 62, 2))],
@@ -95,9 +95,10 @@ class DrawSetupController extends Controller
             $roundRobin = in_array($data['workflow'], ['round_robin', 'round_robin_playoffs', 'round_robin_round_robin'], true);
             $groupCount = $roundRobin && isset($data['groups']) ? (int) $data['groups'] : null;
             $secondStageFormat = $data['workflow'] === 'round_robin_round_robin'
-                ? ($data['second_stage_format'] ?? ($draw->hasHybridRoundRobin() ? \App\Services\Draw\HybridRoundRobinService::FORMAT : 'equal_positions')) : null;
+                ? ($data['second_stage_format'] ?? ($draw->settings?->playoff_config['_second_round_robin']['format'] ?? 'equal_positions')) : null;
             $hybrid = $secondStageFormat === \App\Services\Draw\HybridRoundRobinService::FORMAT;
-            $sameSecondStage = $draw->hasHybridRoundRobin() === $hybrid;
+            $topBottom = $secondStageFormat === \App\Services\Draw\TopBottomRoundRobinService::FORMAT;
+            $sameSecondStage = ($draw->settings?->playoff_config['_second_round_robin']['format'] ?? 'equal_positions') === ($secondStageFormat ?? 'equal_positions');
             if ($data['workflow'] === 'round_robin_round_robin'
                 && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) < 2) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
@@ -106,6 +107,8 @@ class DrawSetupController extends Controller
             }
             abort_if($hybrid && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) !== 2, 422,
                 'The top-four playoffs and lower round robin format requires exactly two groups.');
+            abort_if($topBottom && ($groupCount ?? $draw->groups()->where('round_robin_phase', 1)->count()) !== 2, 422,
+                'The top-four and lower-four round robins require exactly two groups of four players.');
             if (!$sameSecondStage && $sameWorkflow) {
                 abort_if($draw->groups()->where('round_robin_phase', 2)->exists()
                     || $draw->drawFixtures()->where('stage', '!=', 'RR')->exists(), 409,
@@ -169,7 +172,7 @@ class DrawSetupController extends Controller
                 $settings['playoff_config'] = $hybrid ? [
                     '_second_round_robin' => ['state' => 'selected', 'format' => \App\Services\Draw\HybridRoundRobinService::FORMAT, 'carried_fixture_ids' => []],
                     'main' => ['enabled' => true, 'slug' => 'MAIN', 'name' => 'Positions 1–4', 'size' => 4, 'positions' => [1, 2]],
-                ] : [];
+                ] : ($topBottom ? ['_second_round_robin' => ['state' => 'selected', 'format' => \App\Services\Draw\TopBottomRoundRobinService::FORMAT]] : []);
             }
             if ($groupCount !== null) {
                 $settings['boxes'] = $groupCount;

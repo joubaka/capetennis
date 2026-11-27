@@ -7,6 +7,12 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    /** A name-only edit preserves published competition structure and visibility. */
+    public function rename(User $user, Draw $draw): bool
+    {
+        return !$draw->locked && $this->canManage($user, $draw);
+    }
+
     public function replacePlayoffLuckyLoser(User $user, Draw $draw): bool
     {
         return ! $draw->locked && ! $draw->isTeamDraw() && ! $draw->usesFlexibleMonrad()

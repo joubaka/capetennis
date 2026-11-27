@@ -1683,7 +1683,7 @@ final class EventVenueScheduleService
             'rr_group_phase' => $draw->groups->firstWhere('id', $fixture->draw_group_id)?->round_robin_phase ?? 1,
             'rr_group_size' => (int) ($draw->groups->firstWhere('id', $fixture->draw_group_id)?->group_registrations_count
                 ?: ($draw->isTwoStageRoundRobin() && (int) $fixture->drawGroup?->round_robin_phase === 2
-                    ? $draw->groups->where('round_robin_phase', 1)->filter(fn ($group) => $group->group_registrations_count >= $fixture->drawGroup->qualifying_position)->count() : 0)),
+                    ? ($draw->hasTopBottomRoundRobin() ? 4 : $draw->groups->where('round_robin_phase', 1)->filter(fn ($group) => $group->group_registrations_count >= $fixture->drawGroup->qualifying_position)->count()) : 0)),
             'play_order' => (int) ($fixture->play_order ?: $fixture->match_nr), 'dependencies' => $dependencies,
             'participants' => array_values(array_unique(array_filter($participants))), 'participant_names' => $names,
             // A Flexible Monrad graph already models the winner and loser paths within one draw. Its sibling

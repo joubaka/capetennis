@@ -31,6 +31,7 @@ final class HybridRoundRobinService
     public static function effectiveFixtures(Draw $draw, ?Collection $fixtures = null): Collection
     {
         $fixtures ??= $draw->drawFixtures;
+        if ($draw->hasTopBottomRoundRobin()) return TopBottomRoundRobinService::effectiveFixtures($draw, $fixtures);
         if (! self::active($draw)) return $fixtures;
         $config = $draw->settings->playoff_config['_second_round_robin'];
         $lower = $draw->groups->firstWhere('id', $config['lower_group_id'] ?? 0);

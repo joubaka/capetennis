@@ -98,10 +98,11 @@
         <div id="second-stage-format-question" class="mt-3" hidden>
           <label for="second-stage-format" class="form-label">How should the second stage work?</label>
           <select id="second-stage-format" name="second_stage_format" class="form-select" disabled>
-            <option value="equal_positions" @selected(!$draw->hasHybridRoundRobin())>Equal finishing positions → new round-robin groups</option>
+            <option value="equal_positions" @selected(!$draw->hasHybridRoundRobin() && !$draw->hasTopBottomRoundRobin())>Equal finishing positions → new round-robin groups</option>
+            <option value="top_two_bottom_two_rr" @selected($draw->hasTopBottomRoundRobin())>Top two → championship round robin; bottom two → consolation round robin</option>
             <option value="top_two_playoffs_remainder_rr" @selected($draw->hasHybridRoundRobin())>Top two from each group → semifinals; remaining players → one round robin</option>
           </select>
-          <p class="form-text">The top-four option uses exactly two groups with at least three players each. A1 plays B2 and B1 plays A2, followed by a final and a third-place match. Other players carry their mutual results forward and play only new opponents. Choose this before preparing later-stage fixtures.</p>
+          <p class="form-text">Championship and consolation round robins use exactly two starting groups of four. A1, A2, B1 and B2 play for positions 1–4; A3, A4, B3 and B4 play for positions 5–8. Their mutual first-stage result carries forward once; each player plays only the two new opponents from the other starting group. Each second-stage table includes two carried results and four new matches. The separate top-four playoff option uses semifinals and carried lower-group results.</p>
         </div>
       </section>
       @if($resetSummary['has_format_state'])
@@ -154,11 +155,11 @@
     secondFormat.disabled = !staged || groups.hidden;
     [...count.options].forEach(option => { option.disabled = staged && Number(option.value) < 2; });
     if (staged && Number(count.value) < 2) count.value = '2';
-    if (staged && secondFormat.value === 'top_two_playoffs_remainder_rr') count.value = '2';
+    if (staged && ['top_two_playoffs_remainder_rr', 'top_two_bottom_two_rr'].includes(secondFormat.value)) count.value = '2';
     const n = Number(count.value);
     document.getElementById('format-playoff-suggestion').textContent = workflow === 'round_robin_playoffs'
       ? (n === 1 ? 'Suggested: the top two players play a championship final.' : `Suggested: each group winner qualifies for a ${2 ** Math.ceil(Math.log2(n))}-place championship bracket. Unused places are byes.`) + ' You can change qualifiers and add placement playoffs in the next step.'
-      : staged ? (secondFormat.value === 'top_two_playoffs_remainder_rr' ? 'Two groups qualify into top-four playoffs and one lower round robin with carried results.' : 'Equal finishing positions will enter second-stage groups after the first round robin.') : 'Final standings decide each group; no playoffs are created.';
+      : staged ? (secondFormat.value === 'top_two_playoffs_remainder_rr' ? 'Two groups qualify into top-four playoffs and one lower round robin with carried results.' : secondFormat.value === 'top_two_bottom_two_rr' ? 'Two groups of four qualify into championship and consolation round robins. Mutual results carry forward once: five played matches per player across both stages.' : 'Equal finishing positions will enter second-stage groups after the first round robin.') : 'Final standings decide each group; no playoffs are created.';
   };
   const refresh = () => {
     const workflow = form.querySelector('[name="workflow"]:checked')?.value;

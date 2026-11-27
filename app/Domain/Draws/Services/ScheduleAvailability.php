@@ -193,7 +193,8 @@ final class ScheduleAvailability
     /** Exact disjoint ranks in the same unambiguous source groups prove separate entrants. */
     public static function roundRobinPositionGroup(Fixture $fixture): ?string
     {
-        if ($fixture->stage === 'RR' || $fixture->registration1_id || $fixture->registration2_id) return null;
+        if (($fixture->stage === 'RR' && !($fixture->draw?->hasTopBottomRoundRobin()
+            && (int) $fixture->drawGroup?->round_robin_phase === 2)) || $fixture->registration1_id || $fixture->registration2_id) return null;
         $groupIds = [(int) $fixture->registration1_source_group_id, (int) $fixture->registration2_source_group_id];
         if (min($groupIds) < 1) return null;
         $groups = \App\Models\DrawGroup::with('groupRegistrations')->whereIn('id', $groupIds)->get()->keyBy('id');

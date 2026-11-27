@@ -205,7 +205,15 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   references, never duplicated fixtures or rating evidence. Historical completed
   draws retain a separate explicit `HybridRoundRobinService` conversion; prompts
   must never call it automatically. Ordinary equal-position groups start with
-  fresh scores. See `docs/draw-knowledge/hybrid-round-robin.md`, DK-04, DK-10,
+  fresh scores. The separate eight-player top-two/bottom-two option uses two
+  opening groups of four and two second groups of four for positions 1–4 and
+  5–8. Players advancing together carry their mutual opening result through
+  read-only original-fixture references; create only cross-group later matches,
+  twenty actual matches overall. Preserve each fixture's exact source-group/
+  finishing-position tuples; never infer all slots from one destination
+  qualifying position or duplicate carried scores/rating evidence. See
+  `docs/draw-knowledge/top-two-second-round-robin.md` for the bounded mode.
+  See `docs/draw-knowledge/hybrid-round-robin.md`, DK-04, DK-10,
   DK-31 and RK-049; recheck current state and operational authority for live work.
 - Detailed RR standings use canonical completed outcomes, precise percentages
   and per-opponent evidence; a saved set alone is not a match win. Blank historical

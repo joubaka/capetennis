@@ -116,6 +116,11 @@ class Draw extends Model
     {
         return \App\Services\Draw\HybridRoundRobinService::active($this);
     }
+    public function hasTopBottomRoundRobin(): bool
+    {
+        return $this->isTwoStageRoundRobin()
+            && ($this->settings?->playoff_config['_second_round_robin']['format'] ?? null) === \App\Services\Draw\TopBottomRoundRobinService::FORMAT;
+    }
     public function isTwoStageRoundRobin(): bool
     {
         return $this->settings?->workflow === 'round_robin_round_robin';
@@ -136,6 +141,7 @@ class Draw extends Model
 
     public function roundRobinLabel(): string
     {
+        if ($this->hasTopBottomRoundRobin()) return 'Round robin → top-four and lower-four round robins';
         if ($this->hasHybridRoundRobin()) return 'Round robin → top-four playoffs & lower round robin';
         return $this->isTwoStageRoundRobin() ? 'Round robin → round robin'
             : ($this->isRoundRobinOnly() ? 'Round robin only' : 'Round robin → playoffs');

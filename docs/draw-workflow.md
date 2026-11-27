@@ -14,6 +14,16 @@ The individual draw journey is **Setup → Players → Matches → Schedule → 
 - Review & publish distinguishes draw visibility, saved match times and the public schedule snapshot. Publication remains explicit and scoped.
 - Results contains existing scoring, progression and finishing positions. Later-stage qualification may require returning to matches and scheduling; initial-stage readiness is not tournament completion.
 
+The ordinary round-robin Settings page offers a separate name-only edit through
+`backend.draw.rename`. The existing event-manager scope may rename an unlocked
+published draw without unpublishing it. The handler reauthorizes the locked
+current row, changes only the display name and records the actor and old/new
+names. Extra structural, scoring or publication fields cannot alter those
+records. This narrow ability does not relax the general structural `update`
+policy or authorize rebuilding a published competition. See
+`TopBottomRoundRobinTest` for published/locked/event-isolation and preservation
+coverage.
+
 Each step should identify the current draw, saved state and next action. Existing deep links and advanced operations remain available. Back and step navigation do not mutate state. A server safeguard takes precedence over a progress indicator.
 
 ### Readiness and score revisions

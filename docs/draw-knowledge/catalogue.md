@@ -177,6 +177,15 @@ The optional single-group odd tail is covered by `tests/Feature/Draw/OddPlayerPl
 
 **Solution:** `app/Services/Draw/TwoStageRoundRobinService.php` manages this separate workflow.
 
+**Top-two / bottom-two alternative:** For two opening groups of four, the
+separate eight-player option sends both groups' top two to a championship round
+robin for positions 1–4, and both groups' bottom two to a consolation round robin
+for positions 5–8. Players advancing together carry their mutual opening result
+through read-only source references; twenty actual matches, five per player.
+This differs from the fresh-score equal-position default and the hybrid knockout
+alternative. See [the format guide](top-two-second-round-robin.md) for source
+tuples, qualification, scheduling and preservation requirements.
+
 **Advance scheduling:** Prepare second-stage fixtures with source-group/finishing-position placeholders before results. New two-stage generation prepares these automatically; existing draws use the authorized preparation action. Preparation fixes source-group membership to protect qualification slots, but is separate from confirmed progression: first-stage scoring remains open and unresolved second-stage matches cannot be scored. Confirm complete, untied, current first-stage standings to fill the same fixtures with actual qualifiers, retaining their saved times and courts. Navigation remains read-only, and saving a schedule does not publish it. Preserve the complete first-stage scheduling barrier and conservative possible-player rest/conflict checks. Generic playoff resolution must not fill these qualifiers before confirmed two-stage progression.
 
 **Selected hybrid alternative:** Before later-stage structures exist, Setup may select exactly two source groups for crossed top-four playoffs plus one carried lower round robin. `PendingHybridRoundRobinService` prepares the six-cross-pair/four-playoff programme for a fictional four/five-player field without replacing any existing fixture or booking. The normal authorized review confirms eligible, complete, untied first-stage standings and an unchanged snapshot including membership, settings, fixtures, results and all booking stores. Progression fills those same sources and attaches read-only carried-result references, then freezes phase one. Prepared playoff matches remain unscoreable until confirmation and both participants are known. Ordinary first-stage corrections remain possible only while the exact pending topology is unqualified and unplayed. Generic playoff editors cannot strip hybrid metadata or rebuild this programme. This new-draw path is separate from the historical conversion described in [hybrid-round-robin.md](hybrid-round-robin.md); it never converts a live draw automatically. `PendingHybridProgressionTest` covers both prompt surfaces, warnings, scope, snapshots, stable records and confirmed suppression.
