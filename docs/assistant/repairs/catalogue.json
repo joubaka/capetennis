@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-081",
+      "title": "Daily match limit refuses unresolved Interpro feed-in playoffs",
+      "scope": "Individual Interpro round-robin feed-in scheduling with the event-wide daily match limit enabled.",
+      "symptoms": "The schedule preview proposes no times and asks to resolve non-Monrad players even though canonical Interpro qualifier and winner/loser routes exist.",
+      "cause": "DailyMatchLimit previously recognized conditional entrants only for Flexible Monrad; unresolved Interpro fixtures entered the unsupported-format guard.",
+      "fix": "Use InterproDailyMatchGraph to project the canonical Interpro template into conditional entrant paths. Count the maximum appearances along a feasible winner/loser route, retain actual round-robin appearances and shared player-profile identities, and give canonical carried or automatic results zero additional appearance. Reject malformed topology, foreign participants and stale carries. Keep unsupported-format guards and the daily cap enabled. See docs/draw-knowledge/interpro-round-robin-feed-in.md.",
+      "verification": "Seven Interpro feature cases and seven existing daily-limit unit cases passed locally: 14 tests, 121 assertions. An isolated copied-draw rehearsal accepted the proposed weekend bookings and rolled back; this does not establish saved or published production times.",
+      "limits": "Guide only; no live booking, fixture change, limit override, release or publication is authorized by this record. Schedule dependency times and court availability require separate validation.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Scheduling/DailyMatchLimit.php", "app/Services/Scheduling/InterproDailyMatchGraph.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md"],
+      "tests": ["tests/Feature/Draw/InterproDailyMatchLimitTest.php", "tests/Unit/DailyMatchLimitTest.php"]
+    },
+    {
       "id": "RK-080",
       "title": "Best-of-three starting at two-all accepts unfinished or impossible played scores",
       "scope": "Separate individual RR/playoff scoring choices, opt-in best_of_3_full_start_2 scoring and decisive preset results in the selected Interpro feed-in; ordinary historical RR draw support is preserved.",

@@ -4,6 +4,7 @@ namespace App\Services\Scheduling;
 
 use App\Models\{Event, Fixture, TeamFixture};
 use App\Services\Draw\FlexibleMonradService;
+use App\Services\Draw\InterproRoundRobinFormat;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -25,16 +26,26 @@ final class DailyMatchLimit
     public static function load(Event $event, array $exclude = []): self
     {
         $limit = new self();
-        $draws = $event->draws()->with('flexibleMonrad')->get();
+        $draws = $event->draws()->with(['flexibleMonrad', 'settings'])->get();
         $fixtures = Fixture::withoutEagerLoads()->with('orderOfPlay')->whereIn('draw_id', $draws->pluck('id'))->get();
         if ($fixtures->count() > 20000) throw new \InvalidArgumentException('The daily player limit cannot verify more than 20,000 event matches. Reduce the event scope before using this option.');
         $registrationIds = $fixtures->flatMap(fn ($fixture) => [$fixture->registration1_id, $fixture->registration2_id]);
         foreach ($draws as $draw) {
+            if (InterproRoundRobinFormat::selected($draw)) {
+                $matches = InterproDailyMatchGraph::build($draw, $fixtures->where('draw_id', $draw->id));
+                if ($matches) $limit->graphs[$draw->id] = $matches;
+                foreach ($matches as $match) foreach ($match['sources'] as $source) {
+                    if (($source['type'] ?? null) === 'player') $registrationIds->push($source['id']);
+                }
+                continue;
+            }
             if (! $draw->usesFlexibleMonrad() || ! $draw->flexibleMonrad?->graph) continue;
             $matches = (array) app(FlexibleMonradService::class)->state($draw)['matches'];
             $limit->graphs[$draw->id] = $matches;
             $registrationIds = $registrationIds->merge($draw->flexibleMonrad->graph['players'] ?? []);
         }
+        $graphFixtureIds = [];
+        foreach ($limit->graphs as $matches) foreach ($matches as $match) $graphFixtureIds[(string) $match['id']] = true;
         $memberships = DB::table('player_registrations')->whereIn('registration_id', $registrationIds->filter()->unique())->get();
         foreach ($registrationIds->filter()->unique() as $id) {
             $profiles = $memberships->where('registration_id', $id)->pluck('player_id')->map(fn ($player) => 'profile:'.$player)->all();
@@ -42,7 +53,8 @@ final class DailyMatchLimit
         }
         foreach ($fixtures as $fixture) {
             $key = 'individual:'.$fixture->id;
-            if (! isset($limit->graphs[$fixture->draw_id])) {
+            // Interpro group matches are actual appearances, not alternative playoff paths.
+            if (! isset($graphFixtureIds[(string) $fixture->id])) {
                 if ((! $fixture->registration1_id || ! $fixture->registration2_id) && ! $fixture->winner_registration) $limit->unknown[$key] = true;
                 $limit->flat[$key] = array_values(array_unique(array_merge(...array_map(
                     fn ($id) => $limit->identities[(int) $id] ?? [], array_filter([$fixture->registration1_id, $fixture->registration2_id])))));

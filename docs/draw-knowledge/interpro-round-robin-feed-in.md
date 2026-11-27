@@ -8,6 +8,44 @@ There must be four groups named A–D, each containing three or four players.
 Complete the full group programme and resolve tied finishing positions before
 reviewing and confirming all four groups. Fourth-place finishers have no playoffs.
 
+## Append challenge matches without resetting a published draw
+
+Before qualifying groups are confirmed, an event administrator may use
+**Settings → Interpro challenge matches** to append selected pairs 2 v 3,
+4 v 5, 6 v 7, 8 v 9 or 10 v 11. Existing selections cannot be removed here.
+This is a separate append-only action; changing the format through Setup still
+requires the existing destructive-reset safeguards.
+
+`InterproChallengeSelectionService` locks the event, draw and fixtures, verifies
+the existing exact template and qualifying routes, rejects duplicate match
+numbers and occupied terminal routes, and checks the reviewed revision. It
+adds only missing challenge fixtures and their terminal feeder links. Existing
+fixture IDs, participants, scores, bookings and publication remain intact.
+New challenge fixtures have no booking or published schedule assignment; review,
+schedule and publish those separately. All base playoff matches must finish
+before challenge participants resolve. Repeating an already applied selection
+is a no-op with no duplicate fixtures or audit record.
+
+Regression: `tests/Feature/Draw/InterproChallengeSelectionTest.php`. The action
+does not support removing challenges or adding them after qualification has
+been confirmed. Local implementation and this guide do not authorize release
+or a live structural change.
+
+## Conditional daily match limits
+
+`DailyMatchLimit` uses `InterproDailyMatchGraph` to check the canonical feed-in
+routes before qualifiers are known. Group members are possible entrants until
+qualification resolves; winner/loser alternatives count the maximum appearances
+on a feasible route rather than adding mutually exclusive matches together.
+Round-robin appearances and other registrations for the same player profile
+still count toward the event-wide daily total. Canonical carried results and
+automatic advances add no extra appearance. Malformed qualifier sources,
+foreign participants and stale carried references fail closed.
+
+Regression: `tests/Feature/Draw/InterproDailyMatchLimitTest.php` and the existing
+`DailyMatchLimitTest` unit cases. This validation does not create bookings or
+publish times, and unsupported unresolved formats retain their existing guard.
+
 ## Best of three starting at 2–2
 
 Choose **Best of 3 full sets · start at 2–2** separately in **Round-robin scoring**

@@ -7,6 +7,10 @@ use App\Models\User;
 
 class DrawPolicy
 {
+    public function appendInterproChallenges(User $user, Draw $draw): bool
+    {
+        return ! $draw->locked && ! $draw->isTeamDraw() && $this->canManage($user,$draw,false);
+    }
     /** Explicit scored-format maintenance, distinct from normal scoring or settings edits. */
     public function correctRoundRobinScoring(User $user, Draw $draw): bool
     {

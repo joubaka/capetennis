@@ -535,6 +535,12 @@ pairings reference their original decisive result without copied sets, a second
 played match or a court booking. Stable playoff identities survive scheduling
 and reviewed qualification. See [the format and current correction boundary](interpro-round-robin-feed-in.md).
 
+Before qualification is confirmed, Settings can append selected adjacent-position
+challenges without resetting existing fixtures or publication. Conditional daily
+limits use canonical Interpro paths before qualifiers are known, while retaining
+actual RR appearances. See `InterproChallengeSelectionTest` and
+`InterproDailyMatchLimitTest`; neither feature publishes new match times.
+
 **Sources:** `InterproRoundRobinFormat`, canonical individual outcomes and the
 shared scheduling/publication services. **Regression:**
 `tests/Feature/Draw/InterproRoundRobinFormatTest.php`. Existing saved draws are not

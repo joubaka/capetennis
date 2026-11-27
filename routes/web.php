@@ -1602,6 +1602,7 @@ Route::delete(
   Route::post('draw/{draw}/alternate', [\App\Http\Controllers\Backend\DrawAlternateController::class, 'store'])->name('draw.alternate.store');
   Route::get('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'show'])->name('draw.setup.show');
   Route::post('draw/{draw}/setup', [\App\Http\Controllers\Backend\DrawSetupController::class, 'store'])->name('draw.setup.store');
+  Route::post('draw/{draw}/interpro-challenges', \App\Http\Controllers\Backend\InterproChallengeSelectionController::class)->name('draw.interpro-challenges.append');
   Route::get('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'show'])->name('flexible-monrad.show');
   Route::get('draw/{draw}/flexible-monrad/live', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'liveState'])->name('flexible-monrad.live');
   Route::put('draw/{draw}/flexible-monrad', [\App\Http\Controllers\Backend\FlexibleMonradController::class, 'save'])->name('flexible-monrad.save');

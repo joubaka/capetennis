@@ -51,7 +51,7 @@ class DrawSetting extends Model
     /** Legacy draws retain their original shared format until explicitly configured. */
     public function scoreFormatForStage(?string $stage): ?string
     {
-      return $stage !== null && strtoupper($stage) !== 'RR'
+      return $this->workflow === 'round_robin_playoffs' && $stage !== null && strtoupper($stage) !== 'RR'
         ? ($this->playoff_score_format ?: $this->score_format)
         : $this->score_format;
     }

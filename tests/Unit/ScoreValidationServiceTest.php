@@ -74,11 +74,19 @@ class ScoreValidationServiceTest extends TestCase
         $settings=new DrawSetting(['score_format'=>TennisScoreFormat::ONE_FULL_SET,'num_sets'=>1]);
         $this->assertSame(TennisScoreFormat::ONE_FULL_SET,$settings->scoreFormatForStage('MAIN'));
         $settings->playoff_score_format=TennisScoreFormat::BEST_OF_3_FULL_START_2;
+        $this->assertSame(TennisScoreFormat::ONE_FULL_SET,$settings->scoreFormatForStage('MAIN'));
+        $settings->workflow='round_robin_playoffs';
         $this->assertSame(TennisScoreFormat::ONE_FULL_SET,$settings->scoreFormatForStage('RR'));
         $this->assertSame(1,$settings->numSetsForStage('RR'));
         $this->assertSame(3,$settings->numSetsForStage('MAIN'));
         $settings->playoff_score_format='historical_unknown';
         $this->assertSame(1,$settings->numSetsForStage('MAIN'));
+        $settings->playoff_score_format=TennisScoreFormat::BEST_OF_3_FULL_START_2;
+        foreach (['monrad','feed_in_monrad','playoffs','custom_monrad'] as $workflow) {
+            $settings->workflow=$workflow;
+            $this->assertSame(TennisScoreFormat::ONE_FULL_SET,$settings->scoreFormatForStage('FM'));
+            $this->assertSame(1,$settings->numSetsForStage('FM'));
+        }
     }
 
     public function test_third_set_accepts_an_extended_match_tiebreak_score(): void
@@ -207,7 +215,7 @@ class ScoreValidationServiceTest extends TestCase
     {
         $fixture=$this->fixtureFor(TennisScoreFormat::ONE_FULL_SET);
         $fixture->draw->setRelation('draw_types',null)->setRelation('event',null);
-        $fixture->draw->settings->fill(['playoff_score_format'=>TennisScoreFormat::TIMED,
+        $fixture->draw->settings->fill(['workflow'=>'round_robin_playoffs','playoff_score_format'=>TennisScoreFormat::TIMED,
             'match_duration_minutes'=>25,'changeover_minutes'=>3]);
         $fixture->registration1_id=10; $fixture->registration2_id=20;
         $validator=new ScoreValidationService();

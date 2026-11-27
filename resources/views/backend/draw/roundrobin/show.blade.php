@@ -315,6 +315,7 @@
         </div>
       </div>
       @include('backend.draw.roundrobin.odd-tail-option')
+      @include('backend.draw.roundrobin.interpro-challenge-settings')
       <form id="drawSettingsForm">
       @csrf
       {{-- BASIC SETTINGS --}}
