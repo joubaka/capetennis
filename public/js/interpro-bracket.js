@@ -83,10 +83,11 @@
           if (match.schedule) {
             const date = new Date(match.schedule.time.replace(' ', 'T'));
             const time = new Intl.DateTimeFormat('en-ZA', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(date).replace(',', '');
-            const label = [time, match.schedule.venue, match.schedule.court ? 'Court ' + match.schedule.court : null].filter(Boolean).join(' · ');
-            const schedule = create('div', 'fm-match-schedule', label);
+            const preview = match.schedule.preview === true;
+            const label = [preview ? 'Preview only' : 'Published', time, match.schedule.venue, match.schedule.court ? 'Court ' + match.schedule.court : null].filter(Boolean).join(' · ');
+            const schedule = create('div', 'fm-match-schedule ' + (preview ? 'is-preview' : 'is-published'), label);
             schedule.title = label;
-            schedule.setAttribute('aria-label', 'Scheduled ' + label);
+            schedule.setAttribute('aria-label', label);
             card.append(schedule);
           }
           if (match.note) card.append(create('div', 'fm-match-note', match.note));

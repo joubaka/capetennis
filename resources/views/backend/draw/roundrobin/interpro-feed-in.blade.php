@@ -2,9 +2,7 @@
   $trialFixtures = $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get()->keyBy('match_nr');
   $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template($draw);
   $trialOutcomes = app(\App\Services\IndividualMatchOutcomeService::class);
-  $trialSchedule = ($emptyBracket ?? false) ? collect() : app(\App\Services\Scheduling\SchedulePublicationService::class)
-    ->publishedRows($draw->event, includeParticipants: false, drawId: $draw->id)
-    ->where('fixture_kind', 'individual')->keyBy('fixture_id');
+  $trialSchedule = ($emptyBracket ?? false) ? collect() : app(\App\Services\Draw\InterproBracketScheduleProjection::class)->forDraw($draw);
   $trialSourceLabel = static fn ($source) => preg_match('/^([WL])(\d+)$/', $source, $parts)
     ? ($parts[1] === 'W' ? 'Winner' : 'Loser').' match '.$parts[2]
     : 'Group '.$source[0].' position '.$source[1];
@@ -33,7 +31,7 @@
         ? ['id' => (int) $registration->id, 'name' => $registration->display_name] : null)->all(),
       'winner' => $fixture ? $trialOutcomes->winner($fixture) : null,
       'sets' => $sets->map(fn ($set) => $reverse ? [$set->registration2_score, $set->registration1_score] : [$set->registration1_score, $set->registration2_score])->all(),
-      'note' => $note, 'schedule' => $schedule ? ['time' => $schedule['scheduled_at'], 'venue' => $schedule['venue_name'], 'court' => $schedule['court']] : null];
+      'note' => $note, 'schedule' => $schedule];
   }
   $trialProjection = ['matches' => $trialMatches, 'boards' => [
     ['key' => 'main', 'title' => 'Championship and lower eight-player bracket', 'sections' => [
@@ -64,6 +62,8 @@
   .interpro-board-host .interpro-bracket-scroll { max-width: 100%; margin-bottom: 20px; }
   .interpro-feed-in .interpro-route-details { margin-top: 16px; }
   .interpro-feed-in .interpro-route-details summary { cursor: pointer; font-weight: 600; }
+  .interpro-feed-in .fm-match-schedule.is-preview { color: #b45309; }
+  .interpro-feed-in .fm-match-schedule.is-published { color: #176448; }
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
     .interpro-feed-in { font-size: 11px; line-height: 1.3; }

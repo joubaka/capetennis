@@ -1177,6 +1177,13 @@ final class EventVenueScheduleService
                 ! empty($options['programme']) ? Carbon::parse($preview['input']['end'])->addMinutes(max((int) $preview['input']['playerRest'], (int) $preview['input']['courtGap'], (int) $matches->max('court_gap'))) : null);
             $calendarDraws = Draw::whereIn('id', $matches->pluck('draw_id'))->with('flexibleMonrad')->get()->keyBy('id');
             $calendarFixtures = Fixture::whereIn('id', $matches->where('fixture_kind', 'individual')->pluck('fixture_id'))->get()->keyBy('id');
+            $interproGroups = [];
+            foreach ($calendarDraws as $calendarDraw) {
+                if (\App\Services\Draw\InterproRoundRobinFormat::selected($calendarDraw)) {
+                    $interproGroups[$calendarDraw->id] = InterproParticipantGroups::forDraw($calendarDraw,
+                        $calendarDraw->drawFixtures()->with('fixtureResults')->get());
+                }
+            }
             $dailyLimit = ! empty($preview['input']['limit_daily_matches']) ? DailyMatchLimit::load($event, $matches->pluck('fixture_key')->all()) : null;
             foreach ($matches->sortBy('scheduled_at') as $row) {
                 $at = Carbon::parse($row['scheduled_at']);
@@ -1186,6 +1193,8 @@ final class EventVenueScheduleService
                 $playerMinutes = (int) $row['duration'] + (int) ($preview['input']['playerRest'] ?? 60);
                 $group = $calendarDraws[$row['draw_id']]->usesFlexibleMonrad() ? 'flexible-draw-'.$row['draw_id']
                     : (isset($calendarFixtures[$row['fixture_id']]) && $row['fixture_kind'] === 'individual' ? ScheduleAvailability::roundRobinPositionGroup($calendarFixtures[$row['fixture_id']]) : null);
+                if (($interproGroups[$row['draw_id']] ?? null) && ($calendarFixtures[$row['fixture_id']]->stage ?? 'RR') !== 'RR'
+                    && $row['fixture_kind'] === 'individual') $group = $interproGroups[$row['draw_id']];
                 $available = $calendar->nextAvailableForMatch($at, $courtMinutes, $playerMinutes,
                     (int) $row['venue_id'], (string) $row['court'], $row['participant_ids'] ?? [], $group);
                 if (! $available->eq($at)) throw new \InvalidArgumentException('This batch overlaps a booking that is being kept. Save the combined schedule or generate a new preview with those bookings fixed.');
@@ -1590,6 +1599,7 @@ final class EventVenueScheduleService
         }
 
         $fixtures = $draw->drawFixtures->keyBy('id');
+        $interproParticipantGroup = InterproParticipantGroups::forDraw($draw, $fixtures);
         $participants = ScheduleAvailability::legacyParticipants($fixtures);
         $feeders = [];
         $sourceLabels = [];
@@ -1642,6 +1652,9 @@ final class EventVenueScheduleService
             $dependencies = array_values(array_unique($feeders[$fixture->id] ?? []));
             $nodes[$fixture->id] = $this->node($draw, $fixture, $dependencies,
                 $participants[$fixture->id] ?? [], $automatic, ($fixture->fixtureResults->isNotEmpty() || (int) $fixture->match_status !== 0), $labels);
+            if ($interproParticipantGroup && $fixture->stage !== 'RR') {
+                $nodes[$fixture->id]['participant_group'] = $interproParticipantGroup;
+            }
         }
         if ($draw->hasRoundRobinProgression()) {
             foreach (array_keys($nodes) as $id) $nodes[$id]['venue_round'] = $this->wave($id, $nodes);

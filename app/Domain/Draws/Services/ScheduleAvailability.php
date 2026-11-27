@@ -67,6 +67,14 @@ final class ScheduleAvailability
             $legacyFixtures = Fixture::whereIn('draw_id', $legacyDraws)->get()->keyBy('id');
             $possible += self::legacyParticipants($legacyFixtures);
             foreach ($legacyFixtures as $fixture) $participantGroups[$fixture->id] = self::roundRobinPositionGroup($fixture);
+            $interproDraws = Draw::whereIn('id', $legacyDraws)->whereHas('settings', fn ($query) => $query
+                ->where('workflow', 'round_robin_playoffs')->where('preset_key', \App\Services\Draw\InterproRoundRobinFormat::PRESET))
+                ->with('settings')->get();
+            foreach ($interproDraws as $legacyDraw) {
+                $drawFixtures = $legacyFixtures->where('draw_id', $legacyDraw->id);
+                $group = \App\Services\Scheduling\InterproParticipantGroups::forDraw($legacyDraw, $drawFixtures);
+                if ($group) foreach ($drawFixtures->where('stage', '!=', 'RR') as $fixture) $participantGroups[$fixture->id] = $group;
+            }
         }
         $reservationDraws = $monrads->pluck('draw_id')->merge($legacyDraws);
         $bookings = OrderOfPlay::with('fixture.draw')->whereNotIn('fixture_id', $excludeFixtures)->whereNotNull('time')
@@ -216,7 +224,7 @@ final class ScheduleAvailability
     private static function disjointParticipantGroups(?string $left, ?string $right): bool
     {
         if (! $left || ! $right) return false;
-        if (str_starts_with($left, 'flexible-draw-')) return $left === $right;
+        if (str_starts_with($left, 'flexible-draw-') || str_starts_with($left, 'interpro-draw-')) return $left === $right;
         if (! str_starts_with($left, 'rr-position:') || ! str_starts_with($right, 'rr-position:')) return false;
         $one = explode(':', $left); $two = explode(':', $right);
         return $one[1] === $two[1] && $one[2] === $two[2]

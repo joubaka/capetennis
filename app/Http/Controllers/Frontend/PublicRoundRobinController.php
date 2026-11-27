@@ -137,7 +137,8 @@ class PublicRoundRobinController extends Controller
   private function freshDrawHeaders(): array
   {
     return [
-      'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+      'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+      'Vary' => 'Cookie, Authorization',
       'Pragma' => 'no-cache',
       'Expires' => '0',
     ];

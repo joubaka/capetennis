@@ -1742,7 +1742,8 @@ class RoundRobinController extends Controller
   {
     $this->authorize('view', $draw);
     if (\App\Services\Draw\InterproRoundRobinFormat::selected($draw)) {
-      return view('backend.draw.roundrobin.interpro-feed-in', ['draw' => $draw, 'emptyBracket' => request()->boolean('empty')]);
+      return response()->view('backend.draw.roundrobin.interpro-feed-in', ['draw' => $draw, 'emptyBracket' => request()->boolean('empty')])
+        ->withHeaders(['Cache-Control'=>'private, no-store, no-cache, must-revalidate, max-age=0','Vary'=>'Cookie, Authorization']);
     }
 
     $isEmpty = request()->boolean('empty');

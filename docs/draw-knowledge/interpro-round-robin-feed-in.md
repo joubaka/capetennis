@@ -42,6 +42,14 @@ still count toward the event-wide daily total. Canonical carried results and
 automatic advances add no extra appearance. Malformed qualifier sources,
 foreign participants and stale carried references fail closed.
 
+Scheduling also uses `InterproParticipantGroups` to prove that sibling playoff
+branches contain different entrants. The exemption requires the exact canonical
+routes, valid group sources, complete unique profile memberships and either no
+qualifiers or all twelve distinct qualifiers. Only proven same-draw playoff
+branches share the group; RR appearances, physical court occupancy, cross-draw
+player collisions and prerequisite completion plus rest remain enforced. Apply
+the same proof to new nodes, saved bookings and save-time revalidation.
+
 Regression: `tests/Feature/Draw/InterproDailyMatchLimitTest.php` and the existing
 `DailyMatchLimitTest` unit cases. This validation does not create bookings or
 publish times, and unsupported unresolved formats retain their existing guard.
@@ -226,10 +234,20 @@ and the public header controls must resolve the bracket in their enclosing card.
 The shared admin workspace exposes zoom controls on desktop as well as phones.
 The public inline-block zoom host becomes a block for this preset so introductory
 text and final positions wrap within the viewport while the diagrams scroll.
-Schedule labels always come from `SchedulePublicationService::publishedRows()`
-for this exact draw and individual fixture, including on staff previews. Retain
-event/draw/schedule publication and first-match visibility filtering; never read
-working times/courts directly into this shared public AJAX response.
+Schedule labels start with `SchedulePublicationService::publishedRows()` for
+this exact draw and individual fixture, retaining event/draw/schedule publication
+and first-match visibility filtering. Published labels are green and say
+**Published**. Only an authenticated `super-user` receives a separately queried,
+draw-scoped working overlay from `InterproBracketScheduleProjection`; changed or
+unpublished bookings are orange and say **Preview only**. Include day, time,
+venue and court; venue identity also matters when comparing snapshots. Ordinary
+admins, other users and guests receive published metadata only, regardless of
+query flags. Never put working metadata into publication caches. Both public and
+backend bracket AJAX responses are private/no-store and vary by Cookie and
+Authorization. Empty bracket printing omits all schedules. Public revisions
+remain publication-only; reload the bracket to refresh a Super User preview.
+Regression: `InterproSchedulePreviewTest` and
+`tests/Frontend/interpro-schedule-labels.test.cjs`.
 The individual round-robin `frontend.fixtures.index` page reuses the canonical
 public draw workspace: **Fixtures**, **Round-robin standings**, and **Playoff
 bracket**. Fixtures open first, including unscheduled pairings; private times and

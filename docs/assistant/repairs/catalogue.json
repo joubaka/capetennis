@@ -2,6 +2,19 @@
   "version": 1,
   "repairs": [
     {
+      "id": "RK-082",
+      "title": "Interpro championship and lower playoff branches falsely conflict",
+      "scope": "Canonical individual Interpro feed-in schedule previews, saved-booking checks and save-time revalidation.",
+      "symptoms": "Championship semifinals fit a wave but lower-bracket winners and consolation matches remain unscheduled despite sufficient courts and rest; the same player cannot actually occupy both mutually exclusive bracket roles.",
+      "cause": "Legacy scheduling unions possible group entrants through winner and loser paths. Direct qualifier rank checks cannot prove the disjoint later paths, so sibling playoff branches incorrectly reserve each other's possible players.",
+      "fix": "Use InterproParticipantGroups consistently for new playoff nodes, existing bookings and apply revalidation. Claim a same-draw group only after proving the exact canonical topology, all winner/loser links, group qualifier sources, complete unique profile memberships and either zero or twelve distinct qualifiers. Keep RR fixtures outside the exemption and preserve court occupancy, cross-draw identity conflicts and prerequisite completion plus player rest. See docs/draw-knowledge/interpro-round-robin-feed-in.md.",
+      "verification": "The combined Interpro daily-limit, ScheduleDailyLimit, CrossGroupFinalsScheduling and DailyMatchLimit unit suite passed locally: 32 tests, 585 assertions. Coverage includes separately saving championship matches before their same-time lower siblings, rejecting insufficient rest, cross-draw conflicts and malformed proofs. A full isolated copied-draw weekend scheduling rehearsal passed and rolled back without changing published assignments.",
+      "limits": "Guide only. Never exempt a draw solely by preset name or turn off participant checks. Local verification does not authorize release, live bookings, rescheduling or publication.",
+      "assistant_action": "guide_only",
+      "sources": ["app/Services/Scheduling/InterproParticipantGroups.php", "app/Domain/Draws/Services/ScheduleAvailability.php", "app/Services/Scheduling/EventVenueScheduleService.php", "docs/draw-knowledge/interpro-round-robin-feed-in.md"],
+      "tests": ["tests/Feature/Draw/InterproDailyMatchLimitTest.php", "tests/Feature/Draw/ScheduleDailyLimitTest.php", "tests/Feature/Draw/CrossGroupFinalsSchedulingTest.php", "tests/Unit/DailyMatchLimitTest.php"]
+    },
+    {
       "id": "RK-081",
       "title": "Daily match limit refuses unresolved Interpro feed-in playoffs",
       "scope": "Individual Interpro round-robin feed-in scheduling with the event-wide daily match limit enabled.",
