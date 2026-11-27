@@ -133,4 +133,55 @@ class InterproMatchTiebreakCorrectionTest extends TestCase
         $fixture->update(['parent_fixture_id'=>null]);$foreign->update(['parent_fixture_id'=>$fixture->id]);$before=$snapshot();
         $this->get(route('draw.interpro-scoring-correction.show',$draw))->assertConflict();$this->assertSame($before,$snapshot());
     }
+
+    public function test_empty_round_robin_partial_placeholders_do_not_block_actual_deciding_points_or_change_saved_state(): void
+    {
+        $draw=$this->context();$played=$this->fixture($draw,[[5,7],[6,3],[7,6]]);
+        $empty=[];$venue=Venue::forceCreate(['name'=>'Fictional partial courts']);
+        for($i=0;$i<2;$i++) {
+            $fixture=$this->fixture($draw);$fixture->update(['match_status'=>2]);$empty[]=$fixture;
+            OrderOfPlay::create(['draw_id'=>$draw->id,'fixture_id'=>$fixture->id,'venue_id'=>$venue->id,'court'=>(string)($i+1),'time'=>'2026-11-27 14:30']);
+            DB::table('published_schedule_assignments')->insert(['event_id'=>$draw->event_id,'draw_id'=>$draw->id,'fixture_kind'=>'individual',
+                'fixture_id'=>$fixture->id,'venue_id'=>$venue->id,'scheduled_at'=>'2026-11-27 14:30','court'=>(string)($i+1),'published_at'=>now()]);
+        }
+        $empty[]=$this->fixture($draw);
+        $points=[$played->id=>[10,6]];$review=$this->review($draw,$points);
+        $this->assertSame(1,$review['compatible']);$this->assertSame([],$review['incompatible']);
+        $this->get(route('draw.interpro-scoring-correction.show',$draw).'?'.http_build_query(['third_set_points'=>$points]))
+            ->assertOk()->assertSee('Apply reviewed rules to both stages');
+        $beforeBookings=DB::table('order_of_plays')->orderBy('id')->get()->toJson();
+        $beforePublished=DB::table('published_schedule_assignments')->orderBy('id')->get()->toJson();
+        $beforeEmpty=array_map(fn($fixture)=>$fixture->fresh()->getAttributes(),$empty);
+        $firstTwo=$played->fixtureResults()->where('set_nr','<',3)->orderBy('set_nr')->get()->map->getAttributes()->all();
+        $this->apply($draw,$review,$points)->assertOk();
+        $this->assertSame($beforeBookings,DB::table('order_of_plays')->orderBy('id')->get()->toJson());
+        $this->assertSame($beforePublished,DB::table('published_schedule_assignments')->orderBy('id')->get()->toJson());
+        foreach($empty as $index=>$fixture) {
+            $this->assertSame($beforeEmpty[$index],$fixture->fresh()->getAttributes());
+            $this->assertSame(0,$fixture->fixtureResults()->count());
+        }
+        $this->assertSame($firstTwo,$played->fixtureResults()->where('set_nr','<',3)->orderBy('set_nr')->get()->map->getAttributes()->all());
+        $third=$played->fixtureResults()->where('set_nr',3)->firstOrFail();
+        $this->assertSame([10,6],[(int)$third->registration1_score,(int)$third->registration2_score]);
+        $this->get(route('draw.interpro-scoring-correction.show',$draw).'?'.http_build_query(['third_set_points'=>[$empty[0]->id=>[10,6]]]))->assertUnprocessable();
+    }
+
+    public function test_nonempty_partial_terminal_or_winner_without_scores_and_partial_playoffs_remain_protected(): void
+    {
+        $draw=$this->context();$fixture=$this->fixture($draw);$fixture->update(['match_status'=>2]);
+        $this->assertSame(0,$this->review($draw)['compatible']);
+        $fixture->fixtureResults()->create(['set_nr'=>1,'registration1_score'=>6,'registration2_score'=>2,
+            'winner_registration'=>$fixture->registration1_id,'loser_registration'=>$fixture->registration2_id]);
+        $review=$this->review($draw);$this->assertCount(1,$review['incompatible']);$this->apply($draw,$review)->assertConflict();
+        $fixture->fixtureResults()->delete();
+        foreach ([1,3,4,5,99] as $status) {
+            $fixture->update(['match_status'=>$status]);
+            $review=$this->review($draw);$this->assertCount(1,$review['incompatible']);
+            $this->assertStringContainsString('no set scores',$review['incompatible'][0]['reason']);$this->apply($draw,$review)->assertConflict();
+        }
+        $fixture->update(['match_status'=>0,'winner_registration'=>$fixture->registration1_id]);
+        $review=$this->review($draw);$this->assertCount(1,$review['incompatible']);$this->apply($draw,$review)->assertConflict();
+        $fixture->update(['match_status'=>2,'winner_registration'=>null,'stage'=>'MAIN']);
+        $this->get(route('draw.interpro-scoring-correction.show',$draw))->assertConflict();
+    }
 }

@@ -73,6 +73,11 @@ two set rows, checks stale state and winner changes, and protects confirmed
 qualification, downstream play, bookings and publication. Never infer tiebreak
 points from a stored 7–6 full-set result. See
 `InterproMatchTiebreakCorrectionTest` and `RoundRobinMatchTiebreakStandingsTest`.
+An RR fixture with no set rows, no winner and status 0 or 2 is unscored for this
+review; it contributes no compatible result and keeps its stored status and
+bookings. This exception never ignores recorded partial scores, terminal or
+winner-bearing empty outcomes, or a playoff marked partial. Supplying a third-set
+correction for an empty fixture is rejected.
 This guide establishes local behavior, not deployment or live mutation authority.
 
 Choose **Best of 3 full sets · start at 2–2** separately in **Round-robin scoring**

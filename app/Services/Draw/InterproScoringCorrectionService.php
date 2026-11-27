@@ -35,7 +35,8 @@ final class InterproScoringCorrectionService
         foreach ($draw->drawFixtures as $fixture) {
             $preview=clone $fixture; $preview->setRelation('draw',$proposed);
             $sets=$fixture->fixtureResults->sortBy('set_nr')->map(fn($set)=>[(int)$set->registration1_score,(int)$set->registration2_score])->values()->all();
-            if (!$sets && !$fixture->winner_registration && (int)$fixture->match_status===0) {
+            if (!$sets && !$fixture->winner_registration && ((int)$fixture->match_status===0
+                || ($fixture->stage==='RR' && (int)$fixture->match_status===2))) {
                 abort_if(isset($thirdSetPoints[$fixture->id]),422,'Only an existing incompatible third set can be corrected.');
                 continue;
             }
@@ -48,7 +49,9 @@ final class InterproScoringCorrectionService
                 abort_unless(is_array($points) && array_is_list($points) && count($points)===2 && is_int($points[0]) && is_int($points[1]),422,'Supply both actual whole-number deciding-tiebreak scores.');
                 $sets[2]=$points;
             }
-            $reason=$sets && $setNumbers!==range(1,count($sets)) ? 'Recorded set numbers are duplicated or incomplete; review this match separately.' : null;
+            $reason=!$sets && !$fixture->isWalkover()
+                ? 'This match has a recorded outcome or status but no set scores. Review it separately.'
+                : ($sets && $setNumbers!==range(1,count($sets)) ? 'Recorded set numbers are duplicated or incomplete; review this match separately.' : null);
             if ($reason) {
                 // Preserve malformed historical rows for explicit review, never reinterpret their order.
             } elseif ($fixture->isWalkover()) {
