@@ -18,7 +18,7 @@ function card(date = '2026-10-09') {
   return { dataset: { date }, main, hide, fields, cloneNode() { return card(''); },
     querySelector(selector) { return fields[selector]; }, querySelectorAll() { return [main, hide]; } };
 }
-function harness(replies, initialUnconfirmed = false, drawId = null, eventDays = {}) {
+function harness(replies, initialUnconfirmed = false, drawId = null, eventDays = {}, easyDays = false) {
   let current = [card('2026-10-09'), card('2026-10-10')], submit, toggle;
   const requests = [];
   const feedback = { textContent: '', classList: classes(), setAttribute() {}, focus() {} };
@@ -31,6 +31,7 @@ function harness(replies, initialUnconfirmed = false, drawId = null, eventDays =
     setAttribute() {}, querySelector(selector) { const date = selector.match(/data-date="([^"]+)"/); return date ? current.find(row => row.dataset.date === date[1])?.fields['[data-day-toggle]'] : fields[selector]; },
     querySelectorAll() { return current.flatMap(row => [row.main.querySelector('button'), row.hide.querySelector('button')]); },
     addEventListener(event, fn) { if (event === 'submit') submit = fn; else toggle = fn; } };
+  panel.dataset.easyDayPublication = easyDays ? 'true' : 'false';
   if (drawId !== null) {
     panel.dataset.drawId = String(drawId);
     panel.dataset.statusUrl += '?draw_id=' + drawId;
@@ -46,6 +47,20 @@ function harness(replies, initialUnconfirmed = false, drawId = null, eventDays =
   new Function('window', 'document', script)(window, document);
   return { requests, feedback, retry, get current() { return current; }, async open() { panel.open = true; return toggle(); }, async submit(form) { return submit({ target: form, preventDefault() {} }); } };
 }
+
+test('easy individual day controls retain clear hide labels and selected date after refresh', async () => {
+  const labels = {'2026-10-09': 'Today · Friday 9 Oct 2026', '2026-10-10': 'Tomorrow · Saturday 10 Oct 2026'};
+  const ui = harness([snapshot([day('2026-10-09', 'Published'), day('2026-10-10', 'Published')], 'b'), snapshot([day('2026-10-09'), day('2026-10-10', 'Published')], 'c', 'hide')], false, null, labels, true);
+  await ui.submit(ui.current[0].main);
+  assert.equal(ui.current[0].fields['[data-day-toggle]'].textContent, 'Hide times');
+  assert.equal(ui.current[1].fields['[data-day-label]'].textContent, labels['2026-10-10']);
+  await ui.submit(ui.current[0].main);
+  assert.equal(ui.requests[1].url, '/hide');
+  assert.equal(ui.requests[1].payload.date, '2026-10-09');
+  assert.equal(ui.current[1].fields['[data-day-toggle]'].textContent, 'Hide times');
+  assert.equal(ui.current[0].fields['[data-day-status]'].textContent, 'Hidden from players');
+  assert.equal(ui.current[0].fields['[data-day-pending]'].textContent, '1 saved times kept private');
+});
 
 test('draw day panel loads only its scope and preserves draw ID through publish and hide', async () => {
   const scoped = (status, token, action) => ({ ...snapshot([day('2026-10-09', status)], token, action), draw_id: 42 });

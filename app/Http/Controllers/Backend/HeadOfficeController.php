@@ -110,7 +110,7 @@ class HeadOfficeController extends Controller
         // Legacy events also have a string `venues` column, which shadows
         // Eloquent's relation when accessed as a dynamic property.
         'eventVenues' => $event->getRelation('venues'),
-      ]);
+      ] + $this->dayPublicationData($event));
     }
 
     \Log::debug('[EVENT SHOW] Start', [
@@ -286,9 +286,14 @@ class HeadOfficeController extends Controller
     $drawCount = $event->draws->count();
     $data['drawPublicationSummary'] = ['published' => $publishedDrawCount, 'unpublished' => $drawCount - $publishedDrawCount,
       'status' => $drawCount === 0 ? 'No draws' : ($publishedDrawCount === $drawCount ? 'All published' : ($publishedDrawCount === 0 ? 'Unpublished' : 'Partly published'))];
-    $data['wholeDaySchedule'] = collect();
-    $data['schedulePublicationRevision'] = null;
-    $data['schedulePublicationUnconfirmed'] = false;
+    $data += $this->dayPublicationData($event);
+
+    return view('backend.headOffice.team-event-show', $data);
+  }
+
+  private function dayPublicationData(Event $event): array
+  {
+    $data = ['wholeDaySchedule' => collect(), 'schedulePublicationRevision' => null, 'schedulePublicationUnconfirmed' => false];
     if (auth()->user()->can('event.manage', $event)) {
       try {
         $snapshot = app(\App\Services\Scheduling\SchedulePublicationStatusService::class)->snapshot($event);
@@ -298,8 +303,7 @@ class HeadOfficeController extends Controller
         $data['schedulePublicationUnconfirmed'] = true;
       }
     }
-
-    return view('backend.headOffice.team-event-show', $data);
+    return $data;
   }
   /** Show the event's available print layouts and sheets. */
   public function printOptions(Event $event)

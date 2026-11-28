@@ -31,6 +31,46 @@ class HeadOfficePublicationControlsTest extends TestCase
             'fixture_type' => 1, 'scheduled_at' => $date.' 09:00:00', 'venue_id' => $venue->id, 'court_label' => '1', 'duration_min' => 60]);
     }
 
+    public function test_individual_overview_exposes_day_controls_and_hides_only_the_reviewed_day_retaining_results(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-28 10:00:00', config('app.timezone')));
+        [$event, $venue] = $this->setupEvent();
+        $type = DB::table('eventtypes')->insertGetId(['name' => 'Fictional individual days', 'type' => EventType::INDIVIDUAL]);
+        $event->update(['eventType' => $type, 'published' => true]);
+        $draw = Draw::factory()->create(['event_id' => $event->id, 'published' => true]);
+        $fixtures = collect();
+        foreach (['2026-11-28', '2026-11-29'] as $date) {
+            $fixture = Fixture::factory()->create(['draw_id' => $draw->id]);
+            OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $fixture->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => $date.' 09:00:00']);
+            $fixtures->push($fixture);
+        }
+        $fixtures[0]->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 0]);
+        $service = app(SchedulePublicationService::class);
+        $service->publish($event, []);
+        $before = [DB::table('fixtures')->get()->toJson(), DB::table('fixture_results')->get()->toJson(), DB::table('order_of_plays')->get()->toJson()];
+        $response = $this->get(route('headOffice.show', $event))->assertOk()
+            ->assertSee('Show or hide match times by day')->assertSee('Today · Saturday 28 Nov 2026')
+            ->assertSee('Tomorrow · Sunday 29 Nov 2026')->assertSee('Hiding times keeps saved bookings, matches and results.');
+        $this->assertSame(2, $response->viewData('wholeDaySchedule')->count());
+        $doc = new \DOMDocument(); @$doc->loadHTML($response->getContent()); $xpath = new \DOMXPath($doc);
+        $this->assertSame(1, $xpath->query('//details[@data-whole-day-publication and @open]')->length);
+        $this->assertSame(2, $xpath->query('//details[@data-whole-day-publication]//div[@data-day-cards]//button[@data-day-toggle and normalize-space(.)="Hide times"]')->length);
+        $revision = $response->viewData('schedulePublicationRevision');
+        $hidden = $this->postJson(route('backend.event-venue-schedule.calendar.hide', $event), ['date' => '2026-11-28', 'revision' => $revision])
+            ->assertOk()->assertJsonPath('days.0.published', 0)->assertJsonPath('days.1.published', 1);
+        $this->assertSame($before, [DB::table('fixtures')->get()->toJson(), DB::table('fixture_results')->get()->toJson(), DB::table('order_of_plays')->get()->toJson()]);
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $this->assertDatabaseHas('published_schedule_assignments', ['fixture_id' => $fixtures[1]->id, 'scheduled_at' => '2026-11-29 09:00:00']);
+        $this->postJson(route('backend.event-venue-schedule.calendar.hide', $event), ['date' => '2026-11-29', 'revision' => $revision])->assertUnprocessable();
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+        $finalResponse = $this->get(route('headOffice.show', $event))->assertOk()->assertSee('This includes deliberately hidden days.')
+            ->assertSee('Hidden from players')->assertSee('1 saved times kept private');
+        if ($snapshotPath = getenv('DAY_VISIBILITY_SNAPSHOT')) file_put_contents($snapshotPath, $finalResponse->getContent());
+        $this->actingAs(User::factory()->create());
+        $this->postJson(route('backend.event-venue-schedule.calendar.hide', $event), ['date' => '2026-11-29', 'revision' => $hidden->json('revision')])->assertForbidden();
+        $this->assertDatabaseCount('published_schedule_assignments', 1);
+    }
+
     public function test_draw_day_status_and_publication_keep_other_draws_and_dates_unchanged(): void
     {
         [$event, $venue] = $this->setupEvent();

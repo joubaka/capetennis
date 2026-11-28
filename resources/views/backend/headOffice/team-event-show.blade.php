@@ -409,27 +409,7 @@
   </div>
 </details>
 
-@can('event.manage', $event)
-@include('backend.schedule.partials.day-publication-script')
-<details class="card mb-4 no-print event-publication-panel" @if($schedulePublicationUnconfirmed ?? false) open @endif data-whole-day-publication data-initial-unconfirmed="{{ ($schedulePublicationUnconfirmed ?? false) ? 'true' : 'false' }}" data-event-id="{{ $event->id }}" data-status-url="{{ route('backend.event-venue-schedule.calendar.publication-status', $event) }}" data-publish-url="{{ route('backend.event-venue-schedule.calendar.publish', $event) }}" data-hide-url="{{ route('backend.event-venue-schedule.calendar.hide', $event) }}" data-calendar-url="{{ route('backend.event-venue-schedule.calendar', $event) }}">
-  <summary><span class="fw-semibold">Whole-day schedule publication</span><span class="small text-muted">Review and publish match times</span></summary>
-  <div class="card-body">
-    <p class="text-muted">Review, publish or hide one whole day's match times across all venues and draws. Publishing times does not publish hidden draws; existing public visibility rules still apply.</p>
-    <div class="alert {{ ($schedulePublicationUnconfirmed ?? false) ? 'alert-warning' : 'd-none' }}" data-day-feedback role="status" aria-live="polite">@if($schedulePublicationUnconfirmed ?? false)Publication status unconfirmed. Actions are paused; retry the status check before changing a day.@endif</div>
-    <button type="button" class="btn btn-outline-primary mb-3" data-day-status-retry @if(!($schedulePublicationUnconfirmed ?? false)) hidden @endif>Retry status check</button>
-    <div class="row g-3" data-day-cards>
-      @forelse($wholeDaySchedule ?? collect() as $day => $counts)
-        @include('backend.headOffice.partials.day-publication-card')
-      @empty
-        @unless($schedulePublicationUnconfirmed ?? false)<p class="text-muted mb-0"><strong>Not scheduled</strong> · No saved or published match times yet. Save a schedule before publishing a day.</p>@endunless
-      @endforelse
-    </div>
-    <template data-day-card-template>
-      @include('backend.headOffice.partials.day-publication-card', ['day' => '', 'counts' => ['saved' => 0, 'published' => 0, 'matched' => 0, 'pending' => 0, 'status' => 'Not scheduled']])
-    </template>
-  </div>
-</details>
-@endcan
+@include('backend.headOffice.partials.whole-day-publication')
 
 
 <!-- Modal: Create New Draw (Team Event) -->

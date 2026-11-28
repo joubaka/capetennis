@@ -87,4 +87,41 @@ class PublicDrawPresentationTest extends TestCase
         $this->assertStringContainsString("cache: 'no-store'", $script);
         $this->assertStringContainsString("'Cache-Control': 'no-cache'", $script);
     }
+
+    public function test_fixture_completion_distinguishes_upcoming_matches_from_drawn_and_terminal_results(): void
+    {
+        $draw = Draw::factory()->create(['event_id' => Event::factory()->create()->id]);
+        $draw->settings()->create(['workflow' => 'round_robin', 'score_format' => 'timed', 'num_sets' => 1]);
+        $players = \App\Models\Registration::factory()->count(2)->create();
+        $fixtures = collect();
+        foreach ([
+            ['pending', 0, null, null, null, false],
+            ['in progress', 2, [2, 1], null, null, false],
+            ['drawn result', 1, [3, 3], null, null, true],
+            ['completed result', 1, [4, 2], $players[0]->id, null, true],
+            ['walkover', 3, null, $players[0]->id, null, true],
+            ['retirement', 4, [2, 1], $players[1]->id, null, true],
+            ['void result', 1, [3, 3], null, $players[0]->id, true],
+            ['double bye', 5, null, null, null, true],
+        ] as $index => [$label, $status, $score, $winner, $voided, $completed]) {
+            $fixture = \App\Models\Fixture::factory()->create([
+                'draw_id' => $draw->id, 'stage' => 'RR', 'match_nr' => $index + 1,
+                'registration1_id' => $players[0]->id, 'registration2_id' => $players[1]->id,
+                'match_status' => $status, 'winner_registration' => $winner,
+                'round_robin_voided_registration_id' => $voided,
+            ]);
+            if ($score) $fixture->fixtureResults()->create([
+                'set_nr' => 1, 'registration1_score' => $score[0], 'registration2_score' => $score[1],
+            ]);
+            $fixtures->put($fixture->id, [$label, $completed]);
+        }
+        $before = \App\Models\Fixture::where('draw_id', $draw->id)->orderBy('id')->get()->toJson();
+        $rows = app(\App\Services\DrawService::class)->loadRoundRobinHub($draw)['oops'];
+        foreach ($rows as $row) {
+            [$label, $completed] = $fixtures[$row['id']];
+            $this->assertSame($completed, $row['completed'], $label);
+        }
+        $this->assertCount($fixtures->count(), $rows);
+        $this->assertSame($before, \App\Models\Fixture::where('draw_id', $draw->id)->orderBy('id')->get()->toJson());
+    }
 }

@@ -49,15 +49,15 @@
       var published = day.status === 'Published';
       card.dataset.date = day.date;
       card.querySelector('[data-day-label]').textContent = eventDays[date] || day.label;
-      card.querySelector('[data-day-status]').textContent = day.status;
+      card.querySelector('[data-day-status]').textContent = panel.dataset.easyDayPublication === 'true' && day.status === 'Unpublished' ? 'Hidden from players' : day.status;
       card.querySelector('[data-day-counts]').textContent = day.saved + ' saved times · ' + day.published + ' published times';
-      card.querySelector('[data-day-pending]').textContent = day.pending ? day.pending + ' matches with unpublished changes' : '';
+      card.querySelector('[data-day-pending]').textContent = panel.dataset.easyDayPublication === 'true' && day.status === 'Unpublished' ? day.saved + ' saved times kept private' : (day.pending ? day.pending + ' matches with unpublished changes' : '');
       card.querySelector('[data-day-review]').href = panel.dataset.calendarUrl + (panel.dataset.calendarUrl.indexOf('?') === -1 ? '?' : '&') + 'date=' + encodeURIComponent(day.date);
       var main = card.querySelector('[data-main-day-action]');
       main.action = published ? panel.dataset.hideUrl : panel.dataset.publishUrl;
       var button = card.querySelector('[data-day-toggle]');
       main.hidden = day.saved === 0 && day.published === 0;
-      button.textContent = published ? 'Hide day' : (day.published > 0 || day.status === 'Updates not published' ? 'Publish updates' : 'Publish day');
+      button.textContent = published ? (panel.dataset.easyDayPublication === 'true' ? 'Hide times' : 'Hide day') : (day.published > 0 || day.status === 'Updates not published' ? 'Publish updates' : 'Publish day');
       button.setAttribute('aria-pressed', published ? 'true' : 'false');
       button.classList.toggle('btn-outline-danger', published);
       button.classList.toggle('btn-success', !published);

@@ -252,10 +252,12 @@
       return;
     }
 
-    // Visit every group's round before moving on to the next round. Membership
-    // comes from the full group, never the currently displayed fixture subset.
+    // Upcoming matches precede results. Within each section, visit every group's
+    // round using full membership, never the currently displayed fixture subset.
     const groupById = new Map(RR_GROUPS.map(group => [Number(group.id), group]));
     const sorted = RR_OOP.slice().sort((a, b) => {
+      const completed = Number(a.completed === true) - Number(b.completed === true);
+      if (completed) return completed;
       const aRR = a.stage === 'RR', bRR = b.stage === 'RR';
       if (aRR !== bRR) return aRR ? -1 : 1;
       if (aRR) {

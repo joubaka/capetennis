@@ -168,7 +168,8 @@ class DrawService
           ->map(fn($r) => "{$r->registration1_score}-{$r->registration2_score}")
           ->implode(', ');
 
-        $winner = app(IndividualMatchOutcomeService::class)->winner($fx);
+        $outcomes = app(IndividualMatchOutcomeService::class);
+        $winner = $outcomes->winner($fx);
 
         // Build feeder labels (e.g. "W1001/W1002" or "L1005/L1006")
         $wFeed = $winnerFeeders[$fx->id] ?? [];
@@ -201,6 +202,10 @@ class DrawService
 
           'score' => \App\Services\Draw\InterproRoundRobinFormat::score($fx) ?? ($fx->isRetired() ? trim($sets.' RET') : $sets),
           'winner' => $winner,
+          'completed' => $fx->isRoundRobinVoided()
+            || (int) $fx->match_status === \App\Domain\Draws\Enums\FixtureState::STATUS_DOUBLE_BYE
+            || ((int) $fx->match_status !== \App\Domain\Draws\Enums\FixtureState::STATUS_PARTIAL
+              && ($winner !== null || $outcomes->isDraw($fx))),
 
           'winner_feeders' => $wFeed,
           'loser_feeders'  => $lFeed,

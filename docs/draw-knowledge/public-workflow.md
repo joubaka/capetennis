@@ -31,6 +31,21 @@ Today's progress counts still describe today, and the progress service's default
 today-only behavior remains available to other callers. If no dated fixtures
 exist, retain the generic scoring-workspace link.
 
+## Match-time visibility by day
+
+The individual draw-management page exposes the shared event-wide day controls
+to event managers. Today/Tomorrow labels use the application timezone. Every
+publish or hide action retains the exact selected date and current schedule
+revision through the canonical calendar endpoints; it never changes bookings,
+results or draw publication. Per-draw controls retain their separate draw scope.
+
+Internal publication `pending` counts include saved times on deliberately hidden
+days. Describe an unpublished day as hidden/private rather than implying that
+its results are missing or its schedule is broken. Check each date's saved,
+published and matched counts before diagnosing a changed public time. Never
+publish a private day simply to clear a warning. `HeadOfficePublicationControlsTest`
+and `head-office-day-publication.test.cjs` protect the day controls and refresh.
+
 ## Navigation
 
 Individual event draws precede event information and documents. Team and Trials
@@ -42,6 +57,14 @@ hidden desktop panel on a phone.
 Public RR and Flexible Monrad links support `#draw` and `#schedule`. Selecting a
 tab updates the URL, including RR keyboard tab changes; changing the fragment
 opens the corresponding panel. Return links go to the tournament's draw section.
+
+The public round-robin fixtures list places upcoming and in-progress matches
+before completed results. Completion uses canonical outcomes, including drawn
+and terminal results, rather than requiring a winner or merely a recorded score.
+Within each section retain the existing phase, group-round and full-group-size
+ordering. This is presentation only: never reorder saved schedules or renumber
+fixtures. `PublicDrawPresentationTest` and `public-roundrobin-order.test.cjs`
+cover the outcome metadata and shipped renderer.
 
 ## Verification
 

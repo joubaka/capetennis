@@ -41,7 +41,7 @@
       $pendingScheduleCount = $event->draws->filter(fn ($draw) => ($draw->schedule_publication_state['pending'] ?? 0) > 0)->count();
     @endphp
     @if($pendingScheduleCount > 0)
-      <div class="alert alert-warning" role="status">{{ $pendingScheduleCount }} {{ Str::plural('schedule', $pendingScheduleCount) }} with unpublished changes. Review saved times before publishing.</div>
+      <div class="alert alert-info" role="status">{{ $pendingScheduleCount }} {{ Str::plural('draw', $pendingScheduleCount) }} with saved times that are not public. This includes deliberately hidden days. Use the day controls below to choose which days players can see.</div>
     @endif
     <details class="card mb-3"><summary class="p-3">Publication summary</summary>
     <section aria-labelledby="release-readiness-heading">
@@ -67,14 +67,16 @@
         </div>
         @if($pendingScheduleCount > 0)
           <div class="alert alert-warning mt-3 mb-0" role="status">
-            <strong>{{ $pendingScheduleCount }} {{ Str::plural('schedule', $pendingScheduleCount) }} with unpublished changes.</strong>
-            Use <em>Publish times</em> to preview time, venue and court details before releasing the draw publicly.
+            <strong>{{ $pendingScheduleCount }} {{ Str::plural('draw', $pendingScheduleCount) }} with saved times that are not public.</strong>
+            Hidden days are included. Review the day controls and publish only the days players should see.
           </div>
         @endif
       </div>
     </section>
     </details>
   @endif
+
+  @include('backend.headOffice.partials.whole-day-publication', ['easyDayPublication' => true])
 
   <section class="draws-overview" aria-labelledby="draws-heading">
     <div class="draws-toolbar">
