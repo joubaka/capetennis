@@ -41,6 +41,57 @@ class InterproMatchTiebreakCorrectionTest extends TestCase
     {
         return $this->postJson(route('draw.interpro-scoring-correction.store',$draw),['revision'=>$review['revision'],'third_set_points'=>$points,'acknowledge_winner_change'=>$ack]);
     }
+    public function test_playoff_only_correction_preserves_confirmed_groups_and_existing_results_and_accepts_zero_scores(): void
+    {
+        $draw=$this->context();$rr=$this->fixture($draw,[[6,2],[6,3]]);
+        $played=$this->fixture($draw,[[6,0],[6,1]]);$played->update(['stage'=>'MAIN']);
+        $decider=$this->fixture($draw,[[6,0],[0,6],[12,10]]);$decider->update(['stage'=>'CONS']);
+        $next=$this->fixture($draw);$next->update(['stage'=>'PLATE','match_status'=>2]);
+        $config=$draw->settings()->first()->playoff_config;$config[0]['trials_confirmed']=true;
+        $draw->settings()->update(['playoff_config'=>$config]);
+        $before=[DB::table('fixtures')->get()->toJson(),DB::table('fixture_results')->get()->toJson()];
+        $service=app(InterproScoringCorrectionService::class);$review=$service->reviewPlayoffs($draw->fresh());
+        $this->get(route('draw.interpro-scoring-correction.show',[$draw,'scope'=>'playoffs']))->assertOk()->assertSee('Apply reviewed playoff rules');
+        $apply=fn($revision)=>$this->postJson(route('draw.interpro-scoring-correction.store',$draw),['scope'=>'playoffs','revision'=>$revision]);
+        $apply($review['revision'])->assertOk();
+        $this->assertSame($before,[DB::table('fixtures')->get()->toJson(),DB::table('fixture_results')->get()->toJson()]);
+        $this->assertSame($config,$draw->settings()->first()->playoff_config);
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_FULL_START_2,$draw->settings()->first()->score_format);
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_MATCH_TIEBREAK,$draw->settings()->first()->playoff_score_format);
+        $apply($service->reviewPlayoffs($draw->fresh())['revision'])->assertOk();
+        $this->assertSame(1,DB::table('draw_audit_logs')->where('action','interpro_playoff_scoring_rules_corrected')->count());
+        $this->assertTrue(app(\App\Domain\Draws\Services\ScoreValidationService::class)->validate($next->fresh(),[[6,0],[0,6],[10,0]])['valid']);
+        Queue::assertNothingPushed();Mail::assertNothingSent();
+    }
+
+    public function test_playoff_only_review_rejects_incompatible_results_stale_reviews_and_other_event_actors(): void
+    {
+        $draw=$this->context();$played=$this->fixture($draw,[[6,2],[3,6],[7,6]]);$played->update(['stage'=>'MAIN']);
+        $service=app(InterproScoringCorrectionService::class);$review=$service->reviewPlayoffs($draw->fresh());
+        $this->assertCount(1,$review['incompatible']);
+        $this->get(route('draw.interpro-scoring-correction.show',[$draw,'scope'=>'playoffs']))->assertOk()->assertDontSee('Review supplied points')->assertDontSee('Apply reviewed playoff rules');
+        $url=route('draw.interpro-scoring-correction.store',$draw);
+        $this->postJson($url,['scope'=>'playoffs','revision'=>$review['revision']])->assertConflict();
+        $played->fixtureResults()->where('set_nr',3)->update(['registration1_score'=>10,'registration2_score'=>8]);
+        $review=$service->reviewPlayoffs($draw->fresh());
+        $draw->settings()->update(['changeover_minutes'=>12]);
+        $this->postJson($url,['scope'=>'playoffs','revision'=>$review['revision']])->assertConflict();
+        $this->actingAs(User::factory()->create()->assignRole('admin'));
+        $this->postJson($url,['scope'=>'playoffs','revision'=>$review['revision']])->assertForbidden();
+        $this->assertSame(TennisScoreFormat::BEST_OF_3_FULL,$draw->settings()->first()->playoff_score_format);
+    }
+
+    public function test_playoff_only_review_rejects_foreign_retirement_winner_without_writes(): void
+    {
+        $draw=$this->context();$fixture=$this->fixture($draw,[[0,0]]);
+        $foreign=Registration::factory()->create();
+        $fixture->update(['stage'=>'MAIN','match_status'=>4,'winner_registration'=>$foreign->id]);
+        $review=app(InterproScoringCorrectionService::class)->reviewPlayoffs($draw->fresh());
+        $this->assertCount(1,$review['incompatible']);
+        $this->postJson(route('draw.interpro-scoring-correction.store',$draw),['scope'=>'playoffs','revision'=>$review['revision']])->assertConflict();
+        $this->assertSame((int)$foreign->id,(int)$fixture->fresh()->winner_registration);
+        $this->assertDatabaseMissing('draw_audit_logs',['action'=>'interpro_playoff_scoring_rules_corrected']);
+    }
     public function test_reviewed_rules_preserve_valid_results_walkovers_schedules_publication_and_general_freeze(): void
     {
         $draw=$this->context();$fixture=$this->fixture($draw,[[6,2],[6,3]]);

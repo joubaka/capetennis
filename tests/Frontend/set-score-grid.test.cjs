@@ -2,6 +2,19 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const grid = require('../../public/js/set-score-grid.js');
 
+test('zero-start playoffs retain zero game scores and actual deciding tiebreak points', () => {
+  const root = fixture();
+  const setTypes = ['full', 'full', 'match_tiebreak'];
+  for (const scores of [[[6,0],[6,0]], [[6,0],[0,6],[10,0]], [[0,6],[6,0],[0,10]], [[6,0],[0,6],[12,10]]]) {
+    grid.populate(root, {names:['A','B'], maxSets:3, setTypes, scores});
+    assert.deepEqual(grid.read(root), scores);
+  }
+  for (const third of [[0,0], [10,9], [11,8]]) {
+    grid.populate(root, {names:['A','B'], maxSets:3, setTypes, scores:[[6,0],[0,6],third]});
+    assert.throws(() => grid.read(root), /match-tiebreak points/);
+  }
+});
+
 test('extended deciding match tiebreaks suggest and validate both winners without a game-score cap',()=>{
   const types=['full_start_2','full_start_2','match_tiebreak'];
   for(const [loser,winner] of [[8,10],[10,12],[18,20],[997,999]]) {

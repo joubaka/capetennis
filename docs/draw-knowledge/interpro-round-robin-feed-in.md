@@ -60,6 +60,18 @@ publish times, and unsupported unresolved formats retain their existing guard.
 
 ## Best of three starting at 2–2
 
+For playoffs with ordinary sets starting at **0–0**, use **Settings → Review
+playoff sets from 0–0 with a deciding 10-point tiebreak**. This separate review
+sets only `playoff_score_format` to `best_of_3_match_tiebreak`; round-robin rules,
+confirmed qualifiers, carried results, recorded scores and schedules are retained.
+Confirmed qualification does not block this narrow review. Every recorded playoff
+result must remain valid with the same winner; incompatible or malformed results
+block apply, and no points are inferred or rewritten. An empty on-court fixture
+with no winner remains unscored. The review uses authorization, locking, a stale
+revision check and an idempotent audited apply. The third set starts at 0–0 and
+ends at 10–0 through 10–8, or exactly two points apart after 10 (11–9, 12–10,
+and so on). A 0–0 deciding score is not a completed played result.
+
 For two full sets from 2–2 followed by a deciding match tiebreak, select
 **Two full sets from 2–2 · deciding 10-point tiebreak** separately for
 **Round-robin scoring** and **Playoff scoring**. The latter covers every

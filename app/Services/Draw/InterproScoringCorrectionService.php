@@ -10,6 +10,75 @@ use Illuminate\Support\Facades\{DB,Gate};
 /** Reviewed rule correction; only explicitly supplied deciding points may change. */
 final class InterproScoringCorrectionService
 {
+    /** Change only future playoff interpretation; never rewrite a recorded score or qualifier. */
+    public function reviewPlayoffs(Draw $draw): array
+    {
+        $draw->load(['settings','drawFixtures.fixtureResults','drawFixtures.orderOfPlay']);
+        abort_unless(InterproRoundRobinFormat::selected($draw) && $draw->event?->isInterprovincialTrials() && !$draw->isTeamDraw(),409,'Use an individual Interpro feed-in draw.');
+        abort_if($draw->locked,409,'Unlock the draw before reviewing its scoring rules.');
+        $proposed=clone $draw; $settings=clone $draw->settings;
+        $settings->playoff_score_format=TennisScoreFormat::BEST_OF_3_MATCH_TIEBREAK;
+        $proposed->setRelation('settings',$settings);
+        $validator=app(ScoreValidationService::class); $outcomes=app(IndividualMatchOutcomeService::class);
+        $compatible=0; $incompatible=[];
+        foreach ($draw->drawFixtures->where('stage','!=','RR') as $fixture) {
+            $fixture->setRelation('draw',$draw);
+            $sets=$fixture->fixtureResults->sortBy('set_nr')->map(fn($set)=>[(int)$set->registration1_score,(int)$set->registration2_score])->values()->all();
+            $reason=null;
+            if (InterproRoundRobinFormat::hasReference($fixture)) {
+                if (!InterproRoundRobinFormat::source($fixture) || $sets) $reason='The carried original result needs review.';
+            } elseif (InterproRoundRobinFormat::automaticWinner($fixture)) {
+                // An automatic advance has no new score to reinterpret.
+            } elseif (!$sets && !$fixture->winner_registration && in_array((int)$fixture->match_status,[0,2],true)) {
+                continue;
+            } elseif ($fixture->isWalkover()) {
+                if ($sets || !$fixture->winner_registration || !in_array((int)$fixture->winner_registration,[(int)$fixture->registration1_id,(int)$fixture->registration2_id],true)) $reason='The walkover outcome needs review.';
+            } else {
+                $preview=clone $fixture; $preview->setRelation('draw',$proposed);
+                $numbers=$fixture->fixtureResults->sortBy('set_nr')->pluck('set_nr')->map(fn($number)=>(int)$number)->values()->all();
+                if (!$sets || $numbers!==range(1,count($sets))) $reason='Recorded set scores are missing or out of order.';
+                else {
+                    $validation=$fixture->isRetired() ? $validator->validateRetirement($preview,$sets) : $validator->validate($preview,$sets);
+                    if (!$validation['valid']) $reason=$validation['message'];
+                    elseif (!$fixture->isRetired() && (int)$outcomes->winnerFromSets($preview,$sets)!==(int)$fixture->winner_registration) $reason='The recorded winner would change.';
+                    elseif ($fixture->isRetired() && (!$fixture->winner_registration || !in_array((int)$fixture->winner_registration,[(int)$fixture->registration1_id,(int)$fixture->registration2_id],true)
+                        || !in_array($fixture->retiredRegistrationId(),[(int)$fixture->registration1_id,(int)$fixture->registration2_id],true)
+                        || (int)$fixture->winner_registration===(int)$fixture->retiredRegistrationId())) $reason='The retirement outcome needs review.';
+                }
+            }
+            if ($reason) $incompatible[]=['fixture_id'=>$fixture->id,'match_nr'=>$fixture->match_nr,'stage'=>$fixture->stage,'reason'=>$reason,'home'=>'Registration '.$fixture->registration1_id,'away'=>'Registration '.$fixture->registration2_id,'can_correct_third'=>false];
+            else $compatible++;
+        }
+        $revision=hash('sha256',serialize(['playoffs_only',$draw->getAttributes(),$draw->settings->getAttributes(),
+            $draw->drawFixtures->sortBy('id')->map(fn($fixture)=>[$fixture->getAttributes(),$fixture->fixtureResults->sortBy('id')->map->getAttributes()->all(),$fixture->orderOfPlay?->getAttributes()])->all(),
+            DB::table('published_schedule_assignments')->where('draw_id',$draw->id)->orderBy('id')->get()->all()]));
+        return ['draw_id'=>$draw->id,'revision'=>$revision,'compatible'=>$compatible,'incompatible'=>$incompatible,'playoffs_only'=>true,
+            'format'=>TennisScoreFormat::BEST_OF_3_MATCH_TIEBREAK,'corrections'=>[],'winner_changes'=>[],
+            'already_applied'=>$draw->settings->playoff_score_format===TennisScoreFormat::BEST_OF_3_MATCH_TIEBREAK];
+    }
+
+    public function applyPlayoffs(Draw $draw,string $revision,User $actor): array
+    {
+        return DB::transaction(function() use($draw,$revision,$actor){
+            Event::whereKey($draw->event_id)->lockForUpdate()->firstOrFail();
+            $current=Draw::whereKey($draw->id)->lockForUpdate()->firstOrFail();
+            abort_unless((int)$current->event_id===(int)$draw->event_id,409,'The event changed. Reload this review.');
+            Gate::forUser($actor)->authorize('correctRoundRobinScoring',$current);
+            $current->settings()->lockForUpdate()->firstOrFail();
+            $fixtures=$current->drawFixtures()->lockForUpdate()->get();
+            \App\Models\FixtureResult::whereIn('fixture_id',$fixtures->pluck('id'))->lockForUpdate()->get();
+            $review=$this->reviewPlayoffs($current);
+            abort_unless(hash_equals($review['revision'],$revision),409,'The draw changed. Review its recorded scores again.');
+            abort_if($review['incompatible']!==[],409,'Existing playoff results need review. No scores or rules were changed.');
+            if ($review['already_applied']) return $review;
+            $before=$current->settings->playoff_score_format;
+            $current->settings->update(['playoff_score_format'=>$review['format']]);
+            DrawAuditLog::record($current->id,'interpro_playoff_scoring_rules_corrected',null,['previous_playoff_score_format'=>$before,
+                'playoff_score_format'=>$review['format'],'validated_results'=>$review['compatible'],'review_revision'=>$revision]);
+            return $review;
+        });
+    }
+
     public function review(Draw $draw,array $thirdSetPoints=[]): array
     {
         $draw->load(['settings','drawFixtures.fixtureResults','drawFixtures.orderOfPlay','drawFixtures.registration1.players','drawFixtures.registration2.players']);

@@ -332,6 +332,7 @@
       @if(\App\Services\Draw\InterproRoundRobinFormat::selected($draw))
         @can('correctRoundRobinScoring',$draw)
           <p><a href="{{ route('draw.interpro-scoring-correction.show',$draw) }}">Review two sets from 2–2 with a deciding 10-point tiebreak</a></p>
+          <p><a href="{{ route('draw.interpro-scoring-correction.show',[$draw,'scope'=>'playoffs']) }}">Review playoff sets from 0–0 with a deciding 10-point tiebreak</a></p>
         @endcan
       @endif
       <form id="drawSettingsForm">

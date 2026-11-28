@@ -73,6 +73,23 @@ class InterproRoundRobinFormatTest extends TestCase
         foreach ([2001 => 1, 2002 => 2, 3001 => 1, 3002 => 1, 3003 => 1, 3004 => 1, 3005 => 2, 3006 => 2, 3007 => 1, 3008 => 1] as $nr => $slot) $this->score($draw, $nr, $slot);
     }
 
+    public function test_confirmed_playoff_correction_accepts_zero_scores_through_api_and_preserves_progression(): void
+    {
+        $draw=$this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->progress($draw);
+        $service=app(\App\Services\Draw\InterproScoringCorrectionService::class);
+        $review=$service->reviewPlayoffs($draw->fresh());
+        $this->postJson(route('draw.interpro-scoring-correction.store',$draw),['scope'=>'playoffs','revision'=>$review['revision']])->assertOk();
+        $fixture=$this->fixture($draw->fresh(),2001);
+        $this->postJson(route('api.draws.fixtures.score.store',[$draw,$fixture]),[
+            'score_revision'=>app(IndividualScoreRevision::class)->forFixture($fixture->fresh()),'sets'=>['6-0','0-6','10-0']])->assertOk();
+        $this->assertSame(10,(int)$fixture->fixtureResults()->where('set_nr',3)->value('registration1_score'));
+        $this->assertSame(0,(int)$fixture->fixtureResults()->where('set_nr',3)->value('registration2_score'));
+        $this->assertSame((int)$fixture->registration1_id,(int)$this->fixture($draw->fresh(),2003)->registration1_id);
+        $this->assertSame('one_set_to_6',$draw->settings()->first()->score_format);
+    }
+
     private function playoffCarry(): array
     {
         $draw = $this->context();
