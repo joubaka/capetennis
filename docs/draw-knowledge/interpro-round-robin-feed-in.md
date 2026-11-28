@@ -8,6 +8,22 @@ There must be four groups named A–D, each containing three or four players.
 Complete the full group programme and resolve tied finishing positions before
 reviewing and confirming all four groups. Fourth-place finishers have no playoffs.
 
+## Refresh names after qualification
+
+After an Interpro draw's initial qualification is confirmed, **Refresh playoffs**
+updates available downstream player names without repeating the round-robin
+confirmation steps. The server selects this mode from the stored confirmation;
+the presence of pre-created playoff fixtures alone never establishes approval.
+Initial qualification and other workflows retain their standings review.
+
+The refresh uses a current draw/results revision and the canonical Interpro
+resolver without confirming qualification again. It validates the saved topology
+and occupied qualifying slots, fills available downstream slots, and rejects
+changed occupied sources rather than replacing confirmed players. Results and
+published snapshots remain intact. Established repeated-pair skip handling may
+release an obsolete working booking with its normal audit record. GET review
+requests never write tournament state.
+
 ## Append challenge matches without resetting a published draw
 
 Before qualifying groups are confirmed, an event administrator may use

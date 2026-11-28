@@ -44,7 +44,7 @@ $(document).ready(function () {
             return;
         }
         Swal.fire({
-            title: 'Loading final standings…',
+            title: 'Checking draw…',
             allowOutsideClick: false,
             allowEscapeKey: false,
             didOpen: function () { Swal.showLoading(); }
@@ -53,6 +53,18 @@ $(document).ready(function () {
         try {
             var response = await $.get(options.reviewUrl);
             var review = response.review;
+            if (review.mode === 'refresh') {
+                var refreshed = await $.post(options.url, {
+                    _token: $('meta[name="csrf-token"]').attr('content'),
+                    action: 'refresh',
+                    revision: review.revision
+                });
+                await Swal.fire({title: 'Playoff names refreshed', text: refreshed.message, icon: 'success',
+                    confirmButtonText: options.onSuccess ? 'Show playoff matches' : 'Refresh draws'});
+                if (options.onSuccess) await options.onSuccess(refreshed);
+                else window.location.reload();
+                return true;
+            }
             var destination = review.destination || 'playoffs';
             var groups = review.groups || [];
 

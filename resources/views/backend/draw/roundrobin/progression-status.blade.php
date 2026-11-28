@@ -41,7 +41,7 @@
         @elseif($progressHasQualifiers && !$progressReady)
           <p class="small mb-0">Playoffs already exist, but some group results are incomplete. Review the group results before refreshing the qualifiers.</p>
         @elseif($progressHasQualifiers)
-          <p class="small text-muted mb-0">The playoffs are created. Review the current bracket; refresh the qualifiers only if the standings have changed.</p>
+          <p class="small text-muted mb-0">{{ app(\App\Services\Draw\InterproPlayoffRefreshService::class)->available($draw) ? 'Refresh available playoff names from recorded results. Confirmed round-robin positions stay unchanged.' : 'The playoffs are created. Review the current bracket; refresh the qualifiers only if the standings have changed.' }}</p>
         @elseif($progressReady)
           <p class="small mb-0" data-progress-message>All {{ $progressTotal }} group results are complete. Review the standings and confirm progression to the playoffs.</p>
         @elseif($progressTotal > 0)
@@ -51,7 +51,7 @@
         @endif
       </div>
       @can('progress', $draw)
-          <button type="button" class="btn {{ $progressHasQualifiers ? 'btn-outline-secondary' : 'btn-primary' }} progress-draw {{ !$progressReady ? 'd-none' : '' }}" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled(!$progressReady || $draw->locked)>{{ $progressHasQualifiers ? 'Review & refresh playoffs' : 'Review & progress to playoffs' }}</button>
+          <button type="button" class="btn {{ $progressHasQualifiers ? 'btn-outline-secondary' : 'btn-primary' }} progress-draw {{ !$progressReady ? 'd-none' : '' }}" data-url="{{ route('backend.draw.progress', $draw) }}" data-review-url="{{ route('backend.draw.progress-review', $draw) }}" data-draw-name="{{ $draw->drawName }}" @disabled(!$progressReady || $draw->locked)>{{ app(\App\Services\Draw\InterproPlayoffRefreshService::class)->available($draw) ? 'Refresh playoffs' : ($progressHasQualifiers ? 'Review & refresh playoffs' : 'Review & progress to playoffs') }}</button>
       @endcan
     </div>
     <details class="mt-3"><summary>Qualification and progression rules</summary>

@@ -38,13 +38,16 @@
     $progressReady = !$draw->locked && !$secondCreated && $roundRobinTotal > 0 && $roundRobinRemaining === 0;
     $progressLabel = $secondCreated ? 'Stage 2 created' : ($progressReady ? 'Review & progress' : 'Stage 1 incomplete');
   }
-  $progressHelp = $draw->locked
+  $playoffNameRefresh = app(\App\Services\Draw\InterproPlayoffRefreshService::class)->available($draw);
+  $progressHelp = $playoffNameRefresh && !$draw->locked
+    ? 'Update available playoff names while retaining the confirmed round-robin positions.'
+    : ($draw->locked
     ? 'Unlock this draw before progressing it.'
     : ($roundRobinTotal === 0
       ? 'Create the round-robin fixtures before progressing this draw.'
       : ($roundRobinRemaining > 0
         ? 'Complete all round-robin results first. '.$roundRobinRemaining.' of '.$roundRobinTotal.' matches still need a result.'
-        : ($draw->isTwoStageRoundRobin() ? 'Review and confirm the first-stage standings before creating the second round robin.' : 'Review and confirm the final standings before creating the playoffs.')));
+        : ($draw->isTwoStageRoundRobin() ? 'Review and confirm the first-stage standings before creating the second round robin.' : 'Review and confirm the final standings before creating the playoffs.'))));
 @endphp
 <article class="draw-overview-row" data-draw-id="{{ $draw->id }}"
          data-name="{{ $draw->drawName }}" data-format="{{ $format ?? '' }}" data-published="{{ $draw->published ? '1' : '0' }}"

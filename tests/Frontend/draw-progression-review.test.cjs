@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 
-function reviewFlow(cancel = false) {
+function reviewFlow(cancel = false, refresh = false, failRefresh = false) {
   let click;
   const posts = [], dialogs = [];
   const button = { disabled: false, data: {'review-url': '/review', url: '/progress', 'draw-name': 'Test draw'} };
@@ -24,11 +24,15 @@ function reviewFlow(cancel = false) {
     };
     return chain;
   }
-  $.get = async () => ({review: {snapshot: 'fresh-snapshot', groups: [
+  $.get = async () => refresh ? {review: {mode:'refresh', revision:'current-revision'}} : ({review: {snapshot: 'fresh-snapshot', groups: [
     {id: 11, name: '<Group A>', standings: [{position:1, player:'<Player>', played:1, wins:1, losses:0, sets_won:1, sets_lost:0, games_won:6, games_lost:2}]},
     {id: 12, name: 'Group B', standings: []}
   ]}});
-  $.post = async (url, data) => { posts.push({url, data}); return {message:'Progressed'}; };
+  $.post = async (url, data) => {
+    posts.push({url, data});
+    if (failRefresh) throw {responseJSON: {message:'The draw changed.'}};
+    return {message:'Progressed'};
+  };
   const Swal = {showLoading() {}, showValidationMessage() {}, close() {}, async fire(options) {
     dialogs.push(options);
     if (options.preConfirm) options.preConfirm();
@@ -56,5 +60,27 @@ test('cancelled group review never progresses the draw', async () => {
   const flow = reviewFlow(true);
   await flow.click();
   assert.equal(flow.posts.length, 0);
+  assert.equal(flow.button.disabled, false);
+});
+
+test('confirmed playoff refresh submits only its current revision without group confirmation dialogs', async () => {
+  const flow = reviewFlow(false, true);
+  await flow.click();
+  assert.equal(flow.posts.length, 1);
+  assert.equal(flow.posts[0].data.action, 'refresh');
+  assert.equal(flow.posts[0].data.revision, 'current-revision');
+  assert.equal(flow.posts[0].data._token, 'csrf');
+  assert.equal(flow.posts[0].data.confirmed_group_ids, undefined);
+  assert.equal(flow.posts[0].data.standings_snapshot, undefined);
+  assert.equal(flow.dialogs.some(dialog => dialog.preConfirm), false);
+  assert.equal(flow.dialogs[1].title, 'Playoff names refreshed');
+  assert.equal(flow.button.disabled, false);
+});
+
+test('a failed playoff refresh restores its button without falling back to group confirmation', async () => {
+  const flow = reviewFlow(false, true, true);
+  await flow.click();
+  assert.equal(flow.posts.length, 1);
+  assert.equal(flow.dialogs.some(dialog => dialog.preConfirm), false);
   assert.equal(flow.button.disabled, false);
 });

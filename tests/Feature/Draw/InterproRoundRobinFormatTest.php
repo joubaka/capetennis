@@ -53,6 +53,10 @@ class InterproRoundRobinFormatTest extends TestCase
     private function progress(Draw $draw): void
     {
         $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        if (($review['mode'] ?? null) === 'refresh') {
+            $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertOk();
+            return;
+        }
         $this->postJson(route('backend.draw.progress', $draw), ['confirmed_group_ids' => collect($review['groups'])->pluck('id')->all(),
             'standings_snapshot' => $review['snapshot']])->assertOk();
     }
@@ -88,6 +92,90 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->assertSame(0,(int)$fixture->fixtureResults()->where('set_nr',3)->value('registration2_score'));
         $this->assertSame((int)$fixture->registration1_id,(int)$this->fixture($draw->fresh(),2003)->registration1_id);
         $this->assertSame('one_set_to_6',$draw->settings()->first()->score_format);
+    }
+
+    public function test_confirmed_playoffs_refresh_available_names_without_reconfirming_groups_and_preserve_results_and_bookings(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->progress($draw);
+        $this->score($draw, 2001);
+        $this->score($draw, 2002);
+        $final = $this->fixture($draw, 2003);
+        $expected = $final->registration2_id;
+        $final->update(['registration2_id' => null]);
+        $venue = Venue::forceCreate(['name' => 'Fictional refresh courts']);
+        OrderOfPlay::create(['draw_id' => $draw->id, 'fixture_id' => $final->id, 'venue_id' => $venue->id, 'court' => '1', 'time' => '2026-11-29 08:00']);
+        DB::table('published_schedule_assignments')->insert(['event_id' => $draw->event_id, 'draw_id' => $draw->id, 'fixture_kind' => 'individual',
+            'fixture_id' => $final->id, 'venue_id' => $venue->id, 'court' => '1', 'scheduled_at' => '2026-11-29 08:00', 'published_at' => now()]);
+        $snapshot = fn () => [DB::table('fixture_results')->get()->toJson(), DB::table('order_of_plays')->get()->toJson(),
+            DB::table('published_schedule_assignments')->get()->toJson(), $draw->drawFixtures()->where('stage', 'RR')->get()->toJson()];
+        $before = $snapshot();
+        $count = $draw->drawFixtures()->count();
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->assertJsonPath('review.mode', 'refresh')->json('review');
+        $this->assertArrayNotHasKey('groups', $review);
+        $this->assertNull($final->fresh()->registration2_id);
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertOk();
+        $this->assertSame((int) $expected, (int) $final->fresh()->registration2_id);
+        $this->assertSame($before, $snapshot());
+        $this->assertSame($count, $draw->drawFixtures()->count());
+        $this->assertTrue((bool) $draw->settings()->first()->playoff_config[0]['trials_confirmed']);
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertOk()->assertJsonPath('progress.resolved', 0);
+        $this->assertSame(1, DB::table('draw_audit_logs')->where('action', 'interpro_playoff_names_refreshed')->count());
+    }
+
+    public function test_playoff_refresh_never_bypasses_initial_confirmation_or_event_authorization(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $initial = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $this->assertArrayHasKey('groups', $initial);
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => str_repeat('0', 64)])->assertConflict();
+        $this->assertEmpty($draw->settings()->first()->playoff_config[0]['trials_confirmed'] ?? null);
+        $this->progress($draw);
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $other = User::factory()->create()->assignRole('admin');
+        $this->actingAs($other);
+        $this->getJson(route('backend.draw.progress-review', $draw))->assertForbidden();
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertForbidden();
+        $this->assertSame(0, DB::table('draw_audit_logs')->where('action', 'interpro_playoff_names_refreshed')->count());
+    }
+
+    public function test_playoff_refresh_rejects_stale_results_and_changed_confirmed_slots_without_writes(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->progress($draw);
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $rr = $draw->drawFixtures()->where('stage', 'RR')->firstOrFail();
+        $rr->fixtureResults()->update(['registration2_score' => 3]);
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertConflict();
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $opening = $this->fixture($draw, 2001);
+        $opening->update(['registration1_id' => $opening->registration2_id]);
+        $review = $this->getJson(route('backend.draw.progress-review', $draw))->assertOk()->json('review');
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => $review['revision']])->assertConflict();
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $this->assertSame(0, DB::table('draw_audit_logs')->where('action', 'interpro_playoff_names_refreshed')->count());
+    }
+
+    public function test_refresh_rejects_recorded_walkover_with_a_missing_participant(): void
+    {
+        $draw = $this->context();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->progress($draw);
+        $this->score($draw, 2001);
+        $this->score($draw, 2002);
+        $final = $this->fixture($draw, 2003);
+        $final->update(['match_status' => 3, 'winner_registration' => $final->registration1_id, 'registration2_id' => null]);
+        $before = $draw->drawFixtures()->orderBy('id')->get()->toJson();
+        $this->getJson(route('backend.draw.progress-review', $draw))->assertConflict();
+        $this->postJson(route('backend.draw.progress', $draw), ['action' => 'refresh', 'revision' => str_repeat('0', 64)])->assertConflict();
+        $this->assertSame($before, $draw->drawFixtures()->orderBy('id')->get()->toJson());
+        $this->assertSame(0, DB::table('draw_audit_logs')->where('action', 'interpro_playoff_names_refreshed')->count());
     }
 
     private function playoffCarry(): array

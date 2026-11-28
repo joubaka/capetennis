@@ -797,6 +797,12 @@ class RoundRobinController extends Controller
     $this->authorize('progress', $draw);
     $draw->loadMissing(['settings', 'groups', 'event']);
 
+    $refresh = app(\App\Services\Draw\InterproPlayoffRefreshService::class);
+    if ($refresh->available($draw)) {
+      return response()->json(['success' => true, 'draw' => ['id' => $draw->id, 'name' => $draw->drawName],
+        'review' => $refresh->review($draw)]);
+    }
+
     if ($draw->isTwoStageRoundRobin()) {
       $completion = app(\App\Services\Draw\RoundRobinProgressReadiness::class)->forDraw($draw);
       if (!$completion['ready']) return response()->json(['success' => false] + $completion, 422);
@@ -842,6 +848,14 @@ class RoundRobinController extends Controller
 
     $this->authorize('progress', $draw);
     $draw->loadMissing(['settings', 'groups', 'event']);
+
+    if ($request->input('action') === 'refresh') {
+      $data = $request->validate(['revision' => ['required', 'string', 'size:64']]);
+      $result = app(\App\Services\Draw\InterproPlayoffRefreshService::class)->refresh($draw, $data['revision'], $request->user());
+      return response()->json(['success' => true, 'progress' => $result,
+        'message' => $result['resolved'] > 0 ? 'Available playoff names updated. Confirmed round-robin positions were retained.'
+          : 'Playoff names are already up to date. Confirmed round-robin positions were retained.']);
+    }
 
     if ($draw->isTwoStageRoundRobin()) {
       $result = app(\App\Services\Draw\TwoStageRoundRobinService::class)->progress($draw, $request->all());
