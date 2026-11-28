@@ -375,11 +375,10 @@ class EventController extends Controller
       $restrictedScoringVenueId = $user->is_event_score_keeper($event->id)
         ? $user->scoringVenueIdForEvent($event->id)
         : null;
-      $drawsLayout = \App\Support\EventTypePresentation::template($event);
       $scoringVenues = app(\App\Services\Scoring\VenueScoringProgress::class)->venues(
         $event,
         $restrictedScoringVenueId,
-        todayOnly: ! in_array($drawsLayout, ['team', 'interprovincial-trials'], true),
+        todayOnly: false,
       );
     }
 

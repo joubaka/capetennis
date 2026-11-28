@@ -196,6 +196,10 @@ behavior. Do not turn an audit recommendation or an unfinished chat into policy.
   Return fragments must resolve the visible mobile/desktop draw section, and
   selected public tabs retain their URL. See `docs/draw-knowledge/public-workflow.md`,
   `PublicDrawPresentation` and `PublicTournamentWorkflowTest`.
+- Event-page venue scoring shortcuts include all scheduled event days, so permitted
+  scorers can open a venue before play starts. Keep `event.score`, assigned-venue
+  restrictions and working-schedule links; do not apply the progress service's
+  default today-only filter here. See `docs/draw-knowledge/public-workflow.md`.
 - New two-stage draws may explicitly select crossed top-two championship
   playoffs plus one lower round robin before later-stage structures exist.
   `PendingHybridRoundRobinService` prepares stable sources, then normal reviewed

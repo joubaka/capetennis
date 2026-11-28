@@ -18,6 +18,19 @@ Authorised Flexible Monrad working/draft previews retain their explicit permissi
 checks. A preview must not change the public publication badge into a claim that
 times are available to guests.
 
+## Authorised venue scoring shortcuts
+
+Event pages show one direct scoring button per venue with saved, dated fixtures
+across the event's scheduled days, including before the event starts. Resolve
+these through `VenueScoringProgress::venues(..., todayOnly: false)` in
+`EventController`; do not hardcode venues or infer them from another event.
+Keep the shared `event.score` gate and any assigned scorekeeper's venue restriction.
+Links use `frontend.scoring.workspace` with `schedule_source=working` and the venue
+ID. These private shortcuts do not publish schedules or change scoring access.
+Today's progress counts still describe today, and the progress service's default
+today-only behavior remains available to other callers. If no dated fixtures
+exist, retain the generic scoring-workspace link.
+
 ## Navigation
 
 Individual event draws precede event information and documents. Team and Trials

@@ -340,6 +340,44 @@ class VenueScoringWorkspaceTest extends TestCase
         $this->assertStringContainsString('2 scheduled total', $html);
     }
 
+    public function test_individual_event_page_offers_tomorrows_scheduled_venues_with_event_and_scorer_scope(): void
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-27 10:00:00', config('app.timezone')));
+        $event = Event::factory()->create([
+            'eventType' => 6, 'start_date' => '2026-11-28', 'end_date' => '2026-11-28',
+        ]);
+        [, $draw, $firstVenue, $firstFixture] = $this->scheduledFixture('Tomorrow Alpha', $event);
+        [, , $secondVenue, $secondFixture] = $this->scheduledFixture('Tomorrow Beta', $event, $draw);
+        [, , $foreignVenue, $foreignFixture] = $this->scheduledFixture('Foreign tomorrow venue');
+        OrderOfPlay::whereIn('fixture_id', [$firstFixture->id, $secondFixture->id, $foreignFixture->id])
+            ->update(['time' => '2026-11-28 08:00:00']);
+        $user = $this->scorerFor($event);
+        $response = $this->actingAs($user)->get('/events/'.$event->id)->assertOk();
+
+        $this->assertSame([$firstVenue->id, $secondVenue->id], $response->viewData('scoringVenues')->pluck('id')->all());
+        foreach ([$firstVenue, $secondVenue] as $venue) {
+            $response->assertSee(e(route('frontend.scoring.workspace', [
+                'event' => $event, 'schedule_source' => 'working', 'venue' => $venue->id,
+            ])), false);
+        }
+        $response->assertDontSee($foreignVenue->name);
+        $this->assertTrue(app(\App\Services\Scoring\VenueScoringProgress::class)->venues($event)->isEmpty());
+        $this->assertSame([0, 0], $response->viewData('scoringVenues')->pluck('today_fixture_count')->all());
+
+        EventConvenor::where('event_id', $event->id)->where('user_id', $user->id)
+            ->update(['venue_id' => $firstVenue->id]);
+        $restricted = $this->get('/events/'.$event->id)->assertOk();
+        $this->assertSame([$firstVenue->id], $restricted->viewData('scoringVenues')->pluck('id')->all());
+        $restricted->assertDontSee(e(route('frontend.scoring.workspace', [
+            'event' => $event, 'schedule_source' => 'working', 'venue' => $secondVenue->id,
+        ])), false);
+
+        $this->actingAs(User::factory()->create())->get('/events/'.$event->id)
+            ->assertOk()->assertDontSee('Score fixtures by venue');
+        $this->assertDatabaseCount('order_of_plays', 3);
+        $this->assertDatabaseCount('fixture_results', 0);
+    }
+
     public function test_venue_scoring_control_is_hidden_from_an_unassigned_user(): void
     {
         [$event, , $venue] = $this->scheduledFixture('Main Venue');
