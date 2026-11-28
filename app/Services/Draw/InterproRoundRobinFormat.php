@@ -121,8 +121,6 @@ final class InterproRoundRobinFormat
             $outcomes = app(IndividualMatchOutcomeService::class);
             foreach (self::template($draw) as $number => $definition) {
                 $fixture = $byNumber[$number];
-                if ($definition[0] === 'CHALLENGE' && $byNumber->where('stage', '!=', 'CHALLENGE')->contains(
-                    fn ($base) => (int) $base->match_status !== 5 && !$outcomes->winner($base))) continue;
                 $absent = [];
                 foreach ($definition[2] as $slot => $source) {
                     $registration = null;
@@ -160,6 +158,7 @@ final class InterproRoundRobinFormat
                     $prior = $earlier->filter(fn ($candidate) => self::pair($candidate) === $pair)
                         ->first();
                     if ($prior && $fixture->stage === 'CHALLENGE') {
+                        abort_unless($outcomes->winner($prior), 409, 'The first playoff meeting must have a decisive result before skipping its challenge.');
                         $config[0]['trials_skipped_challenges'][$fixture->id] = (int) $fixture->registration1_id;
                         $config[0]['trials_advances'][$fixture->id] = (int) $fixture->registration1_id;
                         $fixture->winner_registration = $fixture->registration1_id;
@@ -260,6 +259,47 @@ final class InterproRoundRobinFormat
                 && self::pair($prior) === self::pair($fixture))
             ->sortBy(fn ($prior) => $order[(int) $prior->match_nr])->first();
         return $prior && app(IndividualMatchOutcomeService::class)->winner($prior) !== null;
+    }
+
+    /** Read-only catch-up for draws whose feeder results predate per-branch progression. */
+    public static function projectChallenges(Draw $draw, Collection $fixtures): Collection
+    {
+        if (!self::selected($draw) || empty($draw->settings->playoff_config[0]['trials_confirmed'])) return $fixtures;
+        $projectedDraw = clone $draw;
+        $projectedDraw->setRelation('settings', clone $draw->settings);
+        $config = $draw->settings->playoff_config;
+        $byNumber = $fixtures->map(fn ($fixture) => clone $fixture)->keyBy('match_nr');
+        $outcomes = app(IndividualMatchOutcomeService::class);
+        foreach (self::template($draw) as $number => $definition) {
+            if ($definition[0] !== 'CHALLENGE' || !($fixture = $byNumber->get($number))) continue;
+            $fixture->setRelation('draw', $projectedDraw);
+            foreach ($definition[2] as $slot => $source) {
+                preg_match('/^([WL])(\d+)$/', $source, $parts);
+                $previous = $byNumber->get((int) $parts[2]);
+                if (!$previous || !($winner = $outcomes->winner($previous))) continue;
+                $registration = $parts[1] === 'W' ? $winner : ((int) $previous->registration1_id === $winner
+                    ? $previous->registration2_id : $previous->registration1_id);
+                $registration = PlayoffLuckyLoserService::sourceOverride($draw, $fixture, $slot + 1, $registration === null ? null : (int) $registration);
+                $column = 'registration'.($slot + 1).'_id';
+                if ($fixture->$column || !$registration) continue;
+                $fixture->$column = $registration;
+                $relation = (int) $previous->registration1_id === (int) $registration ? 'registration1' : 'registration2';
+                $fixture->setRelation('registration'.($slot + 1), (int) $previous->$relation?->id === (int) $registration
+                    ? $previous->$relation : \App\Models\Registration::with('players')->find($registration));
+            }
+            if (!$fixture->registration1_id || !$fixture->registration2_id || $fixture->fixtureResults->isNotEmpty()) continue;
+            $order = array_flip(array_keys(self::template($draw)));
+            $prior = $byNumber->filter(fn ($candidate) => $candidate->stage !== 'RR'
+                && isset($order[(int) $candidate->match_nr]) && $order[(int) $candidate->match_nr] < $order[$number]
+                && self::pair($candidate) === self::pair($fixture))
+                ->sortBy(fn ($candidate) => $order[(int) $candidate->match_nr])->first();
+            if ($prior && $outcomes->winner($prior)) {
+                $config[0]['trials_skipped_challenges'][$fixture->id] = (int) $fixture->registration1_id;
+                $config[0]['trials_advances'][$fixture->id] = (int) $fixture->registration1_id;
+                $projectedDraw->settings->playoff_config = $config;
+            }
+        }
+        return $byNumber->values();
     }
 
     public static function pair(Fixture $fixture): string

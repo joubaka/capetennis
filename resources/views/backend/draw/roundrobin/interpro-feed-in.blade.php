@@ -1,5 +1,6 @@
 @php
-  $trialFixtures = $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get()->keyBy('match_nr');
+  $trialFixtures = \App\Services\Draw\InterproRoundRobinFormat::projectChallenges($draw,
+    $draw->drawFixtures()->with(['registration1.players', 'registration2.players', 'fixtureResults', 'draw.settings'])->get())->keyBy('match_nr');
   $trialTemplate = \App\Services\Draw\InterproRoundRobinFormat::template($draw);
   $trialOutcomes = app(\App\Services\IndividualMatchOutcomeService::class);
   $trialSchedule = ($emptyBracket ?? false) ? collect() : app(\App\Services\Draw\InterproBracketScheduleProjection::class)->forDraw($draw);
@@ -19,7 +20,7 @@
     $sets = $scoreFixture?->fixtureResults->sortBy('set_nr')->values() ?? collect();
     $note = $original ? ($original->isWalkover() ? 'W/O · ' : ($original->isRetired() ? 'RET · ' : '')).substr($score, (int) strpos($score, ' · ') + strlen(' · '))
       : ($hasCarry || $sets->isEmpty() ? $score : ($fixture?->isRetired() ? 'RET' : ''));
-    $schedule = $fixture ? $trialSchedule->get($fixture->id) : null;
+    $schedule = $fixture && !\App\Services\Draw\InterproRoundRobinFormat::noMatchRequired($fixture) ? $trialSchedule->get($fixture->id) : null;
     $sources = [];
     foreach ($definition[2] as $source) {
       $sources[] = preg_match('/^([WL])(\d+)$/', $source, $parts)

@@ -22,8 +22,9 @@ numbers and occupied terminal routes, and checks the reviewed revision. It
 adds only missing challenge fixtures and their terminal feeder links. Existing
 fixture IDs, participants, scores, bookings and publication remain intact.
 New challenge fixtures have no booking or published schedule assignment; review,
-schedule and publish those separately. All base playoff matches must finish
-before challenge participants resolve. Repeating an already applied selection
+schedule and publish those separately. Challenge participants resolve from their
+own completed terminal feeders, independently of unrelated base playoff matches.
+Repeating an already applied selection
 is a no-op with no duplicate fixtures or audit record.
 
 Regression: `tests/Feature/Draw/InterproChallengeSelectionTest.php`. The action
@@ -157,14 +158,25 @@ The normal setup authorization, publication, result-freeze and explicit-reset
 guards apply; this option is not a post-result draw conversion.
 
 Selected challenges are stable `CHALLENGE` fixtures numbered 5000 plus the
-higher base position. All eighteen base matches must resolve before challenge
-participants qualify, and scheduling uses the same full-base dependency barrier.
+higher base position. Participants qualify as their own terminal feeder results
+resolve; unrelated base matches do not delay their names or repeated-pair checks.
+Scheduling retains its separate full-base dependency barrier.
 Pairs use the fixed base positions, never positions changed by another challenge.
 The winner takes the higher position. A pairing already played in this exact
 playoff bracket skips its challenge and retains both base positions, without
 copied scores, a synthetic played match or new rating evidence. Skipped fixtures cannot be
 scored, booked or converted into withdrawal walkovers. Working bookings are
 released with audit history; immutable published snapshots remain intact.
+
+For an existing draw with old blank challenge slots, the shared bracket and final
+placement projection derive known participants and a valid first-playoff skip
+without database writes. A projected skipped challenge omits its obsolete schedule.
+The next canonical progression (a normal result or reviewed playoff refresh)
+persists those participants/skip markers and releases working bookings normally.
+This read-only catch-up does not make an otherwise blank stored fixture scoreable;
+its canonical progression must occur before score entry. A repeated pairing is
+skipped only when its first earlier canonical playoff meeting is decisive; a
+round-robin meeting cannot skip the challenge. Base positions remain unchanged.
 
 Pending challenges withhold their two final positions and the ordered category
 results prefill until all positions are decided. Admin, public and print brackets

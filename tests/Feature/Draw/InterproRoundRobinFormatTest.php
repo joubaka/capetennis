@@ -141,7 +141,7 @@ class InterproRoundRobinFormatTest extends TestCase
         return $sets ? [implode(' ', array_column($sets, 0)), implode(' ', array_column($sets, 1))] : [];
     }
 
-    public function test_optional_challenges_wait_for_base_results_and_use_fixed_adjacent_positions(): void
+    public function test_optional_challenges_use_completed_feeders_and_fixed_adjacent_positions(): void
     {
         $draw = $this->context();
         $draw->settings()->update(['playoff_config' => InterproRoundRobinFormat::configuration()
@@ -163,7 +163,7 @@ class InterproRoundRobinFormatTest extends TestCase
         $this->reachFeedIn($draw);
         $this->assertNull($this->fixture($draw, 5002)->registration1_id);
         foreach ([2003, 3010, 4001, 4002, 4003, 4004, 3009] as $nr) $this->score($draw, $nr);
-        $this->assertNull($this->fixture($draw, 5002)->registration1_id);
+        $this->assertNotNull($this->fixture($draw, 5002)->registration1_id);
         $this->score($draw, 3011);
         $base = [2 => ['L', 2003, 3009], 4 => ['L', 3009, 3011], 6 => ['L', 3011, 3010], 8 => ['L', 3010, 4003]];
         $setsBefore = DB::table('fixture_results')->count();
@@ -218,6 +218,83 @@ class InterproRoundRobinFormatTest extends TestCase
         app(\App\Services\InterprovincialTrials\TrialWithdrawalProgressionService::class)->resolve($entry);
         $this->assertSame($before, $skipped->fresh()->getAttributes());
         $this->assertSame(0, DB::table('draw_audit_logs')->where('fixture_id', $skipped->id)->where('action', 'trials_withdrawal_loss')->count());
+    }
+
+    public function test_challenge_uses_own_feeders_and_read_only_catches_up_old_blank_slots(): void
+    {
+        $draw = $this->context();
+        $draw->settings()->update(['playoff_config' => InterproRoundRobinFormat::configuration()
+            + ['challenge_playoffs' => true, 'challenge_pairs' => [8]]]);
+        $draw = $draw->fresh();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachFeedIn($draw);
+        $this->score($draw, 3010);
+        $this->score($draw, 4001);
+        $this->score($draw, 4002);
+        $this->score($draw, 4003);
+        $challenge = $this->fixture($draw, 5008);
+        $this->assertNotNull($challenge->registration1_id);
+        $this->assertNotNull($challenge->registration2_id);
+        foreach ([2003, 3009, 3011, 4004] as $number) $this->assertNull(app(IndividualMatchOutcomeService::class)->winner($this->fixture($draw, $number)));
+        $expected = [$challenge->registration1_id, $challenge->registration2_id];
+        // Even a decisive earlier group meeting must not suppress this playoff challenge.
+        $rr = Fixture::factory()->create(['draw_id' => $draw->id, 'stage' => 'RR', 'match_nr' => 999,
+            'registration1_id' => $expected[0], 'registration2_id' => $expected[1],
+            'match_status' => 1, 'winner_registration' => $expected[0]]);
+        $rr->fixtureResults()->create(['set_nr' => 1, 'registration1_score' => 6, 'registration2_score' => 2,
+            'winner_registration' => $expected[0], 'loser_registration' => $expected[1]]);
+        $challenge->update(['registration1_id' => null, 'registration2_id' => null]);
+        $before = $challenge->fresh()->getAttributes();
+        $setCount = DB::table('fixture_results')->count();
+        $config = $draw->fresh()->settings->playoff_config;
+        $projection = $this->bracketProjection($this->get(route('backend.draw.main-bracket', $draw))->assertOk()->getContent());
+        $this->assertSame(array_map('intval', $expected), array_column($projection['matches'][5008]['players'], 'id'));
+        $this->assertSame($before, $challenge->fresh()->getAttributes());
+        $this->assertSame($config, $draw->fresh()->settings->playoff_config);
+        $this->assertSame($setCount, DB::table('fixture_results')->count());
+        $this->assertNull($projection['matches'][5008]['winner']);
+        $positions = app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->keyBy('position');
+        $this->assertSame('awaiting', $positions[8]['status']);
+        $this->assertSame('awaiting', $positions[9]['status']);
+        app(InterproRoundRobinFormat::class)->resolve($draw->fresh());
+        $this->assertSame(array_map('intval', $expected), [(int) $challenge->fresh()->registration1_id, (int) $challenge->fresh()->registration2_id]);
+        $this->assertSame(0, app(InterproRoundRobinFormat::class)->resolve($draw->fresh()));
+        $this->assertFalse(InterproRoundRobinFormat::noMatchRequired($challenge->fresh()));
+    }
+
+    public function test_early_repeated_playoff_challenge_skips_and_legacy_projection_retains_base_positions_without_writes(): void
+    {
+        $draw = $this->context();
+        $draw->settings()->update(['playoff_config' => InterproRoundRobinFormat::configuration()
+            + ['challenge_playoffs' => true, 'challenge_pairs' => [2]]]);
+        $draw = $draw->fresh();
+        app(InterproRoundRobinFormat::class)->prepare($draw);
+        $this->reachFeedIn($draw);
+        $this->score($draw, 2003);
+        $this->score($draw, 3009);
+        $challenge = $this->fixture($draw, 5002);
+        $this->assertTrue(InterproRoundRobinFormat::noMatchRequired($challenge));
+        $this->assertSame((int) $challenge->registration1_id, app(IndividualMatchOutcomeService::class)->winner($challenge));
+        $this->assertSame(0, $challenge->fixtureResults()->count());
+        $expected = [$challenge->registration1_id, $challenge->registration2_id];
+        $config = $draw->fresh()->settings->playoff_config;
+        unset($config[0]['trials_skipped_challenges'][$challenge->id], $config[0]['trials_advances'][$challenge->id]);
+        $draw->settings()->update(['playoff_config' => $config]);
+        $challenge->update(['registration1_id' => null, 'registration2_id' => null, 'winner_registration' => null]);
+        $before = $challenge->fresh()->getAttributes();
+        $setCount = DB::table('fixture_results')->count();
+        $page = $this->get(route('backend.draw.main-bracket', $draw))->assertOk()->assertSee('Challenge skipped');
+        $projection = $this->bracketProjection($page->getContent());
+        $this->assertSame(array_map('intval', $expected), array_column($projection['matches'][5002]['players'], 'id'));
+        $this->assertSame((int) $expected[0], $projection['matches'][5002]['winner']);
+        $this->assertSame([], $projection['matches'][5002]['sets']);
+        $this->assertNull($projection['matches'][5002]['schedule']);
+        $positions = app(DrawFinalPlacementService::class)->forDraw($draw->fresh())->keyBy('position');
+        $this->assertSame((int) $expected[0], (int) $positions[2]['registration_id']);
+        $this->assertSame((int) $expected[1], (int) $positions[3]['registration_id']);
+        $this->assertSame($before, $challenge->fresh()->getAttributes());
+        $this->assertSame($config, $draw->fresh()->settings->playoff_config);
+        $this->assertSame($setCount, DB::table('fixture_results')->count());
     }
 
     public function test_interpro_challenge_choices_save_at_setup_and_preserve_result_freeze(): void

@@ -62,6 +62,7 @@ final class DrawFinalPlacementService
             return $this->applyAdjustments(collect(), $adjustments);
         }
         if (InterproRoundRobinFormat::selected($draw)) {
+            $fixtures = InterproRoundRobinFormat::projectChallenges($draw, $fixtures);
             $rows = collect();
             foreach ($fixtures->where('stage', '!=', 'CHALLENGE')->whereNotNull('position') as $fixture) {
                 if ((int) $fixture->match_status === 5) {
